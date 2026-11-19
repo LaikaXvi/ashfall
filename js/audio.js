@@ -291,18 +291,28 @@ class SoundEngine {
       lp.frequency.setValueAtTime(suppressed ? Math.min(airCutoff, 2400) : airCutoff, now);
 
       const gain = this.ctx.createGain();
+      // Trim each WAV to its clean FIRST single shot before any baked-in burst/double-shot peaks!
+      const shotTrim = {
+        pm9:   { hold: 0.055, end: 0.135 },
+        g17:   { hold: 0.060, end: 0.145 },
+        mp5k:  { hold: 0.048, end: 0.092 },
+        ak74m: { hold: 0.052, end: 0.098 },
+        m870:  { hold: 0.085, end: 0.240 },
+        m24:   { hold: 0.055, end: 0.115 }
+      };
+      const trim = shotTrim[weaponId] || shotTrim.ak74m;
+      const endDur = suppressed ? Math.min(trim.end, 0.085) : trim.end;
+      const holdDur = suppressed ? Math.min(trim.hold, 0.025) : trim.hold;
+
       gain.gain.setValueAtTime(vol * 1.15, now);
-      if (suppressed) {
-        // Tight suppressed tail (cuts boom, leaves crisp gas/action snap)
-        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
-      }
+      gain.gain.setValueAtTime(vol * 1.15, now + holdDur);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + endDur);
 
       src.connect(lp);
       lp.connect(gain);
       gain.connect(this.gunBus);
 
-      // Real firearm recordings already contain natural outdoor acoustics;
-      // keep close shots crisp & dry, and only add a faint distant tail for faraway gunfire
+      // Subtle distant air tail only for faraway shots
       if (!suppressed && distance > 14 && this.reverbSend) {
         const revG = this.ctx.createGain();
         revG.gain.setValueAtTime(0.08 * distAtten, now);
@@ -311,7 +321,7 @@ class SoundEngine {
       }
 
       src.start(now);
-      if (suppressed) src.stop(now + 0.18);
+      src.stop(now + endDur + 0.015);
       return;
     }
 
