@@ -2981,9 +2981,10 @@ class WeaponSystem {
         const { enemy, part } = hit.object.userData;
         const isHead = part === 'head';
         const dmg = Math.round(def.damage * (isHead ? 2.0 : 1.0));
-        const killed = enemy.takeDamage(dmg, origin);
+        const attackerInfo = { name: 'YOU', isPlayer: true, weaponId: weaponSlot.id, weaponName: def.name };
+        const killed = enemy.takeDamage(dmg, origin, attackerInfo);
         this._spawnImpact(hitPoint, 0x991111, 5);
-        onHitCallback(isHead, killed, enemy);
+        onHitCallback(isHead, killed, enemy, attackerInfo);
       } else if (worldHits.length > 0) {
         this._spawnImpact(hitPoint, 0xc8b898, 4);
       }
