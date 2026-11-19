@@ -178,9 +178,15 @@ class ThrowableSystem {
 
   startPrep(slot, player, weaponSystem) {
     if (this.state !== 'idle') return false;
+    if (player && (player.isDowned || player.dead)) return false;
     const itemId = slot === 'lethal' ? player.lethal : player.tactical;
     const qty = slot === 'lethal' ? player.lethalQty : player.tacticalQty;
-    if (!itemId || (!window.DEV_MODE && qty <= 0)) return false;
+    const hasEquipped = !!(itemId && GAME_DATA.ITEMS[itemId] && qty > 0);
+    if (!hasEquipped) {
+      const msg = slot === 'lethal' ? 'NO LETHAL EQUIPPED' : 'NO TACTICAL EQUIPPED';
+      if (window.showCenterToast) window.showCenterToast(msg, '#ffca28');
+      return false;
+    }
 
     if (weaponSystem) {
       weaponSystem.cancelInspect();
