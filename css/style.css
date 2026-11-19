@@ -2535,3 +2535,21 @@ button:disabled {
   font-size: 9.5px;
   color: var(--text-dim);
 }
+
+/* ==================== MAIN MENU VERSION INDICATOR ==================== */
+.menu-version-badge {
+  position: fixed;
+  top: 14px;
+  right: 18px;
+  z-index: 25;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  color: var(--text-dim);
+  background: rgba(12, 15, 14, 0.78);
+  border: 1px solid var(--border);
+  padding: 4px 10px;
+  pointer-events: none;
+  user-select: none;
+}
