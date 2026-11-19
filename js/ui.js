@@ -2052,7 +2052,10 @@ class GameUI {
       const list = context === 'container' && this.activeLootSource ? this.activeLootSource.items : player.backpack;
       list.splice(idx + 1, 0, { id: item.id, qty: half, revealed: true });
     } else if (action === 'drop' && context === 'backpack') {
-      player.backpack.splice(idx, 1);
+      const removed = player.backpack.splice(idx, 1)[0];
+      if (removed && typeof this.onDropItem === 'function') {
+        this.onDropItem(removed);
+      }
     }
 
     this.hideItemPopout();
