@@ -6,6 +6,7 @@ class WastelandWorld {
     this.colliders = [];      // { minX, maxX, minY, maxY, minZ, maxZ }
     this.shootableMeshes = []; // Static geometry meshes for bullet/LOS raycasts
     this.lootContainers = []; // { id, name, mesh, position, items, searched, requiresKey }
+    this.groundItems = [];    // { id, qty, mesh, position, ringMesh } physical loose & dropped loot
     this.extractZones = [];   // { name, position, radius, beaconMesh, ringMesh }
     this.pois = [];           // { name, x, z, color } for minimap & logical looting
     this.activeSmokes = [];
@@ -363,6 +364,9 @@ class WastelandWorld {
     this._addLootContainer(42, 0, 26, 'military');
     this._addLootContainer(2, 0, -55, 'medical');
 
+    // === LOGICAL LOOSE LOOT SPAWNS ACROSS POIs & COVER ===
+    this._spawnLogicalLooseLoot();
+
     // Dead trees & wasteland props
     const treeCoords = [
       [-55, -55], [-60, 15], [-48, 52], [52, -12],
@@ -391,12 +395,149 @@ class WastelandWorld {
     ];
   }
 
+  spawnGroundItem(id, qty = 1, pos = new THREE.Vector3(0, 0.02, 0)) {
+    const def = GAME_DATA.ITEMS[id];
+    if (!def) return null;
+
+    const rarKey = def.rarity || 'common';
+    const rarInfo = (GAME_DATA.RARITIES && GAME_DATA.RARITIES[rarKey]) || { color: '#4caf50' };
+    const rarColor = new THREE.Color(rarInfo.color);
+
+    const g = new THREE.Group();
+    const yBase = Math.max(0.02, pos.y || 0.02);
+    g.position.set(pos.x, yBase, pos.z);
+    g.rotation.y = Math.random() * Math.PI * 2;
+
+    // Subtle rarity halo ring on the floor so loose & dropped items are easy to spot
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(0.20, 0.27, 20),
+      new THREE.MeshBasicMaterial({ color: rarColor, transparent: true, opacity: 0.65, side: THREE.DoubleSide })
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.015;
+    g.add(ring);
+
+    // Distinct 3D item silhouette based on item category
+    const darkMat = new THREE.MeshLambertMaterial({ color: 0x26292c });
+    const accentMat = new THREE.MeshLambertMaterial({ color: rarColor });
+    if (def.type === 'weapon') {
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.08, 0.62), darkMat);
+      body.position.y = 0.06;
+      const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.26), new THREE.MeshLambertMaterial({ color: 0x151719 }));
+      barrel.position.set(0, 0.07, 0.36);
+      g.add(body, barrel);
+    } else if (def.type === 'med') {
+      const pouch = new THREE.Mesh(
+        new THREE.BoxGeometry(0.24, 0.11, 0.19),
+        new THREE.MeshLambertMaterial({ color: id === 'painkillers' ? 0xd8a84a : 0xdde3df })
+      );
+      pouch.position.y = 0.065;
+      g.add(pouch);
+      if (id === 'medkit') {
+        const crossMat = new THREE.MeshBasicMaterial({ color: 0xd93838 });
+        const c1 = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.01, 0.04), crossMat);
+        const c2 = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.01, 0.12), crossMat);
+        c1.position.y = 0.125;
+        c2.position.y = 0.125;
+        g.add(c1, c2);
+      }
+    } else if (def.type === 'ammo') {
+      const box = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.14), new THREE.MeshLambertMaterial({ color: 0x5d643d }));
+      box.position.y = 0.065;
+      const band = new THREE.Mesh(new THREE.BoxGeometry(0.225, 0.03, 0.145), new THREE.MeshLambertMaterial({ color: 0xc99c3c }));
+      band.position.y = 0.08;
+      g.add(box, band);
+    } else if (def.type === 'plate' || def.type === 'armor') {
+      const vest = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.09, 0.36), new THREE.MeshLambertMaterial({ color: 0x353c34 }));
+      vest.position.y = 0.055;
+      g.add(vest);
+    } else if (def.type === 'backpack') {
+      const pack = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.16, 0.42), new THREE.MeshLambertMaterial({ color: 0x4b4636 }));
+      pack.position.y = 0.085;
+      g.add(pack);
+    } else {
+      const crate = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.22), accentMat);
+      crate.position.y = 0.075;
+      g.add(crate);
+    }
+
+    this.scene.add(g);
+    const entry = {
+      uid: 'gi_' + Math.random().toString(36).slice(2, 9),
+      id,
+      qty,
+      mesh: g,
+      ringMesh: ring,
+      position: new THREE.Vector3(pos.x, yBase, pos.z)
+    };
+    this.groundItems.push(entry);
+    return entry;
+  }
+
+  removeGroundItem(entry) {
+    if (!entry) return;
+    const idx = this.groundItems.indexOf(entry);
+    if (idx !== -1) this.groundItems.splice(idx, 1);
+    if (entry.mesh && this.scene) this.scene.remove(entry.mesh);
+  }
+
+  _spawnLogicalLooseLoot() {
+    const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+    const spawnSpots = [
+      // Field Hospital & Clinic (medical supplies)
+      { x: 21.5, y: 0.16, z: -20.0, pool: [{ id: 'medkit', qty: 1 }, { id: 'bandage', qty: 2 }, { id: 'painkillers', qty: 1 }] },
+      { x: 25.0, y: 0.16, z: -15.5, pool: [{ id: 'medkit', qty: 1 }, { id: 'painkillers', qty: 1 }] },
+      { x: 22.0, y: 0.16, z: -16.2, pool: [{ id: 'bandage', qty: 2 }, { id: 'cloth_roll', qty: 2 }, { id: 'water_filter', qty: 1 }] },
+      { x: 27.2, y: 0.16, z: -20.5, pool: [{ id: 'medkit', qty: 1 }, { id: 'bandage', qty: 1 }] },
+
+      // Police & Fire Station (armor plates, small arms, tactical gear)
+      { x: -24.5, y: 0.16, z: 24.0, pool: [{ id: 'armor_plate', qty: 2 }, { id: 'ammo_9x19', qty: 24 }, { id: 'ammo_12g', qty: 12 }] },
+      { x: -29.0, y: 0.16, z: 24.5, pool: [{ id: 'pm9', qty: 1 }, { id: 'm870', qty: 1 }, { id: 'vest_1plate', qty: 1 }] },
+      { x: -24.0, y: 0.16, z: 19.8, pool: [{ id: 'smoke_grenade', qty: 1 }, { id: 'concussion_grenade', qty: 1 }, { id: 'armor_plate', qty: 1 }] },
+      { x: -31.5, y: 0.16, z: 19.5, pool: [{ id: 'bag_small', qty: 1 }, { id: 'ammo_9x19', qty: 30 }] },
+
+      // Military Compound (rifles, rifle ammo, plates, explosives, materials)
+      { x: -21.0, y: 0.16, z: -29.5, pool: [{ id: 'ammo_545', qty: 30 }, { id: 'ammo_762', qty: 20 }, { id: 'armor_plate', qty: 2 }] },
+      { x: -24.0, y: 0.16, z: -22.5, pool: [{ id: 'mp5k', qty: 1 }, { id: 'ak74m', qty: 1 }, { id: 'frag_grenade', qty: 1 }] },
+      { x: -19.5, y: 0.16, z: -24.0, pool: [{ id: 'gunpowder', qty: 2 }, { id: 'polymer_parts', qty: 2 }, { id: 'scrap_metal', qty: 3 }] },
+      { x: -27.5, y: 0.16, z: -26.2, pool: [{ id: 'medkit', qty: 1 }, { id: 'armor_plate', qty: 2 }] },
+
+      // Boss Encampment (high-value loose loot)
+      { x: 31.5, y: 0.16, z: -45.5, pool: [{ id: 'armor_plate', qty: 2 }, { id: 'medkit', qty: 1 }, { id: 'ammo_762', qty: 20 }] },
+      { x: 36.2, y: 0.16, z: -50.2, pool: [{ id: 'gold_watch', qty: 1 }, { id: 'intel_drive', qty: 1 }, { id: 'painkillers', qty: 1 }] },
+
+      // Shipping Containers & Roadblocks (salvage, ammo, basic meds)
+      { x: -6.2,  y: 0.02, z: 16.5,  pool: [{ id: 'scrap_metal', qty: 2 }, { id: 'cloth_roll', qty: 2 }, { id: 'bandage', qty: 1 }] },
+      { x: 14.5,  y: 0.02, z: 9.2,   pool: [{ id: 'gunpowder', qty: 2 }, { id: 'polymer_parts', qty: 2 }, { id: 'ammo_9x18', qty: 20 }] },
+      { x: -4.2,  y: 0.02, z: 34.5,  pool: [{ id: 'ammo_9x19', qty: 18 }, { id: 'bandage', qty: 1 }, { id: 'armor_plate', qty: 1 }] },
+      { x: 7.5,   y: 0.02, z: 26.5,  pool: [{ id: 'water_filter', qty: 1 }, { id: 'scrap_metal', qty: 2 }] },
+      { x: 15.5,  y: 0.02, z: -34.0, pool: [{ id: 'ammo_545', qty: 24 }, { id: 'medkit', qty: 1 }] },
+      { x: -41.5, y: 0.02, z: -3.2,  pool: [{ id: 'polymer_parts', qty: 2 }, { id: 'gunpowder', qty: 2 }, { id: 'frag_grenade', qty: 1 }] }
+    ];
+
+    for (const sp of spawnSpots) {
+      // ~85% spawn chance per logical spot for organic raid variety
+      if (Math.random() < 0.85) {
+        const chosen = pick(sp.pool);
+        if (GAME_DATA.ITEMS[chosen.id]) {
+          this.spawnGroundItem(chosen.id, chosen.qty, new THREE.Vector3(sp.x, sp.y, sp.z));
+        }
+      }
+    }
+  }
+
   update(dt, time) {
     // Animate extraction beacons
     for (const ez of this.extractZones) {
       ez.beaconMesh.rotation.y += dt * 0.8;
       const pulse = 0.18 + Math.sin(time * 3.0) * 0.08;
       ez.beaconMesh.material.opacity = pulse;
+    }
+    // Subtle pulse on loose & dropped ground item rings
+    for (const gi of this.groundItems) {
+      if (gi.ringMesh && gi.ringMesh.material) {
+        gi.ringMesh.material.opacity = 0.48 + Math.sin(time * 3.2 + gi.position.x) * 0.20;
+      }
     }
   }
 }
