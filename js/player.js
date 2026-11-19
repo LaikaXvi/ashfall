@@ -56,7 +56,6 @@ class Player {
     this.armorId = loadoutState.armor || null;
     this.plates = Math.min(6, loadoutState.plates !== undefined ? loadoutState.plates : 3);
     this.stamina = 100;
-    this.medkits = loadoutState.medkits || 0;
     this.lethal = loadoutState.lethal || 'frag_grenade';
     this.lethalQty = loadoutState.lethalQty !== undefined ? loadoutState.lethalQty : 2;
     this.tactical = loadoutState.tactical || 'smoke_grenade';
@@ -814,15 +813,30 @@ class Player {
     this.armor = Math.min(this.maxArmor, this.armor + 50);
   }
 
+  getMedkitCount() {
+    let total = 0;
+    for (const item of this.backpack) {
+      if (item && item.id === 'medkit') total += item.qty;
+    }
+    return total;
+  }
+
+  consumeMedkit() {
+    const idx = this.backpack.findIndex(item => item && item.id === 'medkit' && item.qty > 0);
+    if (idx === -1) return false;
+    this.backpack[idx].qty -= 1;
+    if (this.backpack[idx].qty <= 0) this.backpack.splice(idx, 1);
+    return true;
+  }
+
   startMedkit() {
-    if (!window.DEV_MODE && (this.medkits <= 0 || this.hp >= this.maxHp)) return false;
+    if (!window.DEV_MODE && (this.getMedkitCount() <= 0 || this.hp >= this.maxHp)) return false;
     return this.weaponSystem.startMedkit();
   }
 
   finishMedkit() {
     if (!window.DEV_MODE) {
-      if (this.medkits <= 0) return false;
-      this.medkits -= 1;
+      if (!this.consumeMedkit()) return false;
     }
     this.hp = Math.min(this.maxHp, this.hp + GAME_DATA.ITEMS.medkit.healAmount);
     window.soundEngine.playHeal();
@@ -875,15 +889,7 @@ class Player {
       return false;
     }
 
-    if (id === 'medkit') {
-      // Medkits go directly to quick slot if < 4, else backpack
-      if (this.medkits < 4) {
-        const room = Math.min(qty, 4 - this.medkits);
-        this.medkits += room;
-        qty -= room;
-        if (qty <= 0) return true;
-      }
-    } else if (id === 'armor_plate') {
+    if (id === 'armor_plate') {
       if (this.plates < 6) {
         const room = Math.min(qty, 6 - this.plates);
         this.plates += room;
