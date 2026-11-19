@@ -165,21 +165,20 @@ class SoundEngine {
     this.ambientGain.gain.setValueAtTime(this.levels ? this.levels.ambient : 1, this.ctx.currentTime);
     this.ambientGain.connect(compressor);
 
-    // Procedural outdoor wasteland echo/tail impulse response (ConvolverNode)
+    // Smooth, tight outdoor reflection tail (no artificial slapback spike; routed through gunBus)
     const sr = this.ctx.sampleRate;
-    const irLen = Math.floor(sr * 0.85);
+    const irLen = Math.floor(sr * 0.42);
     const irBuf = this.ctx.createBuffer(2, irLen, sr);
     for (let ch = 0; ch < 2; ch++) {
       const d = irBuf.getChannelData(ch);
       let lp = 0;
       for (let i = 0; i < irLen; i++) {
         const t = i / sr;
-        // Early concrete slapback around 45-95ms + diffuse outdoor decay
-        const slap = (t > 0.045 && t < 0.095) ? 1.55 : 1.0;
-        const env = Math.exp(-t * 5.8) * slap;
+        // Smooth initial fade-in (12ms) + clean exponential outdoor decay (no hard slapback jump!)
+        const attack = Math.min(1, t / 0.012);
+        const env = attack * Math.exp(-t * 9.5);
         const white = Math.random() * 2 - 1;
-        // Darken tail over time like real outdoor air absorption
-        lp = lp * 0.72 + white * 0.28;
+        lp = lp * 0.78 + white * 0.22;
         d[i] = lp * env;
       }
     }
@@ -188,14 +187,14 @@ class SoundEngine {
 
     const revFilter = this.ctx.createBiquadFilter();
     revFilter.type = 'lowpass';
-    revFilter.frequency.setValueAtTime(2200, this.ctx.currentTime);
+    revFilter.frequency.setValueAtTime(1400, this.ctx.currentTime);
 
     const revGain = this.ctx.createGain();
-    revGain.gain.setValueAtTime(0.38, this.ctx.currentTime);
+    revGain.gain.setValueAtTime(0.14, this.ctx.currentTime);
 
     convolver.connect(revFilter);
     revFilter.connect(revGain);
-    revGain.connect(compressor);
+    revGain.connect(this.gunBus);
     this.reverbSend = convolver;
   }
 
@@ -302,10 +301,11 @@ class SoundEngine {
       lp.connect(gain);
       gain.connect(this.gunBus);
 
-      // Subtle outdoor wasteland reflection tail
-      if (!suppressed && this.reverbSend) {
+      // Real firearm recordings already contain natural outdoor acoustics;
+      // keep close shots crisp & dry, and only add a faint distant tail for faraway gunfire
+      if (!suppressed && distance > 14 && this.reverbSend) {
         const revG = this.ctx.createGain();
-        revG.gain.setValueAtTime(0.22 * distAtten, now);
+        revG.gain.setValueAtTime(0.08 * distAtten, now);
         gain.connect(revG);
         revG.connect(this.reverbSend);
       }
@@ -317,12 +317,12 @@ class SoundEngine {
 
     // Per-weapon ballistic profiles
     const profiles = {
-      pm9:   { snapFreq: 2600, bodyFreq: 1150, bodyQ: 0.7, bodyDur: 0.095, subFreq: 115, subGain: 0.45, tail: 0.30, gain: 0.85 },
-      g17:   { snapFreq: 2900, bodyFreq: 1300, bodyQ: 0.75, bodyDur: 0.09,  subFreq: 120, subGain: 0.48, tail: 0.32, gain: 0.90 },
-      mp5k:  { snapFreq: 3100, bodyFreq: 1450, bodyQ: 0.8, bodyDur: 0.075, subFreq: 125, subGain: 0.42, tail: 0.28, gain: 0.82 },
-      ak74m: { snapFreq: 2400, bodyFreq: 980,  bodyQ: 0.65, bodyDur: 0.145, subFreq: 95,  subGain: 0.72, tail: 0.65, gain: 1.05 },
-      m870:  { snapFreq: 1700, bodyFreq: 540,  bodyQ: 0.55, bodyDur: 0.24,  subFreq: 72,  subGain: 1.05, tail: 0.85, gain: 1.20 },
-      m24:   { snapFreq: 2800, bodyFreq: 860,  bodyQ: 0.6, bodyDur: 0.22,  subFreq: 80,  subGain: 0.92, tail: 1.05, gain: 1.18 }
+      pm9:   { snapFreq: 2600, bodyFreq: 1150, bodyQ: 0.7, bodyDur: 0.095, subFreq: 115, subGain: 0.45, tail: 0.14, gain: 0.85 },
+      g17:   { snapFreq: 2900, bodyFreq: 1300, bodyQ: 0.75, bodyDur: 0.09,  subFreq: 120, subGain: 0.48, tail: 0.15, gain: 0.90 },
+      mp5k:  { snapFreq: 3100, bodyFreq: 1450, bodyQ: 0.8, bodyDur: 0.075, subFreq: 125, subGain: 0.42, tail: 0.12, gain: 0.82 },
+      ak74m: { snapFreq: 2400, bodyFreq: 980,  bodyQ: 0.65, bodyDur: 0.145, subFreq: 95,  subGain: 0.72, tail: 0.24, gain: 1.05 },
+      m870:  { snapFreq: 1700, bodyFreq: 540,  bodyQ: 0.55, bodyDur: 0.24,  subFreq: 72,  subGain: 1.05, tail: 0.30, gain: 1.20 },
+      m24:   { snapFreq: 2800, bodyFreq: 860,  bodyQ: 0.6, bodyDur: 0.22,  subFreq: 80,  subGain: 0.92, tail: 0.34, gain: 1.18 }
     };
     const p = profiles[weaponId] || profiles.ak74m;
 
