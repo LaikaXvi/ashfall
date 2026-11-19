@@ -50,7 +50,31 @@ class MatchmakingStage {
     this.wpnBuilder = new WeaponSystem(this.scene, dummyCam);
   }
 
-  _buildOperatorMesh(loadout, weaponMods, isAlly = false) {
+  _makeOverheadNameSprite(name, color = '#69f0ae') {
+    const canvas = document.createElement('canvas');
+    canvas.width = 360;
+    canvas.height = 64;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, 360, 64);
+    ctx.fillStyle = 'rgba(10, 14, 13, 0.80)';
+    ctx.fillRect(14, 10, 332, 44);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(14, 10, 332, 44);
+    ctx.font = 'bold 22px monospace';
+    ctx.fillStyle = color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(name, 180, 33);
+    const tex = new THREE.CanvasTexture(canvas);
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+    const spr = new THREE.Sprite(mat);
+    spr.position.set(0, 2.02, 0);
+    spr.scale.set(1.55, 0.28, 1);
+    return spr;
+  }
+
+  _buildOperatorMesh(loadout, weaponMods, isAlly = false, displayName = '', squadColor = '#69f0ae') {
     const root = new THREE.Group();
     const uniformMat = new THREE.MeshLambertMaterial({ color: isAlly ? 0x2f434a : 0x3b4237 });
     const pantsMat = new THREE.MeshLambertMaterial({ color: 0x2a2e28 });
@@ -107,6 +131,9 @@ class MatchmakingStage {
 
     upper.add(chest, carrier, pack, head, helmet, armL, armR);
     root.add(upper);
+    if (displayName) {
+      root.add(this._makeOverheadNameSprite(displayName, squadColor));
+    }
     root.userData.upper = upper;
     return root;
   }
@@ -117,24 +144,37 @@ class MatchmakingStage {
     this.active = true;
     this.animTime = 0;
 
-    // Clear & rebuild 3D operator + squadmates
+    // Clear & rebuild 3D operator + squadmates with overhead usernames & squad colors
     while (this.operatorsGroup.children.length > 0) {
       this.operatorsGroup.remove(this.operatorsGroup.children[0]);
     }
+    const squadColors = (GAME_DATA && GAME_DATA.SQUAD_COLORS) || ['#69f0ae', '#42a5f5', '#ffeb3b', '#ff69b4'];
+    const party = this.ui.partyMembers || [];
+    const multiSquad = party.length > 1;
+    const selfMember = party.find(m => m.isSelf) || { name: (this.ui.profile.social && this.ui.profile.social.callsign) || 'OPERATOR' };
+    const selfColor = multiSquad ? (selfMember.squadColor || squadColors[0]) : '#69f0ae';
+
     const L = this.ui.profile.loadout;
     const mods = this.ui.profile.weaponMods || {};
-    const mainOp = this._buildOperatorMesh(L, mods, false);
+    const mainOp = this._buildOperatorMesh(L, mods, false, selfMember.name, selfColor);
     this.operatorsGroup.add(mainOp);
 
-    const allies = (this.ui.partyMembers || []).filter(m => !m.isSelf);
+    const allies = party.filter(m => !m.isSelf);
+    const offsets = [
+      { x: -0.95, z: -0.45, rotY: 0.22 },
+      { x: 0.95,  z: -0.45, rotY: -0.22 },
+      { x: -1.75, z: -0.85, rotY: 0.32 }
+    ];
     allies.forEach((a, idx) => {
+      const col = multiSquad ? (a.squadColor || squadColors[(idx + 1) % squadColors.length]) : '#69f0ae';
       const allyMesh = this._buildOperatorMesh({
         primary: a.weaponId || 'ak74m',
         armor: 'vest_2plate',
         backpack: 'bag_medium'
-      }, {}, true);
-      allyMesh.position.set(idx === 0 ? -0.95 : 0.95, 0, -0.45);
-      allyMesh.rotation.y = idx === 0 ? 0.22 : -0.22;
+      }, {}, true, a.name, col);
+      const pos = offsets[idx % offsets.length];
+      allyMesh.position.set(pos.x, 0, pos.z);
+      allyMesh.rotation.y = pos.rotY;
       this.operatorsGroup.add(allyMesh);
     });
 
@@ -143,9 +183,10 @@ class MatchmakingStage {
     if (titleEl) titleEl.textContent = zDef.name.toUpperCase();
     const sqEl = document.getElementById('mm-squad-list');
     if (sqEl) {
-      sqEl.innerHTML = (this.ui.partyMembers || []).map(m =>
-        `<div style="color:#69f0ae;">✓ ${m.name}${m.isSelf ? ' (YOU)' : ''} — READY</div>`
-      ).join('');
+      sqEl.innerHTML = party.map((m, idx) => {
+        const col = multiSquad ? (m.squadColor || squadColors[idx % squadColors.length]) : '#69f0ae';
+        return `<div style="color:${col};">● ${m.name}${m.isSelf ? ' (YOU)' : ''} — READY</div>`;
+      }).join('');
     }
     this._resize();
   }
