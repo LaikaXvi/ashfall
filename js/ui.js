@@ -874,17 +874,18 @@ class GameUI {
     setTimeout(() => div.remove(), 3500);
   }
 
-  addKillFeedEntry(enemyName, weaponName = '', isHead = false) {
+  addKillFeedEntry({ killerName = 'YOU', weaponName = '', victimName = '', action = 'eliminated', isHead = false } = {}) {
     const kf = document.getElementById('hud-kill-feed');
-    if (!kf) return;
+    if (!kf || !victimName) return;
 
+    const isDowned = action === 'downed';
     const row = document.createElement('div');
-    row.className = 'kill-feed-item' + (isHead ? ' headshot' : '');
+    row.className = 'kill-feed-item' + (isDowned ? ' downed' : '') + (isHead ? ' headshot' : '');
 
-    const playerSpan = document.createElement('span');
-    playerSpan.className = 'kf-player';
-    playerSpan.textContent = 'YOU';
-    row.appendChild(playerSpan);
+    const killerSpan = document.createElement('span');
+    killerSpan.className = 'kf-player';
+    killerSpan.textContent = killerName;
+    row.appendChild(killerSpan);
 
     if (weaponName) {
       const wpnSpan = document.createElement('span');
@@ -892,6 +893,11 @@ class GameUI {
       wpnSpan.textContent = `[${weaponName.toUpperCase()}]`;
       row.appendChild(wpnSpan);
     }
+
+    const actionSpan = document.createElement('span');
+    actionSpan.className = `kf-action ${isDowned ? 'downed' : 'eliminated'}`;
+    actionSpan.textContent = isDowned ? 'DOWNED' : 'ELIMINATED';
+    row.appendChild(actionSpan);
 
     if (isHead) {
       const hsSpan = document.createElement('span');
@@ -902,7 +908,7 @@ class GameUI {
 
     const victimSpan = document.createElement('span');
     victimSpan.className = 'kf-victim';
-    victimSpan.textContent = enemyName;
+    victimSpan.textContent = victimName;
     row.appendChild(victimSpan);
 
     kf.appendChild(row);
