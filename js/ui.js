@@ -20,6 +20,7 @@ class GameUI {
     this.profile = this._loadProfile();
     this._initSocial();
     this._bindHideoutEvents();
+    window.showCenterToast = (msg, color) => this.showCenterToast(msg, color);
     this.openMenuTab('home');
     this.renderHideout();
   }
@@ -1520,6 +1521,22 @@ class GameUI {
     div.textContent = text;
     feed.prepend(div);
     setTimeout(() => div.remove(), 4200);
+  }
+
+  showCenterToast(text, color = '#ffca28') {
+    const el = document.getElementById('hud-center-toast');
+    if (!el) return;
+    el.textContent = text;
+    el.style.borderColor = color;
+    el.style.color = color;
+    el.classList.remove('hidden', 'pop');
+    void el.offsetWidth;
+    el.classList.add('pop');
+    clearTimeout(this._centerToastTimer);
+    this._centerToastTimer = setTimeout(() => {
+      el.classList.add('hidden');
+      el.classList.remove('pop');
+    }, 1900);
   }
 
   _getWeaponSilhouetteSVG(weaponId = '', weaponName = '') {
