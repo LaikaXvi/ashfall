@@ -2986,6 +2986,7 @@ class WeaponSystem {
           this._spawnImpact(hitPoint, 0x991111, 5);
           onHitCallback(isHead, killed, enemy, {
             damage: dmg,
+            weaponId: def.id,
             weaponName: def.name,
             distance: hit.distance
           });
