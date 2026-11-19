@@ -403,6 +403,7 @@ class ThrowableSystem {
           if (onHitCallback) {
             onHitCallback(false, killed, e, {
               damage: dmg,
+              weaponId: 'frag_grenade',
               weaponName: 'FRAG',
               distance: player ? player.position.distanceTo(e.position) : d,
               isLethal: true
@@ -702,6 +703,7 @@ class ThrowableSystem {
               if (pr.onHitCallback) {
                 pr.onHitCallback(isHead, killed, enemy, {
                   damage: dmg,
+                  weaponId: 'throwing_knife',
                   weaponName: 'THROWING KNIFE',
                   distance: player ? player.position.distanceTo(enemy.position) : h.distance,
                   isLethal: true
