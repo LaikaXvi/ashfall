@@ -335,6 +335,61 @@
             </div>
           </div>
 
+                    <div class="setting-row">
+            <div>
+              <div class="setting-title">AUDIO — MASTER VOLUME</div>
+              <div class="setting-desc">Overall output level for all game audio</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <input id="setting-vol-master" type="range" min="0" max="100" step="1" value="100" />
+              <span id="setting-vol-master-val" class="accent" style="min-width:38px;text-align:right;font-weight:700;">100%</span>
+            </div>
+          </div>
+
+          <div class="setting-row">
+            <div>
+              <div class="setting-title">AUDIO — GUNSHOTS</div>
+              <div class="setting-desc">Gunfire crack, tails &amp; mechanical action</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <input id="setting-vol-gun" type="range" min="0" max="100" step="1" value="100" />
+              <span id="setting-vol-gun-val" class="accent" style="min-width:38px;text-align:right;font-weight:700;">100%</span>
+            </div>
+          </div>
+
+          <div class="setting-row">
+            <div>
+              <div class="setting-title">AUDIO — FOOTSTEPS</div>
+              <div class="setting-desc">Movement, sprinting &amp; sliding</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <input id="setting-vol-foot" type="range" min="0" max="100" step="1" value="100" />
+              <span id="setting-vol-foot-val" class="accent" style="min-width:38px;text-align:right;font-weight:700;">100%</span>
+            </div>
+          </div>
+
+          <div class="setting-row">
+            <div>
+              <div class="setting-title">AUDIO — AMBIENT</div>
+              <div class="setting-desc">Wind, rain, rumble &amp; zone atmosphere loops</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <input id="setting-vol-ambient" type="range" min="0" max="100" step="1" value="100" />
+              <span id="setting-vol-ambient-val" class="accent" style="min-width:38px;text-align:right;font-weight:700;">100%</span>
+            </div>
+          </div>
+
+          <div class="setting-row">
+            <div>
+              <div class="setting-title">AUDIO — SFX</div>
+              <div class="setting-desc">Hits, reloads, explosions, heals, alerts &amp; UI</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <input id="setting-vol-sfx" type="range" min="0" max="100" step="1" value="100" />
+              <span id="setting-vol-sfx-val" class="accent" style="min-width:38px;text-align:right;font-weight:700;">100%</span>
+            </div>
+          </div>
+
           <div class="setting-row">
             <div>
               <div class="setting-title">MASTER AUDIO</div>
@@ -534,6 +589,41 @@
             </div>
           </div>
 
+                    <div class="setting-row" style="padding:10px 12px;">
+            <div class="setting-title">AUDIO — MASTER</div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <input id="pause-vol-master" type="range" min="0" max="100" step="1" value="100" />
+              <span id="pause-vol-master-val" class="accent" style="min-width:34px;text-align:right;font-weight:700;">100%</span>
+            </div>
+          </div>
+          <div class="setting-row" style="padding:10px 12px;">
+            <div class="setting-title">AUDIO — GUNSHOTS</div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <input id="pause-vol-gun" type="range" min="0" max="100" step="1" value="100" />
+              <span id="pause-vol-gun-val" class="accent" style="min-width:34px;text-align:right;font-weight:700;">100%</span>
+            </div>
+          </div>
+          <div class="setting-row" style="padding:10px 12px;">
+            <div class="setting-title">AUDIO — FOOTSTEPS</div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <input id="pause-vol-foot" type="range" min="0" max="100" step="1" value="100" />
+              <span id="pause-vol-foot-val" class="accent" style="min-width:34px;text-align:right;font-weight:700;">100%</span>
+            </div>
+          </div>
+          <div class="setting-row" style="padding:10px 12px;">
+            <div class="setting-title">AUDIO — AMBIENT</div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <input id="pause-vol-ambient" type="range" min="0" max="100" step="1" value="100" />
+              <span id="pause-vol-ambient-val" class="accent" style="min-width:34px;text-align:right;font-weight:700;">100%</span>
+            </div>
+          </div>
+          <div class="setting-row" style="padding:10px 12px;">
+            <div class="setting-title">AUDIO — SFX</div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <input id="pause-vol-sfx" type="range" min="0" max="100" step="1" value="100" />
+              <span id="pause-vol-sfx-val" class="accent" style="min-width:34px;text-align:right;font-weight:700;">100%</span>
+            </div>
+          </div>
           <div class="setting-row" style="padding:10px 12px;">
             <div class="setting-title">MASTER AUDIO</div>
             <button id="btn-pause-mute" class="btn-small">AUDIO: ON</button>
