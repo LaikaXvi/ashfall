@@ -20,6 +20,14 @@ class SquadMate {
     this.lootValue = 0;
     this.kills = 0;
     this.dead = false;
+    this.isDowned = false;
+    this.downedHp = 55;
+    this.downedBleedMax = 25.0;
+    this.downedBleedTimer = 25.0;
+    this.downedBy = null;
+    this.reviveProgress = 0;
+    this.beingRevivedBy = null;
+    this._bleedDrawAccum = 0;
     this.extracted = false;
 
     // Personal Raid Objective
@@ -106,7 +114,22 @@ class SquadMate {
     this.tagSprite.scale.set(1.65, 0.38, 1);
     this._redrawTag('READY');
 
-    g.add(torso, vest, patchL, patchR, head, helmet, rifle, this.muzzleMesh, this.muzzleLight, this.tagSprite);
+    // Overhead circular bleedout / revive timer with medical cross in the middle
+    this.bleedCanvas = document.createElement('canvas');
+    this.bleedCanvas.width = 128;
+    this.bleedCanvas.height = 128;
+    this.bleedTex = new THREE.CanvasTexture(this.bleedCanvas);
+    const bleedMat = new THREE.SpriteMaterial({
+      map: this.bleedTex,
+      transparent: true,
+      depthTest: false
+    });
+    this.bleedSprite = new THREE.Sprite(bleedMat);
+    this.bleedSprite.position.set(0, 1.95, 0);
+    this.bleedSprite.scale.set(0.80, 0.80, 1);
+    this.bleedSprite.visible = false;
+
+    g.add(torso, vest, patchL, patchR, head, helmet, rifle, this.muzzleMesh, this.muzzleLight, this.tagSprite, this.bleedSprite);
     g.position.copy(this.position);
     this.scene.add(g);
     this.group = g;
@@ -180,13 +203,99 @@ class SquadMate {
     return hits.length === 0;
   }
 
-  _takeCombatChip(amount) {
+  takeDamage(amount, attackerInfo = null, onAllyEvent = null) {
+    if (this.dead || this.extracted) return null;
+    if (this.isDowned) {
+      if (attackerInfo) this.downedBy = attackerInfo;
+      this.downedHp -= amount;
+      if (this.downedHp <= 0) {
+        this.die();
+        if (onAllyEvent) onAllyEvent('eliminated', this, this.downedBy);
+        return 'eliminated';
+      }
+      return null;
+    }
+
     if (this.armor > 0) {
       const abs = Math.min(this.armor, Math.round(amount * 0.78));
       this.armor -= abs;
       amount -= abs;
     }
-    this.hp = Math.max(12, this.hp - amount); // resilient ally, retreats to heal when hurt
+    this.hp = Math.max(0, this.hp - amount);
+    if (this.hp <= 0) {
+      this.isDowned = true;
+      this.downedHp = 55;
+      this.downedBleedTimer = this.downedBleedMax;
+      this.downedBy = attackerInfo || { name: 'HOSTILE', weaponId: 'ak74m', weaponName: 'AK-74M' };
+      this.reviveProgress = 0;
+      this.state = 'DOWNED';
+      this.group.position.y = -0.45;
+      this.group.rotation.x = -0.55;
+      this._redrawTag('DOWNED', '#ff5252');
+      if (this.bleedSprite && window.drawDownedBleedoutCanvas) {
+        window.drawDownedBleedoutCanvas(this.bleedCanvas, 1, { isAlly: true });
+        this.bleedTex.needsUpdate = true;
+        this.bleedSprite.visible = true;
+      }
+      if (onAllyEvent) onAllyEvent('downed', this, this.downedBy);
+      return 'downed';
+    }
+    return null;
+  }
+
+  die() {
+    this.dead = true;
+    this.isDowned = false;
+    this.state = 'DEAD';
+    this.reviveProgress = 0;
+    this.beingRevivedBy = null;
+    this.group.rotation.x = -Math.PI / 2;
+    this.group.position.y = 0.25;
+    this._redrawTag('ELIMINATED', '#ff5252');
+    if (this.bleedSprite && window.drawDownedBleedoutCanvas) {
+      window.drawDownedBleedoutCanvas(this.bleedCanvas, 0, { isAlly: true, isDead: true });
+      this.bleedTex.needsUpdate = true;
+      this.bleedSprite.visible = true;
+    }
+  }
+
+  revive(hpAmount = 45) {
+    this.dead = false;
+    this.isDowned = false;
+    this.hp = Math.min(this.maxHp, hpAmount);
+    this.downedHp = 55;
+    this.downedBleedTimer = this.downedBleedMax;
+    this.reviveProgress = 0;
+    this.beingRevivedBy = null;
+    this.state = 'FOLLOW';
+    this.group.rotation.x = 0;
+    this.group.position.y = 0;
+    if (this.bleedSprite) this.bleedSprite.visible = false;
+    this._redrawTag('REVIVED', '#69f0ae');
+  }
+
+  dragToward(tx, tz, speed, dt) {
+    return this._moveToward(tx, tz, speed, dt);
+  }
+
+  _updateBleedSprite(dt) {
+    if (!this.bleedSprite || !window.drawDownedBleedoutCanvas) return;
+    if (!this.isDowned && !this.dead) {
+      this.bleedSprite.visible = false;
+      return;
+    }
+    this.bleedSprite.visible = true;
+    this._bleedDrawAccum += dt;
+    if (this._bleedDrawAccum >= 0.06) {
+      this._bleedDrawAccum = 0;
+      window.drawDownedBleedoutCanvas(this.bleedCanvas, this.downedBleedTimer / this.downedBleedMax, {
+        isAlly: true,
+        isDead: this.dead,
+        isReviving: !!this.beingRevivedBy,
+        revivePct: this.reviveProgress
+      });
+      this.bleedTex.needsUpdate = true;
+    }
   }
 
   _findNearestExtract() {
@@ -243,8 +352,36 @@ class SquadMate {
     }
   }
 
-  update(dt, player, enemyManager, weaponSystem, raidTimeLeft, onComms, onAllyKill) {
-    if (this.dead || this.extracted) return;
+  update(dt, player, enemyManager, weaponSystem, raidTimeLeft, onComms, onAllyKill, allAllies = [], onAllyEvent = null) {
+    if (this.extracted) return;
+
+    // Dead ally: still update overhead revivable medical-cross sprite (can be slow-revived!)
+    if (this.dead) {
+      this._updateBleedSprite(dt);
+      return;
+    }
+
+    // Downed ally: crawl slowly towards player/safety, bleed out unless being revived
+    if (this.isDowned) {
+      if (!this.beingRevivedBy) {
+        this.downedBleedTimer -= dt;
+        // Crawl slowly toward player for safety
+        if (player && !player.dead && !player.isDowned) {
+          this._moveToward(player.position.x, player.position.z, 1.1, dt);
+          this.group.rotation.y = Math.atan2(player.position.x - this.position.x, player.position.z - this.position.z);
+        }
+        this._redrawTag(`DOWNED ${Math.ceil(Math.max(0, this.downedBleedTimer))}s`, '#ff5252');
+        if (this.downedBleedTimer <= 0) {
+          this.die();
+          if (onAllyEvent) onAllyEvent('eliminated', this, this.downedBy);
+          return;
+        }
+      } else {
+        this._redrawTag(`REVIVING ${Math.round(this.reviveProgress * 100)}%`, '#69f0ae');
+      }
+      this._updateBleedSprite(dt);
+      return;
+    }
 
     if (this.calloutCooldown > 0) this.calloutCooldown = Math.max(0, this.calloutCooldown - dt);
     if (this.muzzleTimer > 0) {
@@ -269,6 +406,83 @@ class SquadMate {
           targetEnemy = e;
         }
       }
+    }
+
+    // 1b. Priority 0: Revive & Drag Downed or Eliminated Teammates (Player or other SquadMates)
+    let reviveCandidate = null;
+    if (player && (player.isDowned || player.dead) && (!player.beingRevivedBy || player.beingRevivedBy === this.name)) {
+      reviveCandidate = { isPlayer: true, ref: player, pos: player.position, name: 'YOU' };
+    } else {
+      let bestScore = Infinity;
+      for (const mate of allAllies) {
+        if (!mate || mate === this || mate.extracted) continue;
+        if (!(mate.isDowned || mate.dead)) continue;
+        if (mate.beingRevivedBy && mate.beingRevivedBy !== this.name) continue;
+        // Prioritize downed mates before dead mates
+        const score = (mate.isDowned ? 0 : 100) + this.position.distanceTo(mate.position);
+        if (score < bestScore) {
+          bestScore = score;
+          reviveCandidate = { isPlayer: false, ref: mate, pos: mate.position, name: mate.name };
+        }
+      }
+    }
+
+    if (reviveCandidate) {
+      const tRef = reviveCandidate.ref;
+      const distToMate = Math.hypot(tRef.position.x - this.position.x, tRef.position.z - this.position.z);
+      this.state = 'REVIVING';
+      if (distToMate > 2.0) {
+        this._redrawTag('MOVING TO REVIVE', '#69f0ae');
+        this.group.rotation.y = Math.atan2(tRef.position.x - this.position.x, tRef.position.z - this.position.z);
+        const moved = this._moveToward(tRef.position.x, tRef.position.z, 5.2, dt);
+        if (moved) {
+          this.animCycle += dt * 9.5;
+          this.leftHip.rotation.x = Math.sin(this.animCycle) * 0.52;
+          this.rightHip.rotation.x = -Math.sin(this.animCycle) * 0.52;
+        }
+        return;
+      }
+
+      // Within revive reach! Downed = 3.5s, Dead = 7.5s (slower full revive)
+      const reviveDur = tRef.dead ? 7.5 : 3.5;
+      tRef.beingRevivedBy = this.name;
+      tRef.reviveProgress = Math.min(1, (tRef.reviveProgress || 0) + dt / reviveDur);
+
+      // If teammate is DOWNED and exposed to a visible enemy, drag them away from fire into cover while reviving!
+      let dragging = false;
+      if (tRef.isDowned && targetEnemy) {
+        const awayX = this.position.x - targetEnemy.position.x;
+        const awayZ = this.position.z - targetEnemy.position.z;
+        const awayLen = Math.hypot(awayX, awayZ) || 1;
+        const dragTargetX = this.position.x + (awayX / awayLen) * 3.0;
+        const dragTargetZ = this.position.z + (awayZ / awayLen) * 3.0;
+        dragging = this._moveToward(dragTargetX, dragTargetZ, 1.65, dt);
+        if (dragging) {
+          // Pull downed teammate behind/beside reviver
+          const pullX = this.position.x - (awayX / awayLen) * 0.95;
+          const pullZ = this.position.z - (awayZ / awayLen) * 0.95;
+          if (reviveCandidate.isPlayer) {
+            tRef.beingDragged = true;
+            tRef.dragToward(pullX, pullZ, 2.2, dt);
+          } else {
+            tRef.dragToward(pullX, pullZ, 2.2, dt);
+          }
+          this.animCycle += dt * 4.5;
+          this.leftHip.rotation.x = Math.sin(this.animCycle) * 0.25;
+          this.rightHip.rotation.x = -Math.sin(this.animCycle) * 0.25;
+        }
+      } else if (reviveCandidate.isPlayer) {
+        tRef.beingDragged = false;
+      }
+
+      this._redrawTag(dragging ? 'DRAGGING TO COVER' : (tRef.dead ? 'REVIVING (SLOW)' : 'REVIVING'), '#69f0ae');
+      if (tRef.reviveProgress >= 1) {
+        tRef.revive(45);
+        this._say(onComms, `Got ${reviveCandidate.name} back up — stay sharp!`, '#69f0ae');
+        if (onAllyEvent) onAllyEvent('revived', tRef, { name: this.name });
+        this.state = 'FOLLOW';
+      }
+      return;
     }
 
     // 2. Self-preservation: Heal / Plate / Reload timers
@@ -353,15 +567,31 @@ class SquadMate {
         }
         const dmg = this.weaponId === 'm24' ? 62 : 24;
         if (Math.random() < 0.64) {
-          const killed = targetEnemy.takeDamage(dmg, this.position);
+          const wDef = GAME_DATA.ITEMS[this.weaponId];
+          const attackerInfo = {
+            name: this.name,
+            isPlayer: false,
+            weaponId: this.weaponId,
+            weaponName: wDef ? wDef.name : this.weaponId.toUpperCase()
+          };
+          const killed = targetEnemy.takeDamage(dmg, this.position, attackerInfo);
+          if (targetEnemy.justDowned) {
+            targetEnemy.justDowned = false;
+            if (onAllyKill) onAllyKill(this, targetEnemy, 'downed');
+          }
           if (killed) {
             this.kills += 1;
-            if (onAllyKill) onAllyKill(this.name, targetEnemy.name);
+            if (onAllyKill) onAllyKill(this, targetEnemy, 'eliminated');
           }
         }
-        // Enemy return-fire pressure so squadmate genuinely uses plates & medkits
-        if (Math.random() < 0.16 && !targetEnemy.dead && (!targetEnemy.stunTimer || targetEnemy.stunTimer <= 0)) {
-          this._takeCombatChip(12);
+        // Enemy return-fire pressure (can down/eliminate allies just like players!)
+        if (Math.random() < 0.16 && !targetEnemy.dead && !targetEnemy.isDowned && (!targetEnemy.stunTimer || targetEnemy.stunTimer <= 0)) {
+          const ewDef = GAME_DATA.ITEMS[targetEnemy.weaponId];
+          this.takeDamage(16, {
+            name: targetEnemy.name,
+            weaponId: targetEnemy.weaponId || 'ak74m',
+            weaponName: ewDef ? ewDef.name : 'AK-74M'
+          }, onAllyEvent);
         }
       }
     } else if (this.wantsExtract) {
@@ -481,7 +711,7 @@ class SquadManager {
     });
   }
 
-  update(dt, player, enemyManager, weaponSystem, raidTimeLeft, onComms, onAllyKill) {
+  update(dt, player, enemyManager, weaponSystem, raidTimeLeft, onComms, onAllyKill, onAllyEvent) {
     if (!this.announced && this.allies.length > 0 && onComms) {
       this.announced = true;
       for (const a of this.allies) {
@@ -489,7 +719,11 @@ class SquadManager {
       }
     }
     for (const ally of this.allies) {
-      ally.update(dt, player, enemyManager, weaponSystem, raidTimeLeft, onComms, onAllyKill);
+      ally.update(dt, player, enemyManager, weaponSystem, raidTimeLeft, onComms, onAllyKill, this.allies, onAllyEvent);
     }
+  }
+
+  hasLivingAlly() {
+    return this.allies.some(a => !a.dead && !a.extracted);
   }
 }
