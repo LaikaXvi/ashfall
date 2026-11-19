@@ -68,10 +68,10 @@ class Player {
     this.armorId = loadoutState.armor || null;
     this.plates = Math.min(6, loadoutState.plates !== undefined ? loadoutState.plates : 3);
     this.stamina = 100;
-    this.lethal = loadoutState.lethal || 'frag_grenade';
-    this.lethalQty = loadoutState.lethalQty !== undefined ? loadoutState.lethalQty : 2;
-    this.tactical = loadoutState.tactical || 'smoke_grenade';
-    this.tacticalQty = loadoutState.tacticalQty !== undefined ? loadoutState.tacticalQty : 2;
+    this.lethal = loadoutState.lethal !== undefined ? loadoutState.lethal : 'frag_grenade';
+    this.lethalQty = loadoutState.lethalQty !== undefined ? loadoutState.lethalQty : (this.lethal ? 2 : 0);
+    this.tactical = loadoutState.tactical !== undefined ? loadoutState.tactical : 'smoke_grenade';
+    this.tacticalQty = loadoutState.tacticalQty !== undefined ? loadoutState.tacticalQty : (this.tactical ? 2 : 0);
     this.backpackId = loadoutState.backpack || 'bag_small';
     this.backpackMaxSlots = (GAME_DATA.ITEMS[this.backpackId] && GAME_DATA.ITEMS[this.backpackId].slots) || 8;
     this.fieldUpgrade = loadoutState.fieldUpgrade || 'fu_ammo_box';
