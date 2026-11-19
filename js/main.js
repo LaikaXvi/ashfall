@@ -154,8 +154,7 @@
 
     if (extracted) {
       ui.profile.extracts += 1;
-      // Keep equipped loadout & remaining ammo/meds/plates
-      ui.profile.loadout.medkits = player.medkits;
+      // Keep equipped loadout & remaining ammo/plates; backpack loot (including medkits) returns to stash
       ui.profile.loadout.plates = player.plates;
       ui.profile.loadout.ammo = {};
 
@@ -176,7 +175,7 @@
         primary: null,
         secondary: null,
         armor: null,
-        medkits: 0,
+        backpackItems: [],
         ammo: {}
       };
     }
