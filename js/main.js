@@ -372,6 +372,7 @@
     if ((killed || downed) && isOperatorEnemy(enemy)) {
       ui.addKillFeedEntry({
         killerName: 'YOU',
+        weaponId: meta.weaponId || '',
         weaponName: meta.weaponName || 'LETHAL',
         victimName: enemy.name,
         action: downed && !killed ? 'downed' : 'eliminated',
@@ -394,6 +395,7 @@
       if ((killed || downed) && isOperatorEnemy(enemy)) {
         ui.addKillFeedEntry({
           killerName: 'YOU',
+          weaponId: meta.weaponId || slotObj.id || '',
           weaponName: meta.weaponName || '',
           victimName: enemy.name,
           action: downed && !killed ? 'downed' : 'eliminated',
@@ -585,11 +587,12 @@
             weaponSystem,
             raidTimeLeft,
             (msg, color) => ui.addFeedMessage(msg, color),
-            (allyName, enemy, weaponName = '', action = 'eliminated') => {
+            (allyName, enemy, weaponId = '', weaponName = '', action = 'eliminated') => {
               // Left-side kill feed only tracks downs/eliminations against enemy operators
               if (isOperatorEnemy(enemy)) {
                 ui.addKillFeedEntry({
                   killerName: allyName,
+                  weaponId,
                   weaponName,
                   victimName: enemy.name,
                   action
