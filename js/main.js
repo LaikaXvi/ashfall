@@ -142,6 +142,17 @@
     document.getElementById('loot-modal').classList.add('hidden');
 
     ui.showScreen('hud');
+    ui.onDropItem = (droppedItem) => {
+      if (!world || !player || !droppedItem) return;
+      const sinY = Math.sin(player.yaw);
+      const cosY = Math.cos(player.yaw);
+      const jitter = (Math.random() - 0.5) * 0.35;
+      const dropX = player.position.x - sinY * 1.05 + cosY * jitter;
+      const dropZ = player.position.z - cosY * 1.05 - sinY * jitter;
+      world.spawnGroundItem(droppedItem.id, droppedItem.qty, new THREE.Vector3(dropX, 0.02, dropZ));
+      const def = GAME_DATA.ITEMS[droppedItem.id];
+      if (def) ui.addFeedMessage(`Dropped ${def.name}${droppedItem.qty > 1 ? ' x' + droppedItem.qty : ''}`, '#a0a8a3');
+    };
     ui.addFeedMessage(`Deployed to ${zone.name}`, '#69f0ae');
     canvas.requestPointerLock();
   }
@@ -379,6 +390,23 @@
 
   function openNearbyInteractable() {
     if (!nearbyInteractable) return false;
+    if (nearbyInteractable.type === 'ground') {
+      const gi = nearbyInteractable.groundItem;
+      if (!gi) return false;
+      if (player.addToBackpack(gi.id, gi.qty)) {
+        world.removeGroundItem(gi);
+        const def = GAME_DATA.ITEMS[gi.id];
+        if (window.soundEngine && window.soundEngine.playClick) {
+          try { window.soundEngine.playClick(); } catch (e) {}
+        }
+        if (def) ui.addFeedMessage(`Picked up ${def.name}${gi.qty > 1 ? ' x' + gi.qty : ''}`, '#69f0ae');
+        nearbyInteractable = null;
+        return true;
+      } else {
+        ui.addFeedMessage('Backpack full / too heavy!', '#d94141');
+        return false;
+      }
+    }
     const c = nearbyInteractable.container;
     if (c && c.requiresKey && !c.unlocked) {
       const keyIdx = player.backpack.findIndex(it => it.id === c.requiresKey);
@@ -575,9 +603,24 @@
       }
     }
 
+    // Physical loose loot & dropped items on the ground
+    for (const gi of (world.groundItems || [])) {
+      const d = Math.hypot(player.position.x - gi.position.x, player.position.z - gi.position.z);
+      if (d < bestDist && d < 2.9) {
+        bestDist = d;
+        const def = GAME_DATA.ITEMS[gi.id];
+        const qtyTag = gi.qty > 1 ? ` x${gi.qty}` : '';
+        nearbyInteractable = { type: 'ground', label: `${def ? def.name : gi.id}${qtyTag}`, groundItem: gi };
+      }
+    }
+
     if (nearbyInteractable) {
-      const locked = nearbyInteractable.container && nearbyInteractable.container.requiresKey && !nearbyInteractable.container.unlocked;
-      textEl.textContent = locked ? `Unlock ${nearbyInteractable.label} [BOSS KEY]` : `Search ${nearbyInteractable.label}`;
+      if (nearbyInteractable.type === 'ground') {
+        textEl.textContent = `Pick up ${nearbyInteractable.label}`;
+      } else {
+        const locked = nearbyInteractable.container && nearbyInteractable.container.requiresKey && !nearbyInteractable.container.unlocked;
+        textEl.textContent = locked ? `Unlock ${nearbyInteractable.label} [BOSS KEY]` : `Search ${nearbyInteractable.label}`;
+      }
       promptEl.classList.remove('hidden');
     } else {
       promptEl.classList.add('hidden');
