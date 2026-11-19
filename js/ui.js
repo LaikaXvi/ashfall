@@ -926,27 +926,31 @@ class GameUI {
     wpnSpan.innerHTML = this._getWeaponSilhouetteSVG(weaponId, weaponName);
     row.appendChild(wpnSpan);
 
-    // Optional headshot crosshair glyph
-    if (isHead) {
-      const hsSpan = document.createElement('span');
-      hsSpan.className = 'kf-glyph headshot';
-      hsSpan.title = 'Headshot';
-      hsSpan.innerHTML = '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="8" cy="8" r="4.5"/><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3"/></svg>';
-      row.appendChild(hsSpan);
-    }
+    // Operator Downed glyph OR Elimination Crosshair / Headshot Skull glyph
+    const skullSvg = '<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M8 1C4.7 1 2 3.4 2 6.5c0 1.9 1 3.5 2.5 4.5V13c0 .6.4 1 1 1h5c.6 0 1-.4 1-1v-2c1.5-1 2.5-2.6 2.5-4.5C14 3.4 11.3 1 8 1zM5.6 8.2a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6zm4.8 0a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6zM6.5 12v-1.2h1V12h-1zm2 0v-1.2h1V12h-1z"/></svg>';
+    const crosshairSvg = '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="8" cy="8" r="4.5"/><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3"/></svg>';
 
-    // Operator Downed glyph OR Elimination Skull glyph
-    const glyphSpan = document.createElement('span');
-    glyphSpan.className = `kf-glyph ${isDowned ? 'downed' : 'eliminated'}`;
-    glyphSpan.title = isDowned ? 'Operator Downed' : 'Operator Eliminated';
     if (isDowned) {
-      // Downed operator silhouette (collapsed/propped figure + downed cross)
+      // Optional headshot skull before downed glyph
+      if (isHead) {
+        const hsSpan = document.createElement('span');
+        hsSpan.className = 'kf-glyph headshot';
+        hsSpan.title = 'Headshot';
+        hsSpan.innerHTML = skullSvg;
+        row.appendChild(hsSpan);
+      }
+      const glyphSpan = document.createElement('span');
+      glyphSpan.className = 'kf-glyph downed';
+      glyphSpan.title = 'Operator Downed';
       glyphSpan.innerHTML = '<svg viewBox="0 0 20 16" width="15" height="14" fill="currentColor" aria-hidden="true"><circle cx="5.2" cy="5.2" r="2.1"/><path d="M3.2 8.2c1.2-.6 2.9-.5 4.2.2l3.4 2.1h5.4c.7 0 1.2.5 1.2 1.2s-.5 1.2-1.2 1.2h-6.1l-2.6-1.4-2.1 2.2H2.2l2.1-3.4-1.5-.8c-.5-.3-.5-1 .4-1.3z"/><path d="M14.5 2h1.8v1.8h1.8v1.6h-1.8v1.8h-1.8V5.4h-1.8V3.8h1.8V2z"/></svg>';
+      row.appendChild(glyphSpan);
     } else {
-      // Skull glyph for full elimination
-      glyphSpan.innerHTML = '<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M8 1C4.7 1 2 3.4 2 6.5c0 1.9 1 3.5 2.5 4.5V13c0 .6.4 1 1 1h5c.6 0 1-.4 1-1v-2c1.5-1 2.5-2.6 2.5-4.5C14 3.4 11.3 1 8 1zM5.6 8.2a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6zm4.8 0a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6zM6.5 12v-1.2h1V12h-1zm2 0v-1.2h1V12h-1z"/></svg>';
+      const glyphSpan = document.createElement('span');
+      glyphSpan.className = `kf-glyph ${isHead ? 'headshot' : 'eliminated'}`;
+      glyphSpan.title = isHead ? 'Headshot Elimination' : 'Operator Eliminated';
+      glyphSpan.innerHTML = isHead ? skullSvg : crosshairSvg;
+      row.appendChild(glyphSpan);
     }
-    row.appendChild(glyphSpan);
 
     // Enemy operator name in red
     const victimSpan = document.createElement('span');
@@ -1033,13 +1037,14 @@ class GameUI {
     void totalEl.offsetWidth;
     totalEl.classList.add('visible', 'bump');
 
-    // Primary elimination row with skull icon
+    // Primary elimination row: skull for headshot, crosshair for general elimination
     const skullSvg = '<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M8 1C4.7 1 2 3.4 2 6.5c0 1.9 1 3.5 2.5 4.5V13c0 .6.4 1 1 1h5c.6 0 1-.4 1-1v-2c1.5-1 2.5-2.6 2.5-4.5C14 3.4 11.3 1 8 1zM5.6 8.2a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6zm4.8 0a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6zM6.5 12v-1.2h1V12h-1zm2 0v-1.2h1V12h-1z"/></svg>';
+    const crosshairSvg = '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="8" cy="8" r="4.5"/><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3"/></svg>';
     const killLabel = tier === 'heavy' ? 'JUGGERNAUT ELIMINATED' : 'KILL';
 
     const mainRow = document.createElement('div');
     mainRow.className = 'xp-event-row kill-main';
-    mainRow.innerHTML = `<span class="xp-skull">${skullSvg}</span><span>${killLabel}</span><span class="xp-event-val">+${baseXp}</span>`;
+    mainRow.innerHTML = `<span class="xp-skull">${isHead ? skullSvg : crosshairSvg}</span><span>${killLabel}</span><span class="xp-event-val">+${baseXp}</span>`;
     eventsEl.prepend(mainRow);
 
     for (const b of bonuses) {
