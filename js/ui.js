@@ -749,6 +749,10 @@ class GameUI {
     if (hCred) hCred.textContent = credStr;
     if (hRaids) hRaids.textContent = this.profile.raids;
     if (hExt) hExt.textContent = this.profile.extracts;
+    const verBadge = document.getElementById('menu-version-badge');
+    if (verBadge && window.GAME_DATA && window.GAME_DATA.VERSION) {
+      verBadge.textContent = window.GAME_DATA.VERSION;
+    }
 
     const devBtn = document.getElementById('btn-dev-mode');
     const grantBtn = document.getElementById('btn-dev-grant');
