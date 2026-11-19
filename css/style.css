@@ -577,18 +577,18 @@ button:disabled {
 .kill-feed-item {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   padding: 4px 16px 4px 9px;
-  background: linear-gradient(90deg, rgba(11, 14, 13, 0.88) 0%, rgba(11, 14, 13, 0.62) 72%, rgba(11, 14, 13, 0) 100%);
-  border-left: 2px solid #69f0ae;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  background: linear-gradient(90deg, rgba(11, 14, 13, 0.88) 0%, rgba(11, 14, 13, 0.62) 74%, rgba(11, 14, 13, 0) 100%);
+  border-left: 2px solid #4da6ff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.92);
   letter-spacing: 0.4px;
   animation: killFeedIn 0.16s ease-out;
   transition: opacity 0.35s ease, transform 0.35s ease;
 }
 
 .kill-feed-item.downed {
-  border-left-color: #f5a623;
+  border-left-color: #f5c542;
 }
 
 .kill-feed-item.headshot {
@@ -601,44 +601,48 @@ button:disabled {
 }
 
 .kf-player {
-  color: #69f0ae;
+  color: #5eb5ff;
   font-weight: 800;
 }
 
-.kf-weapon {
-  color: #b7c2bc;
-  font-size: 11px;
-  font-weight: 600;
+.kf-weapon-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 15px;
+  color: #e8ecea;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.95));
 }
 
-.kf-action {
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.6px;
-  text-transform: uppercase;
-  padding: 1px 4px;
-  border-radius: 2px;
+.kf-weapon-icon svg {
+  height: 14px;
+  width: auto;
+  display: block;
 }
 
-.kf-action.downed {
+.kf-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.95));
+}
+
+.kf-glyph.downed {
   color: #f5c542;
-  background: rgba(245, 197, 66, 0.14);
 }
 
-.kf-action.eliminated {
-  color: #ff4242;
-  background: rgba(255, 66, 66, 0.16);
+.kf-glyph.eliminated {
+  color: #f0f3f1;
 }
 
-.kf-hs {
-  color: #ff4242;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.5px;
+.kf-glyph.headshot {
+  color: #ff3b3b;
 }
 
 .kf-victim {
-  color: #ff6b6b;
+  color: #ff4b4b;
   font-weight: 700;
 }
 
