@@ -799,6 +799,11 @@ button:disabled {
   transition: opacity 0.25s ease;
 }
 
+.xp-total.downed {
+  color: #ffffff;
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.95), 0 0 10px rgba(255, 255, 255, 0.28);
+}
+
 .xp-total.visible {
   opacity: 1;
 }
@@ -817,9 +822,9 @@ button:disabled {
 .xp-event-row {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  font-weight: 700;
+  gap: 7px;
+  font-size: 12px;
+  font-weight: 800;
   letter-spacing: 1px;
   text-transform: uppercase;
   color: #f1f4f2;
@@ -828,30 +833,17 @@ button:disabled {
   transition: opacity 0.28s ease, transform 0.28s ease;
 }
 
-.xp-event-row.kill-main {
-  font-size: 12px;
-  font-weight: 800;
+.xp-event-row.downed {
   color: #ffffff;
 }
 
-.xp-event-row.bonus {
-  color: #ffd54f;
-  font-size: 11px;
+.xp-event-row.downed .xp-event-val {
+  color: #ffffff;
 }
 
 .xp-event-row.fading {
   opacity: 0;
   transform: translateX(6px);
-}
-
-.xp-skull {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 14px;
-  height: 14px;
-  color: #ff3b3b;
-  filter: drop-shadow(0 0 4px rgba(255, 59, 59, 0.7));
 }
 
 .xp-event-val {
