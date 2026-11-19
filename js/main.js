@@ -367,7 +367,9 @@
     ui.triggerHitmarker(isHead, killed || downed);
     if (killed) {
       raidKills += 1;
-      ui.triggerKillFeedback(enemy, isHead, meta);
+      ui.triggerKillFeedback(enemy, isHead, { ...meta, downed: false });
+    } else if (downed) {
+      ui.triggerKillFeedback(enemy, isHead, { ...meta, downed: true });
     }
     if ((killed || downed) && isOperatorEnemy(enemy)) {
       ui.addKillFeedEntry({
@@ -390,7 +392,9 @@
       ui.triggerHitmarker(isHead, killed || downed);
       if (killed) {
         raidKills += 1;
-        ui.triggerKillFeedback(enemy, isHead, meta);
+        ui.triggerKillFeedback(enemy, isHead, { ...meta, downed: false });
+      } else if (downed) {
+        ui.triggerKillFeedback(enemy, isHead, { ...meta, downed: true });
       }
       if ((killed || downed) && isOperatorEnemy(enemy)) {
         ui.addKillFeedEntry({
