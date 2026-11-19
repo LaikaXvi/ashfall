@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ASHFALL // 3D Extraction Looter-Shooter</title>
-  <link rel="stylesheet" href="css/style.css?v=71" />
+  <link rel="stylesheet" href="css/style.css?v=72" />
   <!-- Three.js r128 UMD for zero-build compatibility (works on both http:// and file://) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
@@ -472,7 +472,8 @@
       </div>
     </div>
 
-    <!-- Left Side: Operator Kill Feed (Downs +50 XP / Elims +100 XP) -->
+    <!-- Left Side: Operator Kill Feed (Weapon Silhouettes + Downed/Elim Glyphs) & Comms -->
+    <div id="hud-kill-feed" class="hud-kill-feed"></div>
     <div id="hud-feed" class="hud-feed hud-feed-left"></div>
 
     <!-- Center Crosshair & Prompts -->
@@ -484,6 +485,27 @@
       <div class="ch-dot"></div>
     </div>
     <div id="hitmarker" class="hitmarker"></div>
+
+    <!-- Right-of-Crosshair Stacking XP Feedback -->
+    <div id="hud-xp-feedback" class="hud-xp-feedback">
+      <div id="hud-xp-total" class="hud-xp-total"></div>
+      <div id="hud-xp-events" class="hud-xp-events"></div>
+    </div>
+
+    <!-- Downed Bleedout / Revive & Drag-to-Cover HUD Banner -->
+    <div id="revive-banner" class="revive-banner hidden">
+      <div class="revive-cross-badge" id="revive-cross-badge">+</div>
+      <div class="revive-body">
+        <div class="revive-title-row">
+          <span id="revive-title">DOWNED — CRAWL TO COVER</span>
+          <span id="revive-timer">25.0s</span>
+        </div>
+        <div class="revive-bar-bg">
+          <div id="revive-bar-fill" class="revive-bar-fill"></div>
+        </div>
+        <div id="revive-sub" class="revive-sub">Waiting for ally revive...</div>
+      </div>
+    </div>
 
     <div id="interact-prompt" class="interact-prompt hidden">
       <span class="key-badge">E</span>
@@ -751,15 +773,15 @@
   <script src="js/sfx_samples.js?v=21"></script>
   <script src="js/audio.js?v=55"></script>
   <script src="js/world.js?v=67"></script>
-  <script src="js/weapons.js?v=59"></script>
-  <script src="js/throwables.js?v=59"></script>
-  <script src="js/enemies.js?v=67"></script>
-  <script src="js/squad.js?v=66"></script>
-  <script src="js/player.js?v=70"></script>
+  <script src="js/weapons.js?v=72"></script>
+  <script src="js/throwables.js?v=72"></script>
+  <script src="js/enemies.js?v=72"></script>
+  <script src="js/squad.js?v=72"></script>
+  <script src="js/player.js?v=72"></script>
   <script src="js/gamepad.js?v=71"></script>
   <script src="js/gunsmith.js?v=41"></script>
   <script src="js/matchmaking.js?v=67"></script>
-  <script src="js/ui.js?v=71"></script>
-  <script src="js/main.js?v=70"></script>
+  <script src="js/ui.js?v=72"></script>
+  <script src="js/main.js?v=72"></script>
 </body>
 </html>
