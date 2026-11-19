@@ -357,7 +357,7 @@ class SquadMate {
           if (killed) {
             this.kills += 1;
             const wDef = window.WEAPONS && window.WEAPONS[this.weaponId];
-            if (onAllyKill) onAllyKill(this.name, targetEnemy, wDef ? wDef.name : this.weaponId, 'eliminated');
+            if (onAllyKill) onAllyKill(this.name, targetEnemy, this.weaponId, wDef ? wDef.name : this.weaponId, 'eliminated');
           }
         }
         // Enemy return-fire pressure so squadmate genuinely uses plates & medkits
