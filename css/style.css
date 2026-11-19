@@ -2579,3 +2579,33 @@ button:disabled {
   margin-right: 6px;
   vertical-align: middle;
 }
+
+/* ==================== CENTER-SCREEN HUD TOAST ==================== */
+.hud-center-toast {
+  position: fixed;
+  left: 50%;
+  top: 58%;
+  transform: translate(-50%, -50%);
+  z-index: 26;
+  padding: 7px 16px;
+  background: rgba(10, 13, 12, 0.88);
+  border: 1px solid #ffca28;
+  color: #ffca28;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.72);
+  pointer-events: none;
+  user-select: none;
+}
+
+.hud-center-toast.pop {
+  animation: centerToastPop 0.16s ease-out;
+}
+
+@keyframes centerToastPop {
+  from { opacity: 0; transform: translate(-50%, -44%) scale(0.95); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
