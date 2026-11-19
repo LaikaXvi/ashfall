@@ -11,6 +11,11 @@ class GameUI {
     this.activeMenuTab = 'home';
     this.socialTab = 'friends';
     this.activeLootSource = null; // { title, items } or null for backpack-only
+    this.matchmakingStage = null;
+    this._lootPlayer = null;
+    this._hoveredSlot = null; // { context, idx, item, el }
+    this._searchRevealProgress = 0;
+    this._partyReady = false;
 
     this.profile = this._loadProfile();
     this._initSocial();
@@ -22,18 +27,24 @@ class GameUI {
   _defaultProfile() {
     return {
       credits: 12500,
+      xp: 0,
       raids: 0,
       extracts: 0,
       loadout: {
         primary: 'mp5k',
         secondary: 'pm9',
+        melee: 'melee_knife',
         armor: 'vest_2plate',
+        backpack: 'bag_small',
+        fieldUpgrade: 'fu_ammo_box',
+        killstreak: 'ks_uav',
         medkits: 2,
         plates: 3,
         lethal: 'frag_grenade',
         lethalQty: 2,
         tactical: 'smoke_grenade',
         tacticalQty: 2,
+        backpackItems: [],
         ammo: {
           ammo_9x19: 90,
           ammo_9x18: 24
@@ -43,9 +54,14 @@ class GameUI {
         { id: 'ak74m', qty: 1 },
         { id: 'ammo_545', qty: 60 },
         { id: 'medkit', qty: 2 },
+        { id: 'armor_plate', qty: 3 },
         { id: 'throwing_knife', qty: 2 },
         { id: 'concussion_grenade', qty: 2 },
-        { id: 'water_filter', qty: 1 }
+        { id: 'water_filter', qty: 1 },
+        { id: 'scrap_metal', qty: 6 },
+        { id: 'cloth_roll', qty: 5 },
+        { id: 'gunpowder', qty: 4 },
+        { id: 'polymer_parts', qty: 4 }
       ],
       social: {
         callsign: 'NOMAD-7',
@@ -310,9 +326,16 @@ class GameUI {
       const raw = localStorage.getItem(this.storageKey);
       if (raw) {
         const p = JSON.parse(raw);
-        if (p && p.loadout) {
-          if (!p.loadout.lethal) { p.loadout.lethal = 'frag_grenade'; p.loadout.lethalQty = 2; }
-          if (!p.loadout.tactical) { p.loadout.tactical = 'smoke_grenade'; p.loadout.tacticalQty = 2; }
+        if (p) {
+          if (typeof p.xp !== 'number') p.xp = 0;
+          if (p.loadout) {
+            if (!p.loadout.lethal) { p.loadout.lethal = 'frag_grenade'; p.loadout.lethalQty = 2; }
+            if (!p.loadout.tactical) { p.loadout.tactical = 'smoke_grenade'; p.loadout.tacticalQty = 2; }
+            if (!p.loadout.backpack) p.loadout.backpack = 'bag_small';
+            if (!p.loadout.fieldUpgrade) p.loadout.fieldUpgrade = 'fu_ammo_box';
+            if (!p.loadout.melee) p.loadout.melee = 'melee_knife';
+            if (!Array.isArray(p.loadout.backpackItems)) p.loadout.backpackItems = [];
+          }
         }
         return p;
       }
@@ -326,11 +349,19 @@ class GameUI {
     } catch (e) {}
   }
 
+  isPartyLeader() {
+    const self = (this.partyMembers || []).find(m => m.isSelf);
+    return !self || !!self.isLeader || (this.partyMembers || []).length <= 1;
+  }
+
   openMenuTab(tabName) {
     if (tabName === 'gunsmith') {
       const gsBtn = document.getElementById('btn-open-gunsmith');
       if (gsBtn) gsBtn.click();
       return;
+    }
+    if (this.activeMenuTab === 'matchmaking' && tabName !== 'matchmaking' && this.matchmakingStage) {
+      this.matchmakingStage.stop();
     }
     this.activeMenuTab = tabName;
     const isHome = tabName === 'home';
@@ -339,13 +370,17 @@ class GameUI {
     if (topbar) topbar.classList.toggle('hidden', isHome);
     if (homeView) homeView.classList.toggle('hidden', !isHome);
 
-    ['deploy', 'stash', 'operator', 'settings'].forEach((t) => {
+    ['deploy', 'map', 'matchmaking', 'workbench', 'stash', 'operator', 'settings'].forEach((t) => {
       const el = document.getElementById(`menu-view-${t}`);
       if (el) el.classList.toggle('hidden', tabName !== t);
     });
     document.querySelectorAll('.subnav-btn').forEach((btn) => {
-      btn.classList.toggle('active', btn.dataset.tab === tabName);
+      const activeMatch = btn.dataset.tab === tabName ||
+        (btn.dataset.tab === 'deploy' && (tabName === 'map' || tabName === 'matchmaking'));
+      btn.classList.toggle('active', activeMatch);
     });
+    if (tabName === 'deploy') this.renderPreMatchLoadout();
+    if (tabName === 'workbench') this.renderWorkbench();
   }
 
   _bindHideoutEvents() {
@@ -369,15 +404,92 @@ class GameUI {
     const opSt = document.getElementById('btn-op-stash');
     if (opSt) opSt.addEventListener('click', () => this.openMenuTab('stash'));
 
-    // Deploy zone cards synced with #raid-zone-select
-    document.querySelectorAll('.zone-card').forEach((card) => {
-      card.addEventListener('click', () => {
-        document.querySelectorAll('.zone-card').forEach((c) => c.classList.remove('active'));
-        card.classList.add('active');
+    // Pre-Match Step 1 -> Step 2 (Map for Solo / Party Leader, or Ready Up for Party Member)
+    const btnNext = document.getElementById('btn-prematch-next');
+    if (btnNext) {
+      btnNext.addEventListener('click', () => {
+        const L = this.profile.loadout;
+        if (!L.primary && !L.secondary) {
+          L.secondary = 'pm9';
+          L.ammo.ammo_9x18 = (L.ammo.ammo_9x18 || 0) + 16;
+        }
+        if (this.isPartyLeader()) {
+          this.openMenuTab('map');
+        } else {
+          this._partyReady = !this._partyReady;
+          this.renderPreMatchLoadout();
+          if (this._partyReady) {
+            this._showSocialToast('READY! Waiting for Party Leader to select sector...');
+            setTimeout(() => {
+              if (this.activeMenuTab === 'deploy' && this._partyReady && !this.isPartyLeader()) {
+                const zoneId = (document.getElementById('raid-zone-select') || {}).value || 'outpost';
+                this.openMenuTab('matchmaking');
+                if (this.matchmakingStage) this.matchmakingStage.start(zoneId);
+              }
+            }, 1300);
+          }
+        }
+      });
+    }
+
+    // Pre-Match Step 2: Interactive Map floating nodes
+    const zoneDescs = {
+      outpost: 'Selected: Dustline Outpost — Balanced wasteland sector with Field Hospital, Police/Fire Station & Boss Encampment.',
+      industrial: 'Selected: Rustyard Compound — High-threat industrial sector with Military Compound, Boss Key Room & Ultra gear.'
+    };
+    document.querySelectorAll('.map-node').forEach((node) => {
+      node.addEventListener('click', () => {
+        document.querySelectorAll('.map-node').forEach((n) => n.classList.remove('active'));
+        node.classList.add('active');
         const sel = document.getElementById('raid-zone-select');
-        if (sel) sel.value = card.dataset.zone;
+        if (sel) sel.value = node.dataset.zone;
+        const descEl = document.getElementById('map-selected-desc');
+        if (descEl) descEl.textContent = zoneDescs[node.dataset.zone] || '';
       });
     });
+
+    const btnMapBack = document.getElementById('btn-map-back');
+    if (btnMapBack) btnMapBack.addEventListener('click', () => this.openMenuTab('deploy'));
+
+    const btnMapConfirm = document.getElementById('btn-map-confirm');
+    if (btnMapConfirm) {
+      btnMapConfirm.addEventListener('click', () => {
+        const zoneId = (document.getElementById('raid-zone-select') || {}).value || 'outpost';
+        this.openMenuTab('matchmaking');
+        if (this.matchmakingStage) this.matchmakingStage.start(zoneId);
+      });
+    }
+
+    const btnMmCancel = document.getElementById('btn-mm-cancel');
+    if (btnMmCancel) {
+      btnMmCancel.addEventListener('click', () => {
+        if (this.matchmakingStage) this.matchmakingStage.stop();
+        this._partyReady = false;
+        this.openMenuTab(this.isPartyLeader() ? 'map' : 'deploy');
+      });
+    }
+
+    // Workbench Bulk Sell Common Materials
+    const btnSellMats = document.getElementById('btn-sell-materials');
+    if (btnSellMats) {
+      btnSellMats.addEventListener('click', () => {
+        let earned = 0;
+        this.profile.stash = this.profile.stash.filter(item => {
+          const def = GAME_DATA.ITEMS[item.id];
+          if (def && def.type === 'material') {
+            earned += def.value * item.qty;
+            return false;
+          }
+          return true;
+        });
+        if (earned > 0) {
+          this.profile.credits += earned;
+          this.saveProfile();
+          this.renderHideout();
+          this.renderWorkbench();
+        }
+      });
+    }
 
     // Settings controls (Main Menu + In-Raid ESC Menu bidirectionally synced)
     const syncSettingsUI = () => {
@@ -530,14 +642,19 @@ class GameUI {
 
     document.getElementById('btn-dev-grant').addEventListener('click', () => {
       this.profile.credits += 50000;
-      ['pm9', 'g17', 'mp5k', 'ak74m', 'm870', 'm24', 'vest_1plate', 'vest_2plate', 'vest_3plate'].forEach(id => this.addToStash(id, 1));
+      ['pm9', 'g17', 'mp5k', 'ak74m', 'm870', 'm24', 'vest_1plate', 'vest_2plate_gel', 'vest_2plate_helmet', 'vest_3plate', 'bag_large', 'boss_key', 'melee_karambit', 'fu_dead_silence'].forEach(id => this.addToStash(id, 1));
       this.addToStash('medkit', 5);
       this.addToStash('armor_plate', 6);
+      this.addToStash('scrap_metal', 10);
+      this.addToStash('cloth_roll', 10);
+      this.addToStash('gunpowder', 10);
+      this.addToStash('polymer_parts', 10);
       this.saveProfile();
       this.renderHideout();
     });
 
     document.getElementById('btn-deploy').addEventListener('click', () => {
+      if (this.matchmakingStage) this.matchmakingStage.stop();
       // Ensure player at least has a fallback pistol if completely naked
       const L = this.profile.loadout;
       if (!L.primary && !L.secondary) {
@@ -553,14 +670,25 @@ class GameUI {
     const def = GAME_DATA.ITEMS[id];
     if (!def) return;
     if (def.stackable) {
-      const existing = this.profile.stash.find(i => i.id === id);
-      if (existing) {
-        existing.qty += qty;
-        return;
+      const maxStack = def.maxStack || 999;
+      let rem = qty;
+      for (const existing of this.profile.stash) {
+        if (existing.id === id && existing.qty < maxStack) {
+          const add = Math.min(rem, maxStack - existing.qty);
+          existing.qty += add;
+          rem -= add;
+          if (rem <= 0) return;
+        }
       }
+      while (rem > 0) {
+        const chunk = Math.min(rem, maxStack);
+        this.profile.stash.push({ id, qty: chunk });
+        rem -= chunk;
+      }
+      return;
     }
-    for (let i = 0; i < (def.stackable ? 1 : qty); i++) {
-      this.profile.stash.push({ id, qty: def.stackable ? qty : 1 });
+    for (let i = 0; i < qty; i++) {
+      this.profile.stash.push({ id, qty: 1 });
     }
   }
 
@@ -612,6 +740,254 @@ class GameUI {
     this.renderStash();
     this.renderTrader();
     this.renderSocial();
+    this.renderPreMatchLoadout();
+    this.renderWorkbench();
+  }
+
+  // ==================== PRE-MATCH LOADOUT SETUP (64-SLOT STASH + OPERATOR + BACKPACK) ====================
+  renderPreMatchLoadout() {
+    const stashGrid = document.getElementById('prematch-stash-grid');
+    const opSlotsEl = document.getElementById('prematch-op-slots');
+    const bagGrid = document.getElementById('prematch-bag-grid');
+    if (!stashGrid || !opSlotsEl || !bagGrid) return;
+
+    const L = this.profile.loadout;
+    if (!Array.isArray(L.backpackItems)) L.backpackItems = [];
+    const bagDef = GAME_DATA.ITEMS[L.backpack || 'bag_small'];
+    const maxBagSlots = (bagDef && bagDef.bagSlots) ? bagDef.bagSlots : 8;
+
+    // Party role banner & Next / Ready button
+    const roleEl = document.getElementById('prematch-party-role');
+    const nextBtn = document.getElementById('btn-prematch-next');
+    const isLeader = this.isPartyLeader();
+    const partyLen = (this.partyMembers || []).length;
+    if (roleEl) {
+      roleEl.textContent = partyLen <= 1
+        ? 'SOLO // PARTY LEADER'
+        : (isLeader ? `PARTY LEADER (${partyLen}/3)` : `PARTY MEMBER (${partyLen}/3)`);
+    }
+    if (nextBtn) {
+      if (isLeader) {
+        nextBtn.textContent = 'SELECT DEPLOYMENT ZONE →';
+        nextBtn.style.background = '';
+      } else {
+        nextBtn.textContent = this._partyReady ? 'READY ✓ (WAITING FOR LEADER)' : 'READY UP ✓';
+        nextBtn.style.background = this._partyReady ? '#2e7d32' : '';
+      }
+    }
+
+    // 1. 64-Slot Stash Grid (Left)
+    stashGrid.innerHTML = '';
+    for (let i = 0; i < 64; i++) {
+      const item = this.profile.stash[i];
+      const cell = document.createElement('div');
+      cell.className = 'inv-slot';
+      if (item && GAME_DATA.ITEMS[item.id]) {
+        const def = GAME_DATA.ITEMS[item.id];
+        const rar = def.rarity || 'common';
+        cell.classList.add(`rarity-${rar}`);
+        cell.innerHTML = `
+          <span class="slot-name">${def.name}</span>
+          <span class="slot-val">₽${(def.value * item.qty).toLocaleString()}</span>
+          ${item.qty > 1 ? `<span class="slot-qty">x${item.qty}</span>` : ''}
+        `;
+        cell.title = `${def.name} — Click to Equip or Pack into Backpack`;
+        cell.addEventListener('click', () => {
+          this._equipOrPackFromStash(i, maxBagSlots);
+        });
+      } else {
+        cell.classList.add('empty-slot');
+      }
+      stashGrid.appendChild(cell);
+    }
+
+    // 2. Operator Equipment Slots (Right Top)
+    const opDefs = [
+      { key: 'plates', label: 'PLATE SLOT (MAX 6)', text: `${L.plates || 0} / 6 Plates`, rarity: 'rare', unequip: () => {
+        if ((L.plates || 0) > 0) { L.plates -= 1; this.addToStash('armor_plate', 1); }
+      }},
+      { key: 'backpack', label: 'BACKPACK', id: L.backpack },
+      { key: 'armor', label: 'VEST', id: L.armor },
+      { key: 'fieldUpgrade', label: 'FIELD UPGRADE', id: L.fieldUpgrade },
+      { key: 'killstreak', label: 'KILLSTREAK', id: L.killstreak },
+      { key: 'primary', label: 'PRIMARY', id: L.primary },
+      { key: 'secondary', label: 'SECONDARY', id: L.secondary },
+      { key: 'melee', label: 'MELEE', id: L.melee }
+    ];
+    opSlotsEl.innerHTML = '';
+    for (const s of opDefs) {
+      const card = document.createElement('div');
+      const def = s.id ? GAME_DATA.ITEMS[s.id] : null;
+      const rar = def ? (def.rarity || 'common') : (s.rarity || 'common');
+      card.className = `op-slot-card ${def || s.text ? `rarity-${rar}` : ''}`;
+      card.innerHTML = `
+        <span class="op-slot-label">${s.label}</span>
+        <span class="op-slot-val">${def ? def.name : (s.text || 'EMPTY')}</span>
+      `;
+      card.title = 'Click to unequip back to Stash';
+      card.addEventListener('click', () => {
+        if (s.unequip) {
+          s.unequip();
+        } else if (s.id) {
+          this.addToStash(s.id, 1);
+          L[s.key] = null;
+        }
+        this.saveProfile();
+        this.renderHideout();
+      });
+      opSlotsEl.appendChild(card);
+    }
+
+    // 3. Pre-Match Backpack Grid (Right Bottom)
+    const bagCountEl = document.getElementById('prematch-bag-count');
+    if (bagCountEl) bagCountEl.textContent = `${L.backpackItems.length}/${maxBagSlots}`;
+    bagGrid.innerHTML = '';
+    for (let i = 0; i < maxBagSlots; i++) {
+      const item = L.backpackItems[i];
+      const cell = document.createElement('div');
+      cell.className = 'inv-slot';
+      if (item && GAME_DATA.ITEMS[item.id]) {
+        const def = GAME_DATA.ITEMS[item.id];
+        cell.classList.add(`rarity-${def.rarity || 'common'}`);
+        cell.innerHTML = `
+          <span class="slot-name">${def.name}</span>
+          ${item.qty > 1 ? `<span class="slot-qty">x${item.qty}</span>` : ''}
+        `;
+        cell.title = 'Click to return to Stash';
+        cell.addEventListener('click', () => {
+          this.addToStash(item.id, item.qty);
+          L.backpackItems.splice(i, 1);
+          this.saveProfile();
+          this.renderHideout();
+        });
+      } else {
+        cell.classList.add('empty-slot');
+      }
+      bagGrid.appendChild(cell);
+    }
+  }
+
+  _equipOrPackFromStash(stashIdx, maxBagSlots) {
+    const item = this.profile.stash[stashIdx];
+    if (!item) return;
+    const def = GAME_DATA.ITEMS[item.id];
+    if (!def) return;
+    const L = this.profile.loadout;
+    if (!Array.isArray(L.backpackItems)) L.backpackItems = [];
+
+    const slotMap = {
+      weapon: def.slot,
+      armor: 'armor',
+      backpack: 'backpack',
+      field_upgrade: 'fieldUpgrade',
+      killstreak: 'killstreak',
+      melee: 'melee'
+    };
+    const targetSlot = slotMap[def.type];
+    if (targetSlot) {
+      if (L[targetSlot]) this.addToStash(L[targetSlot], 1);
+      L[targetSlot] = item.id;
+      this.profile.stash.splice(stashIdx, 1);
+    } else if (def.type === 'plate') {
+      const space = Math.max(0, 6 - (L.plates || 0));
+      if (space > 0) {
+        const move = Math.min(space, item.qty);
+        L.plates = (L.plates || 0) + move;
+        item.qty -= move;
+        if (item.qty <= 0) this.profile.stash.splice(stashIdx, 1);
+      } else if (L.backpackItems.length < maxBagSlots) {
+        L.backpackItems.push({ id: item.id, qty: item.qty });
+        this.profile.stash.splice(stashIdx, 1);
+      }
+    } else if (def.type === 'ammo') {
+      L.ammo[item.id] = (L.ammo[item.id] || 0) + item.qty;
+      this.profile.stash.splice(stashIdx, 1);
+    } else if (def.type === 'med' && item.id === 'medkit' && (L.medkits || 0) < 4) {
+      L.medkits = (L.medkits || 0) + 1;
+      item.qty -= 1;
+      if (item.qty <= 0) this.profile.stash.splice(stashIdx, 1);
+    } else if (L.backpackItems.length < maxBagSlots) {
+      L.backpackItems.push({ id: item.id, qty: item.qty });
+      this.profile.stash.splice(stashIdx, 1);
+    } else {
+      this._showSocialToast('Backpack is full!');
+      return;
+    }
+    this.saveProfile();
+    this.renderHideout();
+  }
+
+  // ==================== WORKBENCH (CRAFTING & BULK MATERIAL SALE) ====================
+  renderWorkbench() {
+    const recEl = document.getElementById('workbench-recipes');
+    const matEl = document.getElementById('workbench-materials');
+    if (!recEl || !matEl) return;
+
+    const countMat = (id) => this.profile.stash
+      .filter(i => i.id === id)
+      .reduce((acc, i) => acc + i.qty, 0);
+
+    const consumeMat = (id, needed) => {
+      let rem = needed;
+      for (let i = this.profile.stash.length - 1; i >= 0 && rem > 0; i--) {
+        if (this.profile.stash[i].id === id) {
+          const take = Math.min(rem, this.profile.stash[i].qty);
+          this.profile.stash[i].qty -= take;
+          rem -= take;
+          if (this.profile.stash[i].qty <= 0) this.profile.stash.splice(i, 1);
+        }
+      }
+    };
+
+    recEl.innerHTML = '';
+    for (const r of (GAME_DATA.WORKBENCH_RECIPES || [])) {
+      const outDef = GAME_DATA.ITEMS[r.output];
+      if (!outDef) continue;
+      let canCraft = true;
+      const reqParts = Object.entries(r.inputs).map(([mId, need]) => {
+        const have = countMat(mId);
+        if (have < need) canCraft = false;
+        const mName = (GAME_DATA.ITEMS[mId] && GAME_DATA.ITEMS[mId].name) || mId;
+        return `<span style="color:${have >= need ? '#69f0ae' : '#ff6b6b'}">${mName} ${have}/${need}</span>`;
+      });
+
+      const row = document.createElement('div');
+      row.className = `item-row rarity-${outDef.rarity || 'common'}`;
+      row.innerHTML = `
+        <div class="item-info">
+          <div class="item-name">${outDef.name}${r.qty > 1 ? ' x' + r.qty : ''}</div>
+          <div class="item-meta">${reqParts.join(' · ')}</div>
+        </div>
+        <button class="btn-small" ${canCraft ? '' : 'disabled'}>CRAFT</button>
+      `;
+      row.querySelector('button').addEventListener('click', () => {
+        if (!canCraft) return;
+        for (const [mId, need] of Object.entries(r.inputs)) consumeMat(mId, need);
+        this.addToStash(r.output, r.qty || 1);
+        this.saveProfile();
+        this.renderHideout();
+      });
+      recEl.appendChild(row);
+    }
+
+    matEl.innerHTML = '';
+    const mats = this.profile.stash.filter(i => GAME_DATA.ITEMS[i.id] && GAME_DATA.ITEMS[i.id].type === 'material');
+    if (mats.length === 0) {
+      matEl.innerHTML = '<p class="hint" style="padding:12px;">No common materials in stash. Loot sectors to collect Scrap Metal, Cloth, Gunpowder & Polymer.</p>';
+    } else {
+      mats.forEach((m) => {
+        const def = GAME_DATA.ITEMS[m.id];
+        const row = document.createElement('div');
+        row.className = `item-row rarity-${def.rarity || 'common'}`;
+        row.innerHTML = `
+          <div class="item-info">
+            <div class="item-name">${def.name} x${m.qty} / 10</div>
+            <div class="item-meta">₽ ${(def.value * m.qty).toLocaleString()} · ${def.desc}</div>
+          </div>
+        `;
+        matEl.appendChild(row);
+      });
+    }
   }
 
   renderLoadout() {
@@ -868,194 +1244,18 @@ class GameUI {
     if (!feed) return;
     const div = document.createElement('div');
     div.className = 'feed-item';
-    div.style.borderRightColor = color;
+    div.style.borderLeftColor = color;
     div.textContent = text;
     feed.prepend(div);
-    setTimeout(() => div.remove(), 3500);
+    setTimeout(() => div.remove(), 4200);
   }
 
-  _getWeaponSilhouetteSVG(weaponId = '', weaponName = '') {
-    const key = (weaponId || weaponName || '').toLowerCase();
-    // Side-profile tactical silhouettes (facing right)
-    if (key.includes('pm9') || key.includes('g17') || key.includes('pistol')) {
-      // Compact semi-auto pistol
-      return '<svg viewBox="0 0 36 18" fill="currentColor" aria-hidden="true"><path d="M5 4h24v3.5h-2v1.5h-12l-1.5 2.5h2.2l-.7 1.5h-4.5l-2 4.5H4.2l2.3-7.5H5V4zm21-1h2.5v1H26V3z"/></svg>';
-    }
-    if (key.includes('mp5')) {
-      // MP5-K compact SMG with foregrip & curved mag
-      return '<svg viewBox="0 0 46 18" fill="currentColor" aria-hidden="true"><path d="M4 5.5h28v1.5h6v2h-6v1.5h-3.5v4.5h-2.5v-4.5h-3.2l1.6 5.5-2.6.8-1.9-6.3h-4.2l-1.8 5h-3l1.6-5H6.5v1.5H4v-6.5zm22-2h3v2h-3v-2z"/></svg>';
-    }
-    if (key.includes('m870') || key.includes('shotgun')) {
-      // M870 pump-action shotgun with underbarrel mag tube
-      return '<svg viewBox="0 0 54 18" fill="currentColor" aria-hidden="true"><path d="M2 7.5l8.5-2h40.5v2h-11v1.2h5.5v1.8h-17v-.8h-6.5l-1.8 1.3h-3.5l-3.5 3.5H2.5l1.5-4.5H2v-2.5z"/></svg>';
-    }
-    if (key.includes('m24') || key.includes('sniper')) {
-      // M24 bolt-action sniper rifle with mounted scope
-      return '<svg viewBox="0 0 58 18" fill="currentColor" aria-hidden="true"><path d="M18 2h15v2.5h-3v1.5h26v1.8H35v1.4h-8.5l-2 1.8h-5.5l-3.5 3.5H2v-4l10-2.5h9V4.5h-3V2z"/></svg>';
-    }
-    if (key.includes('frag') || key.includes('grenade')) {
-      // M67 frag grenade
-      return '<svg viewBox="0 0 18 18" fill="currentColor" aria-hidden="true"><path d="M7 2h4v2h1.8l1.2 2.2-1.2.7-.8-1.5H11v.8c2 .7 3.3 2.5 3.3 4.6 0 2.8-2.3 5-5.3 5s-5.3-2.2-5.3-5c0-2.1 1.4-3.9 3.3-4.6V4H6V2h1zm-2.3 1a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"/></svg>';
-    }
-    if (key.includes('knife')) {
-      // Tactical throwing knife
-      return '<svg viewBox="0 0 36 16" fill="currentColor" aria-hidden="true"><path d="M3 7h9v-1.8h2V7h19l-5.5 3.2H14v1.6h-2v-1.6H3V7z"/></svg>';
-    }
-    // Default / AK-74M assault rifle with curved magazine & front sight
-    return '<svg viewBox="0 0 52 18" fill="currentColor" aria-hidden="true"><path d="M2 6.5l9-1.5h22v-1.2h4v1.2h9v-1.8h2v2.2h2v1.8h-12v1.3h-6.5l2.2 6.2-2.8.8-2.4-7h-5.8l-1.8 5h-2.8l1.5-5h-5.2L2.5 12H2V6.5z"/></svg>';
-  }
-
-  addKillFeedEntry({ killerName = 'YOU', weaponId = '', weaponName = '', victimName = '', action = 'eliminated', isHead = false } = {}) {
-    const kf = document.getElementById('hud-kill-feed');
-    if (!kf || !victimName) return;
-
-    const isDowned = action === 'downed';
-    const row = document.createElement('div');
-    row.className = 'kill-feed-item' + (isDowned ? ' downed' : '') + (isHead ? ' headshot' : '');
-
-    // Teammate / killer name in blue
-    const killerSpan = document.createElement('span');
-    killerSpan.className = 'kf-player';
-    killerSpan.textContent = killerName;
-    row.appendChild(killerSpan);
-
-    // Weapon silhouette SVG
-    const wpnSpan = document.createElement('span');
-    wpnSpan.className = 'kf-weapon-icon';
-    wpnSpan.title = weaponName || weaponId || '';
-    wpnSpan.innerHTML = this._getWeaponSilhouetteSVG(weaponId, weaponName);
-    row.appendChild(wpnSpan);
-
-    // Operator Downed glyph OR Elimination Crosshair / Headshot Skull glyph
-    const skullSvg = '<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M8 1C4.7 1 2 3.4 2 6.5c0 1.9 1 3.5 2.5 4.5V13c0 .6.4 1 1 1h5c.6 0 1-.4 1-1v-2c1.5-1 2.5-2.6 2.5-4.5C14 3.4 11.3 1 8 1zM5.6 8.2a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6zm4.8 0a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6zM6.5 12v-1.2h1V12h-1zm2 0v-1.2h1V12h-1z"/></svg>';
-    const crosshairSvg = '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="8" cy="8" r="4.5"/><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3"/></svg>';
-
-    if (isDowned) {
-      // Optional headshot skull before downed glyph
-      if (isHead) {
-        const hsSpan = document.createElement('span');
-        hsSpan.className = 'kf-glyph headshot';
-        hsSpan.title = 'Headshot';
-        hsSpan.innerHTML = skullSvg;
-        row.appendChild(hsSpan);
-      }
-      const glyphSpan = document.createElement('span');
-      glyphSpan.className = 'kf-glyph downed';
-      glyphSpan.title = 'Operator Downed';
-      glyphSpan.innerHTML = '<svg viewBox="0 0 20 16" width="15" height="14" fill="currentColor" aria-hidden="true"><circle cx="5.2" cy="5.2" r="2.1"/><path d="M3.2 8.2c1.2-.6 2.9-.5 4.2.2l3.4 2.1h5.4c.7 0 1.2.5 1.2 1.2s-.5 1.2-1.2 1.2h-6.1l-2.6-1.4-2.1 2.2H2.2l2.1-3.4-1.5-.8c-.5-.3-.5-1 .4-1.3z"/><path d="M14.5 2h1.8v1.8h1.8v1.6h-1.8v1.8h-1.8V5.4h-1.8V3.8h1.8V2z"/></svg>';
-      row.appendChild(glyphSpan);
-    } else {
-      const glyphSpan = document.createElement('span');
-      glyphSpan.className = `kf-glyph ${isHead ? 'headshot' : 'eliminated'}`;
-      glyphSpan.title = isHead ? 'Headshot Elimination' : 'Operator Eliminated';
-      glyphSpan.innerHTML = isHead ? skullSvg : crosshairSvg;
-      row.appendChild(glyphSpan);
-    }
-
-    // Enemy operator name in red
-    const victimSpan = document.createElement('span');
-    victimSpan.className = 'kf-victim';
-    victimSpan.textContent = victimName;
-    row.appendChild(victimSpan);
-
-    kf.appendChild(row);
-    while (kf.children.length > 5) {
-      kf.removeChild(kf.firstChild);
-    }
-
-    setTimeout(() => row.classList.add('fading'), 4000);
-    setTimeout(() => row.remove(), 4400);
-  }
-
-  triggerHitmarker(headshot = false, killed = false) {
+  triggerHitmarker(headshot = false) {
     const hm = document.getElementById('hitmarker');
-    if (!hm) return;
-    const now = performance.now();
-    if (killed) {
-      this._hmKillUntil = now + 260;
-    }
-    const isKillState = killed || (this._hmKillUntil && now < this._hmKillUntil);
-
-    hm.classList.remove('active', 'headshot', 'kill');
-    void hm.offsetWidth; // restart pop animation on rapid hits
-    hm.classList.add('active');
-    if (headshot) hm.classList.add('headshot');
-    if (isKillState) hm.classList.add('kill');
-
+    hm.classList.toggle('headshot', headshot);
+    hm.style.opacity = '1';
     clearTimeout(this._hmTimer);
-    this._hmTimer = setTimeout(() => {
-      hm.classList.remove('active', 'headshot', 'kill');
-    }, isKillState ? 260 : 150);
-  }
-
-  triggerKillFeedback(enemy, isHead = false, meta = {}) {
-    const totalEl = document.getElementById('hud-xp-total');
-    const eventsEl = document.getElementById('hud-xp-events');
-    if (!totalEl || !eventsEl) return;
-
-    const isDowned = !!(meta && meta.downed);
-    const tier = enemy && enemy.tier ? enemy.tier : 'scav';
-    let earnedXp;
-    let label;
-
-    if (isDowned) {
-      earnedXp = 100;
-      label = 'DOWNED';
-    } else {
-      const baseXp = tier === 'heavy' ? 250 : (tier === 'raider' ? 150 : 100);
-      earnedXp = baseXp + (isHead ? 50 : 0);
-      label = isHead ? 'HEADSHOT' : 'KILL';
-    }
-
-    // Stack XP total on rapid kills/downs
-    this._activeXpTotal = (this._activeXpTotal || 0) + earnedXp;
-    totalEl.textContent = `+${this._activeXpTotal} XP`;
-    totalEl.classList.toggle('downed', isDowned);
-    totalEl.classList.remove('bump');
-    void totalEl.offsetWidth;
-    totalEl.classList.add('visible', 'bump');
-
-    // Text-only feedback row (no iconography)
-    const row = document.createElement('div');
-    row.className = 'xp-event-row' + (isDowned ? ' downed' : '');
-    row.innerHTML = `<span>${label}</span><span class="xp-event-val">+${earnedXp} XP</span>`;
-    eventsEl.prepend(row);
-
-    while (eventsEl.children.length > 4) {
-      eventsEl.removeChild(eventsEl.lastChild);
-    }
-
-    clearTimeout(this._xpFadeTimer);
-    clearTimeout(this._xpClearTimer);
-    this._xpFadeTimer = setTimeout(() => {
-      totalEl.classList.remove('visible', 'bump', 'downed');
-      Array.from(eventsEl.children).forEach(el => el.classList.add('fading'));
-    }, 2000);
-    this._xpClearTimer = setTimeout(() => {
-      this._activeXpTotal = 0;
-      eventsEl.innerHTML = '';
-    }, 2350);
-  }
-
-  clearCombatHUD() {
-    const kf = document.getElementById('hud-kill-feed');
-    if (kf) kf.innerHTML = '';
-    const totalEl = document.getElementById('hud-xp-total');
-    if (totalEl) {
-      totalEl.textContent = '';
-      totalEl.classList.remove('visible', 'bump');
-    }
-    const eventsEl = document.getElementById('hud-xp-events');
-    if (eventsEl) eventsEl.innerHTML = '';
-    const hm = document.getElementById('hitmarker');
-    if (hm) hm.classList.remove('active', 'headshot', 'kill');
-    clearTimeout(this._hmTimer);
-    clearTimeout(this._xpFadeTimer);
-    clearTimeout(this._xpClearTimer);
-    this._hmKillUntil = 0;
-    this._activeXpTotal = 0;
-    this._killStreak = 0;
-    this._lastKillTime = 0;
+    this._hmTimer = setTimeout(() => { hm.style.opacity = '0'; }, 120);
   }
 
   triggerDamageFlash() {
@@ -1088,7 +1288,7 @@ class GameUI {
     setTimeout(() => { arc.remove(); }, 850);
   }
 
-  updateHUD(player, world, raidTimeLeft, weaponSystem, throwableSystem = null) {
+  updateHUD(player, world, raidTimeLeft, weaponSystem, throwableSystem = null, enemyManager = null, squadManager = null, raidXp = 0) {
     // Timer
     const mins = Math.floor(raidTimeLeft / 60);
     const secs = Math.floor(raidTimeLeft % 60);
@@ -1139,15 +1339,37 @@ class GameUI {
     document.getElementById('hud-medkits').textContent = window.DEV_MODE ? '∞' : player.medkits;
     const platesEl = document.getElementById('hud-plates');
     if (platesEl) platesEl.textContent = window.DEV_MODE ? '∞' : player.plates;
+
+    // Bottom-Right Ordnance, Melee & Field Upgrade Silhouettes
     const lethalHud = document.getElementById('hud-lethal');
-    if (lethalHud) {
-      const lTag = player.lethal === 'throwing_knife' ? 'KNIFE' : 'FRAG';
-      lethalHud.textContent = `${lTag} ${window.DEV_MODE ? '∞' : player.lethalQty}`;
-    }
+    if (lethalHud) lethalHud.textContent = window.DEV_MODE ? '∞' : player.lethalQty;
     const tacHud = document.getElementById('hud-tactical');
-    if (tacHud) {
-      const tTag = player.tactical === 'concussion_grenade' ? 'STUN' : 'SMOKE';
-      tacHud.textContent = `${tTag} ${window.DEV_MODE ? '∞' : player.tacticalQty}`;
+    if (tacHud) tacHud.textContent = window.DEV_MODE ? '∞' : player.tacticalQty;
+
+    const ordKey = `${player.tactical}|${player.lethal}|${player.melee}|${player.fieldUpgrade}`;
+    if (this._lastOrdKey !== ordKey) {
+      this._lastOrdKey = ordKey;
+      const tacSvg = document.getElementById('hud-tac-svg');
+      const lethSvg = document.getElementById('hud-leth-svg');
+      const meleeSvg = document.getElementById('hud-melee-svg');
+      const meleeName = document.getElementById('hud-melee-name');
+      const fuIcon = document.getElementById('hud-fu-icon');
+      if (tacSvg) tacSvg.innerHTML = this._getOrdnanceSVG(player.tactical || 'smoke_grenade');
+      if (lethSvg) lethSvg.innerHTML = this._getOrdnanceSVG(player.lethal || 'frag_grenade');
+      if (meleeSvg) meleeSvg.innerHTML = this._getOrdnanceSVG(player.melee || 'melee_knife');
+      if (meleeName) {
+        const mDef = GAME_DATA.ITEMS[player.melee || 'melee_knife'];
+        meleeName.textContent = mDef ? mDef.name.split(' ')[0].toUpperCase() : 'KNIFE';
+      }
+      if (fuIcon) fuIcon.innerHTML = this._getFieldUpgradeSVG(player.fieldUpgrade || 'fu_ammo_box');
+    }
+
+    // Far-Right Field Upgrade Circular Usage Ring (circumference 2 * pi * 24 = 150.8)
+    const fuRing = document.getElementById('hud-fu-ring');
+    if (fuRing) {
+      const charge = THREE.MathUtils.clamp(player.fieldUpgradeCharge != null ? player.fieldUpgradeCharge : 1.0, 0, 1);
+      fuRing.style.strokeDashoffset = (150.8 * (1 - charge)).toFixed(1);
+      fuRing.style.stroke = charge >= 0.99 ? '#69f0ae' : '#f5a623';
     }
 
     // Weapon
@@ -1163,6 +1385,8 @@ class GameUI {
     }
 
     document.getElementById('hud-bag-value').textContent = `₽ ${player.getBackpackValue().toLocaleString()}`;
+    const xpEl = document.getElementById('hud-xp-val');
+    if (xpEl) xpEl.textContent = `${raidXp || 0} XP`;
     document.getElementById('reload-indicator').classList.toggle('hidden', !weaponSystem.isReloading);
 
     // Dynamic Crosshair (size matches exact live bullet spread cone; pulses when cooking a frag grenade!) & ADS vignette
@@ -1183,8 +1407,129 @@ class GameUI {
     }
     document.getElementById('ads-vignette').style.opacity = player.isADS ? '1' : '0';
 
-    // Compass
+    // Compass & Top-Left Live Minimap
     this._updateCompass(player, world);
+    this._renderMinimap(player, world, enemyManager, squadManager);
+  }
+
+  _getOrdnanceSVG(id) {
+    if (id === 'throwing_knife') {
+      return `<svg viewBox="0 0 24 24"><path d="M19 3l-8 8-3-1-5 5 2 2 5-5-1-3 8-8z"/></svg>`;
+    }
+    if (id === 'smoke_grenade' || id === 'concussion_grenade') {
+      return `<svg viewBox="0 0 24 24"><rect x="8" y="6" width="8" height="14" rx="2"/><rect x="10" y="3" width="4" height="3"/><path d="M14 4h3v4h-2V6h-1z"/></svg>`;
+    }
+    if (id && id.startsWith('melee_')) {
+      return `<svg viewBox="0 0 24 24"><path d="M20 4L9 15l-2-2-4 4 2 2 4-4 2 2L22 6z"/></svg>`;
+    }
+    // Frag grenade silhouette
+    return `<svg viewBox="0 0 24 24"><circle cx="12" cy="14" r="6"/><rect x="10" y="5" width="4" height="3"/><path d="M14 5h3v4h-2V7h-1z"/></svg>`;
+  }
+
+  _getFieldUpgradeSVG(id) {
+    if (id === 'fu_dead_silence') {
+      return `<svg viewBox="0 0 24 24"><path d="M12 3c-4 0-7 3-7 7v4l-2 3h18l-2-3v-4c0-4-3-7-7-7zm0 18a2.5 2.5 0 0 0 2.4-2H9.6A2.5 2.5 0 0 0 12 21z"/></svg>`;
+    }
+    if (id === 'fu_trophy') {
+      return `<svg viewBox="0 0 24 24"><path d="M12 2L4 6v6c0 5 3.4 9.6 8 10 4.6-.4 8-5 8-10V6l-8-4zm0 4l4 2v4c0 2.8-1.7 5.4-4 6-2.3-.6-4-3.2-4-6V8l4-2z"/></svg>`;
+    }
+    // Munitions Box silhouette
+    return `<svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="11" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2h-2V6h-4v2H8zm3 3h2v2h2v2h-2v2h-2v-2H9v-2h2v-2z"/></svg>`;
+  }
+
+  _renderMinimap(player, world, enemyManager, squadManager) {
+    const canvas = document.getElementById('hud-minimap');
+    if (!canvas || !world) return;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width;
+    const H = canvas.height;
+    const cx = W * 0.5;
+    const cy = H * 0.5;
+    const scale = 0.85; // world meters -> px
+
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(10, 14, 16, 0.92)';
+    ctx.fillRect(0, 0, W, H);
+
+    // Subtle radar grid
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 32, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 62, 0, Math.PI * 2);
+    ctx.moveTo(cx, 0); ctx.lineTo(cx, H);
+    ctx.moveTo(0, cy); ctx.lineTo(W, cy);
+    ctx.stroke();
+
+    const toMap = (wx, wz) => ({
+      x: cx + (wx - player.position.x) * scale,
+      y: cy + (wz - player.position.z) * scale
+    });
+
+    // POIs
+    if (world.pois) {
+      for (const poi of world.pois) {
+        const p = toMap(poi.x, poi.z);
+        ctx.fillStyle = poi.color || 'rgba(255,255,255,0.22)';
+        ctx.fillRect(p.x - 10, p.y - 8, 20, 16);
+      }
+    }
+
+    // Extract Zones (Green triangles)
+    if (world.extractZones) {
+      for (const ez of world.extractZones) {
+        const p = toMap(ez.position.x, ez.position.z);
+        ctx.fillStyle = '#69f0ae';
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y - 5);
+        ctx.lineTo(p.x - 4, p.y + 4);
+        ctx.lineTo(p.x + 4, p.y + 4);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+
+    // Allied Squadmates (Cyan dots)
+    if (squadManager && squadManager.allies) {
+      for (const ally of squadManager.allies) {
+        if (ally.dead) continue;
+        const p = toMap(ally.position.x, ally.position.z);
+        ctx.fillStyle = '#4fc3f7';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 3.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Hostile Operators (shown when UAV active, or in combat / close)
+    if (enemyManager && enemyManager.enemies) {
+      const uavActive = (player.uavTimer || 0) > 0;
+      for (const e of enemyManager.enemies) {
+        if (e.dead) continue;
+        const dist = e.position.distanceTo(player.position);
+        const visible = uavActive || e.state === 'COMBAT' || dist < 24;
+        if (!visible) continue;
+        const p = toMap(e.position.x, e.position.z);
+        ctx.fillStyle = e.isDowned ? '#ffca28' : '#ff5252';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, e.isDowned ? 2.5 : 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Player chevron in center
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(-player.yaw);
+    ctx.fillStyle = '#f5a623';
+    ctx.beginPath();
+    ctx.moveTo(0, -6);
+    ctx.lineTo(-4, 5);
+    ctx.lineTo(0, 2.5);
+    ctx.lineTo(4, 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
   }
 
   _getStanceSVG(stance) {
@@ -1231,16 +1576,199 @@ class GameUI {
     }
   }
 
-  // ==================== LOOT & BACKPACK MODAL ====================
+  // ==================== NON-BLOCKING LOOT & BACKPACK UI ====================
   openLootModal(player, title, containerItems) {
+    this._lootPlayer = player;
     this.activeLootSource = containerItems ? { title, items: containerItems } : null;
-    document.getElementById('loot-modal').classList.remove('hidden');
+    this._searchRevealProgress = 0;
+    this.hideItemPopout();
+
+    const modal = document.getElementById('loot-modal');
+    const cPanel = document.getElementById('inv-container-panel');
+    modal.classList.remove('hidden', 'mode-container', 'mode-backpack');
+    if (this.activeLootSource) {
+      modal.classList.add('mode-container');
+      if (cPanel) cPanel.classList.remove('hidden');
+    } else {
+      modal.classList.add('mode-backpack');
+      if (cPanel) cPanel.classList.add('hidden');
+    }
     this.renderLootModal(player);
   }
 
   closeLootModal() {
-    document.getElementById('loot-modal').classList.add('hidden');
+    const modal = document.getElementById('loot-modal');
+    if (modal) modal.classList.add('hidden');
+    this.hideItemPopout();
     this.activeLootSource = null;
+    this._lootPlayer = null;
+  }
+
+  updateSearchReveal(dt) {
+    if (!this.activeLootSource || !this._lootPlayer) return;
+    const modal = document.getElementById('loot-modal');
+    if (!modal || modal.classList.contains('hidden')) return;
+
+    const items = this.activeLootSource.items;
+    const nextIdx = items.findIndex(it => it && it.revealed === false);
+    if (nextIdx === -1) return;
+
+    const item = items[nextIdx];
+    const def = GAME_DATA.ITEMS[item.id];
+    const rarKey = (def && def.rarity) || 'common';
+    const rarInfo = (GAME_DATA.RARITIES && GAME_DATA.RARITIES[rarKey]) || { revealTime: 0.45 };
+    const duration = rarInfo.revealTime || 0.45;
+
+    this._searchRevealProgress += dt / duration;
+
+    // Update live circular SVG ring on the currently searching slot
+    const ring = document.querySelector(`#loot-container-items .inv-slot[data-idx="${nextIdx}"] .reveal-ring-fg`);
+    if (ring) {
+      const pct = Math.min(1, this._searchRevealProgress);
+      ring.style.strokeDashoffset = (100.5 * (1 - pct)).toFixed(1);
+    }
+
+    if (this._searchRevealProgress >= 1) {
+      item.revealed = true;
+      this._searchRevealProgress = 0;
+      if (window.soundEngine && window.soundEngine.playClick) {
+        try { window.soundEngine.playClick(); } catch (e) {}
+      }
+      this.renderLootModal(this._lootPlayer);
+    }
+  }
+
+  hideItemPopout() {
+    this._hoveredSlot = null;
+    const pop = document.getElementById('item-action-popout');
+    if (pop) pop.classList.add('hidden');
+  }
+
+  showItemPopout(slotEl, context, item, idx) {
+    const pop = document.getElementById('item-action-popout');
+    if (!pop || !item || !slotEl) return;
+    const def = GAME_DATA.ITEMS[item.id];
+    if (!def) return;
+
+    this._hoveredSlot = { context, item, idx, el: slotEl };
+    const rarKey = def.rarity || 'common';
+    const rarInfo = (GAME_DATA.RARITIES && GAME_DATA.RARITIES[rarKey]) || { label: rarKey.toUpperCase(), color: '#69f0ae' };
+    const hasContainer = !!this.activeLootSource;
+    const canSplit = def.stackable && item.qty > 1;
+
+    let actionsHtml = '';
+    if (context === 'container') {
+      actionsHtml += `<button class="pop-act" data-act="quick"><span class="gp-btn-badge">A</span> Quick-Move to Pack</button>`;
+    } else if (context === 'backpack') {
+      if (hasContainer) {
+        actionsHtml += `<button class="pop-act" data-act="quick"><span class="gp-btn-badge">A</span> Quick-Move to Container</button>`;
+      } else if (def.type === 'weapon' || def.type === 'armor' || def.type === 'backpack' || def.type === 'field_upgrade' || def.type === 'killstreak' || def.type === 'melee' || def.type === 'plate' || def.type === 'med') {
+        actionsHtml += `<button class="pop-act" data-act="quick"><span class="gp-btn-badge">A</span> Equip / Use</button>`;
+      }
+    }
+    if (canSplit) {
+      actionsHtml += `<button class="pop-act" data-act="split"><span class="gp-btn-badge">Y</span> Split Stack</button>`;
+    }
+    if (context === 'backpack') {
+      actionsHtml += `<button class="pop-act danger" data-act="drop"><span class="gp-btn-badge">X</span> Drop Item</button>`;
+    }
+
+    pop.innerHTML = `
+      <div class="pop-title" style="color:${rarInfo.color}">${def.name}${item.qty > 1 ? ' x' + item.qty : ''}</div>
+      <div class="pop-meta">${rarInfo.label} · ₽${(def.value * item.qty).toLocaleString()} · ${(def.weight * item.qty).toFixed(1)}kg</div>
+      <div class="pop-actions">${actionsHtml}</div>
+    `;
+    pop.querySelectorAll('.pop-act').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.handleSlotAction(btn.dataset.act);
+      });
+    });
+
+    // Position popout to the RIGHT of the hovered slot (clamp inside viewport)
+    pop.classList.remove('hidden');
+    const rect = slotEl.getBoundingClientRect();
+    const popW = 195;
+    let left = rect.right + 8;
+    if (left + popW > window.innerWidth - 10) {
+      left = Math.max(10, rect.left - popW - 8);
+    }
+    const top = Math.min(window.innerHeight - 140, Math.max(12, rect.top));
+    pop.style.left = `${left}px`;
+    pop.style.top = `${top}px`;
+  }
+
+  handleSlotAction(action) {
+    if (!this._hoveredSlot || !this._lootPlayer) return;
+    const { context, item, idx } = this._hoveredSlot;
+    const player = this._lootPlayer;
+    const def = GAME_DATA.ITEMS[item.id];
+    if (!def) return;
+
+    if (action === 'quick') {
+      if (context === 'container' && this.activeLootSource) {
+        if (item.revealed === false) return;
+        if (player.addToBackpack(item.id, item.qty)) {
+          this.activeLootSource.items.splice(idx, 1);
+        } else {
+          this.addFeedMessage('Backpack full / too heavy!', '#d94141');
+        }
+      } else if (context === 'backpack') {
+        if (this.activeLootSource) {
+          this.activeLootSource.items.push({ id: item.id, qty: item.qty, revealed: true });
+          player.backpack.splice(idx, 1);
+        } else if (def.type === 'plate' && player.plates < 6) {
+          const move = Math.min(6 - player.plates, item.qty);
+          player.plates += move;
+          item.qty -= move;
+          if (item.qty <= 0) player.backpack.splice(idx, 1);
+        } else if (def.type === 'med' && item.id === 'medkit') {
+          player.medkits += 1;
+          item.qty -= 1;
+          if (item.qty <= 0) player.backpack.splice(idx, 1);
+        } else if (def.type === 'armor') {
+          const prev = player.armorId;
+          player.armorId = item.id;
+          player.plateSlots = def.plateSlots || 2;
+          player.maxArmor = def.maxArmor || 100;
+          player.armor = Math.min(player.maxArmor, Math.max(player.armor, player.maxArmor));
+          player.backpack.splice(idx, 1);
+          if (prev) player.backpack.push({ id: prev, qty: 1 });
+        } else if (def.type === 'backpack') {
+          const prev = player.backpackId;
+          player.backpackId = item.id;
+          player.backpackMaxSlots = def.bagSlots || 12;
+          player.maxWeight = def.maxWeight || 32;
+          player.backpack.splice(idx, 1);
+          if (prev) player.backpack.push({ id: prev, qty: 1 });
+        } else if (def.type === 'field_upgrade') {
+          const prev = player.fieldUpgrade;
+          player.fieldUpgrade = item.id;
+          player.backpack.splice(idx, 1);
+          if (prev) player.backpack.push({ id: prev, qty: 1 });
+        } else if (def.type === 'killstreak') {
+          const prev = player.killstreak;
+          player.killstreak = item.id;
+          player.backpack.splice(idx, 1);
+          if (prev) player.backpack.push({ id: prev, qty: 1 });
+        } else if (def.type === 'melee') {
+          const prev = player.melee;
+          player.melee = item.id;
+          player.backpack.splice(idx, 1);
+          if (prev) player.backpack.push({ id: prev, qty: 1 });
+        }
+      }
+    } else if (action === 'split' && def.stackable && item.qty > 1) {
+      const half = Math.floor(item.qty / 2);
+      item.qty -= half;
+      const list = context === 'container' && this.activeLootSource ? this.activeLootSource.items : player.backpack;
+      list.splice(idx + 1, 0, { id: item.id, qty: half, revealed: true });
+    } else if (action === 'drop' && context === 'backpack') {
+      player.backpack.splice(idx, 1);
+    }
+
+    this.hideItemPopout();
+    this.renderLootModal(player);
   }
 
   renderLootModal(player) {
@@ -1248,70 +1776,118 @@ class GameUI {
     const bList = document.getElementById('loot-backpack-items');
     const cTitle = document.getElementById('loot-container-title');
     const btnTakeAll = document.getElementById('btn-take-all');
+    const opSlotsEl = document.getElementById('inv-op-slots');
 
-    cList.innerHTML = '';
-    if (this.activeLootSource) {
-      cTitle.textContent = this.activeLootSource.title.toUpperCase();
-      btnTakeAll.style.display = 'inline-block';
-      if (this.activeLootSource.items.length === 0) {
-        cList.innerHTML = '<p class="hint" style="padding:10px;">Empty.</p>';
-      } else {
-        this.activeLootSource.items.forEach((item, idx) => {
-          const def = GAME_DATA.ITEMS[item.id];
-          if (!def) return;
-          const row = document.createElement('div');
-          row.className = `item-row rarity-${def.rarity}`;
-          row.innerHTML = `
-            <div class="item-info">
-              <div class="item-name">${def.name}${item.qty > 1 ? ' x' + item.qty : ''}</div>
-              <div class="item-meta">₽ ${(def.value * item.qty).toLocaleString()} · ${(def.weight * item.qty).toFixed(1)}kg</div>
-            </div>
-            <button class="btn-small">TAKE</button>
-          `;
-          row.querySelector('button').addEventListener('click', () => {
-            if (player.addToBackpack(item.id, item.qty)) {
-              this.activeLootSource.items.splice(idx, 1);
-              this.renderLootModal(player);
-            } else {
-              this.addFeedMessage('Backpack too heavy!', '#d94141');
-            }
-          });
-          cList.appendChild(row);
-        });
-      }
-    } else {
-      cTitle.textContent = 'BACKPACK INSPECTION';
-      btnTakeAll.style.display = 'none';
-      cList.innerHTML = '<p class="hint" style="padding:10px;">Approach crates or fallen hostiles and press [F] to loot.</p>';
+    // 1. Separate Operator Equipment Section
+    if (opSlotsEl) {
+      const pDef = player.weapons && player.weapons.primary ? GAME_DATA.ITEMS[player.weapons.primary.id] : null;
+      const sDef = player.weapons && player.weapons.secondary ? GAME_DATA.ITEMS[player.weapons.secondary.id] : null;
+      const mDef = GAME_DATA.ITEMS[player.melee || 'melee_knife'];
+      const vDef = player.armorId ? GAME_DATA.ITEMS[player.armorId] : null;
+      const bDef = GAME_DATA.ITEMS[player.backpackId || 'bag_small'];
+      const fDef = GAME_DATA.ITEMS[player.fieldUpgrade || 'fu_ammo_box'];
+      const kDef = player.killstreak ? GAME_DATA.ITEMS[player.killstreak] : null;
+
+      const opItems = [
+        { label: 'PLATES (MAX 6)', name: `${player.plates} / 6`, rarity: 'rare' },
+        { label: 'BACKPACK', name: bDef ? bDef.name : 'Small Pack', rarity: bDef ? bDef.rarity : 'common' },
+        { label: 'VEST', name: vDef ? vDef.name : 'No Vest', rarity: vDef ? vDef.rarity : 'common' },
+        { label: 'FIELD UPGRADE', name: fDef ? fDef.name : 'None', rarity: fDef ? fDef.rarity : 'rare' },
+        { label: 'KILLSTREAK', name: kDef ? kDef.name : 'None', rarity: kDef ? kDef.rarity : 'common' },
+        { label: 'PRIMARY', name: pDef ? pDef.name : 'None', rarity: pDef ? pDef.rarity : 'common' },
+        { label: 'SECONDARY', name: sDef ? sDef.name : 'None', rarity: sDef ? sDef.rarity : 'common' },
+        { label: 'MELEE', name: mDef ? mDef.name : 'Combat Knife', rarity: mDef ? mDef.rarity : 'common' }
+      ];
+      opSlotsEl.innerHTML = opItems.map(s => `
+        <div class="op-slot-card rarity-${s.rarity || 'common'}">
+          <span class="op-slot-label">${s.label}</span>
+          <span class="op-slot-val">${s.name}</span>
+        </div>
+      `).join('');
     }
 
-    // Backpack items
+    // 2. Active Container Grid (Left) with Progressive Circular Reveal
+    if (cList) {
+      cList.innerHTML = '';
+      if (this.activeLootSource) {
+        if (cTitle) cTitle.textContent = this.activeLootSource.title.toUpperCase();
+        if (btnTakeAll) btnTakeAll.style.display = 'inline-block';
+        const items = this.activeLootSource.items;
+        const firstUnrevealed = items.findIndex(it => it && it.revealed === false);
+
+        if (items.length === 0) {
+          cList.innerHTML = '<p class="hint" style="padding:10px;grid-column:1/-1;">Container is empty.</p>';
+        } else {
+          items.forEach((item, idx) => {
+            const def = GAME_DATA.ITEMS[item.id];
+            if (!def) return;
+            const slot = document.createElement('div');
+            slot.className = 'inv-slot';
+            slot.dataset.context = 'container';
+            slot.dataset.idx = idx;
+
+            if (item.revealed === false) {
+              slot.classList.add('searching');
+              const isSearchingNow = idx === firstUnrevealed;
+              slot.innerHTML = isSearchingNow
+                ? `<div class="reveal-ring-wrap">
+                     <svg viewBox="0 0 36 36"><circle class="reveal-ring-bg" cx="18" cy="18" r="16"/><circle class="reveal-ring-fg" cx="18" cy="18" r="16" stroke-dasharray="100.5" stroke-dashoffset="100.5"/></svg>
+                     <span class="reveal-q">?</span>
+                   </div>
+                   <span class="slot-val">SEARCHING</span>`
+                : `<span class="reveal-q" style="opacity:0.4;">?</span><span class="slot-val">QUEUED</span>`;
+            } else {
+              slot.classList.add(`rarity-${def.rarity || 'common'}`);
+              slot.innerHTML = `
+                <span class="slot-name">${def.name}</span>
+                <span class="slot-val">₽${(def.value * item.qty).toLocaleString()}</span>
+                ${item.qty > 1 ? `<span class="slot-qty">x${item.qty}</span>` : ''}
+              `;
+              slot.addEventListener('mouseenter', () => this.showItemPopout(slot, 'container', item, idx));
+              slot.addEventListener('click', () => {
+                this._hoveredSlot = { context: 'container', item, idx, el: slot };
+                this.handleSlotAction('quick');
+              });
+            }
+            cList.appendChild(slot);
+          });
+        }
+      }
+    }
+
+    // 3. Backpack Grid (Right / Lower Centered)
     document.getElementById('bag-weight').textContent = player.getBackpackWeight();
     document.getElementById('bag-max-weight').textContent = player.maxWeight;
     document.getElementById('bag-total-val').textContent = `₽ ${player.getBackpackValue().toLocaleString()}`;
 
-    bList.innerHTML = '';
-    if (player.backpack.length === 0) {
-      bList.innerHTML = '<p class="hint" style="padding:10px;">Backpack is empty.</p>';
-    } else {
-      player.backpack.forEach((item, idx) => {
-        const def = GAME_DATA.ITEMS[item.id];
-        if (!def) return;
-        const row = document.createElement('div');
-        row.className = `item-row rarity-${def.rarity}`;
-        row.innerHTML = `
-          <div class="item-info">
-            <div class="item-name">${def.name}${item.qty > 1 ? ' x' + item.qty : ''}</div>
-            <div class="item-meta">₽ ${(def.value * item.qty).toLocaleString()} · ${(def.weight * item.qty).toFixed(1)}kg</div>
-          </div>
-          <button class="btn-small btn-danger">DROP</button>
-        `;
-        row.querySelector('button').addEventListener('click', () => {
-          player.backpack.splice(idx, 1);
-          this.renderLootModal(player);
-        });
-        bList.appendChild(row);
-      });
+    if (bList) {
+      bList.innerHTML = '';
+      const maxSlots = player.backpackMaxSlots || 8;
+      for (let idx = 0; idx < Math.max(maxSlots, player.backpack.length); idx++) {
+        const item = player.backpack[idx];
+        const slot = document.createElement('div');
+        slot.className = 'inv-slot';
+        slot.dataset.context = 'backpack';
+        slot.dataset.idx = idx;
+
+        if (item && GAME_DATA.ITEMS[item.id]) {
+          const def = GAME_DATA.ITEMS[item.id];
+          slot.classList.add(`rarity-${def.rarity || 'common'}`);
+          slot.innerHTML = `
+            <span class="slot-name">${def.name}</span>
+            <span class="slot-val">₽${(def.value * item.qty).toLocaleString()}</span>
+            ${item.qty > 1 ? `<span class="slot-qty">x${item.qty}</span>` : ''}
+          `;
+          slot.addEventListener('mouseenter', () => this.showItemPopout(slot, 'backpack', item, idx));
+          slot.addEventListener('click', () => {
+            this._hoveredSlot = { context: 'backpack', item, idx, el: slot };
+            this.handleSlotAction('quick');
+          });
+        } else {
+          slot.classList.add('empty-slot');
+        }
+        bList.appendChild(slot);
+      }
     }
   }
 

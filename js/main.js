@@ -22,14 +22,17 @@
   let raidTimeLeft = 0;
   let raidElapsed = 0;
   let raidKills = 0;
+  let raidXp = 0;
   let extractProgress = 0;
   const EXTRACT_REQUIRED = 5.0;
 
-  let nearbyInteractable = null; // { type: 'crate'|'corpse', label, items }
+  let nearbyInteractable = null; // { type: 'crate'|'corpse', label, items, container }
   let lastFrameTime = performance.now();
 
   const ui = new GameUI((zoneId) => startRaid(zoneId));
   const gunsmith = new GunsmithController(ui);
+  const matchmaking = new MatchmakingStage(ui, (zoneId) => startRaid(zoneId));
+  ui.matchmakingStage = matchmaking;
   const gamepad = new GamepadController();
   let padPaused = false;
   gamepad.onStatusChange = (connected) => {
@@ -53,6 +56,7 @@
       viewmodelCamera.updateProjectionMatrix();
     }
     if (gunsmith.isOpen) gunsmith._resize();
+    if (matchmaking && matchmaking.active) matchmaking._resize();
   });
 
   function startRaid(zoneId) {
@@ -100,6 +104,13 @@
       ...ui.profile.loadout,
       weaponMods: ui.profile.weaponMods || {}
     });
+    // Pack any pre-match backpack items into the operator's raid backpack
+    if (Array.isArray(ui.profile.loadout.backpackItems) && ui.profile.loadout.backpackItems.length > 0) {
+      for (const it of ui.profile.loadout.backpackItems) {
+        player.addToBackpack(it.id, it.qty);
+      }
+      ui.profile.loadout.backpackItems = [];
+    }
     enemyManager = new EnemyManager(scene, world, zone);
     squadManager = new SquadManager(scene, world, ui.partyMembers || []);
 
@@ -116,12 +127,12 @@
     raidTimeLeft = zone.raidDuration;
     raidElapsed = 0;
     raidKills = 0;
+    raidXp = 0;
     extractProgress = 0;
     inRaid = true;
     isModalOpen = false;
 
     document.getElementById('hud-feed').innerHTML = '';
-    ui.clearCombatHUD();
     document.getElementById('extract-banner').classList.add('hidden');
     document.getElementById('pointer-lock-overlay').classList.add('hidden');
     document.getElementById('loot-modal').classList.add('hidden');
@@ -170,6 +181,7 @@
       };
     }
 
+    ui.profile.xp = (ui.profile.xp || 0) + raidXp;
     ui.saveProfile();
     ui.showSummary(extracted, raidElapsed, raidKills, recovered, totalVal);
   }
@@ -214,13 +226,17 @@
     if (!ui.activeLootSource || !player) return;
     const remaining = [];
     for (const item of ui.activeLootSource.items) {
+      if (item.revealed === false) {
+        remaining.push(item);
+        continue;
+      }
       if (!player.addToBackpack(item.id, item.qty)) {
         remaining.push(item);
       }
     }
     ui.activeLootSource.items.length = 0;
     ui.activeLootSource.items.push(...remaining);
-    if (remaining.length > 0) {
+    if (remaining.some(i => i.revealed !== false)) {
       ui.addFeedMessage('Some items too heavy!', '#d94141');
     }
     ui.renderLootModal(player);
@@ -338,10 +354,11 @@
       if (player.startMedkit()) ui.addFeedMessage('Applying Field Medkit...', '#69f0ae');
     } else if (e.code === 'KeyG' || e.code === 'Digit4') {
       player.startPlating();
+    } else if (e.code === 'KeyZ') {
+      const fuMsg = player.activateFieldUpgrade ? player.activateFieldUpgrade() : null;
+      if (fuMsg) ui.addFeedMessage(fuMsg, '#69f0ae');
     } else if (e.code === 'KeyE' && nearbyInteractable) {
-      isModalOpen = true;
-      document.exitPointerLock();
-      ui.openLootModal(player, nearbyInteractable.label, nearbyInteractable.items);
+      openNearbyInteractable();
     }
   });
 
@@ -357,55 +374,56 @@
     }
   });
 
-  function isOperatorEnemy(enemy) {
-    return !!(enemy && (enemy.isOperator || enemy.tier === 'operator'));
+  function openNearbyInteractable() {
+    if (!nearbyInteractable) return false;
+    const c = nearbyInteractable.container;
+    if (c && c.requiresKey && !c.unlocked) {
+      const keyIdx = player.backpack.findIndex(it => it.id === c.requiresKey);
+      if (keyIdx !== -1 || window.DEV_MODE) {
+        if (keyIdx !== -1 && !window.DEV_MODE) {
+          player.backpack[keyIdx].qty -= 1;
+          if (player.backpack[keyIdx].qty <= 0) player.backpack.splice(keyIdx, 1);
+        }
+        c.unlocked = true;
+        ui.addFeedMessage(`Unlocked ${c.name}!`, '#ffca28');
+      } else {
+        ui.addFeedMessage(`LOCKED — Requires Boss Armory Key`, '#ff5252');
+        return false;
+      }
+    }
+    isModalOpen = true;
+    if (document.pointerLockElement === canvas) document.exitPointerLock();
+    ui.openLootModal(player, nearbyInteractable.label, nearbyInteractable.items);
+    return true;
   }
 
-  function onThrowableHit(isHead, killed, enemy, meta = {}) {
-    const downed = !!(meta && meta.downed);
-    window.soundEngine.playHitmarker(isHead, killed || downed);
-    ui.triggerHitmarker(isHead, killed || downed);
+  function handleOperatorHitResult(isHead, killed, enemy) {
+    if (!enemy) return;
+    if (enemy.justDowned) {
+      enemy.justDowned = false;
+      raidXp += 50;
+      ui.addFeedMessage(`DOWNED OPERATOR ${enemy.name} (+50 XP)`, '#ffca28');
+    }
     if (killed) {
       raidKills += 1;
-      ui.triggerKillFeedback(enemy, isHead, { ...meta, downed: false });
-    } else if (downed) {
-      ui.triggerKillFeedback(enemy, isHead, { ...meta, downed: true });
+      raidXp += 100;
+      ui.addFeedMessage(`ELIMINATED OPERATOR ${enemy.name}${isHead ? ' [HEADSHOT]' : ''} (+100 XP)`, '#ff5252');
     }
-    if ((killed || downed) && isOperatorEnemy(enemy)) {
-      ui.addKillFeedEntry({
-        killerName: 'YOU',
-        weaponId: meta.weaponId || '',
-        weaponName: meta.weaponName || 'LETHAL',
-        victimName: enemy.name,
-        action: downed && !killed ? 'downed' : 'eliminated',
-        isHead
-      });
-    }
+  }
+
+  function onThrowableHit(isHead, killed, enemy) {
+    window.soundEngine.playHitmarker(isHead);
+    ui.triggerHitmarker(isHead);
+    handleOperatorHitResult(isHead, killed, enemy);
   }
 
   function firePlayerWeapon() {
     const slotObj = player.getActiveWeaponSlot();
     if (!slotObj) return;
-    const fired = weaponSystem.tryFire(player, slotObj, world, enemyManager, (isHead, killed, enemy, meta = {}) => {
-      const downed = !!(meta && meta.downed);
-      window.soundEngine.playHitmarker(isHead, killed || downed);
-      ui.triggerHitmarker(isHead, killed || downed);
-      if (killed) {
-        raidKills += 1;
-        ui.triggerKillFeedback(enemy, isHead, { ...meta, downed: false });
-      } else if (downed) {
-        ui.triggerKillFeedback(enemy, isHead, { ...meta, downed: true });
-      }
-      if ((killed || downed) && isOperatorEnemy(enemy)) {
-        ui.addKillFeedEntry({
-          killerName: 'YOU',
-          weaponId: meta.weaponId || slotObj.id || '',
-          weaponName: meta.weaponName || '',
-          victimName: enemy.name,
-          action: downed && !killed ? 'downed' : 'eliminated',
-          isHead
-        });
-      }
+    const fired = weaponSystem.tryFire(player, slotObj, world, enemyManager, (isHead, killed, enemy) => {
+      window.soundEngine.playHitmarker(isHead);
+      ui.triggerHitmarker(isHead);
+      handleOperatorHitResult(isHead, killed, enemy);
     });
     if (fired && gamepad && gamepad.connected) {
       gamepad.rumbleFire(slotObj.id);
@@ -426,7 +444,7 @@
       const d = player.position.distanceTo(c.position);
       if (d < bestDist) {
         bestDist = d;
-        nearbyInteractable = { type: 'crate', label: c.name, items: c.items };
+        nearbyInteractable = { type: 'crate', label: c.name, items: c.items, container: c };
       }
     }
 
@@ -440,7 +458,8 @@
     }
 
     if (nearbyInteractable) {
-      textEl.textContent = `Search ${nearbyInteractable.label}`;
+      const locked = nearbyInteractable.container && nearbyInteractable.container.requiresKey && !nearbyInteractable.container.unlocked;
+      textEl.textContent = locked ? `Unlock ${nearbyInteractable.label} [BOSS KEY]` : `Search ${nearbyInteractable.label}`;
       promptEl.classList.remove('hidden');
     } else {
       promptEl.classList.add('hidden');
@@ -519,27 +538,18 @@
           takeAll: () => document.getElementById('btn-take-all')?.click(),
           fire: () => firePlayerWeapon(),
           onThrowableHit,
-          interact: () => {
-            if (!nearbyInteractable) return false;
-            isModalOpen = true;
-            if (document.pointerLockElement === canvas) document.exitPointerLock();
-            ui.openLootModal(player, nearbyInteractable.label, nearbyInteractable.items);
-            return true;
-          }
+          interact: () => openNearbyInteractable()
         }
       });
 
-      if (isPaused || isModalOpen) {
+      if (isPaused) {
         gamepad.updateMenu(dt, {
           ui,
           gunsmith,
           onResume: () => {
-            if (isModalOpen) closeLootAndResume();
-            else {
-              padPaused = false;
-              document.getElementById('pointer-lock-overlay').classList.add('hidden');
-              gamepad.clearMenuFocus();
-            }
+            padPaused = false;
+            document.getElementById('pointer-lock-overlay').classList.add('hidden');
+            gamepad.clearMenuFocus();
           }
         });
       } else {
@@ -591,24 +601,17 @@
             weaponSystem,
             raidTimeLeft,
             (msg, color) => ui.addFeedMessage(msg, color),
-            (allyName, enemy, weaponId = '', weaponName = '', action = 'eliminated') => {
-              // Left-side kill feed only tracks downs/eliminations against enemy operators
-              if (isOperatorEnemy(enemy)) {
-                ui.addKillFeedEntry({
-                  killerName: allyName,
-                  weaponId,
-                  weaponName,
-                  victimName: enemy.name,
-                  action
-                });
-              }
+            (allyName, enemyName) => {
+              raidKills += 1;
+              ui.addFeedMessage(`${allyName} eliminated ${enemyName}`, '#64b5f6');
             }
           );
         }
 
         checkInteractions();
         checkExtraction(dt);
-        ui.updateHUD(player, world, raidTimeLeft, weaponSystem, throwableSystem);
+        ui.updateSearchReveal(dt);
+        ui.updateHUD(player, world, raidTimeLeft, weaponSystem, throwableSystem, enemyManager, squadManager, raidXp);
       }
       // Sync viewmodel camera to world camera & render in two passes (clearDepth prevents all wall clipping!)
       if (viewmodelCamera) {
@@ -629,6 +632,10 @@
         renderer.render(viewmodelScene, viewmodelCamera);
       }
     } else {
+      // Update 3D Matchmaking Operator Stage + countdown if active
+      if (matchmaking && matchmaking.active) {
+        matchmaking.update(dt);
+      }
       // Enable full controller navigation in Main Menu, Stash, Operator, Settings, Gunsmith & Summary screens!
       gamepad.updateMenu(dt, { ui, gunsmith });
     }

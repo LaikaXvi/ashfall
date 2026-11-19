@@ -5,8 +5,10 @@ class WastelandWorld {
     this.zone = zoneConfig;
     this.colliders = [];      // { minX, maxX, minY, maxY, minZ, maxZ }
     this.shootableMeshes = []; // Static geometry meshes for bullet/LOS raycasts
-    this.lootContainers = []; // { id, name, mesh, position, items, searched }
+    this.lootContainers = []; // { id, name, mesh, position, items, searched, requiresKey }
     this.extractZones = [];   // { name, position, radius, beaconMesh, ringMesh }
+    this.pois = [];           // { name, x, z, color } for minimap & logical looting
+    this.activeSmokes = [];
     this.spawnPoints = [];    // Enemy patrol/spawn positions
     this.playerSpawn = new THREE.Vector3(0, 1.7, 64);
 
@@ -190,8 +192,10 @@ class WastelandWorld {
       for (const entry of table) {
         r -= entry.w;
         if (r <= 0) {
-          const qty = entry.min + Math.floor(Math.random() * (entry.max - entry.min + 1));
-          items.push({ id: entry.id, qty });
+          let qty = entry.min + Math.floor(Math.random() * (entry.max - entry.min + 1));
+          const def = GAME_DATA.ITEMS[entry.id];
+          if (def && def.containerMaxStack) qty = Math.min(qty, def.containerMaxStack);
+          items.push({ id: entry.id, qty, revealed: false });
           break;
         }
       }
@@ -199,22 +203,62 @@ class WastelandWorld {
     return items;
   }
 
-  _addLootContainer(x, y, z, kind = 'supply') {
+  _rollBossKeyRoomLoot() {
+    // Guaranteed 1 Legendary weapon (25% chance Ultra), 4 Epic spawns, 8 Rare spawns, ZERO common items!
+    const items = [];
+    const wPool = GAME_DATA.LOOT_TABLES.boss_legendary_weapons || ['ak74m', 'm24'];
+    const wId = wPool[Math.floor(Math.random() * wPool.length)];
+    const isUltra = Math.random() < 0.25;
+    const mods = isUltra
+      ? { optic: 'lpvo_4x', muzzle: 'suppressor', underbarrel: 'vert_grip', magazine: 'ext_mag', stock: 'heavy_marksman' }
+      : { optic: 'acog_2x', muzzle: 'compensator', underbarrel: 'vert_grip', magazine: 'ext_mag' };
+    items.push({ id: wId, qty: 1, mods, rarityOverride: isUltra ? 'ultra' : 'legendary', revealed: false });
+
+    const epicPool = GAME_DATA.LOOT_TABLES.boss_epic || ['intel_drive'];
+    for (let i = 0; i < 4; i++) {
+      const id = epicPool[Math.floor(Math.random() * epicPool.length)];
+      items.push({ id, qty: 1, revealed: false });
+    }
+    const rarePool = GAME_DATA.LOOT_TABLES.boss_rare || ['water_filter'];
+    for (let i = 0; i < 8; i++) {
+      const id = rarePool[Math.floor(Math.random() * rarePool.length)];
+      const def = GAME_DATA.ITEMS[id];
+      const qty = (def && def.type === 'ammo') ? 20 : 1;
+      items.push({ id, qty, revealed: false });
+    }
+    return items;
+  }
+
+  _addLootContainer(x, y, z, kind = 'supply', customName = null, requiresKey = null) {
     let mat = this._materials.crateSup;
-    let name = 'Supply Crate';
+    let name = customName || 'Supply Crate';
     let w = 1.1, h = 0.75, d = 0.75;
     let count = 2 + this.zone.lootTierBonus;
+    let items;
 
-    if (kind === 'military') {
+    if (kind === 'boss_key_room') {
+      mat = new THREE.MeshLambertMaterial({ color: 0x8f6b1e });
+      name = customName || 'Boss Armory Vault [KEY ROOM]';
+      w = 1.8; h = 0.9; d = 1.0;
+      items = this._rollBossKeyRoomLoot();
+    } else if (kind === 'military') {
       mat = this._materials.crateMil;
-      name = 'Military Weapon Case';
+      name = customName || 'Military Weapon Case';
       w = 1.4; h = 0.65; d = 0.8;
       count = 3 + this.zone.lootTierBonus;
-    } else if (kind === 'medical') {
+      items = this._rollLoot('military', count);
+    } else if (kind === 'hospital' || kind === 'medical') {
       mat = this._materials.crateMed;
-      name = 'Field Medical Box';
-      w = 0.8; h = 0.55; d = 0.6;
-      count = 2;
+      name = customName || 'Clinic Medical Cabinet';
+      w = 0.85; h = 0.6; d = 0.6;
+      items = this._rollLoot('hospital', 3);
+    } else if (kind === 'police_fire') {
+      mat = this._materials.rustBlue;
+      name = customName || 'Police / Fire Locker';
+      w = 1.2; h = 0.8; d = 0.75;
+      items = this._rollLoot('police_fire', 3);
+    } else {
+      items = this._rollLoot('supply', count);
     }
 
     const mesh = this._addBox(x, y + h / 2, z, w, h, d, mat, true);
@@ -224,7 +268,9 @@ class WastelandWorld {
       kind,
       mesh,
       position: new THREE.Vector3(x, y + h / 2, z),
-      items: this._rollLoot(kind, count),
+      items,
+      requiresKey: requiresKey || null,
+      unlocked: !requiresKey,
       searched: false
     });
   }
@@ -270,26 +316,30 @@ class WastelandWorld {
     this._addBox(-80, wallH / 2, 0, 1.5, wallH, 160, this._materials.darkConcrete);
     this._addBox(80, wallH / 2, 0, 1.5, wallH, 160, this._materials.darkConcrete);
 
-    // === BUILDINGS ===
-    // 1. Central Command Warehouse (north-west of crossroads)
+    // === LOGICAL POI BUILDINGS ===
+    // 1. Military Compound (north-west of crossroads) -> Rare/Epic gear, gel/helmet vests, rifles
     this._addBuilding(-24, -26, 16, 14, 5.0, 'east');
-    this._addLootContainer(-28, 0.16, -29, 'military');
-    this._addLootContainer(-28, 0.16, -23, 'supply');
+    this.pois.push({ name: 'COMPOUND', x: -24, z: -26, color: '#ab47bc' });
+    this._addLootContainer(-28, 0.16, -29, 'military', 'Compound Armory Crate');
+    this._addLootContainer(-28, 0.16, -23, 'supply', 'Compound Materials Crate');
 
-    // 2. Field Med Station (east of crossroads)
+    // 2. Field Hospital & Clinic (east of crossroads) -> Medkits, Bandages, Painkillers
     this._addBuilding(24, -18, 12, 10, 4.2, 'west');
-    this._addLootContainer(26, 0.16, -18, 'medical');
-    this._addLootContainer(23, 0.16, -15, 'supply');
+    this.pois.push({ name: 'CLINIC', x: 24, z: -18, color: '#69f0ae' });
+    this._addLootContainer(26, 0.16, -18, 'hospital', 'Hospital Trauma Locker');
+    this._addLootContainer(23, 0.16, -15, 'hospital', 'Clinic Pharmacy Cabinet');
 
-    // 3. Barracks / Guardhouse (south-west)
+    // 3. Police & Fire Station (south-west) -> 1-2 Plate Carriers, Small Packs, Small Arms
     this._addBuilding(-28, 22, 14, 10, 4.2, 'east');
-    this._addLootContainer(-31, 0.16, 22, 'military');
-    this._addLootContainer(-26, 0.16, 19, 'medical');
+    this.pois.push({ name: 'POLICE/FIRE', x: -28, z: 22, color: '#42a5f5' });
+    this._addLootContainer(-31, 0.16, 22, 'police_fire', 'Police Armory Locker');
+    this._addLootContainer(-26, 0.16, 19, 'police_fire', 'Fire Station Gear Locker');
 
-    // 4. Ammo Depot (north-east)
+    // 4. Boss Encampment & Armory Key Room (north-east) -> Guaranteed Legendary/Ultra + 4 Epic + 8 Rare (0 Common!)
     this._addBuilding(34, -48, 12, 12, 4.5, 'south');
-    this._addLootContainer(34, 0.16, -51, 'military');
-    this._addLootContainer(37, 0.16, -47, 'military');
+    this.pois.push({ name: 'BOSS CAMP', x: 34, z: -48, color: '#ffc107' });
+    this._addLootContainer(34, 0.16, -51, 'boss_key_room', 'Boss Encampment Key Room', 'boss_key');
+    this._addLootContainer(37, 0.16, -47, 'military', 'Boss Guard Weapon Case');
 
     // === SHIPPING CONTAINERS & COVER ===
     this._addContainer(-8, 12, 0, this._materials.rustRed);

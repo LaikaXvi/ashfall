@@ -259,13 +259,13 @@ class SoundEngine {
     }
   }
 
-  playHitmarker(headshot = false, killed = false) {
+  playHitmarker(headshot = false) {
     if (this.muted || !this.ctx) return;
     const now = this.ctx.currentTime;
     const osc = this.ctx.createOscillator();
     osc.type = headshot ? 'sawtooth' : 'sine';
-    osc.frequency.setValueAtTime(headshot ? 1500 : 920, now);
-    osc.frequency.exponentialRampToValueAtTime(headshot ? 640 : 440, now + 0.055);
+    osc.frequency.setValueAtTime(headshot ? 1400 : 880, now);
+    osc.frequency.exponentialRampToValueAtTime(headshot ? 600 : 420, now + 0.055);
 
     const gain = this.ctx.createGain();
     gain.gain.setValueAtTime(headshot ? 0.25 : 0.16, now);
@@ -275,23 +275,6 @@ class SoundEngine {
     gain.connect(this.ctx.destination);
     osc.start(now);
     osc.stop(now + 0.06);
-
-    if (killed) {
-      // Crisp COD-style kill confirmation thump/crunch
-      const kOsc = this.ctx.createOscillator();
-      kOsc.type = 'triangle';
-      kOsc.frequency.setValueAtTime(headshot ? 520 : 340, now + 0.015);
-      kOsc.frequency.exponentialRampToValueAtTime(95, now + 0.095);
-
-      const kGain = this.ctx.createGain();
-      kGain.gain.setValueAtTime(0.24, now + 0.015);
-      kGain.gain.exponentialRampToValueAtTime(0.001, now + 0.10);
-
-      kOsc.connect(kGain);
-      kGain.connect(this.ctx.destination);
-      kOsc.start(now + 0.015);
-      kOsc.stop(now + 0.105);
-    }
   }
 
   playEmptyClick() {

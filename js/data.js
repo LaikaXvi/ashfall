@@ -1,5 +1,13 @@
-// Game Item Database, Weapons, Armor, Meds, Valuables, and Zones
+// Game Item Database, 5-Tier Loot Rarity, Logical POI Tables, Workbench & Attachments
 window.GAME_DATA = {
+  RARITIES: {
+    common:    { id: 'common',    label: 'COMMON',    color: '#4caf50', bg: 'rgba(76, 175, 80, 0.14)',  revealTime: 0.42 },
+    rare:      { id: 'rare',      label: 'RARE',      color: '#42a5f5', bg: 'rgba(66, 165, 245, 0.15)', revealTime: 0.85 },
+    epic:      { id: 'epic',      label: 'EPIC',      color: '#ab47bc', bg: 'rgba(171, 71, 188, 0.16)', revealTime: 1.35 },
+    legendary: { id: 'legendary', label: 'LEGENDARY', color: '#ffc107', bg: 'rgba(255, 193, 7, 0.18)',  revealTime: 2.00 },
+    ultra:     { id: 'ultra',     label: 'ULTRA',     color: '#ff3d3d', bg: 'rgba(255, 61, 61, 0.20)',  revealTime: 2.75 }
+  },
+
   ITEMS: {
     // === WEAPONS (Sidearms) ===
     pm9: {
@@ -144,38 +152,42 @@ window.GAME_DATA = {
     },
 
     // === AMMO ===
+    // === AMMO (Logical Stack Limits: Light/Heavy 120, Shotgun 25, Sniper 40, Rockets 3) ===
     ammo_9x18: {
       id: 'ammo_9x18',
-      name: '9x18mm FMJ',
+      name: '9x18mm Light Ammo',
       type: 'ammo',
       rarity: 'common',
-      value: 15, // per round
+      value: 12,
       weight: 0.01,
       stackable: true,
-      buyQty: 24,
-      desc: 'Standard 9x18mm pistol rounds.'
+      maxStack: 120,
+      buyQty: 30,
+      desc: 'Light pistol rounds. Stacks up to 120.'
     },
     ammo_9x19: {
       id: 'ammo_9x19',
-      name: '9x19mm Parabellum',
+      name: '9x19mm Light Ammo',
       type: 'ammo',
       rarity: 'common',
-      value: 20,
+      value: 16,
       weight: 0.012,
       stackable: true,
+      maxStack: 120,
       buyQty: 30,
-      desc: '9x19mm rounds for pistols and SMGs.'
+      desc: 'Light SMG & pistol cartridges. Stacks up to 120.'
     },
     ammo_545: {
       id: 'ammo_545',
-      name: '5.45x39mm BP',
+      name: '5.45mm Heavy Ammo',
       type: 'ammo',
-      rarity: 'uncommon',
-      value: 35,
+      rarity: 'common',
+      value: 28,
       weight: 0.015,
       stackable: true,
+      maxStack: 120,
       buyQty: 30,
-      desc: 'Armor-piercing 5.45mm rifle cartridges.'
+      desc: 'Heavy assault rifle cartridges. Stacks up to 120.'
     },
     ammo_12g: {
       id: 'ammo_12g',
@@ -185,104 +197,132 @@ window.GAME_DATA = {
       value: 45,
       weight: 0.04,
       stackable: true,
+      maxStack: 25,
       buyQty: 12,
-      desc: '12-gauge 00 buckshot shells.'
+      desc: '12-gauge buckshot shells. Stacks up to 25.'
     },
     ammo_762: {
       id: 'ammo_762',
-      name: '7.62x51mm M80',
+      name: '7.62mm Sniper Ammo',
       type: 'ammo',
       rarity: 'rare',
-      value: 90,
+      value: 75,
       weight: 0.025,
       stackable: true,
+      maxStack: 40,
       buyQty: 10,
-      desc: 'Heavy full-power rifle cartridges.'
+      desc: 'High-velocity sniper & marksman rounds. Stacks up to 40.'
+    },
+    ammo_rocket: {
+      id: 'ammo_rocket',
+      name: 'HE Launcher Rockets',
+      type: 'ammo',
+      rarity: 'epic',
+      value: 650,
+      weight: 1.2,
+      stackable: true,
+      maxStack: 3,
+      buyQty: 1,
+      desc: 'High-explosive ordnance for launchers. Stacks up to 3.'
     },
 
-    // === ARMOR (DMZ 1-3 Plate Vests & Ceramic Plates) ===
+    // === ARMOR VESTS (1-3 Plate Carriers, Gel, Helmet, Heavy) ===
     vest_1plate: {
       id: 'vest_1plate',
       name: '1-Plate Carrier',
       type: 'armor',
       rarity: 'common',
-      value: 2200,
+      value: 2000,
       weight: 2.2,
       plateSlots: 1,
       maxArmor: 50,
-      desc: 'Standard 1-plate tactical carrier (50 Armor).'
+      desc: 'Common 1-plate tactical carrier (50 Armor).'
     },
     vest_2plate: {
       id: 'vest_2plate',
       name: '2-Plate Carrier',
       type: 'armor',
       rarity: 'rare',
-      value: 5800,
+      value: 5200,
       weight: 3.4,
       plateSlots: 2,
       maxArmor: 100,
-      desc: 'Reinforced 2-plate carrier (100 Armor).'
+      desc: 'Rare 2-plate carrier (100 Armor).'
+    },
+    vest_2plate_gel: {
+      id: 'vest_2plate_gel',
+      name: '2-Plate Ballistic Gel Vest',
+      type: 'armor',
+      rarity: 'rare',
+      value: 6800,
+      weight: 3.2,
+      plateSlots: 2,
+      maxArmor: 100,
+      desc: 'Rare ballistic-gel lined 2-plate vest with blunt trauma dampening.'
+    },
+    vest_2plate_helmet: {
+      id: 'vest_2plate_helmet',
+      name: '2-Plate Helmet Armor Vest',
+      type: 'armor',
+      rarity: 'epic',
+      value: 9600,
+      weight: 4.0,
+      plateSlots: 2,
+      maxArmor: 100,
+      headshotResist: 0.35,
+      desc: 'Epic 2-plate carrier paired with a ballistic helmet (-35% headshot damage).'
     },
     vest_3plate: {
       id: 'vest_3plate',
       name: '3-Plate Heavy Vest',
       type: 'armor',
-      rarity: 'epic',
-      value: 11500,
+      rarity: 'ultra',
+      value: 16500,
       weight: 4.8,
       plateSlots: 3,
       maxArmor: 150,
-      desc: 'Special-ops 3-plate carrier (150 Armor).'
+      desc: 'Ultra-tier 3-plate heavy assault carrier (150 Armor).'
     },
     armor_plate: {
       id: 'armor_plate',
       name: 'Ceramic Armor Plate',
       type: 'plate',
-      rarity: 'uncommon',
-      value: 450,
+      rarity: 'common',
+      value: 400,
       weight: 0.45,
       plateArmor: 50,
       stackable: true,
+      maxStack: 6,
+      containerMaxStack: 3,
       buyQty: 3,
-      desc: 'Restores 1 armor plate (+50 Armor). Press [G] to insert.'
+      desc: 'Restores 1 plate (+50 Armor). Stacks to 6 in rig/pack, up to 3 in crates.'
     },
-    // Legacy save compatibility
-    vest_scrap: {
-      id: 'vest_scrap',
-      name: '1-Plate Carrier',
-      type: 'armor',
-      rarity: 'common',
-      value: 2200,
-      weight: 2.2,
-      plateSlots: 1,
-      maxArmor: 50,
-      desc: 'Standard 1-plate tactical carrier (50 Armor).'
-    },
-    vest_tactical: {
-      id: 'vest_tactical',
-      name: '2-Plate Carrier',
-      type: 'armor',
-      rarity: 'rare',
-      value: 5800,
-      weight: 3.4,
-      plateSlots: 2,
-      maxArmor: 100,
-      desc: 'Reinforced 2-plate carrier (100 Armor).'
-    },
+    vest_scrap: { id: 'vest_scrap', name: '1-Plate Carrier', type: 'armor', rarity: 'common', value: 2000, weight: 2.2, plateSlots: 1, maxArmor: 50, desc: 'Common 1-plate carrier.' },
+    vest_tactical: { id: 'vest_tactical', name: '2-Plate Carrier', type: 'armor', rarity: 'rare', value: 5200, weight: 3.4, plateSlots: 2, maxArmor: 100, desc: 'Rare 2-plate carrier.' },
 
-    // === MEDS ===
-    medkit: {
-      id: 'medkit',
-      name: 'Field Medkit',
-      type: 'med',
-      rarity: 'uncommon',
-      value: 950,
-      weight: 0.4,
-      healAmount: 55,
-      stackable: true,
-      buyQty: 1,
-      desc: 'Restores 55 HP during combat (Press H).'
-    },
+    // === BACKPACKS ===
+    bag_small: { id: 'bag_small', name: 'Daypack (8 Slots)', type: 'backpack', rarity: 'common', value: 1400, weight: 0.6, slots: 8, desc: 'Compact 8-slot tactical daypack.' },
+    bag_medium: { id: 'bag_medium', name: 'Assault Pack (12 Slots)', type: 'backpack', rarity: 'rare', value: 4200, weight: 1.0, slots: 12, desc: 'Reinforced 12-slot operator backpack.' },
+    bag_large: { id: 'bag_large', name: 'Expedition Rucksack (16 Slots)', type: 'backpack', rarity: 'epic', value: 8800, weight: 1.5, slots: 16, desc: 'High-capacity 16-slot wasteland rucksack.' },
+
+    // === FIELD UPGRADES ===
+    fu_ammo_box: { id: 'fu_ammo_box', name: 'Munitions Box', type: 'field_upgrade', rarity: 'rare', value: 3200, weight: 1.2, chargeTime: 45, desc: 'Restocks reserve ammo, plates & throwables on activation ([Z]).' },
+    fu_dead_silence: { id: 'fu_dead_silence', name: 'Dead Silence', type: 'field_upgrade', rarity: 'epic', value: 5400, weight: 0.3, chargeTime: 40, desc: 'Silences footsteps & boosts sprint speed for 12s ([Z]).' },
+    fu_trophy: { id: 'fu_trophy', name: 'Trophy System', type: 'field_upgrade', rarity: 'rare', value: 3800, weight: 1.0, chargeTime: 50, desc: 'Active defense unit that intercepts incoming ordnance ([Z]).' },
+
+    // === KILLSTREAKS ===
+    ks_uav: { id: 'ks_uav', name: 'UAV Recon Drone', type: 'killstreak', rarity: 'epic', value: 6200, weight: 0.8, desc: 'Reveals all hostiles & operator squads on the minimap for 20s.' },
+    ks_airstrike: { id: 'ks_airstrike', name: 'Precision Airstrike', type: 'killstreak', rarity: 'legendary', value: 11500, weight: 1.0, desc: 'Calls a devastating jet strafe run on your target coordinates.' },
+
+    // === MELEE WEAPONS ===
+    melee_knife: { id: 'melee_knife', name: 'Combat Knife', type: 'melee', rarity: 'common', value: 900, weight: 0.3, damage: 65, desc: 'Standard issue tactical combat blade.' },
+    melee_karambit: { id: 'melee_karambit', name: 'Tactical Karambit', type: 'melee', rarity: 'epic', value: 5800, weight: 0.25, damage: 85, desc: 'Curved CQB karambit with rapid slash recovery.' },
+    melee_axe: { id: 'melee_axe', name: 'Breaching Hatchet', type: 'melee', rarity: 'legendary', value: 9400, weight: 0.8, damage: 115, desc: 'Heavy carbon-steel breaching tomahawk.' },
+
+    // === MEDS (Hospitals & Clinics) ===
+    bandage: { id: 'bandage', name: 'Sterile Bandage', type: 'med', rarity: 'common', value: 350, weight: 0.15, healAmount: 25, stackable: true, maxStack: 4, buyQty: 2, desc: 'Quick field dressing (+25 HP).' },
+    painkillers: { id: 'painkillers', name: 'Tactical Painkillers', type: 'med', rarity: 'rare', value: 1100, weight: 0.2, healAmount: 40, stackable: true, maxStack: 3, buyQty: 1, desc: 'Fast-acting analgesic bottle (+40 HP).' },
+    medkit: { id: 'medkit', name: 'Field Medkit', type: 'med', rarity: 'rare', value: 1450, weight: 0.4, healAmount: 55, stackable: true, maxStack: 3, buyQty: 1, desc: 'Full IFAK medical kit (+55 HP, Press H).' },
 
     // === THROWABLES (Lethals & Tacticals) ===
     frag_grenade: {
@@ -344,76 +384,191 @@ window.GAME_DATA = {
       desc: 'Disorients and stuns hostiles in blast radius for 5s ([Q]).'
     },
 
-    // === BARTER / VALUABLES ===
+    // === COMMON CRAFTING MATERIALS (Stack to 10; used in Workbench or bulk sold) ===
     scrap_metal: {
       id: 'scrap_metal',
-      name: 'Salvaged Electronics',
-      type: 'valuable',
+      name: 'Salvaged Steel',
+      type: 'material',
       rarity: 'common',
-      value: 650,
-      weight: 0.6,
-      desc: 'Intact circuit boards and copper wiring.'
+      value: 320,
+      weight: 0.35,
+      stackable: true,
+      maxStack: 10,
+      desc: 'Common crafting alloy. Stacks to 10. Used at Workbench or sold in bulk.'
+    },
+    cloth_roll: {
+      id: 'cloth_roll',
+      name: 'Ballistic Cloth',
+      type: 'material',
+      rarity: 'common',
+      value: 280,
+      weight: 0.25,
+      stackable: true,
+      maxStack: 10,
+      desc: 'Common woven fabric for crafting meds, vests & packs. Stacks to 10.'
+    },
+    gunpowder: {
+      id: 'gunpowder',
+      name: 'Smokeless Powder',
+      type: 'material',
+      rarity: 'common',
+      value: 360,
+      weight: 0.3,
+      stackable: true,
+      maxStack: 10,
+      desc: 'Common propellant for crafting ordnance & ammo. Stacks to 10.'
+    },
+    polymer_parts: {
+      id: 'polymer_parts',
+      name: 'Polymer Components',
+      type: 'material',
+      rarity: 'common',
+      value: 300,
+      weight: 0.25,
+      stackable: true,
+      maxStack: 10,
+      desc: 'Common tactical polymers for Workbench crafting. Stacks to 10.'
+    },
+
+    // === KEYS & HIGH-VALUE BARTER ===
+    boss_key: {
+      id: 'boss_key',
+      name: 'Encampment Armory Key',
+      type: 'key',
+      rarity: 'legendary',
+      value: 12000,
+      weight: 0.05,
+      desc: 'Unlocks the Boss Encampment Key Room (Guaranteed Legendary/Ultra weapon + 4 Epic + 8 Rare).'
     },
     water_filter: {
       id: 'water_filter',
       name: 'Military Water Filter',
       type: 'valuable',
-      rarity: 'uncommon',
-      value: 1450,
+      rarity: 'rare',
+      value: 2400,
       weight: 0.8,
-      desc: 'High-demand survival purifier.'
+      desc: 'Rare survival purifier.'
     },
     fuel_can: {
       id: 'fuel_can',
       name: 'Refined Fuel Canister',
       type: 'valuable',
-      rarity: 'uncommon',
-      value: 2100,
+      rarity: 'rare',
+      value: 3100,
       weight: 2.2,
-      desc: 'Clean generator fuel. Heavy but valuable.'
+      desc: 'Rare clean generator fuel.'
     },
     intel_drive: {
       id: 'intel_drive',
       name: 'Encrypted Hard Drive',
       type: 'valuable',
-      rarity: 'rare',
-      value: 3800,
+      rarity: 'epic',
+      value: 5800,
       weight: 0.4,
-      desc: 'Pre-collapse bunker telemetry data.'
+      desc: 'Epic pre-collapse bunker telemetry data.'
     },
     gold_watch: {
       id: 'gold_watch',
       name: 'Antique Officer Watch',
       type: 'valuable',
-      rarity: 'rare',
-      value: 4600,
+      rarity: 'epic',
+      value: 6600,
       weight: 0.15,
-      desc: 'Pristine mechanical timepiece.'
+      desc: 'Epic mechanical gold timepiece.'
     },
     gpu_unit: {
       id: 'gpu_unit',
       name: 'Military GPU Module',
       type: 'valuable',
-      rarity: 'epic',
-      value: 8200,
+      rarity: 'legendary',
+      value: 12800,
       weight: 1.1,
-      desc: 'Rare intact tactical compute board.'
+      desc: 'Legendary intact tactical compute board.'
+    },
+    black_box: {
+      id: 'black_box',
+      name: 'Classified Flight Recorder',
+      type: 'valuable',
+      rarity: 'ultra',
+      value: 22500,
+      weight: 1.4,
+      desc: 'Ultra-rare orbital command black box.'
     },
     dogtag: {
       id: 'dogtag',
-      name: 'Raider Dogtag',
+      name: 'Operator Dogtag',
       type: 'valuable',
-      rarity: 'uncommon',
-      value: 1200,
+      rarity: 'rare',
+      value: 1800,
       weight: 0.05,
-      desc: 'Proof of hostile elimination.'
+      desc: 'Proof of operator elimination.'
     }
   },
 
+  WORKBENCH_RECIPES: [
+    {
+      id: 'craft_plates',
+      outputId: 'armor_plate',
+      outputQty: 3,
+      name: '3x Ceramic Armor Plates',
+      desc: 'Press salvaged steel and ballistic cloth into 3 ceramic plates.',
+      ingredients: [{ id: 'scrap_metal', qty: 2 }, { id: 'cloth_roll', qty: 1 }]
+    },
+    {
+      id: 'craft_medkit',
+      outputId: 'medkit',
+      outputQty: 1,
+      name: 'Field Medkit',
+      desc: 'Assemble a full IFAK Field Medkit from sterile cloth and polymer.',
+      ingredients: [{ id: 'cloth_roll', qty: 2 }, { id: 'polymer_parts', qty: 1 }]
+    },
+    {
+      id: 'craft_frag',
+      outputId: 'frag_grenade',
+      outputQty: 2,
+      name: '2x M67 Frag Grenades',
+      desc: 'Pack smokeless powder into steel fragmentation casings.',
+      ingredients: [{ id: 'scrap_metal', qty: 2 }, { id: 'gunpowder', qty: 2 }]
+    },
+    {
+      id: 'craft_gel_vest',
+      outputId: 'vest_2plate_gel',
+      outputQty: 1,
+      name: '2-Plate Ballistic Gel Vest',
+      desc: 'Fabricate a Rare 2-plate ballistic gel armor carrier.',
+      ingredients: [{ id: 'scrap_metal', qty: 3 }, { id: 'cloth_roll', qty: 3 }, { id: 'polymer_parts', qty: 2 }]
+    },
+    {
+      id: 'craft_med_bag',
+      outputId: 'bag_medium',
+      outputQty: 1,
+      name: 'Assault Pack (12 Slots)',
+      desc: 'Stitch a Rare 12-slot operator backpack.',
+      ingredients: [{ id: 'cloth_roll', qty: 4 }, { id: 'polymer_parts', qty: 2 }]
+    },
+    {
+      id: 'craft_boss_key',
+      outputId: 'boss_key',
+      outputQty: 1,
+      name: 'Encampment Armory Key',
+      desc: 'Mill a Legendary Armory Key for Boss Encampment key rooms.',
+      ingredients: [{ id: 'scrap_metal', qty: 4 }, { id: 'polymer_parts', qty: 4 }, { id: 'gunpowder', qty: 2 }]
+    }
+  ],
+
   TRADER_STOCK: {
     weapons: ['pm9', 'g17', 'mp5k', 'm870', 'ak74m', 'm24'],
-    ammo: ['ammo_9x18', 'ammo_9x19', 'ammo_12g', 'ammo_545', 'ammo_762'],
-    gear: ['medkit', 'armor_plate', 'vest_1plate', 'vest_2plate', 'vest_3plate', 'frag_grenade', 'throwing_knife', 'smoke_grenade', 'concussion_grenade']
+    ammo: ['ammo_9x18', 'ammo_9x19', 'ammo_12g', 'ammo_545', 'ammo_762', 'ammo_rocket'],
+    gear: [
+      'bandage', 'painkillers', 'medkit', 'armor_plate',
+      'vest_1plate', 'vest_2plate', 'vest_2plate_gel', 'vest_2plate_helmet', 'vest_3plate',
+      'bag_small', 'bag_medium', 'bag_large',
+      'fu_ammo_box', 'fu_dead_silence', 'fu_trophy',
+      'ks_uav', 'ks_airstrike',
+      'melee_knife', 'melee_karambit', 'melee_axe',
+      'frag_grenade', 'throwing_knife', 'smoke_grenade', 'concussion_grenade',
+      'boss_key'
+    ]
   },
 
   ZONES: {
@@ -442,34 +597,80 @@ window.GAME_DATA = {
   },
 
   LOOT_TABLES: {
+    // Location-based logical loot tables
+    hospital: [
+      { id: 'medkit', min: 1, max: 2, w: 34 },
+      { id: 'bandage', min: 1, max: 3, w: 32 },
+      { id: 'painkillers', min: 1, max: 2, w: 24 },
+      { id: 'cloth_roll', min: 1, max: 3, w: 10 }
+    ],
+    police_fire: [
+      { id: 'vest_1plate', min: 1, max: 1, w: 18 },
+      { id: 'vest_2plate', min: 1, max: 1, w: 10 },
+      { id: 'bag_small', min: 1, max: 1, w: 14 },
+      { id: 'pm9', min: 1, max: 1, w: 12 },
+      { id: 'g17', min: 1, max: 1, w: 10 },
+      { id: 'mp5k', min: 1, max: 1, w: 8 },
+      { id: 'armor_plate', min: 1, max: 3, w: 16 },
+      { id: 'ammo_9x19', min: 20, max: 45, w: 12 }
+    ],
     military: [
-      { id: 'ammo_545', min: 15, max: 30, w: 22 },
-      { id: 'ammo_762', min: 5, max: 12, w: 12 },
-      { id: 'ammo_12g', min: 6, max: 12, w: 14 },
-      { id: 'intel_drive', min: 1, max: 1, w: 14 },
-      { id: 'gpu_unit', min: 1, max: 1, w: 7 },
+      { id: 'ammo_545', min: 20, max: 45, w: 18 },
+      { id: 'ammo_762', min: 8, max: 16, w: 10 },
+      { id: 'ammo_12g', min: 6, max: 12, w: 10 },
       { id: 'armor_plate', min: 1, max: 3, w: 14 },
-      { id: 'vest_2plate', min: 1, max: 1, w: 6 },
-      { id: 'vest_3plate', min: 1, max: 1, w: 3 },
-      { id: 'mp5k', min: 1, max: 1, w: 6 },
-      { id: 'ak74m', min: 1, max: 1, w: 5 },
-      { id: 'medkit', min: 1, max: 1, w: 11 }
+      { id: 'vest_2plate_gel', min: 1, max: 1, w: 8 },
+      { id: 'vest_2plate_helmet', min: 1, max: 1, w: 5 },
+      { id: 'vest_3plate', min: 1, max: 1, w: 2 },
+      { id: 'bag_medium', min: 1, max: 1, w: 6 },
+      { id: 'intel_drive', min: 1, max: 1, w: 8 },
+      { id: 'gpu_unit', min: 1, max: 1, w: 5 },
+      { id: 'ak74m', min: 1, max: 1, w: 6 },
+      { id: 'boss_key', min: 1, max: 1, w: 3 },
+      { id: 'medkit', min: 1, max: 1, w: 5 }
     ],
     medical: [
-      { id: 'medkit', min: 1, max: 2, w: 55 },
-      { id: 'water_filter', min: 1, max: 1, w: 25 },
-      { id: 'gold_watch', min: 1, max: 1, w: 10 },
-      { id: 'scrap_metal', min: 1, max: 2, w: 10 }
+      { id: 'medkit', min: 1, max: 2, w: 38 },
+      { id: 'bandage', min: 1, max: 3, w: 30 },
+      { id: 'painkillers', min: 1, max: 2, w: 22 },
+      { id: 'cloth_roll', min: 1, max: 3, w: 10 }
     ],
     supply: [
-      { id: 'scrap_metal', min: 1, max: 2, w: 28 },
-      { id: 'water_filter', min: 1, max: 1, w: 20 },
-      { id: 'fuel_can', min: 1, max: 1, w: 16 },
-      { id: 'ammo_9x19', min: 12, max: 25, w: 16 },
-      { id: 'ammo_9x18', min: 10, max: 20, w: 10 },
-      { id: 'gold_watch', min: 1, max: 1, w: 6 },
-      { id: 'medkit', min: 1, max: 1, w: 4 }
-    ]
+      { id: 'scrap_metal', min: 2, max: 5, w: 24 },
+      { id: 'cloth_roll', min: 2, max: 5, w: 20 },
+      { id: 'gunpowder', min: 2, max: 4, w: 18 },
+      { id: 'polymer_parts', min: 2, max: 5, w: 20 },
+      { id: 'water_filter', min: 1, max: 1, w: 10 },
+      { id: 'fuel_can', min: 1, max: 1, w: 8 }
+    ],
+    // Boss Encampment Key Room pools (ZERO common items!)
+    boss_epic: ['vest_2plate_helmet', 'bag_large', 'intel_drive', 'gold_watch', 'fu_dead_silence', 'ks_uav', 'melee_karambit', 'ammo_rocket'],
+    boss_rare: ['vest_2plate_gel', 'bag_medium', 'water_filter', 'fuel_can', 'painkillers', 'medkit', 'fu_ammo_box', 'fu_trophy', 'ammo_762'],
+    boss_legendary_weapons: ['ak74m', 'm24', 'mp5k', 'm870']
+  },
+
+  getWeaponRarityAndValue(weaponId, mods = {}) {
+    const base = this.ITEMS[weaponId];
+    if (!base) return { rarity: 'common', value: 1000 };
+    const slotKeys = ['optic', 'muzzle', 'underbarrel', 'magazine', 'stock'];
+    let attCount = 0;
+    let attValue = 0;
+    for (const k of slotKeys) {
+      const id = mods && mods[k];
+      if (id && id !== 'none') {
+        attCount += 1;
+        const att = this.ATTACHMENTS[k] && this.ATTACHMENTS[k][id];
+        if (att) attValue += Math.round(att.price * 0.75);
+      }
+    }
+    const tiers = ['common', 'rare', 'epic', 'legendary', 'ultra'];
+    const baseIdx = Math.max(0, tiers.indexOf(base.rarity === 'uncommon' ? 'common' : base.rarity));
+    const finalIdx = Math.min(tiers.length - 1, Math.max(baseIdx, attCount));
+    return {
+      rarity: tiers[finalIdx],
+      value: Math.round(base.value * (1 + attCount * 0.28) + attValue),
+      attachmentCount: attCount
+    };
   },
 
   ATTACHMENTS: {

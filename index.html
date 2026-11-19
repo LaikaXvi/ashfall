@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ASHFALL // 3D Extraction Looter-Shooter</title>
-  <link rel="stylesheet" href="css/style.css?v=68" />
+  <link rel="stylesheet" href="css/style.css?v=67" />
   <!-- Three.js r128 UMD for zero-build compatibility (works on both http:// and file://) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
@@ -25,6 +25,7 @@
         <button id="btn-menu-home" class="btn-small">← MAIN MENU</button>
         <nav class="menu-subnav">
           <button class="subnav-btn" data-tab="deploy">DEPLOY</button>
+          <button class="subnav-btn" data-tab="workbench">WORKBENCH</button>
           <button class="subnav-btn" data-tab="stash">STASH</button>
           <button class="subnav-btn" data-tab="gunsmith">GUNSMITH</button>
           <button class="subnav-btn" data-tab="operator">OPERATOR</button>
@@ -67,25 +68,30 @@
           <button class="menu-option primary" data-menu-action="deploy">
             <span class="opt-num">01</span>
             <span class="opt-label">DEPLOY</span>
-            <span class="opt-hint">Select zone &amp; launch raid</span>
+            <span class="opt-hint">Loadout setup, map &amp; matchmaking</span>
+          </button>
+          <button class="menu-option" data-menu-action="workbench">
+            <span class="opt-num">02</span>
+            <span class="opt-label">WORKBENCH</span>
+            <span class="opt-hint">Craft gear from common materials</span>
           </button>
           <button class="menu-option" data-menu-action="stash">
-            <span class="opt-num">02</span>
+            <span class="opt-num">03</span>
             <span class="opt-label">STASH</span>
             <span class="opt-hint">Hideout inventory &amp; Black Market</span>
           </button>
           <button id="btn-open-gunsmith" class="menu-option" data-menu-action="gunsmith">
-            <span class="opt-num">03</span>
+            <span class="opt-num">04</span>
             <span class="opt-label">GUNSMITH</span>
             <span class="opt-hint">3D weapon mods &amp; cosmetics</span>
           </button>
           <button class="menu-option" data-menu-action="operator">
-            <span class="opt-num">04</span>
+            <span class="opt-num">05</span>
             <span class="opt-label">OPERATOR</span>
             <span class="opt-hint">Equipped gear, armor &amp; rig ammo</span>
           </button>
           <button class="menu-option" data-menu-action="settings">
-            <span class="opt-num">05</span>
+            <span class="opt-num">06</span>
             <span class="opt-label">SETTINGS</span>
             <span class="opt-hint">Controls, audio, sensitivity &amp; dev tools</span>
           </button>
@@ -125,45 +131,106 @@
       </aside>
     </section>
 
-    <!-- VIEW 1: DEPLOY TAB -->
-    <main id="menu-view-deploy" class="menu-tab-view hidden">
-      <div class="single-panel-wrap">
-        <section class="panel deploy-tab-panel">
+    <!-- VIEW 1: PRE-MATCH STEP 1 — LOADOUT SETUP (64-SLOT STASH GRID + OPERATOR & BACKPACK) -->
+    <main id="menu-view-deploy" class="menu-tab-view two-col-grid hidden">
+      <section class="panel">
+        <div class="panel-header">
+          <h2>STASH GRID (64 SLOTS)</h2>
+          <span class="sub">CLICK ITEM TO EQUIP / PACK</span>
+        </div>
+        <div id="prematch-stash-grid" class="stash-grid-64"></div>
+      </section>
+
+      <section class="panel" style="display:flex;flex-direction:column;justify-content:space-between;gap:12px;">
+        <div>
           <div class="panel-header">
-            <h2>DEPLOYMENT BRIEFING</h2>
-            <span class="sub">SELECT OPERATION ZONE</span>
+            <h2>OPERATOR EQUIPMENT</h2>
+            <span id="prematch-party-role" class="sub" style="color:#69f0ae;">SOLO // PARTY LEADER</span>
           </div>
+          <div id="prematch-op-slots" class="op-equip-grid"></div>
 
-          <div class="deploy-zone-cards">
-            <label class="zone-card active" data-zone="outpost">
-              <div class="zone-card-head">
-                <span class="zone-name">DUSTLINE OUTPOST</span>
-                <span class="zone-badge std">STANDARD</span>
-              </div>
-              <p class="zone-desc">Abandoned highway checkpoint with 6 patrolling Scavengers &amp; Raiders. Balanced sightlines and steady supply crates.</p>
-            </label>
-            <label class="zone-card" data-zone="industrial">
-              <div class="zone-card-head">
-                <span class="zone-name">RUSTYARD COMPOUND</span>
-                <span class="zone-badge high">HIGH THREAT</span>
-              </div>
-              <p class="zone-desc">Fortified industrial yard guarded by 10 hostiles including Armored Heavies. High-value military loot &amp; optics.</p>
-            </label>
+          <div class="panel-header" style="margin-top:12px;">
+            <h3>BACKPACK (<span id="prematch-bag-count">0/8</span>)</h3>
+            <span class="sub">ADDITIONAL RAID ITEMS</span>
           </div>
+          <div id="prematch-bag-grid" class="inv-grid-compact"></div>
+        </div>
 
-          <div class="zone-select" style="display:none;">
-            <select id="raid-zone-select">
-              <option value="outpost">Dustline Outpost (Standard — 6 Hostiles)</option>
-              <option value="industrial">Rustyard Compound (High Threat — 10 Hostiles, Better Loot)</option>
-            </select>
-          </div>
+        <div id="deploy-loadout-summary" class="deploy-summary-bar"></div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;">
+          <button id="btn-prematch-next" class="btn-primary btn-deploy" style="width:auto;padding:12px 26px;">SELECT DEPLOYMENT ZONE →</button>
+        </div>
+      </section>
+    </main>
 
-          <div id="deploy-loadout-summary" class="deploy-summary-bar"></div>
-
-          <button id="btn-deploy" class="btn-primary btn-deploy" style="margin-top:14px;">DEPLOY TO WASTELAND</button>
-          <p class="deploy-note">Survive, loot containers &amp; hostiles, and reach a green Extraction Beacon before time runs out.</p>
-        </section>
+    <!-- VIEW 1B: PRE-MATCH STEP 2 — INTERACTIVE MAP WITH FLOATING DEPLOYMENT NODES -->
+    <main id="menu-view-map" class="menu-tab-view hidden">
+      <div class="deploy-map-stage">
+        <div class="panel-header" style="position:relative;z-index:2;">
+          <h2>SECTOR 7 // TACTICAL DEPLOYMENT MAP</h2>
+          <button id="btn-map-back" class="btn-small">← BACK TO LOADOUT</button>
+        </div>
+        <div class="tactical-map-canvas">
+          <div class="map-grid-lines"></div>
+          <button class="map-node active" data-zone="outpost" style="left:32%;top:42%;">
+            <span class="node-pulse"></span>
+            <span class="node-title">DUSTLINE OUTPOST</span>
+            <span class="node-meta">STANDARD · 6 OPERATOR SQUADS · CLINIC &amp; POLICE</span>
+          </button>
+          <button class="map-node" data-zone="industrial" style="left:66%;top:56%;">
+            <span class="node-pulse high"></span>
+            <span class="node-title">RUSTYARD COMPOUND</span>
+            <span class="node-meta">HIGH THREAT · 6 OPERATOR SQUADS · BOSS KEY ROOM</span>
+          </button>
+        </div>
+        <select id="raid-zone-select" style="display:none;">
+          <option value="outpost">Dustline Outpost</option>
+          <option value="industrial">Rustyard Compound</option>
+        </select>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
+          <span id="map-selected-desc" class="deploy-note" style="margin:0;">Selected: Dustline Outpost — Balanced wasteland sector with Hospital, Police/Fire &amp; Boss Encampment.</span>
+          <button id="btn-map-confirm" class="btn-primary" style="padding:12px 26px;">SEARCH FOR MATCH →</button>
+        </div>
       </div>
+    </main>
+
+    <!-- VIEW 1C: PRE-MATCH STEP 3 — 3D OPERATOR MATCHMAKING SCREEN (15s COUNTDOWN) -->
+    <main id="menu-view-matchmaking" class="menu-tab-view hidden" style="padding:0;position:relative;">
+      <canvas id="matchmaking-canvas" style="width:100%;height:100%;display:block;"></canvas>
+      <div class="mm-overlay-left">
+        <span class="brand-tag">MATCHMAKING // 6 SQUADS (UP TO 18 OPERATORS)</span>
+        <h2 id="mm-zone-title" style="font-size:26px;letter-spacing:2px;margin:4px 0;">DUSTLINE OUTPOST</h2>
+        <div id="mm-status-text" style="font-family:var(--font-mono);font-size:12px;color:#69f0ae;">SEARCHING FOR SECTOR INSTANCE...</div>
+        <div id="mm-squad-list" class="mm-squad-list"></div>
+      </div>
+      <div class="mm-overlay-right">
+        <div class="mm-countdown-box">
+          <span class="sub">INFIL IN</span>
+          <span id="mm-countdown-val" class="mm-countdown-num">15</span>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button id="btn-mm-cancel" class="btn-small">CANCEL</button>
+          <button id="btn-deploy" class="btn-primary" style="padding:10px 22px;">DEPLOY NOW</button>
+        </div>
+      </div>
+    </main>
+
+    <!-- VIEW 1D: WORKBENCH (CRAFT GEAR FROM COMMON MATERIALS & BULK SELL) -->
+    <main id="menu-view-workbench" class="menu-tab-view two-col-grid hidden">
+      <section class="panel">
+        <div class="panel-header">
+          <h2>WORKBENCH // CRAFTING</h2>
+          <span class="sub">USE COMMON MATERIALS</span>
+        </div>
+        <div id="workbench-recipes" class="item-list"></div>
+      </section>
+      <section class="panel">
+        <div class="panel-header">
+          <h2>COMMON MATERIALS (STACKS OF 10)</h2>
+          <button id="btn-sell-materials" class="btn-small">BULK SELL MATERIALS</button>
+        </div>
+        <div id="workbench-materials" class="item-list"></div>
+      </section>
     </main>
 
     <!-- VIEW 2: STASH & TRADER TAB -->
@@ -331,26 +398,31 @@
     </main>
   </div>
 
-  <!-- ==================== IN-RAID HUD ==================== -->
+  <!-- ==================== IN-RAID HUD (COMPACT <=30% FOOTPRINT, NEVER COVERS CROSSHAIR) ==================== -->
   <div id="hud-screen" class="screen">
-    <!-- Top Compass & Timer -->
+    <!-- Top Left: Tactical Minimap + Raid Timer -->
+    <div class="hud-top-left">
+      <div class="minimap-wrap">
+        <canvas id="hud-minimap" width="144" height="144"></canvas>
+        <span class="minimap-north">N</span>
+      </div>
+      <div class="raid-timer-box" style="margin-top:6px;">
+        <span class="timer-label">RAID</span>
+        <span id="hud-timer" class="timer-value">08:00</span>
+        <span id="hud-dev-badge" class="hidden" style="color:#69f0ae;font-size:10px;font-weight:700;margin-left:4px;">[DEV]</span>
+      </div>
+    </div>
+
+    <!-- Top Center: Slim Compass -->
     <div class="hud-top">
       <div class="compass-bar">
         <div id="compass-track" class="compass-track"></div>
         <div class="compass-center-tick"></div>
       </div>
-      <div class="raid-timer-box">
-        <span class="timer-label">RAID TIME</span>
-        <span id="hud-timer" class="timer-value">08:00</span>
-        <span id="hud-dev-badge" class="hidden" style="color:#69f0ae;font-size:11px;font-weight:700;margin-left:6px;">[DEV]</span>
-      </div>
     </div>
 
-    <!-- Comms / Status Feed (Top Right) -->
-    <div id="hud-feed" class="hud-feed"></div>
-
-    <!-- Player Kill Feed (Bottom Left, above Vitals) -->
-    <div id="hud-kill-feed" class="hud-kill-feed"></div>
+    <!-- Left Side: Operator Kill Feed (Downs +50 XP / Elims +100 XP) -->
+    <div id="hud-feed" class="hud-feed hud-feed-left"></div>
 
     <!-- Center Crosshair & Prompts -->
     <div id="crosshair" class="crosshair">
@@ -360,18 +432,7 @@
       <div class="ch-line ch-right"></div>
       <div class="ch-dot"></div>
     </div>
-    <div id="hitmarker" class="hitmarker">
-      <span class="hm-tick hm-tl"></span>
-      <span class="hm-tick hm-tr"></span>
-      <span class="hm-tick hm-bl"></span>
-      <span class="hm-tick hm-br"></span>
-    </div>
-
-    <!-- COD MW-style XP & Kill Feedback (Right of Crosshair) -->
-    <div id="hud-xp-feedback" class="hud-xp-feedback">
-      <div id="hud-xp-total" class="xp-total"></div>
-      <div id="hud-xp-events" class="xp-events"></div>
-    </div>
+    <div id="hitmarker" class="hitmarker"></div>
 
     <div id="interact-prompt" class="interact-prompt hidden">
       <span class="key-badge">E</span>
@@ -411,26 +472,39 @@
           <span><span class="key-badge">H</span> MED: <b id="hud-medkits">0</b></span>
           <span><span class="key-badge">G</span> PLATES: <b id="hud-plates">3</b></span>
         </div>
-        <div class="quick-med" style="justify-content:space-between;">
-          <span><span class="key-badge">F</span> <b id="hud-lethal">FRAG 2</b></span>
-          <span><span class="key-badge">Q</span> <b id="hud-tactical">SMOKE 2</b></span>
-        </div>
       </div>
     </div>
 
-    <!-- Bottom Right: Weapon & Ammo -->
-    <div class="hud-bottom-right">
-      <div class="weapon-slots-hud">
-        <span id="hud-slot-1" class="w-slot active">[1] PRIMARY</span>
-        <span id="hud-slot-2" class="w-slot">[2] SIDEARM</span>
+    <!-- Bottom Right: Weapon, Ammo, Grenade Silhouettes, Melee & Field Upgrade Ring -->
+    <div class="hud-bottom-right-cluster">
+      <div class="hud-bottom-right">
+        <div class="weapon-slots-hud">
+          <span id="hud-slot-1" class="w-slot active">[1] PRIMARY</span>
+          <span id="hud-slot-2" class="w-slot">[2] SIDEARM</span>
+        </div>
+        <div id="hud-weapon-name" class="weapon-name">AK-74M</div>
+        <div class="ammo-counter">
+          <span id="hud-mag" class="mag-count">30</span>
+          <span class="ammo-sep">/</span>
+          <span id="hud-reserve" class="reserve-count">90</span>
+        </div>
+        <div class="hud-ordnance-row">
+          <span class="ord-pill" title="Tactical [Q]"><span id="hud-tac-svg" class="ord-svg"></span><b id="hud-tactical">2</b></span>
+          <span class="ord-pill" title="Lethal [F]"><span id="hud-leth-svg" class="ord-svg"></span><b id="hud-lethal">2</b></span>
+          <span class="ord-pill melee" title="Melee Equipped"><span id="hud-melee-svg" class="ord-svg"></span><b id="hud-melee-name">KNIFE</b></span>
+        </div>
+        <div class="backpack-hint"><span class="key-badge">TAB</span> PACK (<span id="hud-bag-value">₽ 0</span>) · <span id="hud-xp-val" class="accent">0 XP</span></div>
       </div>
-      <div id="hud-weapon-name" class="weapon-name">AK-74M</div>
-      <div class="ammo-counter">
-        <span id="hud-mag" class="mag-count">30</span>
-        <span class="ammo-sep">/</span>
-        <span id="hud-reserve" class="reserve-count">90</span>
+
+      <!-- Far Right: Active Field Upgrade with Circular Charge Ring -->
+      <div class="field-upgrade-ring-wrap" title="Field Upgrade [Z]">
+        <svg class="fu-ring-svg" viewBox="0 0 56 56">
+          <circle class="fu-ring-bg" cx="28" cy="28" r="24" />
+          <circle id="hud-fu-ring" class="fu-ring-fill" cx="28" cy="28" r="24" stroke-dasharray="150.8" stroke-dashoffset="0" />
+        </svg>
+        <div id="hud-fu-icon" class="fu-icon-center"></div>
+        <span class="fu-key-tag">Z</span>
       </div>
-      <div class="backpack-hint"><span class="key-badge">TAB</span> BACKPACK (<span id="hud-bag-value">₽ 0</span>)</div>
     </div>
 
     <!-- Click to Lock Pointer Prompt / In-Raid ESC Menu -->
@@ -479,31 +553,38 @@
       </div>
     </div>
 
-    <!-- Loot Container / Backpack Modal -->
-    <div id="loot-modal" class="modal-overlay hidden">
-      <div class="modal-card loot-card">
-        <div class="loot-columns">
-          <div class="loot-col">
-            <div class="panel-header">
-              <h3 id="loot-container-title">CONTAINER</h3>
-              <button id="btn-take-all" class="btn-small">TAKE ALL</button>
-            </div>
-            <div id="loot-container-items" class="item-list"></div>
-          </div>
-          <div class="loot-col">
-            <div class="panel-header">
-              <h3>BACKPACK (<span id="bag-weight">0</span> / <span id="bag-max-weight">25</span> kg)</h3>
-              <span id="bag-total-val" class="accent">₽ 0</span>
-            </div>
-            <div id="loot-backpack-items" class="item-list"></div>
-          </div>
+    <!-- Tactical Non-Blocking Inventory & Container UI (<=70% screen, NEVER covers center crosshair!) -->
+    <div id="loot-modal" class="inv-overlay hidden">
+      <!-- Left: Active Container (only visible when looting a crate/corpse) -->
+      <div id="inv-container-panel" class="inv-panel inv-container-panel hidden">
+        <div class="panel-header" style="margin-bottom:6px;">
+          <h3 id="loot-container-title">CONTAINER</h3>
+          <button id="btn-take-all" class="btn-small">TAKE ALL</button>
         </div>
-        <div class="modal-footer">
-          <span class="hint">Press <b>TAB</b> or <b>ESC</b> or click Close to return to combat</span>
-          <button id="btn-close-loot" class="btn-primary">CLOSE</button>
-        </div>
+        <div id="loot-container-items" class="inv-grid"></div>
       </div>
+
+      <!-- Right (when looting) or Centered Lower Half (when TAB / D-Pad Down): Operator Equipment + Backpack -->
+      <div id="inv-operator-panel" class="inv-panel inv-operator-panel">
+        <div class="panel-header" style="margin-bottom:6px;">
+          <h3>OPERATOR EQUIPMENT</h3>
+          <button id="btn-close-loot" class="btn-small">CLOSE [TAB / B]</button>
+        </div>
+        <div id="inv-op-slots" class="op-equip-grid compact"></div>
+
+        <div class="panel-header" style="margin:8px 0 6px;">
+          <h3>BACKPACK (<span id="bag-weight">0</span> / <span id="bag-max-weight">25</span> kg)</h3>
+          <span id="bag-total-val" class="accent">₽ 0</span>
+        </div>
+        <div id="loot-backpack-items" class="inv-grid"></div>
+      </div>
+
+      <!-- Hover / Controller Action Popout (appears to the right of hovered item slot) -->
+      <div id="item-action-popout" class="item-popout hidden"></div>
     </div>
+
+    <!-- Controller Circular Cursor (controlled by Left Stick inside Inventory / Container / Stash) -->
+    <div id="gp-cursor" class="gp-cursor hidden"></div>
   </div>
 
   <!-- ==================== RAID SUMMARY (EXTRACTED / KIA) ==================== -->
@@ -578,18 +659,19 @@
   </div>
 
   <!-- Scripts -->
-  <script src="js/data.js?v=62"></script>
-  <script src="js/sfx_samples.js?v=22"></script>
-  <script src="js/audio.js?v=56"></script>
-  <script src="js/world.js?v=18"></script>
-  <script src="js/weapons.js?v=61"></script>
-  <script src="js/throwables.js?v=61"></script>
-  <script src="js/enemies.js?v=55"></script>
-  <script src="js/squad.js?v=68"></script>
-  <script src="js/player.js?v=63"></script>
-  <script src="js/gamepad.js?v=63"></script>
+  <script src="js/data.js?v=67"></script>
+  <script src="js/sfx_samples.js?v=21"></script>
+  <script src="js/audio.js?v=55"></script>
+  <script src="js/world.js?v=67"></script>
+  <script src="js/weapons.js?v=59"></script>
+  <script src="js/throwables.js?v=59"></script>
+  <script src="js/enemies.js?v=67"></script>
+  <script src="js/squad.js?v=66"></script>
+  <script src="js/player.js?v=67"></script>
+  <script src="js/gamepad.js?v=67"></script>
   <script src="js/gunsmith.js?v=41"></script>
-  <script src="js/ui.js?v=70"></script>
-  <script src="js/main.js?v=70"></script>
+  <script src="js/matchmaking.js?v=67"></script>
+  <script src="js/ui.js?v=67"></script>
+  <script src="js/main.js?v=67"></script>
 </body>
 </html>

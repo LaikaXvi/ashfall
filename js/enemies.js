@@ -28,16 +28,40 @@ function getAlertSpriteTexture(symbol) {
 }
 
 class Enemy {
-  constructor(scene, world, spawnPos, tier = 'scav') {
+  constructor(scene, world, spawnPos, tier = 'scav', opMeta = null) {
     this.scene = scene;
     this.world = world;
     this.tier = tier;
+    this.isOperator = !!(opMeta && opMeta.isOperator);
+    this.squadName = opMeta ? opMeta.squadName : null;
+    this.playstyle = opMeta ? opMeta.playstyle : 'tactical'; // 'rusher' | 'tactical' | 'marksman' | 'flanker'
     this.dead = false;
+    this.isDowned = false;
+    this.justDowned = false;
+    this.downedHp = 55;
+    this.downedBleedTimer = 14.0;
     this.looted = false;
     this.stunTimer = 0;
 
-    // Tier stats
-    if (tier === 'heavy') {
+    // Tier & Operator Playstyle stats
+    if (this.isOperator) {
+      this.name = opMeta.callsign;
+      const styles = {
+        rusher:   { hp: 105, dmg: 11, fire: 0.20, acc: 0.11, spd: 4.6, wpn: 'mp5k',  col: 0x3b4852 },
+        flanker:  { hp: 115, dmg: 13, fire: 0.24, acc: 0.08, spd: 4.1, wpn: 'ak74m', col: 0x424d3b },
+        tactical: { hp: 130, dmg: 14, fire: 0.26, acc: 0.06, spd: 3.4, wpn: 'ak74m', col: 0x383d42 },
+        marksman: { hp: 120, dmg: 22, fire: 0.72, acc: 0.03, spd: 2.5, wpn: 'm24',   col: 0x4a4536 }
+      };
+      const st = styles[this.playstyle] || styles.tactical;
+      this.maxHp = st.hp;
+      this.damage = st.dmg;
+      this.fireInterval = st.fire;
+      this.accuracy = st.acc;
+      this.speed = st.spd;
+      this.armorColor = st.col;
+      this.headColor = 0x26292d;
+      this.weaponId = st.wpn;
+    } else if (tier === 'heavy') {
       this.name = 'Armored Juggernaut';
       this.maxHp = 190;
       this.damage = 16;
@@ -217,6 +241,17 @@ class Enemy {
 
   takeDamage(amount, attackerPos) {
     if (this.dead) return false;
+    this.justDowned = false;
+
+    if (this.isDowned) {
+      this.downedHp -= amount;
+      if (this.downedHp <= 0) {
+        this.die();
+        return true;
+      }
+      return false;
+    }
+
     this.hp -= amount;
     if (attackerPos && this.state !== 'COMBAT') {
       this.lastKnownPlayerPos = attackerPos.clone();
@@ -232,6 +267,16 @@ class Enemy {
     }
     if (this.hp <= 0) {
       this.hp = 0;
+      if (this.isOperator) {
+        // Operators enter Downed state first (+50 XP); finishing them awards +100 XP!
+        this.isDowned = true;
+        this.justDowned = true;
+        this.state = 'DOWNED';
+        this.group.position.y = -0.45;
+        this.group.rotation.x = -0.55;
+        this._showAlertIndicator('?', 8.0);
+        return false;
+      }
       this.die();
       return true;
     }
@@ -240,9 +285,9 @@ class Enemy {
 
   die() {
     this.dead = true;
+    this.isDowned = false;
     this.state = 'DEAD';
     if (this.alertSprite) this.alertSprite.visible = false;
-    // Tip over corpse
     this.group.rotation.x = -Math.PI / 2;
     this.group.position.y = 0.25;
   }
@@ -347,6 +392,13 @@ class Enemy {
       if (this.indicatorTimer <= 0) {
         this.alertSprite.visible = false;
       }
+    }
+
+    // Downed operator bleeds out over 14s and cannot shoot
+    if (this.isDowned) {
+      this.downedBleedTimer -= dt;
+      if (this.downedBleedTimer <= 0) this.die();
+      return;
     }
 
     // Concussion stun state: staggered & unable to shoot or chase
@@ -460,17 +512,39 @@ class EnemyManager {
     this.world = world;
     this.enemies = [];
 
-    const count = Math.min(zoneConfig.enemyCount, world.spawnPoints.length);
-    // Shuffle spawn points
-    const pts = [...world.spawnPoints].sort(() => Math.random() - 0.5);
+    // Spawn 6 AI Operator Squads (1-3 operators each, randomized playstyles & callsigns!)
+    const squadPrefixes = ['ALPHA', 'BRAVO', 'CHARLIE', 'DELTA', 'ECHO', 'FOXTROT'];
+    const callsigns = [
+      'VIPER', 'PHANTOM', 'REAPER', 'COBALT', 'STRYKER', 'WRAITH',
+      'JACKAL', 'HAWK', 'SPECTRE', 'BANDIT', 'NOMAD', 'SABLE',
+      'KODIAK', 'TALON', 'ZERO', 'ORION', 'BISHOP', 'BLITZ'
+    ];
+    const styles = ['rusher', 'flanker', 'tactical', 'marksman'];
+    const anchorPts = [...world.spawnPoints].sort(() => Math.random() - 0.5);
 
-    for (let i = 0; i < count; i++) {
-      const r = Math.random();
-      let tier = 'scav';
-      if (r < zoneConfig.heavyChance) tier = 'heavy';
-      else if (r < zoneConfig.heavyChance + zoneConfig.raiderChance) tier = 'raider';
-
-      this.enemies.push(new Enemy(scene, world, pts[i], tier));
+    let nameIdx = 0;
+    for (let s = 0; s < 6; s++) {
+      const anchor = anchorPts[s % anchorPts.length] || new THREE.Vector3((s - 3) * 18, 0, -20);
+      const squadSize = 1 + Math.floor(Math.random() * 3); // 1 to 3 operators per squad
+      for (let m = 0; m < squadSize; m++) {
+        const off = new THREE.Vector3((m - 1) * 2.4, 0, (m % 2) * 2.0);
+        const pos = anchor.clone().add(off);
+        const style = styles[Math.floor(Math.random() * styles.length)];
+        const callsign = `[${squadPrefixes[s]}] ${callsigns[nameIdx % callsigns.length]}`;
+        nameIdx++;
+        const op = new Enemy(scene, world, pos, 'raider', {
+          isOperator: true,
+          squadName: squadPrefixes[s],
+          callsign,
+          playstyle: style
+        });
+        // Mark corpse loot items unrevealed for progressive search reveal
+        if (op.loot) {
+          op.loot.forEach(it => { it.revealed = false; });
+          op.loot.push({ id: 'dogtag', qty: 1, revealed: false });
+        }
+        this.enemies.push(op);
+      }
     }
   }
 

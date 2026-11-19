@@ -54,13 +54,21 @@ class Player {
     this.maxArmor = this.plateSlots * 50;
     this.armor = this.maxArmor;
     this.armorId = loadoutState.armor || null;
-    this.plates = loadoutState.plates !== undefined ? loadoutState.plates : 3;
+    this.plates = Math.min(6, loadoutState.plates !== undefined ? loadoutState.plates : 3);
     this.stamina = 100;
     this.medkits = loadoutState.medkits || 0;
     this.lethal = loadoutState.lethal || 'frag_grenade';
     this.lethalQty = loadoutState.lethalQty !== undefined ? loadoutState.lethalQty : 2;
     this.tactical = loadoutState.tactical || 'smoke_grenade';
     this.tacticalQty = loadoutState.tacticalQty !== undefined ? loadoutState.tacticalQty : 2;
+    this.backpackId = loadoutState.backpack || 'bag_small';
+    this.backpackMaxSlots = (GAME_DATA.ITEMS[this.backpackId] && GAME_DATA.ITEMS[this.backpackId].slots) || 8;
+    this.fieldUpgrade = loadoutState.fieldUpgrade || 'fu_ammo_box';
+    this.fieldUpgradeCharge = 100; // starts ready (0..100%)
+    this.killstreak = loadoutState.killstreak || null;
+    this.melee = loadoutState.melee || 'melee_knife';
+    this.uavTimer = 0;
+    this.deadSilenceTimer = 0;
 
     // Weapons (with Gunsmith attachment mods)
     const allMods = loadoutState.weaponMods || {};
@@ -912,6 +920,29 @@ class Player {
     return false;
   }
 
+  activateFieldUpgrade() {
+    if (!this.fieldUpgrade || (!window.DEV_MODE && this.fieldUpgradeCharge < 100)) return null;
+    this.fieldUpgradeCharge = 0;
+    const def = GAME_DATA.ITEMS[this.fieldUpgrade];
+    if (this.fieldUpgrade === 'fu_ammo_box') {
+      this.plates = Math.min(6, this.plates + 3);
+      this.lethalQty = Math.min(4, this.lethalQty + 1);
+      this.tacticalQty = Math.min(4, this.tacticalQty + 1);
+      const pDef = this.getActiveWeaponDef();
+      if (pDef && pDef.ammoType) this.addToBackpack(pDef.ammoType, 60);
+      window.soundEngine.playMagIn();
+      return 'Munitions Box deployed (+Ammo, +3 Plates, +Throwables)';
+    } else if (this.fieldUpgrade === 'fu_dead_silence') {
+      this.deadSilenceTimer = 12.0;
+      this.stamina = 100;
+      window.soundEngine.playHeal();
+      return 'Dead Silence active (12s silent footsteps)';
+    } else {
+      window.soundEngine.playMagIn();
+      return `${def ? def.name : 'Field Upgrade'} deployed!`;
+    }
+  }
+
   onSprintKeyDown() {
     const now = performance.now();
     const isDoubleTap = (now - this.lastShiftPressTime) < 380;
@@ -989,6 +1020,13 @@ class Player {
 
   update(dt) {
     if (this.slideCooldown > 0) this.slideCooldown = Math.max(0, this.slideCooldown - dt);
+    if (this.uavTimer > 0) this.uavTimer = Math.max(0, this.uavTimer - dt);
+    if (this.deadSilenceTimer > 0) this.deadSilenceTimer = Math.max(0, this.deadSilenceTimer - dt);
+    if (this.fieldUpgrade && this.fieldUpgradeCharge < 100) {
+      const fuDef = GAME_DATA.ITEMS[this.fieldUpgrade];
+      const chargeTime = (fuDef && fuDef.chargeTime) || 45;
+      this.fieldUpgradeCharge = Math.min(100, this.fieldUpgradeCharge + (100 / chargeTime) * dt);
+    }
 
     // Hold crouch (>= 0.28s) enters prone state
     if (this.crouchKeyHeld && !this.isSliding) {

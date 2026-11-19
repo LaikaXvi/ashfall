@@ -14,6 +14,9 @@ class GamepadController {
     this._slideRumbleTimer = 0;
     this._menuNavCooldown = 0;
     this._focusedEl = null;
+    this.cursorX = window.innerWidth * 0.65;
+    this.cursorY = window.innerHeight * 0.65;
+    this._lastHoverSlot = null;
 
     window.addEventListener('gamepadconnected', (e) => {
       this.connected = true;
@@ -212,17 +215,77 @@ class GamepadController {
     if (this._justPressed(pad, 9) && actions.togglePause) {
       actions.togglePause();
     }
-    // Back / Select (8): Toggle Backpack Modal
-    if (this._justPressed(pad, 8) && actions.toggleBackpack) {
+    // Back / Select (8) or D-Pad Down (13): Toggle Backpack Modal
+    if ((this._justPressed(pad, 8) || this._justPressed(pad, 13)) && actions.toggleBackpack) {
       actions.toggleBackpack();
-    }
-
-    // If modal is open, allow B (1) to close modal and X (2) to Take All
-    if (ctx.isModalOpen) {
-      if (this._justPressed(pad, 1) && actions.closeModal) actions.closeModal();
-      if (this._justPressed(pad, 2) && actions.takeAll) actions.takeAll();
       this._snapshot(pad);
       return;
+    }
+
+    const gpCursor = document.getElementById('gp-cursor');
+
+    // If Inventory / Container modal is open: Left-Stick Circular Cursor + Controller Item Actions
+    if (ctx.isModalOpen) {
+      if (gpCursor) {
+        gpCursor.classList.remove('hidden');
+        const speed = 640;
+        this.cursorX = THREE.MathUtils.clamp(this.cursorX + ls.x * speed * dt, 10, window.innerWidth - 10);
+        this.cursorY = THREE.MathUtils.clamp(this.cursorY + ls.y * speed * dt, 10, window.innerHeight - 10);
+        gpCursor.style.left = `${this.cursorX}px`;
+        gpCursor.style.top = `${this.cursorY}px`;
+
+        // Hit-test slot or button under circular cursor
+        const el = document.elementFromPoint(this.cursorX, this.cursorY);
+        const slot = el ? el.closest('.inv-slot') : null;
+        if (this._lastHoverSlot && this._lastHoverSlot !== slot) {
+          this._lastHoverSlot.classList.remove('gp-hover');
+        }
+        this._lastHoverSlot = slot;
+        if (slot) {
+          slot.classList.add('gp-hover');
+          if (ui && !slot.classList.contains('empty-slot') && !slot.classList.contains('searching')) {
+            const ctxName = slot.dataset.context;
+            const idx = parseInt(slot.dataset.idx, 10);
+            const item = ctxName === 'container'
+              ? (ui.activeLootSource && ui.activeLootSource.items[idx])
+              : (player && player.backpack[idx]);
+            if (item && (!ui._hoveredSlot || ui._hoveredSlot.el !== slot)) {
+              ui.showItemPopout(slot, ctxName, item, idx);
+            }
+          }
+        } else if (ui && ui._hoveredSlot) {
+          ui.hideItemPopout();
+        }
+
+        // A (0): Quick-Move hovered item or click hovered button
+        if (this._justPressed(pad, 0)) {
+          if (slot && ui && ui._hoveredSlot) {
+            ui.handleSlotAction('quick');
+          } else if (el && el.closest('button')) {
+            el.closest('button').click();
+          }
+        }
+        // Y (3): Split Stack
+        if (this._justPressed(pad, 3) && ui && ui._hoveredSlot) {
+          ui.handleSlotAction('split');
+        }
+        // X (2): Drop hovered backpack item (or Take All if not over backpack)
+        if (this._justPressed(pad, 2)) {
+          if (ui && ui._hoveredSlot && ui._hoveredSlot.context === 'backpack') {
+            ui.handleSlotAction('drop');
+          } else if (actions.takeAll) {
+            actions.takeAll();
+          }
+        }
+      }
+      if (this._justPressed(pad, 1) && actions.closeModal) {
+        if (gpCursor) gpCursor.classList.add('hidden');
+        actions.closeModal();
+      }
+      this._snapshot(pad);
+      return;
+    } else if (gpCursor && !gpCursor.classList.contains('hidden')) {
+      gpCursor.classList.add('hidden');
     }
 
     if (ctx.isPaused || !player) {
