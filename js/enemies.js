@@ -27,6 +27,68 @@ function getAlertSpriteTexture(symbol) {
   return tex;
 }
 
+// Shared Overhead Circular Bleedout / Revive Timer with Medical Cross in Center
+window.drawDownedBleedoutCanvas = function drawDownedBleedoutCanvas(canvas, pct, opts = {}) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+  const cx = w / 2;
+  const cy = h / 2;
+  const r = w * 0.38;
+
+  ctx.clearRect(0, 0, w, h);
+
+  // Dark circular backdrop
+  ctx.beginPath();
+  ctx.arc(cx, cy, r + 6, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(10, 12, 12, 0.82)';
+  ctx.fill();
+
+  // Outer track ring
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.18)';
+  ctx.lineWidth = 10;
+  ctx.stroke();
+
+  if (opts.isReviving) {
+    // Cyan/Green revive fill ring
+    const revPct = Math.max(0, Math.min(1, opts.revivePct || 0));
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * revPct);
+    ctx.strokeStyle = '#69f0ae';
+    ctx.lineWidth = 10;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  } else if (opts.isDead) {
+    // Dashed red ring for eliminated-but-revivable ally
+    ctx.save();
+    ctx.setLineDash([12, 8]);
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.strokeStyle = '#ff5252';
+    ctx.lineWidth = 9;
+    ctx.stroke();
+    ctx.restore();
+  } else {
+    // Bleedout countdown ring draining clockwise
+    const clamped = Math.max(0, Math.min(1, pct));
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * clamped);
+    ctx.strokeStyle = clamped < 0.35 ? '#ff4444' : (opts.isAlly ? '#64b5f6' : '#ffca28');
+    ctx.lineWidth = 10;
+    ctx.lineCap = 'round';
+    ctx.stroke();
+  }
+
+  // Medical cross in the middle
+  const armLen = w * 0.28;
+  const armThick = w * 0.105;
+  ctx.fillStyle = opts.isReviving ? '#69f0ae' : (opts.isDead ? '#ff6b6b' : '#ffffff');
+  ctx.fillRect(cx - armLen / 2, cy - armThick / 2, armLen, armThick);
+  ctx.fillRect(cx - armThick / 2, cy - armLen / 2, armThick, armLen);
+};
+
 class Enemy {
   constructor(scene, world, spawnPos, tier = 'scav', opMeta = null) {
     this.scene = scene;
@@ -39,7 +101,10 @@ class Enemy {
     this.isDowned = false;
     this.justDowned = false;
     this.downedHp = 55;
-    this.downedBleedTimer = 14.0;
+    this.downedBleedMax = 25.0;
+    this.downedBleedTimer = 25.0;
+    this.downedBy = null;
+    this._bleedDrawAccum = 0;
     this.looted = false;
     this.stunTimer = 0;
 
@@ -217,6 +282,22 @@ class Enemy {
     this.alertSprite.scale.set(0.65, 0.65, 1);
     this.alertSprite.visible = false;
     this.group.add(this.alertSprite);
+
+    // Overhead circular bleedout timer with medical cross in middle (for downed operators)
+    this.bleedCanvas = document.createElement('canvas');
+    this.bleedCanvas.width = 128;
+    this.bleedCanvas.height = 128;
+    this.bleedTex = new THREE.CanvasTexture(this.bleedCanvas);
+    const bleedMat = new THREE.SpriteMaterial({
+      map: this.bleedTex,
+      transparent: true,
+      depthTest: false
+    });
+    this.bleedSprite = new THREE.Sprite(bleedMat);
+    this.bleedSprite.position.set(0, 1.85, 0);
+    this.bleedSprite.scale.set(0.75, 0.75, 1);
+    this.bleedSprite.visible = false;
+    this.group.add(this.bleedSprite);
   }
 
   _showAlertIndicator(symbol, duration = 2.0) {
@@ -239,11 +320,12 @@ class Enemy {
     }
   }
 
-  takeDamage(amount, attackerPos) {
+  takeDamage(amount, attackerPos, attackerInfo = null) {
     if (this.dead) return false;
     this.justDowned = false;
 
     if (this.isDowned) {
+      if (attackerInfo) this.downedBy = attackerInfo;
       this.downedHp -= amount;
       if (this.downedHp <= 0) {
         this.die();
@@ -268,13 +350,21 @@ class Enemy {
     if (this.hp <= 0) {
       this.hp = 0;
       if (this.isOperator) {
-        // Operators enter Downed state first (+50 XP); finishing them awards +100 XP!
+        // Operators enter Downed state first (+50 XP); finishing or bleedout awards +100 XP!
         this.isDowned = true;
         this.justDowned = true;
+        this.downedHp = 55;
+        this.downedBleedTimer = this.downedBleedMax;
+        this.downedBy = attackerInfo || { name: 'YOU', isPlayer: true, weaponId: '', weaponName: '' };
         this.state = 'DOWNED';
         this.group.position.y = -0.45;
         this.group.rotation.x = -0.55;
-        this._showAlertIndicator('?', 8.0);
+        if (this.alertSprite) this.alertSprite.visible = false;
+        if (this.bleedSprite) {
+          window.drawDownedBleedoutCanvas(this.bleedCanvas, 1, { isAlly: false });
+          this.bleedTex.needsUpdate = true;
+          this.bleedSprite.visible = true;
+        }
         return false;
       }
       this.die();
@@ -288,6 +378,7 @@ class Enemy {
     this.isDowned = false;
     this.state = 'DEAD';
     if (this.alertSprite) this.alertSprite.visible = false;
+    if (this.bleedSprite) this.bleedSprite.visible = false;
     this.group.rotation.x = -Math.PI / 2;
     this.group.position.y = 0.25;
   }
@@ -372,7 +463,7 @@ class Enemy {
     return false;
   }
 
-  update(dt, player, onEnemyFire) {
+  update(dt, player, onEnemyFire, onEnemyBleedout) {
     if (this.dead) return;
 
     if (this.muzzleTimer > 0) {
@@ -394,10 +485,38 @@ class Enemy {
       }
     }
 
-    // Downed operator bleeds out over 14s and cannot shoot
+    // Downed operator crawls away towards safety and bleeds out over 25s
     if (this.isDowned) {
       this.downedBleedTimer -= dt;
-      if (this.downedBleedTimer <= 0) this.die();
+      // Crawl slowly away from shooter
+      const threat = this.lastKnownPlayerPos || (player && player.position);
+      if (threat) {
+        const awayX = this.position.x - threat.x;
+        const awayZ = this.position.z - threat.z;
+        const dist = Math.hypot(awayX, awayZ) || 1;
+        const crawlSpd = 0.95;
+        const vx = (awayX / dist) * crawlSpd * dt;
+        const vz = (awayZ / dist) * crawlSpd * dt;
+        if (!this._collides(this.position.x + vx, this.position.z, 0.42)) {
+          this.position.x += vx;
+          this.group.position.x = this.position.x;
+        }
+        if (!this._collides(this.position.x, this.position.z + vz, 0.42)) {
+          this.position.z += vz;
+          this.group.position.z = this.position.z;
+        }
+        this.group.rotation.y = Math.atan2(awayX, awayZ);
+      }
+      this._bleedDrawAccum += dt;
+      if (this.bleedSprite && this._bleedDrawAccum >= 0.06) {
+        this._bleedDrawAccum = 0;
+        window.drawDownedBleedoutCanvas(this.bleedCanvas, this.downedBleedTimer / this.downedBleedMax, { isAlly: false });
+        this.bleedTex.needsUpdate = true;
+      }
+      if (this.downedBleedTimer <= 0) {
+        this.die();
+        if (onEnemyBleedout) onEnemyBleedout(this);
+      }
       return;
     }
 
@@ -564,9 +683,9 @@ class EnemyManager {
     }
   }
 
-  update(dt, player, onEnemyFire) {
+  update(dt, player, onEnemyFire, onEnemyBleedout) {
     for (const e of this.enemies) {
-      e.update(dt, player, onEnemyFire);
+      e.update(dt, player, onEnemyFire, onEnemyBleedout);
     }
   }
 }
