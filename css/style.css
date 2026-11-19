@@ -587,6 +587,10 @@ button:disabled {
   transition: opacity 0.35s ease, transform 0.35s ease;
 }
 
+.kill-feed-item.downed {
+  border-left-color: #f5a623;
+}
+
 .kill-feed-item.headshot {
   border-left-color: #ff4242;
 }
@@ -605,6 +609,25 @@ button:disabled {
   color: #b7c2bc;
   font-size: 11px;
   font-weight: 600;
+}
+
+.kf-action {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  padding: 1px 4px;
+  border-radius: 2px;
+}
+
+.kf-action.downed {
+  color: #f5c542;
+  background: rgba(245, 197, 66, 0.14);
+}
+
+.kf-action.eliminated {
+  color: #ff4242;
+  background: rgba(255, 66, 66, 0.16);
 }
 
 .kf-hs {
