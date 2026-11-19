@@ -1624,13 +1624,9 @@ class GameUI {
 
     const modal = document.getElementById('loot-modal');
     const cPanel = document.getElementById('inv-container-panel');
-    modal.classList.remove('hidden', 'mode-container', 'mode-backpack');
-    if (this.activeLootSource) {
-      modal.classList.add('mode-container');
-      if (cPanel) cPanel.classList.remove('hidden');
-    } else {
-      modal.classList.add('mode-backpack');
-      if (cPanel) cPanel.classList.add('hidden');
+    modal.classList.remove('hidden');
+    if (cPanel) {
+      cPanel.classList.toggle('hidden', !this.activeLootSource);
     }
     this.renderLootModal(player);
   }
