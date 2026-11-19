@@ -121,6 +121,7 @@
     isModalOpen = false;
 
     document.getElementById('hud-feed').innerHTML = '';
+    ui.clearCombatHUD();
     document.getElementById('extract-banner').classList.add('hidden');
     document.getElementById('pointer-lock-overlay').classList.add('hidden');
     document.getElementById('loot-modal').classList.add('hidden');
@@ -356,24 +357,26 @@
     }
   });
 
-  function onThrowableHit(isHead, killed, enemy) {
-    window.soundEngine.playHitmarker(isHead);
-    ui.triggerHitmarker(isHead);
+  function onThrowableHit(isHead, killed, enemy, meta = {}) {
+    window.soundEngine.playHitmarker(isHead, killed);
+    ui.triggerHitmarker(isHead, killed);
     if (killed) {
       raidKills += 1;
-      ui.addFeedMessage(`Eliminated ${enemy.name}${isHead ? ' [HEADSHOT]' : ''}`, '#f5a623');
+      ui.addKillFeedEntry(enemy.name, meta.weaponName || 'LETHAL', isHead);
+      ui.triggerKillFeedback(enemy, isHead, meta);
     }
   }
 
   function firePlayerWeapon() {
     const slotObj = player.getActiveWeaponSlot();
     if (!slotObj) return;
-    const fired = weaponSystem.tryFire(player, slotObj, world, enemyManager, (isHead, killed, enemy) => {
-      window.soundEngine.playHitmarker(isHead);
-      ui.triggerHitmarker(isHead);
+    const fired = weaponSystem.tryFire(player, slotObj, world, enemyManager, (isHead, killed, enemy, meta = {}) => {
+      window.soundEngine.playHitmarker(isHead, killed);
+      ui.triggerHitmarker(isHead, killed);
       if (killed) {
         raidKills += 1;
-        ui.addFeedMessage(`Eliminated ${enemy.name}${isHead ? ' [HEADSHOT]' : ''}`, '#f5a623');
+        ui.addKillFeedEntry(enemy.name, meta.weaponName || '', isHead);
+        ui.triggerKillFeedback(enemy, isHead, meta);
       }
     });
     if (fired && gamepad && gamepad.connected) {
@@ -561,8 +564,7 @@
             raidTimeLeft,
             (msg, color) => ui.addFeedMessage(msg, color),
             (allyName, enemyName) => {
-              raidKills += 1;
-              ui.addFeedMessage(`${allyName} eliminated ${enemyName}`, '#64b5f6');
+              // AI squadmate kills are intentionally omitted from the player kill feed
             }
           );
         }
