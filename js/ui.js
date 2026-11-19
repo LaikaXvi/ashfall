@@ -1530,6 +1530,21 @@ class GameUI {
     el.style.borderColor = color;
     el.style.color = color;
     el.classList.remove('hidden', 'pop');
+
+    // Align toast Y centerpoint with the exact midpoint of the bottom health & ammo HUD widgets
+    const leftHud = document.querySelector('.hud-bottom-left');
+    const rightHud = document.querySelector('.hud-bottom-right-cluster');
+    if (leftHud && rightHud) {
+      const lRect = leftHud.getBoundingClientRect();
+      const rRect = rightHud.getBoundingClientRect();
+      if (lRect.height > 0 && rRect.height > 0) {
+        const midY = ((lRect.top + lRect.height / 2) + (rRect.top + rRect.height / 2)) / 2;
+        const toastH = el.offsetHeight || 30;
+        el.style.bottom = 'auto';
+        el.style.top = `${Math.round(midY - toastH / 2)}px`;
+      }
+    }
+
     void el.offsetWidth;
     el.classList.add('pop');
     clearTimeout(this._centerToastTimer);
