@@ -5,7 +5,9 @@ class SquadMate {
     this.scene = scene;
     this.world = world;
     this.name = memberInfo.name || 'ALLY';
+    this.squadColor = memberInfo.squadColor || '#69f0ae';
     this.weaponId = memberInfo.weaponId || 'ak74m';
+    this.lastPlayerDist = 0;
     this.position = spawnPos.clone();
 
     // Live survival & gear state
@@ -63,7 +65,7 @@ class SquadMate {
     const vestMat = new THREE.MeshLambertMaterial({ color: 0x3b4d3e });
     const gearMat = new THREE.MeshLambertMaterial({ color: 0x1a1d20 });
     const skinMat = new THREE.MeshLambertMaterial({ color: 0xd1a483 });
-    const accentMat = new THREE.MeshBasicMaterial({ color: 0x69f0ae });
+    const accentMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(this.squadColor || '#69f0ae') });
 
     const torso = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.56, 0.25), uniformMat);
     torso.position.set(0, 1.18, 0);
@@ -135,25 +137,28 @@ class SquadMate {
     this.group = g;
   }
 
-  _redrawTag(statusLabel, color = '#69f0ae') {
-    const key = `${statusLabel}|${Math.ceil(this.hp)}|${Math.ceil(this.armor)}`;
+  _redrawTag(statusLabel, statusColor = null) {
+    const distM = Math.round(this.lastPlayerDist || 0);
+    const nameColor = this.squadColor || '#69f0ae';
+    const borderCol = statusColor || nameColor;
+    const key = `${statusLabel}|${Math.ceil(this.hp)}|${distM}|${borderCol}`;
     if (this._lastTagState === key) return;
     this._lastTagState = key;
 
     const ctx = this.tagCanvas.getContext('2d');
     ctx.clearRect(0, 0, 320, 72);
-    ctx.fillStyle = 'rgba(10, 16, 13, 0.78)';
-    ctx.fillRect(8, 6, 304, 58);
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
-    ctx.strokeRect(8, 6, 304, 58);
-    ctx.font = 'bold 20px monospace';
-    ctx.fillStyle = color;
+    ctx.fillStyle = 'rgba(10, 16, 13, 0.80)';
+    ctx.fillRect(6, 6, 308, 60);
+    ctx.strokeStyle = borderCol;
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(6, 6, 308, 60);
+    ctx.font = 'bold 19px monospace';
+    ctx.fillStyle = nameColor;
     ctx.textAlign = 'center';
-    ctx.fillText(this.name, 160, 28);
-    ctx.font = '15px monospace';
+    ctx.fillText(this.name, 160, 27);
+    ctx.font = 'bold 14px monospace';
     ctx.fillStyle = '#dce2dc';
-    ctx.fillText(`${statusLabel} · HP ${Math.ceil(this.hp)}`, 160, 50);
+    ctx.fillText(`${distM}m · ${statusLabel} · HP ${Math.ceil(this.hp)}`, 160, 51);
     this.tagTex.needsUpdate = true;
   }
 
@@ -354,6 +359,10 @@ class SquadMate {
 
   update(dt, player, enemyManager, weaponSystem, raidTimeLeft, onComms, onAllyKill, allAllies = [], onAllyEvent = null) {
     if (this.extracted) return;
+
+    if (player && player.position) {
+      this.lastPlayerDist = Math.hypot(this.position.x - player.position.x, this.position.z - player.position.z);
+    }
 
     // Dead ally: still update overhead revivable medical-cross sprite (can be slow-revived!)
     if (this.dead) {
@@ -695,6 +704,7 @@ class SquadManager {
     this.allies = [];
     this.announced = false;
 
+    const squadColors = (GAME_DATA && GAME_DATA.SQUAD_COLORS) || ['#69f0ae', '#42a5f5', '#ffeb3b', '#ff69b4'];
     const alliesOnly = (partyMembers || []).filter(m => !m.isSelf);
     alliesOnly.forEach((m, idx) => {
       const side = idx % 2 === 0 ? -1 : 1;
@@ -705,6 +715,7 @@ class SquadManager {
       );
       this.allies.push(new SquadMate(scene, world, spawn, {
         name: m.name,
+        squadColor: m.squadColor || squadColors[(idx + 1) % squadColors.length],
         weaponId: m.weaponId || (idx % 2 === 0 ? 'ak74m' : 'mp5k'),
         flankSide: side
       }));
