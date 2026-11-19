@@ -865,6 +865,7 @@ class GameUI {
 
   addFeedMessage(text, color = '#f5a623') {
     const feed = document.getElementById('hud-feed');
+    if (!feed) return;
     const div = document.createElement('div');
     div.className = 'feed-item';
     div.style.borderRightColor = color;
@@ -873,12 +874,167 @@ class GameUI {
     setTimeout(() => div.remove(), 3500);
   }
 
-  triggerHitmarker(headshot = false) {
+  addKillFeedEntry(enemyName, weaponName = '', isHead = false) {
+    const kf = document.getElementById('hud-kill-feed');
+    if (!kf) return;
+
+    const row = document.createElement('div');
+    row.className = 'kill-feed-item' + (isHead ? ' headshot' : '');
+
+    const playerSpan = document.createElement('span');
+    playerSpan.className = 'kf-player';
+    playerSpan.textContent = 'YOU';
+    row.appendChild(playerSpan);
+
+    if (weaponName) {
+      const wpnSpan = document.createElement('span');
+      wpnSpan.className = 'kf-weapon';
+      wpnSpan.textContent = `[${weaponName.toUpperCase()}]`;
+      row.appendChild(wpnSpan);
+    }
+
+    if (isHead) {
+      const hsSpan = document.createElement('span');
+      hsSpan.className = 'kf-hs';
+      hsSpan.textContent = 'HS';
+      row.appendChild(hsSpan);
+    }
+
+    const victimSpan = document.createElement('span');
+    victimSpan.className = 'kf-victim';
+    victimSpan.textContent = enemyName;
+    row.appendChild(victimSpan);
+
+    kf.appendChild(row);
+    while (kf.children.length > 5) {
+      kf.removeChild(kf.firstChild);
+    }
+
+    setTimeout(() => row.classList.add('fading'), 4000);
+    setTimeout(() => row.remove(), 4400);
+  }
+
+  triggerHitmarker(headshot = false, killed = false) {
     const hm = document.getElementById('hitmarker');
-    hm.classList.toggle('headshot', headshot);
-    hm.style.opacity = '1';
+    if (!hm) return;
+    const now = performance.now();
+    if (killed) {
+      this._hmKillUntil = now + 260;
+    }
+    const isKillState = killed || (this._hmKillUntil && now < this._hmKillUntil);
+
+    hm.classList.remove('active', 'headshot', 'kill');
+    void hm.offsetWidth; // restart pop animation on rapid hits
+    hm.classList.add('active');
+    if (headshot) hm.classList.add('headshot');
+    if (isKillState) hm.classList.add('kill');
+
     clearTimeout(this._hmTimer);
-    this._hmTimer = setTimeout(() => { hm.style.opacity = '0'; }, 120);
+    this._hmTimer = setTimeout(() => {
+      hm.classList.remove('active', 'headshot', 'kill');
+    }, isKillState ? 260 : 150);
+  }
+
+  triggerKillFeedback(enemy, isHead = false, meta = {}) {
+    const totalEl = document.getElementById('hud-xp-total');
+    const eventsEl = document.getElementById('hud-xp-events');
+    if (!totalEl || !eventsEl) return;
+
+    const now = performance.now();
+    if (!this._lastKillTime || now - this._lastKillTime > 4000) {
+      this._killStreak = 1;
+    } else {
+      this._killStreak = (this._killStreak || 0) + 1;
+    }
+    this._lastKillTime = now;
+
+    // Calculate MW-style XP breakdown
+    const tier = enemy && enemy.tier ? enemy.tier : 'scav';
+    const baseXp = tier === 'heavy' ? 250 : (tier === 'raider' ? 150 : 100);
+    let earnedXp = baseXp;
+    const bonuses = [];
+
+    if (isHead) {
+      earnedXp += 50;
+      bonuses.push({ label: 'HEADSHOT', xp: 50 });
+    }
+    if (meta && meta.isLethal) {
+      earnedXp += 50;
+      bonuses.push({ label: meta.weaponName === 'THROWING KNIFE' ? 'KNIFE KILL' : 'LETHAL KILL', xp: 50 });
+    }
+    if (meta && typeof meta.distance === 'number' && meta.distance >= 35) {
+      earnedXp += 25;
+      bonuses.push({ label: 'LONGSHOT', xp: 25 });
+    }
+    if (this._killStreak === 2) {
+      earnedXp += 50;
+      bonuses.push({ label: 'DOUBLE KILL', xp: 50 });
+    } else if (this._killStreak === 3) {
+      earnedXp += 100;
+      bonuses.push({ label: 'TRIPLE KILL', xp: 100 });
+    } else if (this._killStreak >= 4) {
+      earnedXp += 150;
+      bonuses.push({ label: 'MULTI KILL', xp: 150 });
+    }
+
+    // Accumulate visible XP total on rapid kills (just like COD MW)
+    this._activeXpTotal = (this._activeXpTotal || 0) + earnedXp;
+    totalEl.textContent = `+${this._activeXpTotal} XP`;
+    totalEl.classList.remove('bump');
+    void totalEl.offsetWidth;
+    totalEl.classList.add('visible', 'bump');
+
+    // Primary elimination row with skull icon
+    const skullSvg = '<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M8 1C4.7 1 2 3.4 2 6.5c0 1.9 1 3.5 2.5 4.5V13c0 .6.4 1 1 1h5c.6 0 1-.4 1-1v-2c1.5-1 2.5-2.6 2.5-4.5C14 3.4 11.3 1 8 1zM5.6 8.2a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6zm4.8 0a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6zM6.5 12v-1.2h1V12h-1zm2 0v-1.2h1V12h-1z"/></svg>';
+    const killLabel = tier === 'heavy' ? 'JUGGERNAUT ELIMINATED' : 'KILL';
+
+    const mainRow = document.createElement('div');
+    mainRow.className = 'xp-event-row kill-main';
+    mainRow.innerHTML = `<span class="xp-skull">${skullSvg}</span><span>${killLabel}</span><span class="xp-event-val">+${baseXp}</span>`;
+    eventsEl.prepend(mainRow);
+
+    for (const b of bonuses) {
+      const bRow = document.createElement('div');
+      bRow.className = 'xp-event-row bonus';
+      bRow.innerHTML = `<span>${b.label}</span><span class="xp-event-val">+${b.xp}</span>`;
+      eventsEl.appendChild(bRow);
+    }
+
+    while (eventsEl.children.length > 4) {
+      eventsEl.removeChild(eventsEl.lastChild);
+    }
+
+    clearTimeout(this._xpFadeTimer);
+    clearTimeout(this._xpClearTimer);
+    this._xpFadeTimer = setTimeout(() => {
+      totalEl.classList.remove('visible', 'bump');
+      Array.from(eventsEl.children).forEach(el => el.classList.add('fading'));
+    }, 2000);
+    this._xpClearTimer = setTimeout(() => {
+      this._activeXpTotal = 0;
+      eventsEl.innerHTML = '';
+    }, 2350);
+  }
+
+  clearCombatHUD() {
+    const kf = document.getElementById('hud-kill-feed');
+    if (kf) kf.innerHTML = '';
+    const totalEl = document.getElementById('hud-xp-total');
+    if (totalEl) {
+      totalEl.textContent = '';
+      totalEl.classList.remove('visible', 'bump');
+    }
+    const eventsEl = document.getElementById('hud-xp-events');
+    if (eventsEl) eventsEl.innerHTML = '';
+    const hm = document.getElementById('hitmarker');
+    if (hm) hm.classList.remove('active', 'headshot', 'kill');
+    clearTimeout(this._hmTimer);
+    clearTimeout(this._xpFadeTimer);
+    clearTimeout(this._xpClearTimer);
+    this._hmKillUntil = 0;
+    this._activeXpTotal = 0;
+    this._killStreak = 0;
+    this._lastKillTime = 0;
   }
 
   triggerDamageFlash() {
