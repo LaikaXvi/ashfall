@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ASHFALL // 3D Extraction Looter-Shooter</title>
-  <link rel="stylesheet" href="css/style.css?v=67" />
+  <link rel="stylesheet" href="css/style.css?v=68" />
   <!-- Three.js r128 UMD for zero-build compatibility (works on both http:// and file://) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
@@ -131,34 +131,34 @@
       </aside>
     </section>
 
-    <!-- VIEW 1: PRE-MATCH STEP 1 — LOADOUT SETUP (64-SLOT STASH GRID + OPERATOR & BACKPACK) -->
-    <main id="menu-view-deploy" class="menu-tab-view two-col-grid hidden">
-      <section class="panel">
+    <!-- VIEW 1: PRE-MATCH STEP 1 — LOADOUT SETUP (64-SLOT STASH GRID + BACKPACK & OPERATOR) -->
+    <main id="menu-view-deploy" class="menu-tab-view edge-compact-layout hidden">
+      <section class="panel edge-panel-left deploy-stash-panel">
         <div class="panel-header">
           <h2>STASH GRID (64 SLOTS)</h2>
-          <span class="sub">CLICK ITEM TO EQUIP / PACK</span>
+          <span class="sub">CLICK TO EQUIP / PACK</span>
         </div>
         <div id="prematch-stash-grid" class="stash-grid-64"></div>
       </section>
 
-      <section class="panel" style="display:flex;flex-direction:column;justify-content:space-between;gap:12px;">
+      <section class="panel edge-panel-right deploy-loadout-panel">
         <div>
           <div class="panel-header">
-            <h2>OPERATOR EQUIPMENT</h2>
+            <h2>BACKPACK (<span id="prematch-bag-count">0/8</span>)</h2>
             <span id="prematch-party-role" class="sub" style="color:#69f0ae;">SOLO // PARTY LEADER</span>
           </div>
-          <div id="prematch-op-slots" class="op-equip-grid"></div>
-
-          <div class="panel-header" style="margin-top:12px;">
-            <h3>BACKPACK (<span id="prematch-bag-count">0/8</span>)</h3>
-            <span class="sub">ADDITIONAL RAID ITEMS</span>
-          </div>
           <div id="prematch-bag-grid" class="inv-grid-compact"></div>
+
+          <div class="panel-header" style="margin-top:8px;">
+            <h3>OPERATOR EQUIPMENT</h3>
+            <span class="sub">CLICK TO UNEQUIP</span>
+          </div>
+          <div id="prematch-op-slots" class="op-equip-grid"></div>
         </div>
 
         <div id="deploy-loadout-summary" class="deploy-summary-bar"></div>
-        <div style="display:flex;justify-content:flex-end;gap:10px;">
-          <button id="btn-prematch-next" class="btn-primary btn-deploy" style="width:auto;padding:12px 26px;">SELECT DEPLOYMENT ZONE →</button>
+        <div style="display:flex;justify-content:flex-end;gap:8px;">
+          <button id="btn-prematch-next" class="btn-primary btn-deploy" style="width:auto;padding:9px 20px;">SELECT DEPLOYMENT ZONE →</button>
         </div>
       </section>
     </main>
@@ -234,8 +234,8 @@
     </main>
 
     <!-- VIEW 2: STASH & TRADER TAB -->
-    <main id="menu-view-stash" class="menu-tab-view two-col-grid hidden">
-      <section class="panel stash-panel">
+    <main id="menu-view-stash" class="menu-tab-view edge-compact-layout hidden">
+      <section class="panel stash-panel edge-panel-left">
         <div class="panel-header">
           <h2>HIDEOUT STASH</h2>
           <div class="panel-actions">
@@ -245,7 +245,7 @@
         <div id="stash-list" class="item-list"></div>
       </section>
 
-      <section class="panel trader-panel">
+      <section class="panel trader-panel edge-panel-right">
         <div class="panel-header">
           <h2>TRADER // "RUSTY"</h2>
           <span class="sub">BLACK MARKET</span>
@@ -643,30 +643,32 @@
       </div>
     </div>
 
-    <!-- Tactical Non-Blocking Inventory & Container UI (<=70% screen, NEVER covers center crosshair!) -->
+    <!-- Tactical Non-Blocking Inventory & Container UI (compact edge-anchored, NEVER covers center crosshair!) -->
     <div id="loot-modal" class="inv-overlay hidden">
-      <!-- Left: Active Container (only visible when looting a crate/corpse) -->
+      <!-- Left Edge: Active Container (only visible when looting a crate/corpse) -->
       <div id="inv-container-panel" class="inv-panel inv-container-panel hidden">
-        <div class="panel-header" style="margin-bottom:6px;">
+        <div class="panel-header" style="margin-bottom:4px;">
           <h3 id="loot-container-title">CONTAINER</h3>
           <button id="btn-take-all" class="btn-small">TAKE ALL</button>
         </div>
         <div id="loot-container-items" class="inv-grid"></div>
       </div>
 
-      <!-- Right (when looting) or Centered Lower Half (when TAB / D-Pad Down): Operator Equipment + Backpack -->
+      <!-- Right Edge (when looting) or Bottom Edge (when TAB / D-Pad Down): Backpack (top) + Operator Equipment (bottom) -->
       <div id="inv-operator-panel" class="inv-panel inv-operator-panel">
-        <div class="panel-header" style="margin-bottom:6px;">
-          <h3>OPERATOR EQUIPMENT</h3>
-          <button id="btn-close-loot" class="btn-small">CLOSE [TAB / B]</button>
-        </div>
-        <div id="inv-op-slots" class="op-equip-grid compact"></div>
-
-        <div class="panel-header" style="margin:8px 0 6px;">
+        <div class="panel-header" style="margin-bottom:4px;">
           <h3>BACKPACK (<span id="bag-weight">0</span> / <span id="bag-max-weight">25</span> kg)</h3>
-          <span id="bag-total-val" class="accent">₽ 0</span>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span id="bag-total-val" class="accent">₽ 0</span>
+            <button id="btn-close-loot" class="btn-small">CLOSE [TAB / B]</button>
+          </div>
         </div>
         <div id="loot-backpack-items" class="inv-grid"></div>
+
+        <div class="panel-header" style="margin:6px 0 4px;">
+          <h3>OPERATOR EQUIPMENT</h3>
+        </div>
+        <div id="inv-op-slots" class="op-equip-grid compact"></div>
       </div>
 
       <!-- Hover / Controller Action Popout (appears to the right of hovered item slot) -->
