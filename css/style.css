@@ -1909,28 +1909,20 @@ button:disabled {
   font-size: 11px;
 }
 
-/* When looting a container: Container hugged to Left Edge, Backpack+Operator hugged to Right Edge */
-.inv-overlay.mode-container .inv-container-panel {
+/* Unified edge-anchored inventory: Container on Left Edge (when looting), Backpack + Operator Equipment always on Right Edge */
+.inv-overlay .inv-container-panel {
   left: 10px;
   bottom: 10px;
   width: min(26vw, 310px);
-  max-height: 52vh;
+  max-height: 58vh;
 }
 
-.inv-overlay.mode-container .inv-operator-panel {
+.inv-overlay .inv-operator-panel {
   right: 10px;
   bottom: 10px;
   width: min(28vw, 350px);
-  max-height: 52vh;
-}
-
-/* When pressing TAB / D-Pad Down: Compact along the Bottom Edge below the crosshair */
-.inv-overlay.mode-backpack .inv-operator-panel {
-  left: 50%;
-  bottom: 10px;
-  transform: translateX(-50%);
-  width: min(46vw, 520px);
-  max-height: 38vh;
+  max-height: 62vh;
+  overflow-y: auto;
 }
 
 .inv-overlay .inv-container-panel .inv-grid {
@@ -1938,12 +1930,13 @@ button:disabled {
   min-height: 0;
 }
 
-.inv-overlay.mode-container .inv-operator-panel .inv-grid {
-  max-height: 22vh;
+.inv-overlay .inv-operator-panel .inv-grid {
+  max-height: 26vh;
+  flex-shrink: 0;
 }
 
-.inv-overlay.mode-backpack .inv-operator-panel .inv-grid {
-  max-height: 16vh;
+.inv-overlay .inv-operator-panel .op-equip-grid {
+  flex-shrink: 0;
 }
 
 .op-equip-grid {
