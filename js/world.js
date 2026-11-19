@@ -318,29 +318,76 @@ class WastelandWorld {
     this._addBox(80, wallH / 2, 0, 1.5, wallH, 160, this._materials.darkConcrete);
 
     // === LOGICAL POI BUILDINGS ===
-    // 1. Military Compound (north-west of crossroads) -> Rare/Epic gear, gel/helmet vests, rifles
+    // 1. Military Compound (north-west of crossroads) -> Gun Lockers, Armory Shelves, Workbench & Wall First Aid
     this._addBuilding(-24, -26, 16, 14, 5.0, 'east');
     this.pois.push({ name: 'COMPOUND', x: -24, z: -26, color: '#ab47bc' });
-    this._addLootContainer(-28, 0.16, -29, 'military', 'Compound Armory Crate');
-    this._addLootContainer(-28, 0.16, -23, 'supply', 'Compound Materials Crate');
+    this._addGunLocker(-31.1, -28.5, Math.PI / 2, 'military', 'Compound Rifle Locker');
+    this._addGunLocker(-31.1, -24.0, Math.PI / 2, 'military', 'Compound Armory Locker');
+    this._addLootContainer(-28.5, 0.16, -21.2, 'supply', 'Compound Materials Crate');
+    this._addWallFirstAidKit(-20.5, -19.55, 'south', 'Compound Wall First Aid Kit');
+    this._addMetalShelf(-25.5, -31.9, 0, [
+      { id: 'ammo_545', qty: 30 },
+      { id: 'armor_plate', qty: 2 },
+      { id: 'frag_grenade', qty: 1 }
+    ]);
+    this._addMetalShelf(-21.0, -31.9, 0, [
+      { id: 'ammo_762', qty: 20 },
+      { id: 'gunpowder', qty: 2 },
+      { id: 'polymer_parts', qty: 2 }
+    ]);
+    this._addWorkbenchTable(-23.5, -26.0, 0, [
+      { id: 'armor_plate', qty: 2 },
+      { id: 'scrap_metal', qty: 3 }
+    ]);
 
-    // 2. Field Hospital & Clinic (east of crossroads) -> Medkits, Bandages, Painkillers
+    // 2. Field Hospital & Clinic (east of crossroads) -> Wall First Aid Kits, Bathroom Medicine Cabinet, Medical Shelves & Triage Table
     this._addBuilding(24, -18, 12, 10, 4.2, 'west');
     this.pois.push({ name: 'CLINIC', x: 24, z: -18, color: '#69f0ae' });
-    this._addLootContainer(26, 0.16, -18, 'hospital', 'Hospital Trauma Locker');
-    this._addLootContainer(23, 0.16, -15, 'hospital', 'Clinic Pharmacy Cabinet');
+    this._addWallFirstAidKit(21.5, -22.55, 'north', 'Clinic Wall First Aid Kit');
+    this._addWallFirstAidKit(29.55, -19.5, 'east', 'Trauma Room First Aid Kit');
+    // Clinic restroom partition + wall-mounted Bathroom Medicine Cabinet
+    this._addBox(26.2, 1.7, -14.8, 0.22, 3.2, 2.8, this._materials.concrete);
+    this._addMedicineCabinet(28.0, -13.45, 'south', 'Clinic Bathroom Medicine Cabinet');
+    this._addLootContainer(28.6, 0.16, -21.6, 'hospital', 'Hospital Trauma Crate');
+    this._addMetalShelf(25.2, -22.2, 0, [
+      { id: 'bandage', qty: 2 },
+      { id: 'painkillers', qty: 1 },
+      { id: 'cloth_roll', qty: 2 }
+    ]);
+    this._addWorkbenchTable(23.5, -17.5, 0, [
+      { id: 'medkit', qty: 1 },
+      { id: 'water_filter', qty: 1 }
+    ]);
 
-    // 3. Police & Fire Station (south-west) -> 1-2 Plate Carriers, Small Packs, Small Arms
+    // 3. Police & Fire Station (south-west) -> Police Gun Lockers, Bathroom Medicine Cabinet, Wall First Aid & Evidence Shelves
     this._addBuilding(-28, 22, 14, 10, 4.2, 'east');
     this.pois.push({ name: 'POLICE/FIRE', x: -28, z: 22, color: '#42a5f5' });
-    this._addLootContainer(-31, 0.16, 22, 'police_fire', 'Police Armory Locker');
-    this._addLootContainer(-26, 0.16, 19, 'police_fire', 'Fire Station Gear Locker');
+    this._addGunLocker(-34.1, 20.5, Math.PI / 2, 'police_fire', 'Police Gun Locker');
+    this._addGunLocker(-34.1, 23.5, Math.PI / 2, 'police_fire', 'Fire & Rescue Gear Locker');
+    this._addWallFirstAidKit(-24.2, 17.45, 'north', 'Station Wall First Aid Kit');
+    // Station restroom partition + Bathroom Medicine Cabinet
+    this._addBox(-26.8, 1.7, 25.2, 0.22, 3.2, 2.6, this._materials.concrete);
+    this._addMedicineCabinet(-24.5, 26.55, 'south', 'Station Bathroom Medicine Cabinet');
+    this._addMetalShelf(-29.2, 17.8, 0, [
+      { id: 'armor_plate', qty: 2 },
+      { id: 'ammo_9x19', qty: 24 },
+      { id: 'ammo_12g', qty: 12 }
+    ]);
+    this._addWorkbenchTable(-28.0, 22.0, 0, [
+      { id: 'smoke_grenade', qty: 1 },
+      { id: 'armor_plate', qty: 1 }
+    ]);
 
-    // 4. Boss Encampment & Armory Key Room (north-east) -> Guaranteed Legendary/Ultra + 4 Epic + 8 Rare (0 Common!)
+    // 4. Boss Encampment & Armory Key Room (north-east) -> Vault, Guard Gun Locker, Wall First Aid & Command Table
     this._addBuilding(34, -48, 12, 12, 4.5, 'south');
     this.pois.push({ name: 'BOSS CAMP', x: 34, z: -48, color: '#ffc107' });
-    this._addLootContainer(34, 0.16, -51, 'boss_key_room', 'Boss Encampment Key Room', 'boss_key');
-    this._addLootContainer(37, 0.16, -47, 'military', 'Boss Guard Weapon Case');
+    this._addLootContainer(34, 0.16, -51.8, 'boss_key_room', 'Boss Encampment Key Room', 'boss_key');
+    this._addGunLocker(39.1, -48.5, -Math.PI / 2, 'military', 'Boss Guard Gun Locker');
+    this._addWallFirstAidKit(28.45, -46.2, 'west', 'Encampment Wall First Aid Kit');
+    this._addWorkbenchTable(34.0, -47.2, 0, [
+      { id: 'ammo_762', qty: 20 },
+      { id: 'gold_watch', qty: 1 }
+    ]);
 
     // === SHIPPING CONTAINERS & COVER ===
     this._addContainer(-8, 12, 0, this._materials.rustRed);
@@ -395,7 +442,7 @@ class WastelandWorld {
     ];
   }
 
-  spawnGroundItem(id, qty = 1, pos = new THREE.Vector3(0, 0.02, 0)) {
+  spawnGroundItem(id, qty = 1, pos = new THREE.Vector3(0, 0.02, 0), opts = {}) {
     const def = GAME_DATA.ITEMS[id];
     if (!def) return null;
 
@@ -404,17 +451,19 @@ class WastelandWorld {
     const rarColor = new THREE.Color(rarInfo.color);
 
     const g = new THREE.Group();
-    const yBase = Math.max(0.02, pos.y || 0.02);
+    const yBase = pos.y !== undefined ? pos.y : 0.02;
     g.position.set(pos.x, yBase, pos.z);
-    g.rotation.y = Math.random() * Math.PI * 2;
+    g.rotation.y = opts.rotY !== undefined ? opts.rotY : Math.random() * Math.PI * 2;
 
-    // Subtle rarity halo ring on the floor so loose & dropped items are easy to spot
+    // Subtle rarity halo ring so loose & dropped items are readable on shelves, tables, or ground
+    const ringInner = opts.onSurface ? 0.13 : 0.20;
+    const ringOuter = opts.onSurface ? 0.18 : 0.27;
     const ring = new THREE.Mesh(
-      new THREE.RingGeometry(0.20, 0.27, 20),
+      new THREE.RingGeometry(ringInner, ringOuter, 20),
       new THREE.MeshBasicMaterial({ color: rarColor, transparent: true, opacity: 0.65, side: THREE.DoubleSide })
     );
     ring.rotation.x = -Math.PI / 2;
-    ring.position.y = 0.015;
+    ring.position.y = 0.012;
     g.add(ring);
 
     // Distinct 3D item silhouette based on item category
@@ -481,49 +530,239 @@ class WastelandWorld {
     if (entry.mesh && this.scene) this.scene.remove(entry.mesh);
   }
 
-  _spawnLogicalLooseLoot() {
-    const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
-    const spawnSpots = [
-      // Field Hospital & Clinic (medical supplies)
-      { x: 21.5, y: 0.16, z: -20.0, pool: [{ id: 'medkit', qty: 1 }, { id: 'bandage', qty: 2 }, { id: 'painkillers', qty: 1 }] },
-      { x: 25.0, y: 0.16, z: -15.5, pool: [{ id: 'medkit', qty: 1 }, { id: 'painkillers', qty: 1 }] },
-      { x: 22.0, y: 0.16, z: -16.2, pool: [{ id: 'bandage', qty: 2 }, { id: 'cloth_roll', qty: 2 }, { id: 'water_filter', qty: 1 }] },
-      { x: 27.2, y: 0.16, z: -20.5, pool: [{ id: 'medkit', qty: 1 }, { id: 'bandage', qty: 1 }] },
+  _addGunLocker(x, z, rotY = 0, kind = 'military', customName = 'Gun Locker') {
+    const g = new THREE.Group();
+    g.position.set(x, 0.16, z);
+    g.rotation.y = rotY;
 
-      // Police & Fire Station (armor plates, small arms, tactical gear)
-      { x: -24.5, y: 0.16, z: 24.0, pool: [{ id: 'armor_plate', qty: 2 }, { id: 'ammo_9x19', qty: 24 }, { id: 'ammo_12g', qty: 12 }] },
-      { x: -29.0, y: 0.16, z: 24.5, pool: [{ id: 'pm9', qty: 1 }, { id: 'm870', qty: 1 }, { id: 'vest_1plate', qty: 1 }] },
-      { x: -24.0, y: 0.16, z: 19.8, pool: [{ id: 'smoke_grenade', qty: 1 }, { id: 'concussion_grenade', qty: 1 }, { id: 'armor_plate', qty: 1 }] },
-      { x: -31.5, y: 0.16, z: 19.5, pool: [{ id: 'bag_small', qty: 1 }, { id: 'ammo_9x19', qty: 30 }] },
+    const bodyMat = kind === 'police_fire'
+      ? new THREE.MeshLambertMaterial({ color: 0x2f4352 })
+      : new THREE.MeshLambertMaterial({ color: 0x354231 });
+    const trimMat = new THREE.MeshLambertMaterial({ color: 0x1a1e1d });
+    const handleMat = new THREE.MeshLambertMaterial({ color: 0xb0b8b4 });
 
-      // Military Compound (rifles, rifle ammo, plates, explosives, materials)
-      { x: -21.0, y: 0.16, z: -29.5, pool: [{ id: 'ammo_545', qty: 30 }, { id: 'ammo_762', qty: 20 }, { id: 'armor_plate', qty: 2 }] },
-      { x: -24.0, y: 0.16, z: -22.5, pool: [{ id: 'mp5k', qty: 1 }, { id: 'ak74m', qty: 1 }, { id: 'frag_grenade', qty: 1 }] },
-      { x: -19.5, y: 0.16, z: -24.0, pool: [{ id: 'gunpowder', qty: 2 }, { id: 'polymer_parts', qty: 2 }, { id: 'scrap_metal', qty: 3 }] },
-      { x: -27.5, y: 0.16, z: -26.2, pool: [{ id: 'medkit', qty: 1 }, { id: 'armor_plate', qty: 2 }] },
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.15, 2.05, 0.62), bodyMat);
+    body.position.y = 1.025;
+    const seam = new THREE.Mesh(new THREE.BoxGeometry(0.03, 1.95, 0.04), trimMat);
+    seam.position.set(0, 1.025, 0.31);
+    const ventL = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.16, 0.03), trimMat);
+    ventL.position.set(-0.28, 1.78, 0.31);
+    const ventR = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.16, 0.03), trimMat);
+    ventR.position.set(0.28, 1.78, 0.31);
+    const handleL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.18, 0.06), handleMat);
+    handleL.position.set(-0.08, 1.05, 0.33);
+    const handleR = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.18, 0.06), handleMat);
+    handleR.position.set(0.08, 1.05, 0.33);
 
-      // Boss Encampment (high-value loose loot)
-      { x: 31.5, y: 0.16, z: -45.5, pool: [{ id: 'armor_plate', qty: 2 }, { id: 'medkit', qty: 1 }, { id: 'ammo_762', qty: 20 }] },
-      { x: 36.2, y: 0.16, z: -50.2, pool: [{ id: 'gold_watch', qty: 1 }, { id: 'intel_drive', qty: 1 }, { id: 'painkillers', qty: 1 }] },
+    g.add(body, seam, ventL, ventR, handleL, handleR);
+    this.scene.add(g);
 
-      // Shipping Containers & Roadblocks (salvage, ammo, basic meds)
-      { x: -6.2,  y: 0.02, z: 16.5,  pool: [{ id: 'scrap_metal', qty: 2 }, { id: 'cloth_roll', qty: 2 }, { id: 'bandage', qty: 1 }] },
-      { x: 14.5,  y: 0.02, z: 9.2,   pool: [{ id: 'gunpowder', qty: 2 }, { id: 'polymer_parts', qty: 2 }, { id: 'ammo_9x18', qty: 20 }] },
-      { x: -4.2,  y: 0.02, z: 34.5,  pool: [{ id: 'ammo_9x19', qty: 18 }, { id: 'bandage', qty: 1 }, { id: 'armor_plate', qty: 1 }] },
-      { x: 7.5,   y: 0.02, z: 26.5,  pool: [{ id: 'water_filter', qty: 1 }, { id: 'scrap_metal', qty: 2 }] },
-      { x: 15.5,  y: 0.02, z: -34.0, pool: [{ id: 'ammo_545', qty: 24 }, { id: 'medkit', qty: 1 }] },
-      { x: -41.5, y: 0.02, z: -3.2,  pool: [{ id: 'polymer_parts', qty: 2 }, { id: 'gunpowder', qty: 2 }, { id: 'frag_grenade', qty: 1 }] }
-    ];
+    const w = Math.abs(Math.sin(rotY)) > 0.5 ? 0.65 : 1.15;
+    const d = Math.abs(Math.sin(rotY)) > 0.5 ? 1.15 : 0.65;
+    this.colliders.push({
+      minX: x - w / 2, maxX: x + w / 2,
+      minY: 0.16, maxY: 2.21,
+      minZ: z - d / 2, maxZ: z + d / 2
+    });
+    this.shootableMeshes.push(body);
 
-    for (const sp of spawnSpots) {
-      // ~85% spawn chance per logical spot for organic raid variety
-      if (Math.random() < 0.85) {
-        const chosen = pick(sp.pool);
-        if (GAME_DATA.ITEMS[chosen.id]) {
-          this.spawnGroundItem(chosen.id, chosen.qty, new THREE.Vector3(sp.x, sp.y, sp.z));
-        }
+    const count = 3 + this.zone.lootTierBonus;
+    const items = this._rollLoot(kind === 'police_fire' ? 'police_fire' : 'military', count);
+    this.lootContainers.push({
+      id: 'locker_' + this.lootContainers.length,
+      name: customName,
+      kind,
+      mesh: g,
+      position: new THREE.Vector3(x, 1.15, z),
+      items,
+      requiresKey: null,
+      unlocked: true,
+      searched: false
+    });
+  }
+
+  _addWallFirstAidKit(x, z, wallSide = 'north', customName = 'Wall First Aid Kit') {
+    const g = new THREE.Group();
+    const rotMap = { north: 0, south: Math.PI, west: Math.PI / 2, east: -Math.PI / 2 };
+    g.position.set(x, 1.48, z);
+    g.rotation.y = rotMap[wallSide] || 0;
+
+    const box = new THREE.Mesh(
+      new THREE.BoxGeometry(0.46, 0.42, 0.18),
+      new THREE.MeshLambertMaterial({ color: 0xe2e8e4 })
+    );
+    const crossMat = new THREE.MeshBasicMaterial({ color: 0xd93030 });
+    const cH = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.07, 0.02), crossMat);
+    const cV = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.22, 0.02), crossMat);
+    cH.position.z = 0.095;
+    cV.position.z = 0.095;
+    g.add(box, cH, cV);
+    this.scene.add(g);
+
+    const items = this._rollLoot('hospital', 2);
+    // Guarantee at least one medical item (medkit/bandage/painkillers) inside wall first aid kits
+    if (!items.some(it => it.id === 'medkit' || it.id === 'bandage' || it.id === 'painkillers')) {
+      items.unshift({ id: 'medkit', qty: 1, revealed: false });
+    }
+    this.lootContainers.push({
+      id: 'firstaid_' + this.lootContainers.length,
+      name: customName,
+      kind: 'hospital',
+      mesh: g,
+      position: new THREE.Vector3(x, 1.48, z),
+      items,
+      requiresKey: null,
+      unlocked: true,
+      searched: false
+    });
+  }
+
+  _addMedicineCabinet(x, z, wallSide = 'south', customName = 'Bathroom Medicine Cabinet') {
+    const g = new THREE.Group();
+    const rotMap = { north: 0, south: Math.PI, west: Math.PI / 2, east: -Math.PI / 2 };
+    g.position.set(x, 1.52, z);
+    g.rotation.y = rotMap[wallSide] || 0;
+
+    // White cabinet frame + reflective pale mirror face
+    const frame = new THREE.Mesh(
+      new THREE.BoxGeometry(0.72, 0.78, 0.18),
+      new THREE.MeshLambertMaterial({ color: 0xd8deda })
+    );
+    const mirror = new THREE.Mesh(
+      new THREE.BoxGeometry(0.60, 0.66, 0.02),
+      new THREE.MeshLambertMaterial({ color: 0x8fb0bf })
+    );
+    mirror.position.z = 0.09;
+    // Sink vanity below cabinet
+    const sink = new THREE.Mesh(
+      new THREE.BoxGeometry(0.76, 0.16, 0.44),
+      new THREE.MeshLambertMaterial({ color: 0xcfd4d0 })
+    );
+    sink.position.set(0, -0.68, 0.16);
+    g.add(frame, mirror, sink);
+    this.scene.add(g);
+
+    const items = this._rollLoot('hospital', 2);
+    if (!items.some(it => it.id === 'medkit' || it.id === 'painkillers')) {
+      items.unshift({ id: Math.random() < 0.65 ? 'medkit' : 'painkillers', qty: 1, revealed: false });
+    }
+    this.lootContainers.push({
+      id: 'medcab_' + this.lootContainers.length,
+      name: customName,
+      kind: 'hospital',
+      mesh: g,
+      position: new THREE.Vector3(x, 1.52, z),
+      items,
+      requiresKey: null,
+      unlocked: true,
+      searched: false
+    });
+  }
+
+  _addMetalShelf(x, z, rotY = 0, lootItems = []) {
+    const g = new THREE.Group();
+    const floorY = 0.16;
+    g.position.set(x, floorY, z);
+    g.rotation.y = rotY;
+
+    const postMat = this._materials.metal;
+    const boardMat = this._materials.darkConcrete;
+    const w = 2.0, d = 0.62, h = 1.95;
+
+    for (const px of [-w / 2 + 0.04, w / 2 - 0.04]) {
+      for (const pz of [-d / 2 + 0.04, d / 2 - 0.04]) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.06, h, 0.06), postMat);
+        post.position.set(px, h / 2, pz);
+        g.add(post);
       }
     }
+    const shelfHeights = [0.55, 1.15, 1.75];
+    for (const sy of shelfHeights) {
+      const board = new THREE.Mesh(new THREE.BoxGeometry(w, 0.05, d), boardMat);
+      board.position.y = sy;
+      g.add(board);
+      this.shootableMeshes.push(board);
+    }
+    this.scene.add(g);
+
+    const cw = Math.abs(Math.sin(rotY)) > 0.5 ? d : w;
+    const cd = Math.abs(Math.sin(rotY)) > 0.5 ? w : d;
+    this.colliders.push({
+      minX: x - cw / 2, maxX: x + cw / 2,
+      minY: floorY, maxY: floorY + h,
+      minZ: z - cd / 2, maxZ: z + cd / 2
+    });
+
+    // Spawn loose loot resting cleanly ON the shelf boards!
+    const cosR = Math.cos(rotY);
+    const sinR = Math.sin(rotY);
+    lootItems.forEach((it, idx) => {
+      if (!GAME_DATA.ITEMS[it.id] || Math.random() > 0.88) return;
+      const localX = (idx - (lootItems.length - 1) / 2) * 0.58;
+      const shelfY = floorY + (idx % 2 === 0 ? 1.18 : 0.58);
+      const wx = x + localX * cosR;
+      const wz = z - localX * sinR;
+      this.spawnGroundItem(it.id, it.qty, new THREE.Vector3(wx, shelfY, wz), { onSurface: true, rotY });
+    });
+  }
+
+  _addWorkbenchTable(x, z, rotY = 0, lootItems = [], floorY = 0.16) {
+    const g = new THREE.Group();
+    g.position.set(x, floorY, z);
+    g.rotation.y = rotY;
+
+    const w = 2.0, d = 0.88, h = 0.82;
+    const top = new THREE.Mesh(new THREE.BoxGeometry(w, 0.07, d), this._materials.wood);
+    top.position.y = h;
+    g.add(top);
+    this.shootableMeshes.push(top);
+
+    for (const lx of [-w / 2 + 0.08, w / 2 - 0.08]) {
+      for (const lz of [-d / 2 + 0.08, d / 2 - 0.08]) {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.08, h, 0.08), this._materials.metal);
+        leg.position.set(lx, h / 2, lz);
+        g.add(leg);
+      }
+    }
+    this.scene.add(g);
+
+    const cw = Math.abs(Math.sin(rotY)) > 0.5 ? d : w;
+    const cd = Math.abs(Math.sin(rotY)) > 0.5 ? w : d;
+    this.colliders.push({
+      minX: x - cw / 2, maxX: x + cw / 2,
+      minY: floorY, maxY: floorY + h + 0.04,
+      minZ: z - cd / 2, maxZ: z + cd / 2
+    });
+
+    const cosR = Math.cos(rotY);
+    const sinR = Math.sin(rotY);
+    lootItems.forEach((it, idx) => {
+      if (!GAME_DATA.ITEMS[it.id] || Math.random() > 0.90) return;
+      const localX = (idx - (lootItems.length - 1) / 2) * 0.65;
+      const wx = x + localX * cosR;
+      const wz = z - localX * sinR;
+      this.spawnGroundItem(it.id, it.qty, new THREE.Vector3(wx, floorY + h + 0.04, wz), { onSurface: true, rotY });
+    });
+  }
+
+  _spawnLogicalLooseLoot() {
+    // Outdoor field tables & crate tops near shipping containers & roadblock checkpoints (never dumped on bare dirt!)
+    this._addWorkbenchTable(-6.2, 16.5, 0, [
+      { id: 'scrap_metal', qty: 2 },
+      { id: 'bandage', qty: 1 }
+    ], 0);
+    this._addWorkbenchTable(14.8, 9.2, Math.PI / 2, [
+      { id: 'gunpowder', qty: 2 },
+      { id: 'ammo_9x18', qty: 20 }
+    ], 0);
+    this._addWorkbenchTable(15.2, -34.2, 0, [
+      { id: 'ammo_545', qty: 24 },
+      { id: 'polymer_parts', qty: 2 }
+    ], 0);
+    this._addWorkbenchTable(-41.5, -3.2, Math.PI / 2, [
+      { id: 'armor_plate', qty: 1 },
+      { id: 'frag_grenade', qty: 1 }
+    ], 0);
   }
 
   update(dt, time) {
