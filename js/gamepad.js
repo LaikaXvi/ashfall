@@ -250,7 +250,7 @@ class GamepadController {
               ? (ui.activeLootSource && ui.activeLootSource.items[idx])
               : (player && player.backpack[idx]);
             if (item && (!ui._hoveredSlot || ui._hoveredSlot.el !== slot)) {
-              ui.showItemPopout(slot, ctxName, item, idx);
+              ui.showItemPopout(slot, ctxName, item, idx, { inputMode: 'gamepad', mode: 'all' });
             }
           }
         } else if (ui && ui._hoveredSlot) {
