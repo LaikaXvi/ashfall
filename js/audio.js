@@ -6,7 +6,15 @@ class SoundEngine {
     this.gunBuffers = {};
     this.gunBus = null;
     this.reverbSend = null;
+    this.compressor = null;
+    this.masterGain = null;
+    this.gunGain = null;
+    this.footGain = null;
+    this.ambientGain = null;
+    this.sfxGain = null;
+    this._ambient = null;
     this.muted = false;
+    this.levels = this._loadLevels ? this._loadLevels() : { master: 1, gun: 1, foot: 1, ambient: 1, sfx: 1 };
   }
 
   init() {
@@ -47,6 +55,70 @@ class SoundEngine {
     this.noiseBuffer = buffer;
   }
 
+  _loadLevels() {
+    const d = { master: 1, gun: 1, foot: 1, ambient: 1, sfx: 1 };
+    try {
+      const raw = localStorage.getItem('ashfall_audio_levels_v1');
+      if (raw) {
+        const p = JSON.parse(raw);
+        for (const k of Object.keys(d)) {
+          const v = parseFloat(p[k]);
+          if (isFinite(v)) d[k] = Math.min(1, Math.max(0, v));
+        }
+      }
+    } catch (e) {}
+    return d;
+  }
+
+  _saveLevels() {
+    try { localStorage.setItem('ashfall_audio_levels_v1', JSON.stringify(this.levels)); } catch (e) {}
+  }
+
+  _applyLevels() {
+    if (!this.ctx) return;
+    const t = this.ctx.currentTime;
+    const L = this.levels || { master: 1, gun: 1, foot: 1, ambient: 1, sfx: 1 };
+    const m = this.muted ? 0 : L.master;
+    if (this.masterGain) this.masterGain.gain.setTargetAtTime(m, t, 0.02);
+    if (this.gunGain) this.gunGain.gain.setTargetAtTime(L.gun, t, 0.02);
+    if (this.footGain) this.footGain.gain.setTargetAtTime(L.foot, t, 0.02);
+    if (this.ambientGain) this.ambientGain.gain.setTargetAtTime(L.ambient, t, 0.02);
+    if (this.sfxGain) this.sfxGain.gain.setTargetAtTime(L.sfx, t, 0.02);
+  }
+
+  setLevel(name, v) {
+    const k = String(name || '').toLowerCase();
+    const map = { master: 'master', gun: 'gun', gunshot: 'gun', gunshots: 'gun', foot: 'foot', footstep: 'foot', footsteps: 'foot', ambient: 'ambient', ambience: 'ambient', sfx: 'sfx', ui: 'sfx' };
+    const key = map[k] || null;
+    if (!key) return this.levels;
+    let f = parseFloat(v);
+    if (!isFinite(f)) f = 1;
+    f = Math.min(1, Math.max(0, f));
+    this.levels[key] = f;
+    this._saveLevels();
+    this._applyLevels();
+    return this.levels;
+  }
+
+  getLevels() { return Object.assign({}, this.levels); }
+
+  setMuted(m) { this.muted = !!m; this._applyLevels(); return this.muted; }
+
+  _levelScale(cat) {
+    const L = this.levels || { master: 1, gun: 1, foot: 1, ambient: 1, sfx: 1 };
+    if (this.muted) return 0;
+    const c = (cat === 'gun') ? L.gun : (cat === 'foot') ? L.foot : (cat === 'ambient') ? L.ambient : (cat === 'sfx') ? L.sfx : 1;
+    return L.master * c;
+  }
+
+  _bus(cat) {
+    if (cat === 'gun') return this.gunGain || this.gunBus;
+    if (cat === 'foot') return this.footGain || this.masterGain;
+    if (cat === 'ambient') return this.ambientGain || this.masterGain;
+    if (cat === 'sfx') return this.sfxGain || this.masterGain;
+    return this.masterGain || this.ctx.destination;
+  }
+
   _createGunBus() {
     // Master limiter so punchy gunshots stay loud and clean without harsh digital clipping
     const compressor = this.ctx.createDynamicsCompressor();
@@ -55,7 +127,13 @@ class SoundEngine {
     compressor.ratio.setValueAtTime(10, this.ctx.currentTime);
     compressor.attack.setValueAtTime(0.001, this.ctx.currentTime);
     compressor.release.setValueAtTime(0.08, this.ctx.currentTime);
-    compressor.connect(this.ctx.destination);
+    this.compressor = compressor;
+
+    // Master gain: single mute/volume point after the limiter
+    this.masterGain = this.ctx.createGain();
+    this.masterGain.gain.setValueAtTime(this.muted ? 0 : (this.levels ? this.levels.master : 1), this.ctx.currentTime);
+    compressor.connect(this.masterGain);
+    this.masterGain.connect(this.ctx.destination);
 
     // Asymmetric analog-style soft saturator for ballistic crack
     const shaper = this.ctx.createWaveShaper();
@@ -68,7 +146,24 @@ class SoundEngine {
     shaper.oversample = '2x';
     shaper.connect(compressor);
 
-    this.gunBus = shaper;
+    // Per-category trim gains. Gunshots feed the saturator; everything else feeds the limiter clean.
+    this.gunGain = this.ctx.createGain();
+    this.gunGain.gain.setValueAtTime(this.levels ? this.levels.gun : 1, this.ctx.currentTime);
+    this.gunGain.connect(shaper);
+    this.gunBus = this.gunGain;
+    this._gunShaper = shaper;
+
+    this.footGain = this.ctx.createGain();
+    this.footGain.gain.setValueAtTime(this.levels ? this.levels.foot : 1, this.ctx.currentTime);
+    this.footGain.connect(compressor);
+
+    this.sfxGain = this.ctx.createGain();
+    this.sfxGain.gain.setValueAtTime(this.levels ? this.levels.sfx : 1, this.ctx.currentTime);
+    this.sfxGain.connect(compressor);
+
+    this.ambientGain = this.ctx.createGain();
+    this.ambientGain.gain.setValueAtTime(this.levels ? this.levels.ambient : 1, this.ctx.currentTime);
+    this.ambientGain.connect(compressor);
 
     // Procedural outdoor wasteland echo/tail impulse response (ConvolverNode)
     const sr = this.ctx.sampleRate;
@@ -104,6 +199,69 @@ class SoundEngine {
     this.reverbSend = convolver;
   }
 
+  startAmbient(kind) {
+    if (!this.ctx) return null;
+    try { this.stopAmbient(true); } catch (e) {}
+    const mode = String(kind || 'wind');
+    const now = this.ctx.currentTime;
+    const src = this.ctx.createBufferSource();
+    src.buffer = this.noiseBuffer;
+    src.loop = true;
+    const filt = this.ctx.createBiquadFilter();
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(0.05, now + 2.0);
+    let lfo = null;
+    let lfoGain = null;
+    if (mode === 'rumble') {
+      filt.type = 'lowpass';
+      filt.frequency.setValueAtTime(120, now);
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(0.09, now + 2.0);
+    } else if (mode === 'rain') {
+      filt.type = 'highpass';
+      filt.frequency.setValueAtTime(2500, now);
+      g.gain.setValueAtTime(0.0001, now);
+      g.gain.exponentialRampToValueAtTime(0.03, now + 2.0);
+    } else {
+      filt.type = 'bandpass';
+      filt.frequency.setValueAtTime(400, now);
+      filt.Q.setValueAtTime(0.6, now);
+      lfo = this.ctx.createOscillator();
+      lfo.type = 'sine';
+      lfo.frequency.setValueAtTime(0.13, now);
+      lfoGain = this.ctx.createGain();
+      lfoGain.gain.setValueAtTime(180, now);
+      lfo.connect(lfoGain);
+      lfoGain.connect(filt.frequency);
+      lfo.start(now);
+    }
+    src.connect(filt);
+    filt.connect(g);
+    g.connect(this._bus('ambient'));
+    src.start(now);
+    this._ambient = { src: src, filt: filt, gain: g, lfo: lfo, lfoGain: lfoGain, kind: mode };
+    return this._ambient;
+  }
+
+  stopAmbient(silent) {
+    const a = this._ambient;
+    this._ambient = null;
+    if (!a || !this.ctx) return;
+    try {
+      const now = this.ctx.currentTime;
+      if (silent) {
+        try { a.src.stop(now); } catch (e) {}
+        try { if (a.lfo) a.lfo.stop(now); } catch (e) {}
+      } else {
+        a.gain.gain.cancelScheduledValues(now);
+        a.gain.gain.setTargetAtTime(0.0001, now, 0.4);
+        const s = a.src;
+        const l = a.lfo;
+        setTimeout(() => { try { s.stop(); } catch (e) {} try { if (l) l.stop(); } catch (e) {} }, 1500);
+      }
+    } catch (e) {}
+  }
   _makeNoise(startTime, duration) {
     const src = this.ctx.createBufferSource();
     src.buffer = this.noiseBuffer;
@@ -272,7 +430,7 @@ class SoundEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
 
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this._bus('sfx'));
     osc.start(now);
     osc.stop(now + 0.06);
   }
@@ -287,7 +445,7 @@ class SoundEngine {
     gain.gain.setValueAtTime(0.08, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.025);
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this._bus('sfx'));
     osc.start(now);
     osc.stop(now + 0.03);
   }
@@ -303,7 +461,7 @@ class SoundEngine {
     gain.gain.setValueAtTime(0.14, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.065);
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this._bus('sfx'));
     osc.start(now);
     osc.stop(now + 0.07);
   }
@@ -319,7 +477,7 @@ class SoundEngine {
     gain.gain.setValueAtTime(0.18, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this._bus('sfx'));
     osc.start(now);
     osc.stop(now + 0.075);
   }
@@ -336,7 +494,7 @@ class SoundEngine {
       gain.gain.setValueAtTime(0.11, now + offset);
       gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.07);
       osc.connect(gain);
-      gain.connect(this.ctx.destination);
+      gain.connect(this._bus('sfx'));
       osc.start(now + offset);
       osc.stop(now + offset + 0.075);
     });
@@ -358,7 +516,7 @@ class SoundEngine {
 
     noise.connect(filter);
     filter.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this._bus('foot'));
     noise.start(now);
     noise.stop(now + 0.085);
   }
@@ -379,7 +537,7 @@ class SoundEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.50);
     noise.connect(bp);
     bp.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this._bus('foot'));
   }
 
   playPinPull() {
@@ -393,7 +551,7 @@ class SoundEngine {
     gain.gain.setValueAtTime(0.14, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.075);
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this._bus('sfx'));
     osc.start(now);
     osc.stop(now + 0.08);
   }
@@ -408,7 +566,7 @@ class SoundEngine {
     gain.gain.setValueAtTime(urgent ? 0.12 : 0.07, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this._bus('sfx'));
     osc.start(now);
     osc.stop(now + 0.045);
   }
@@ -427,7 +585,7 @@ class SoundEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
     noise.connect(bp);
     bp.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this._bus('sfx'));
   }
 
   playGrenadeBounce() {
@@ -441,7 +599,7 @@ class SoundEngine {
     gain.gain.setValueAtTime(0.15, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.055);
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this._bus('sfx'));
     osc.start(now);
     osc.stop(now + 0.06);
   }
@@ -460,7 +618,7 @@ class SoundEngine {
     subG.gain.setValueAtTime(0.85 * vol, now);
     subG.gain.exponentialRampToValueAtTime(0.001, now + 0.65);
     sub.connect(subG);
-    subG.connect(this.ctx.destination);
+    subG.connect(this._bus('sfx'));
     sub.start(now);
     sub.stop(now + 0.68);
 
@@ -475,7 +633,7 @@ class SoundEngine {
     nG.gain.exponentialRampToValueAtTime(0.001, now + 0.92);
     noise.connect(lp);
     lp.connect(nG);
-    nG.connect(this.ctx.destination);
+    nG.connect(this._bus('sfx'));
   }
 
   playSmokeHiss() {
@@ -493,7 +651,7 @@ class SoundEngine {
     gain.gain.exponentialRampToValueAtTime(0.001, now + 1.75);
     noise.connect(bp);
     bp.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this._bus('sfx'));
   }
 
   playConcussion(distance = 0) {
@@ -509,7 +667,7 @@ class SoundEngine {
     ng.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
     noise.connect(hp);
     hp.connect(ng);
-    ng.connect(this.ctx.destination);
+    ng.connect(this._bus('sfx'));
 
     // High-pitched stun crack ring
     const ring = this.ctx.createOscillator();
@@ -520,7 +678,7 @@ class SoundEngine {
     rg.gain.setValueAtTime(0.12 * vol, now);
     rg.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
     ring.connect(rg);
-    rg.connect(this.ctx.destination);
+    rg.connect(this._bus('sfx'));
     ring.start(now);
     ring.stop(now + 0.48);
   }
@@ -536,7 +694,7 @@ class SoundEngine {
     gain.gain.setValueAtTime(0.14, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.28);
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this._bus('sfx'));
     osc.start(now);
     osc.stop(now + 0.3);
   }
@@ -553,7 +711,7 @@ class SoundEngine {
     gain.gain.setValueAtTime(0.18, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this._bus('sfx'));
     osc.start(now);
     osc.stop(now + 0.055);
   }
@@ -571,7 +729,7 @@ class SoundEngine {
       cg.gain.setValueAtTime(0.16, now);
       cg.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
       click.connect(cg);
-      cg.connect(this.ctx.destination);
+      cg.connect(this._bus('sfx'));
       click.start(now);
       click.stop(now + 0.04);
 
@@ -585,7 +743,7 @@ class SoundEngine {
       hg.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
       hiss.connect(hp);
       hp.connect(hg);
-      hg.connect(this.ctx.destination);
+      hg.connect(this._bus('sfx'));
     } else if (type === 'bandage') {
       // Two soft cloth-wrapping swishes
       [0, 0.28].forEach((offset) => {
@@ -601,7 +759,7 @@ class SoundEngine {
         sg.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.17);
         swish.connect(bp);
         bp.connect(sg);
-        sg.connect(this.ctx.destination);
+        sg.connect(this._bus('sfx'));
       });
     } else {
       // Pills: dry plastic bottle double rattle
@@ -616,7 +774,7 @@ class SoundEngine {
         rg.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.038);
         rattle.connect(bp);
         bp.connect(rg);
-        rg.connect(this.ctx.destination);
+        rg.connect(this._bus('sfx'));
       });
     }
   }
@@ -632,7 +790,7 @@ class SoundEngine {
     gain.gain.setValueAtTime(0.25, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this._bus('sfx'));
     osc.start(now);
     osc.stop(now + 0.16);
   }
@@ -653,7 +811,7 @@ class SoundEngine {
     gain.gain.setValueAtTime(isCombat ? 0.14 : 0.08, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
     osc.connect(gain);
-    gain.connect(this.ctx.destination);
+    gain.connect(this._bus('sfx'));
     osc.start(now);
     osc.stop(now + 0.19);
   }
@@ -672,7 +830,7 @@ class SoundEngine {
     nGain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
     noise.connect(filter);
     filter.connect(nGain);
-    nGain.connect(this.ctx.destination);
+    nGain.connect(this._bus('sfx'));
     noise.start(now);
     noise.stop(now + 0.19);
 
@@ -685,7 +843,7 @@ class SoundEngine {
     oGain.gain.setValueAtTime(0.24, now + 0.28);
     oGain.gain.exponentialRampToValueAtTime(0.001, now + 0.40);
     osc.connect(oGain);
-    oGain.connect(this.ctx.destination);
+    oGain.connect(this._bus('sfx'));
     osc.start(now + 0.28);
     osc.stop(now + 0.41);
   }
@@ -717,7 +875,7 @@ class SoundEngine {
     lfoGain.connect(amp.gain);
     noise.connect(bp);
     bp.connect(amp);
-    amp.connect(this.ctx.destination);
+    amp.connect(this._bus('sfx'));
     lfo.start(now);
     lfo.stop(now + dur);
   }
