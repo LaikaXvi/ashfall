@@ -49,6 +49,18 @@ class Player {
     // Vitals (DMZ 1-3 Plate Armor System)
     this.maxHp = 100;
     this.hp = 100;
+    this.isDowned = false;
+    this.dead = false;
+    this.downedHp = 55;
+    this.downedBleedMax = 25.0;
+    this.downedBleedTimer = 25.0;
+    this.downedBy = null;
+    this._justBledOut = false;
+    this.beingRevivedBy = null;
+    this.beingDragged = false;
+    this.reviveProgress = 0;
+    this.isRevivingAlly = false;
+    this.isDraggingAlly = false;
     const armorDef = loadoutState.armor ? GAME_DATA.ITEMS[loadoutState.armor] : null;
     this.plateSlots = armorDef ? (armorDef.plateSlots || Math.ceil(armorDef.maxArmor / 50)) : 0;
     this.maxArmor = this.plateSlots * 50;
@@ -847,7 +859,23 @@ class Player {
     return this.startMedkit();
   }
 
-  takeDamage(amount) {
+  takeDamage(amount, attackerInfo = null) {
+    if (this.dead) return null;
+    if (this.isDowned) {
+      if (attackerInfo) this.downedBy = attackerInfo;
+      if (!window.DEV_MODE) {
+        this.downedHp -= amount;
+      }
+      window.soundEngine.playDamage();
+      if (!window.DEV_MODE && this.downedHp <= 0) {
+        this.dead = true;
+        this.isDowned = false;
+        this.hp = 0;
+        return 'eliminated';
+      }
+      return null;
+    }
+
     if (this.armor > 0) {
       const absorbed = Math.min(this.armor, Math.round(amount * 0.80));
       this.armor -= absorbed;
@@ -855,7 +883,48 @@ class Player {
     }
     this.hp = Math.max(window.DEV_MODE ? 1 : 0, this.hp - amount);
     window.soundEngine.playDamage();
-    return !window.DEV_MODE && this.hp <= 0;
+    if (!window.DEV_MODE && this.hp <= 0) {
+      this.isDowned = true;
+      this.downedHp = 55;
+      this.downedBleedTimer = this.downedBleedMax;
+      this.downedBy = attackerInfo || { name: 'HOSTILE', weaponId: 'ak74m', weaponName: 'AK-74M' };
+      this.reviveProgress = 0;
+      this.stance = 'prone';
+      this.isSliding = false;
+      this.isFiring = false;
+      this.isADS = false;
+      return 'downed';
+    }
+    return null;
+  }
+
+  revive(hpAmount = 45) {
+    this.isDowned = false;
+    this.dead = false;
+    this._justBledOut = false;
+    this.hp = Math.min(this.maxHp, hpAmount);
+    this.downedHp = 55;
+    this.downedBleedTimer = this.downedBleedMax;
+    this.reviveProgress = 0;
+    this.beingRevivedBy = null;
+    this.beingDragged = false;
+    this.stance = 'crouch';
+    if (window.soundEngine && window.soundEngine.playHeal) {
+      try { window.soundEngine.playHeal(); } catch (e) {}
+    }
+  }
+
+  dragToward(tx, tz, speed, dt) {
+    const dx = tx - this.position.x;
+    const dz = tz - this.position.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 0.25) return false;
+    const step = Math.min(dist, speed * dt);
+    const nx = this.position.x + (dx / dist) * step;
+    const nz = this.position.z + (dz / dist) * step;
+    if (!this._collidesAt(nx, this.position.y, this.position.z)) this.position.x = nx;
+    if (!this._collidesAt(this.position.x, this.position.y, nz)) this.position.z = nz;
+    return true;
   }
 
   applyRecoil(pitchKick, yawKick) {
@@ -1073,8 +1142,57 @@ class Player {
 
     const busyHands = !!(this.weaponSystem && (this.weaponSystem.isReloading || this.weaponSystem.isPlating || this.weaponSystem.isHealing));
 
-    // Tactical slide update & smooth transition to sprint or crouch on exit
-    if (this.isSliding) {
+    // Dead (eliminated, awaiting slow ally revive): camera stays low, no movement
+    if (this.dead) {
+      this.velocity.x = 0;
+      this.velocity.z = 0;
+      this.isFiring = false;
+      this.isADS = false;
+      this.currentEyeHeight = THREE.MathUtils.lerp(this.currentEyeHeight, 0.38, Math.min(1, dt * 8));
+      this.position.y = this.currentEyeHeight;
+      this.camera.position.copy(this.position);
+      this.camera.rotation.order = 'YXZ';
+      this.camera.rotation.y = this.yaw;
+      this.camera.rotation.x = this.pitch;
+      return;
+    }
+
+    // Downed state: player can crawl slowly to safety (unless being dragged), bleeds out if not being revived
+    if (this.isDowned) {
+      this.isFiring = false;
+      this.isADS = false;
+      this.isSprinting = false;
+      this.isTacSprinting = false;
+      this.isSliding = false;
+      this.stance = 'prone';
+      if (!this.beingRevivedBy) {
+        this.downedBleedTimer -= dt;
+        if (this.downedBleedTimer <= 0) {
+          this.downedBleedTimer = 0;
+          this.dead = true;
+          this.isDowned = false;
+          this._justBledOut = true;
+        }
+      }
+      if (this.beingDragged) {
+        this.velocity.x = 0;
+        this.velocity.z = 0;
+      } else {
+        const crawlSpeed = 1.45;
+        this.velocity.x = wishDir.x * crawlSpeed * moveMag;
+        this.velocity.z = wishDir.z * crawlSpeed * moveMag;
+      }
+    } else if (this.isRevivingAlly) {
+      // Reviving an ally: moving while reviving drags a downed teammate into cover at slow speed
+      this.isFiring = false;
+      this.isADS = false;
+      this.isSprinting = false;
+      this.isTacSprinting = false;
+      this.isSliding = false;
+      const dragSpeed = this.isDraggingAlly ? 2.0 : 0.0;
+      this.velocity.x = wishDir.x * dragSpeed * moveMag;
+      this.velocity.z = wishDir.z * dragSpeed * moveMag;
+    } else if (this.isSliding) {
       this.slideTimer -= dt;
       const sp = THREE.MathUtils.clamp(1 - (this.slideTimer / this.slideDuration), 0, 1);
       // Slight corner steering while sliding
