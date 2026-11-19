@@ -874,7 +874,38 @@ class GameUI {
     setTimeout(() => div.remove(), 3500);
   }
 
-  addKillFeedEntry({ killerName = 'YOU', weaponName = '', victimName = '', action = 'eliminated', isHead = false } = {}) {
+  _getWeaponSilhouetteSVG(weaponId = '', weaponName = '') {
+    const key = (weaponId || weaponName || '').toLowerCase();
+    // Side-profile tactical silhouettes (facing right)
+    if (key.includes('pm9') || key.includes('g17') || key.includes('pistol')) {
+      // Compact semi-auto pistol
+      return '<svg viewBox="0 0 36 18" fill="currentColor" aria-hidden="true"><path d="M5 4h24v3.5h-2v1.5h-12l-1.5 2.5h2.2l-.7 1.5h-4.5l-2 4.5H4.2l2.3-7.5H5V4zm21-1h2.5v1H26V3z"/></svg>';
+    }
+    if (key.includes('mp5')) {
+      // MP5-K compact SMG with foregrip & curved mag
+      return '<svg viewBox="0 0 46 18" fill="currentColor" aria-hidden="true"><path d="M4 5.5h28v1.5h6v2h-6v1.5h-3.5v4.5h-2.5v-4.5h-3.2l1.6 5.5-2.6.8-1.9-6.3h-4.2l-1.8 5h-3l1.6-5H6.5v1.5H4v-6.5zm22-2h3v2h-3v-2z"/></svg>';
+    }
+    if (key.includes('m870') || key.includes('shotgun')) {
+      // M870 pump-action shotgun with underbarrel mag tube
+      return '<svg viewBox="0 0 54 18" fill="currentColor" aria-hidden="true"><path d="M2 7.5l8.5-2h40.5v2h-11v1.2h5.5v1.8h-17v-.8h-6.5l-1.8 1.3h-3.5l-3.5 3.5H2.5l1.5-4.5H2v-2.5z"/></svg>';
+    }
+    if (key.includes('m24') || key.includes('sniper')) {
+      // M24 bolt-action sniper rifle with mounted scope
+      return '<svg viewBox="0 0 58 18" fill="currentColor" aria-hidden="true"><path d="M18 2h15v2.5h-3v1.5h26v1.8H35v1.4h-8.5l-2 1.8h-5.5l-3.5 3.5H2v-4l10-2.5h9V4.5h-3V2z"/></svg>';
+    }
+    if (key.includes('frag') || key.includes('grenade')) {
+      // M67 frag grenade
+      return '<svg viewBox="0 0 18 18" fill="currentColor" aria-hidden="true"><path d="M7 2h4v2h1.8l1.2 2.2-1.2.7-.8-1.5H11v.8c2 .7 3.3 2.5 3.3 4.6 0 2.8-2.3 5-5.3 5s-5.3-2.2-5.3-5c0-2.1 1.4-3.9 3.3-4.6V4H6V2h1zm-2.3 1a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"/></svg>';
+    }
+    if (key.includes('knife')) {
+      // Tactical throwing knife
+      return '<svg viewBox="0 0 36 16" fill="currentColor" aria-hidden="true"><path d="M3 7h9v-1.8h2V7h19l-5.5 3.2H14v1.6h-2v-1.6H3V7z"/></svg>';
+    }
+    // Default / AK-74M assault rifle with curved magazine & front sight
+    return '<svg viewBox="0 0 52 18" fill="currentColor" aria-hidden="true"><path d="M2 6.5l9-1.5h22v-1.2h4v1.2h9v-1.8h2v2.2h2v1.8h-12v1.3h-6.5l2.2 6.2-2.8.8-2.4-7h-5.8l-1.8 5h-2.8l1.5-5h-5.2L2.5 12H2V6.5z"/></svg>';
+  }
+
+  addKillFeedEntry({ killerName = 'YOU', weaponId = '', weaponName = '', victimName = '', action = 'eliminated', isHead = false } = {}) {
     const kf = document.getElementById('hud-kill-feed');
     if (!kf || !victimName) return;
 
@@ -882,30 +913,42 @@ class GameUI {
     const row = document.createElement('div');
     row.className = 'kill-feed-item' + (isDowned ? ' downed' : '') + (isHead ? ' headshot' : '');
 
+    // Teammate / killer name in blue
     const killerSpan = document.createElement('span');
     killerSpan.className = 'kf-player';
     killerSpan.textContent = killerName;
     row.appendChild(killerSpan);
 
-    if (weaponName) {
-      const wpnSpan = document.createElement('span');
-      wpnSpan.className = 'kf-weapon';
-      wpnSpan.textContent = `[${weaponName.toUpperCase()}]`;
-      row.appendChild(wpnSpan);
-    }
+    // Weapon silhouette SVG
+    const wpnSpan = document.createElement('span');
+    wpnSpan.className = 'kf-weapon-icon';
+    wpnSpan.title = weaponName || weaponId || '';
+    wpnSpan.innerHTML = this._getWeaponSilhouetteSVG(weaponId, weaponName);
+    row.appendChild(wpnSpan);
 
-    const actionSpan = document.createElement('span');
-    actionSpan.className = `kf-action ${isDowned ? 'downed' : 'eliminated'}`;
-    actionSpan.textContent = isDowned ? 'DOWNED' : 'ELIMINATED';
-    row.appendChild(actionSpan);
-
+    // Optional headshot crosshair glyph
     if (isHead) {
       const hsSpan = document.createElement('span');
-      hsSpan.className = 'kf-hs';
-      hsSpan.textContent = 'HS';
+      hsSpan.className = 'kf-glyph headshot';
+      hsSpan.title = 'Headshot';
+      hsSpan.innerHTML = '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="8" cy="8" r="4.5"/><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3"/></svg>';
       row.appendChild(hsSpan);
     }
 
+    // Operator Downed glyph OR Elimination Skull glyph
+    const glyphSpan = document.createElement('span');
+    glyphSpan.className = `kf-glyph ${isDowned ? 'downed' : 'eliminated'}`;
+    glyphSpan.title = isDowned ? 'Operator Downed' : 'Operator Eliminated';
+    if (isDowned) {
+      // Downed operator silhouette (collapsed/propped figure + downed cross)
+      glyphSpan.innerHTML = '<svg viewBox="0 0 20 16" width="15" height="14" fill="currentColor" aria-hidden="true"><circle cx="5.2" cy="5.2" r="2.1"/><path d="M3.2 8.2c1.2-.6 2.9-.5 4.2.2l3.4 2.1h5.4c.7 0 1.2.5 1.2 1.2s-.5 1.2-1.2 1.2h-6.1l-2.6-1.4-2.1 2.2H2.2l2.1-3.4-1.5-.8c-.5-.3-.5-1 .4-1.3z"/><path d="M14.5 2h1.8v1.8h1.8v1.6h-1.8v1.8h-1.8V5.4h-1.8V3.8h1.8V2z"/></svg>';
+    } else {
+      // Skull glyph for full elimination
+      glyphSpan.innerHTML = '<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M8 1C4.7 1 2 3.4 2 6.5c0 1.9 1 3.5 2.5 4.5V13c0 .6.4 1 1 1h5c.6 0 1-.4 1-1v-2c1.5-1 2.5-2.6 2.5-4.5C14 3.4 11.3 1 8 1zM5.6 8.2a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6zm4.8 0a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6zM6.5 12v-1.2h1V12h-1zm2 0v-1.2h1V12h-1z"/></svg>';
+    }
+    row.appendChild(glyphSpan);
+
+    // Enemy operator name in red
     const victimSpan = document.createElement('span');
     victimSpan.className = 'kf-victim';
     victimSpan.textContent = victimName;
