@@ -133,6 +133,10 @@
     isModalOpen = false;
 
     document.getElementById('hud-feed').innerHTML = '';
+    const kfEl = document.getElementById('hud-kill-feed');
+    if (kfEl) kfEl.innerHTML = '';
+    const revEl = document.getElementById('revive-banner');
+    if (revEl) revEl.classList.add('hidden');
     document.getElementById('extract-banner').classList.add('hidden');
     document.getElementById('pointer-lock-overlay').classList.add('hidden');
     document.getElementById('loot-modal').classList.add('hidden');
@@ -396,33 +400,65 @@
     return true;
   }
 
-  function handleOperatorHitResult(isHead, killed, enemy) {
+  function getPlayerCallsign() {
+    return (ui && ui.profile && ui.profile.social && ui.profile.social.callsign) || 'YOU';
+  }
+
+  let activeReviveAlly = null;
+
+  function handleOperatorHitResult(isHead, killed, enemy, attackerInfo = null) {
     if (!enemy) return;
+    const wId = (attackerInfo && attackerInfo.weaponId) || (player.getActiveWeaponSlot() && player.getActiveWeaponSlot().id) || '';
+    const wName = (attackerInfo && attackerInfo.weaponName) || '';
+    const killerName = getPlayerCallsign();
+
     if (enemy.justDowned) {
       enemy.justDowned = false;
       raidXp += 50;
-      ui.addFeedMessage(`DOWNED OPERATOR ${enemy.name} (+50 XP)`, '#ffca28');
+      ui.addKillFeedEntry({
+        killerName,
+        killerIsEnemy: false,
+        weaponId: wId,
+        weaponName: wName,
+        victimName: enemy.name,
+        victimIsEnemy: true,
+        action: 'downed',
+        isHead
+      });
+      ui.showXpFeedback({ label: 'DOWNED', xp: 50, isDowned: true });
     }
     if (killed) {
       raidKills += 1;
-      raidXp += 100;
-      ui.addFeedMessage(`ELIMINATED OPERATOR ${enemy.name}${isHead ? ' [HEADSHOT]' : ''} (+100 XP)`, '#ff5252');
+      const xp = isHead ? 150 : 100;
+      raidXp += xp;
+      ui.addKillFeedEntry({
+        killerName,
+        killerIsEnemy: false,
+        weaponId: wId,
+        weaponName: wName,
+        victimName: enemy.name,
+        victimIsEnemy: true,
+        action: 'eliminated',
+        isHead
+      });
+      ui.showXpFeedback({ label: isHead ? 'HEADSHOT' : 'KILL', xp });
     }
   }
 
-  function onThrowableHit(isHead, killed, enemy) {
+  function onThrowableHit(isHead, killed, enemy, attackerInfo = null) {
     window.soundEngine.playHitmarker(isHead);
     ui.triggerHitmarker(isHead);
-    handleOperatorHitResult(isHead, killed, enemy);
+    handleOperatorHitResult(isHead, killed, enemy, attackerInfo);
   }
 
   function firePlayerWeapon() {
+    if (player.isDowned || player.dead || player.isRevivingAlly) return;
     const slotObj = player.getActiveWeaponSlot();
     if (!slotObj) return;
-    const fired = weaponSystem.tryFire(player, slotObj, world, enemyManager, (isHead, killed, enemy) => {
+    const fired = weaponSystem.tryFire(player, slotObj, world, enemyManager, (isHead, killed, enemy, attackerInfo) => {
       window.soundEngine.playHitmarker(isHead);
       ui.triggerHitmarker(isHead);
-      handleOperatorHitResult(isHead, killed, enemy);
+      handleOperatorHitResult(isHead, killed, enemy, attackerInfo);
     });
     if (fired && gamepad && gamepad.connected) {
       gamepad.rumbleFire(slotObj.id);
@@ -433,10 +469,93 @@
     }
   }
 
+  function findRevivableAlly() {
+    if (!squadManager || !squadManager.allies || player.isDowned || player.dead) return null;
+    let best = null;
+    let bestD = 2.9;
+    for (const a of squadManager.allies) {
+      if (!a || a.extracted || (!a.isDowned && !a.dead)) continue;
+      const d = Math.hypot(player.position.x - a.position.x, player.position.z - a.position.z);
+      if (d < bestD) {
+        bestD = d;
+        best = a;
+      }
+    }
+    return best;
+  }
+
+  function updatePlayerRevive(dt) {
+    const holdingRevive = !!(player && !player.isDowned && !player.dead && !isModalOpen && player.keys['KeyE']);
+    const candidate = activeReviveAlly || findRevivableAlly();
+
+    if (holdingRevive && candidate && (candidate.isDowned || candidate.dead)) {
+      const d = Math.hypot(player.position.x - candidate.position.x, player.position.z - candidate.position.z);
+      if (d <= 3.6) {
+        activeReviveAlly = candidate;
+        player.isRevivingAlly = true;
+        player.isDraggingAlly = !!candidate.isDowned;
+        candidate.beingRevivedBy = getPlayerCallsign();
+
+        // Downed revive = 3.5s, Eliminated (dead) revive = 7.5s (slower)
+        const dur = candidate.dead ? 7.5 : 3.5;
+        candidate.reviveProgress = Math.min(1, (candidate.reviveProgress || 0) + dt / dur);
+
+        // Moving while reviving a DOWNED ally drags them smoothly into cover!
+        const moving = Math.hypot(player.velocity.x, player.velocity.z) > 0.25;
+        if (candidate.isDowned && moving) {
+          const sinY = Math.sin(player.yaw);
+          const cosY = Math.cos(player.yaw);
+          const dragX = player.position.x - sinY * 1.15;
+          const dragZ = player.position.z - cosY * 1.15;
+          candidate.dragToward(dragX, dragZ, 2.4, dt);
+        }
+
+        if (candidate.reviveProgress >= 1) {
+          candidate.revive(45);
+          raidXp += 75;
+          ui.showXpFeedback({ label: 'REVIVE', xp: 75, isRevive: true });
+          ui.addFeedMessage(`Revived ${candidate.name} (+75 XP)`, '#69f0ae');
+          activeReviveAlly = null;
+          player.isRevivingAlly = false;
+          player.isDraggingAlly = false;
+        }
+        ui.updateReviveBanner(player, activeReviveAlly, !!(activeReviveAlly && activeReviveAlly.isDowned && moving));
+        return;
+      }
+    }
+
+    if (activeReviveAlly) {
+      if (activeReviveAlly.beingRevivedBy === getPlayerCallsign()) {
+        activeReviveAlly.beingRevivedBy = null;
+      }
+      activeReviveAlly = null;
+    }
+    if (player) {
+      player.isRevivingAlly = false;
+      player.isDraggingAlly = false;
+    }
+    ui.updateReviveBanner(player, null, false);
+  }
+
   function checkInteractions() {
     nearbyInteractable = null;
     const promptEl = document.getElementById('interact-prompt');
     const textEl = document.getElementById('interact-text');
+
+    if (player.isDowned || player.dead) {
+      promptEl.classList.add('hidden');
+      return;
+    }
+
+    // Priority: Revive downed or fallen ally
+    const revAlly = findRevivableAlly();
+    if (revAlly) {
+      textEl.textContent = revAlly.dead
+        ? `Hold [E] Revive Fallen ${revAlly.name} (Slow)`
+        : `Hold [E] Revive ${revAlly.name} (Move to Drag)`;
+      promptEl.classList.remove('hidden');
+      return;
+    }
 
     let bestDist = 3.2;
     for (const c of world.lootContainers) {
@@ -582,15 +701,90 @@
           if (muzzleWorld) {
             weaponSystem.spawnEnemyShot(muzzleWorld, player.position, hit, world);
           }
-          if (hit) {
+          if (hit && !player.dead) {
             ui.triggerDamageFlash();
             ui.triggerDirectionalDamage(player, enemy.position);
-            const died = player.takeDamage(dmg);
-            if (died) {
-              endRaid(false);
+            const ewDef = GAME_DATA.ITEMS[enemy.weaponId];
+            const attackerInfo = {
+              name: enemy.name,
+              weaponId: enemy.weaponId || 'ak74m',
+              weaponName: ewDef ? ewDef.name : 'AK-74M'
+            };
+            const res = player.takeDamage(dmg, attackerInfo);
+            if (res === 'downed') {
+              ui.addKillFeedEntry({
+                killerName: attackerInfo.name,
+                killerIsEnemy: true,
+                weaponId: attackerInfo.weaponId,
+                weaponName: attackerInfo.weaponName,
+                victimName: getPlayerCallsign(),
+                victimIsEnemy: false,
+                action: 'downed'
+              });
+            } else if (res === 'eliminated') {
+              ui.addKillFeedEntry({
+                killerName: attackerInfo.name,
+                killerIsEnemy: true,
+                weaponId: attackerInfo.weaponId,
+                weaponName: attackerInfo.weaponName,
+                victimName: getPlayerCallsign(),
+                victimIsEnemy: false,
+                action: 'eliminated'
+              });
+              if (!squadManager || !squadManager.hasLivingAlly()) {
+                endRaid(false);
+                return;
+              }
             }
           }
+        }, (bledEnemy) => {
+          // Downed enemy operator bled out -> credit elimination + XP feedback + kill feed to the killer!
+          const db = bledEnemy && bledEnemy.downedBy;
+          if (db && db.isPlayer) {
+            raidKills += 1;
+            raidXp += 100;
+            ui.addKillFeedEntry({
+              killerName: getPlayerCallsign(),
+              killerIsEnemy: false,
+              weaponId: db.weaponId || '',
+              weaponName: db.weaponName || '',
+              victimName: bledEnemy.name,
+              victimIsEnemy: true,
+              action: 'eliminated'
+            });
+            ui.showXpFeedback({ label: 'KILL', xp: 100 });
+          } else if (db) {
+            raidKills += 1;
+            ui.addKillFeedEntry({
+              killerName: db.name,
+              killerIsEnemy: false,
+              weaponId: db.weaponId || '',
+              weaponName: db.weaponName || '',
+              victimName: bledEnemy.name,
+              victimIsEnemy: true,
+              action: 'eliminated'
+            });
+          }
         });
+
+        // Handle player bleedout expiration
+        if (player._justBledOut) {
+          player._justBledOut = false;
+          const db = player.downedBy || { name: 'HOSTILE', weaponId: 'ak74m', weaponName: 'AK-74M' };
+          ui.addKillFeedEntry({
+            killerName: db.name,
+            killerIsEnemy: true,
+            weaponId: db.weaponId,
+            weaponName: db.weaponName,
+            victimName: getPlayerCallsign(),
+            victimIsEnemy: false,
+            action: 'eliminated'
+          });
+          if (!squadManager || !squadManager.hasLivingAlly()) {
+            endRaid(false);
+            return;
+          }
+        }
 
         if (squadManager) {
           squadManager.update(
@@ -600,13 +794,39 @@
             weaponSystem,
             raidTimeLeft,
             (msg, color) => ui.addFeedMessage(msg, color),
-            (allyName, enemyName) => {
-              raidKills += 1;
-              ui.addFeedMessage(`${allyName} eliminated ${enemyName}`, '#64b5f6');
+            (ally, enemy, action) => {
+              if (action === 'eliminated') raidKills += 1;
+              const wDef = GAME_DATA.ITEMS[ally.weaponId];
+              ui.addKillFeedEntry({
+                killerName: ally.name,
+                killerIsEnemy: false,
+                weaponId: ally.weaponId || 'ak74m',
+                weaponName: wDef ? wDef.name : 'AK-74M',
+                victimName: enemy.name,
+                victimIsEnemy: true,
+                action: action || 'eliminated'
+              });
+            },
+            (evtType, target, info) => {
+              if (evtType === 'downed' || evtType === 'eliminated') {
+                ui.addKillFeedEntry({
+                  killerName: (info && info.name) || 'HOSTILE',
+                  killerIsEnemy: true,
+                  weaponId: (info && info.weaponId) || 'ak74m',
+                  weaponName: (info && info.weaponName) || 'AK-74M',
+                  victimName: target.name || getPlayerCallsign(),
+                  victimIsEnemy: false,
+                  action: evtType
+                });
+                if (player.dead && !squadManager.hasLivingAlly()) {
+                  endRaid(false);
+                }
+              }
             }
           );
         }
 
+        updatePlayerRevive(dt);
         checkInteractions();
         checkExtraction(dt);
         ui.updateSearchReveal(dt);
