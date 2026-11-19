@@ -400,7 +400,14 @@ class ThrowableSystem {
           const falloff = 1 - (d / radius) * 0.78;
           const dmg = Math.round(145 * falloff);
           const killed = e.takeDamage(dmg, pos);
-          if (onHitCallback) onHitCallback(false, killed, e);
+          if (onHitCallback) {
+            onHitCallback(false, killed, e, {
+              damage: dmg,
+              weaponName: 'FRAG',
+              distance: player ? player.position.distanceTo(e.position) : d,
+              isLethal: true
+            });
+          }
         } else if (d < 34) {
           e.alertToPosition(pos);
         }
@@ -692,7 +699,14 @@ class ThrowableSystem {
             if (enemy && !enemy.dead) {
               const dmg = isHead ? 220 : pr.def.damage;
               const killed = enemy.takeDamage(dmg, prevPos);
-              if (pr.onHitCallback) pr.onHitCallback(isHead, killed, enemy);
+              if (pr.onHitCallback) {
+                pr.onHitCallback(isHead, killed, enemy, {
+                  damage: dmg,
+                  weaponName: 'THROWING KNIFE',
+                  distance: player ? player.position.distanceTo(enemy.position) : h.distance,
+                  isLethal: true
+                });
+              }
               // Drop knife at impact spot on the ground so player can walk up and retrieve it!
               pr.pos.set(h.point.x, 0.12, h.point.z);
               pr.mesh.position.copy(pr.pos);
