@@ -496,6 +496,7 @@ class GameUI {
       const fov = window.BASE_FOV || 75;
       const sens = window.MOUSE_SENS || 1.0;
       const muted = !!(window.soundEngine && window.soundEngine.muted);
+      const levels = (window.soundEngine && window.soundEngine.getLevels) ? window.soundEngine.getLevels() : { master: 1, gun: 1, foot: 1, ambient: 1, sfx: 1 };
       ['setting-fov', 'pause-setting-fov'].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.value = fov;
@@ -519,6 +520,24 @@ class GameUI {
           el.style.borderColor = muted ? '#d94141' : '';
           el.style.color = muted ? '#ff6b6b' : '';
         }
+      });
+      const volDefs = [
+        ['master', 'setting-vol-master', 'pause-vol-master', 'setting-vol-master-val', 'pause-vol-master-val'],
+        ['gun', 'setting-vol-gun', 'pause-vol-gun', 'setting-vol-gun-val', 'pause-vol-gun-val'],
+        ['foot', 'setting-vol-foot', 'pause-vol-foot', 'setting-vol-foot-val', 'pause-vol-foot-val'],
+        ['ambient', 'setting-vol-ambient', 'pause-vol-ambient', 'setting-vol-ambient-val', 'pause-vol-ambient-val'],
+        ['sfx', 'setting-vol-sfx', 'pause-vol-sfx', 'setting-vol-sfx-val', 'pause-vol-sfx-val'],
+      ];
+      volDefs.forEach(([key, mainId, pauseId, mainVal, pauseVal]) => {
+        const pct = Math.round(((levels[key] != null ? levels[key] : 1)) * 100);
+        [mainId, pauseId].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el && document.activeElement !== el) el.value = String(pct);
+        });
+        [mainVal, pauseVal].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) el.textContent = `${pct}%`;
+        });
       });
       const pDev = document.getElementById('btn-pause-dev');
       if (pDev) {
@@ -552,11 +571,31 @@ class GameUI {
       if (el) {
         el.addEventListener('click', () => {
           if (window.soundEngine) {
-            window.soundEngine.muted = !window.soundEngine.muted;
+            if (typeof window.soundEngine.setMuted === 'function') window.soundEngine.setMuted(!window.soundEngine.muted);
+            else { window.soundEngine.muted = !window.soundEngine.muted; if (typeof window.soundEngine._applyLevels === 'function') window.soundEngine._applyLevels(); }
             syncSettingsUI();
           }
         });
       }
+    });
+    const volWiring = [
+      ['master', 'setting-vol-master', 'pause-vol-master'],
+      ['gun', 'setting-vol-gun', 'pause-vol-gun'],
+      ['foot', 'setting-vol-foot', 'pause-vol-foot'],
+      ['ambient', 'setting-vol-ambient', 'pause-vol-ambient'],
+      ['sfx', 'setting-vol-sfx', 'pause-vol-sfx']
+    ];
+    volWiring.forEach(([cat, mainId, pauseId]) => {
+      [mainId, pauseId].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.addEventListener('input', () => {
+            const f = Math.min(1, Math.max(0, (parseFloat(el.value) || 0) / 100));
+            if (window.soundEngine && typeof window.soundEngine.setLevel === 'function') window.soundEngine.setLevel(cat, f);
+            syncSettingsUI();
+          });
+        }
+      });
     });
     const pauseDevBtn = document.getElementById('btn-pause-dev');
     if (pauseDevBtn) {
