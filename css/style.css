@@ -1940,13 +1940,42 @@ button:disabled {
 }
 
 .op-equip-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
 }
 
 .op-equip-grid.compact {
-  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+
+.op-slot-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.op-group-label {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--accent-bright);
+  opacity: 0.78;
+  padding-left: 1px;
+}
+
+.op-group-row {
+  display: grid;
+  gap: 4px;
+}
+
+.op-group-row.cols-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.op-group-row.cols-2 {
+  grid-template-columns: repeat(2, 1fr);
 }
 
 .op-slot-card {
