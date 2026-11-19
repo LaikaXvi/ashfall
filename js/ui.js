@@ -993,66 +993,33 @@ class GameUI {
     const eventsEl = document.getElementById('hud-xp-events');
     if (!totalEl || !eventsEl) return;
 
-    const now = performance.now();
-    if (!this._lastKillTime || now - this._lastKillTime > 4000) {
-      this._killStreak = 1;
-    } else {
-      this._killStreak = (this._killStreak || 0) + 1;
-    }
-    this._lastKillTime = now;
-
-    // Calculate MW-style XP breakdown
+    const isDowned = !!(meta && meta.downed);
     const tier = enemy && enemy.tier ? enemy.tier : 'scav';
-    const baseXp = tier === 'heavy' ? 250 : (tier === 'raider' ? 150 : 100);
-    let earnedXp = baseXp;
-    const bonuses = [];
+    let earnedXp;
+    let label;
 
-    if (isHead) {
-      earnedXp += 50;
-      bonuses.push({ label: 'HEADSHOT', xp: 50 });
-    }
-    if (meta && meta.isLethal) {
-      earnedXp += 50;
-      bonuses.push({ label: meta.weaponName === 'THROWING KNIFE' ? 'KNIFE KILL' : 'LETHAL KILL', xp: 50 });
-    }
-    if (meta && typeof meta.distance === 'number' && meta.distance >= 35) {
-      earnedXp += 25;
-      bonuses.push({ label: 'LONGSHOT', xp: 25 });
-    }
-    if (this._killStreak === 2) {
-      earnedXp += 50;
-      bonuses.push({ label: 'DOUBLE KILL', xp: 50 });
-    } else if (this._killStreak === 3) {
-      earnedXp += 100;
-      bonuses.push({ label: 'TRIPLE KILL', xp: 100 });
-    } else if (this._killStreak >= 4) {
-      earnedXp += 150;
-      bonuses.push({ label: 'MULTI KILL', xp: 150 });
+    if (isDowned) {
+      earnedXp = 100;
+      label = 'DOWNED';
+    } else {
+      const baseXp = tier === 'heavy' ? 250 : (tier === 'raider' ? 150 : 100);
+      earnedXp = baseXp + (isHead ? 50 : 0);
+      label = isHead ? 'HEADSHOT' : 'KILL';
     }
 
-    // Accumulate visible XP total on rapid kills (just like COD MW)
+    // Stack XP total on rapid kills/downs
     this._activeXpTotal = (this._activeXpTotal || 0) + earnedXp;
     totalEl.textContent = `+${this._activeXpTotal} XP`;
+    totalEl.classList.toggle('downed', isDowned);
     totalEl.classList.remove('bump');
     void totalEl.offsetWidth;
     totalEl.classList.add('visible', 'bump');
 
-    // Primary elimination row: skull for headshot, crosshair for general elimination
-    const skullSvg = '<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M8 1C4.7 1 2 3.4 2 6.5c0 1.9 1 3.5 2.5 4.5V13c0 .6.4 1 1 1h5c.6 0 1-.4 1-1v-2c1.5-1 2.5-2.6 2.5-4.5C14 3.4 11.3 1 8 1zM5.6 8.2a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6zm4.8 0a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6zM6.5 12v-1.2h1V12h-1zm2 0v-1.2h1V12h-1z"/></svg>';
-    const crosshairSvg = '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="8" cy="8" r="4.5"/><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3"/></svg>';
-    const killLabel = tier === 'heavy' ? 'JUGGERNAUT ELIMINATED' : 'KILL';
-
-    const mainRow = document.createElement('div');
-    mainRow.className = 'xp-event-row kill-main';
-    mainRow.innerHTML = `<span class="xp-skull">${isHead ? skullSvg : crosshairSvg}</span><span>${killLabel}</span><span class="xp-event-val">+${baseXp}</span>`;
-    eventsEl.prepend(mainRow);
-
-    for (const b of bonuses) {
-      const bRow = document.createElement('div');
-      bRow.className = 'xp-event-row bonus';
-      bRow.innerHTML = `<span>${b.label}</span><span class="xp-event-val">+${b.xp}</span>`;
-      eventsEl.appendChild(bRow);
-    }
+    // Text-only feedback row (no iconography)
+    const row = document.createElement('div');
+    row.className = 'xp-event-row' + (isDowned ? ' downed' : '');
+    row.innerHTML = `<span>${label}</span><span class="xp-event-val">+${earnedXp} XP</span>`;
+    eventsEl.prepend(row);
 
     while (eventsEl.children.length > 4) {
       eventsEl.removeChild(eventsEl.lastChild);
@@ -1061,7 +1028,7 @@ class GameUI {
     clearTimeout(this._xpFadeTimer);
     clearTimeout(this._xpClearTimer);
     this._xpFadeTimer = setTimeout(() => {
-      totalEl.classList.remove('visible', 'bump');
+      totalEl.classList.remove('visible', 'bump', 'downed');
       Array.from(eventsEl.children).forEach(el => el.classList.add('fading'));
     }, 2000);
     this._xpClearTimer = setTimeout(() => {
