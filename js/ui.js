@@ -65,65 +65,183 @@ class GameUI {
         { id: 'polymer_parts', qty: 4 }
       ],
       social: {
-        callsign: 'NOMAD-7',
-        friends: [
-          { name: 'GHOST_ACTUAL', online: true, status: 'IN HIDEOUT', partyHost: 'GHOST_ACTUAL' },
-          { name: 'KESTREL', online: true, status: 'IN LOBBY (1/3)', partyHost: 'KESTREL' }
-        ]
+        username: 'NOMAD',
+        tagId: String(1000 + Math.floor(Math.random() * 9000)),
+        callsign: null,
+        friends: []
       }
     };
   }
 
-  _initSocial() {
-    if (!this.profile.social) {
-      this.profile.social = {
-        callsign: 'NOMAD-7',
-        friends: [
-          { name: 'GHOST_ACTUAL', online: true, status: 'IN HIDEOUT', partyHost: 'GHOST_ACTUAL' },
-          { name: 'KESTREL', online: true, status: 'IN LOBBY (1/3)', partyHost: 'KESTREL' }
-        ]
-      };
+  _generateUniqueTagId(baseName) {
+    const taken = new Set();
+    const upper = (baseName || 'NOMAD').toUpperCase();
+    for (const p of (this.onlinePlayers || [])) {
+      if (p.name && p.name.startsWith(upper + '#')) taken.add(p.name.split('#')[1]);
     }
-    this.partyHost = this.profile.social.callsign;
-    this.partyMembers = [{ name: this.profile.social.callsign, isSelf: true, isLeader: true }];
+    for (const f of ((this.profile && this.profile.social && this.profile.social.friends) || [])) {
+      if (f.name && f.name.startsWith(upper + '#')) taken.add(f.name.split('#')[1]);
+    }
+    let id = '';
+    for (let tries = 0; tries < 50; tries++) {
+      id = String(Math.floor(Math.random() * 10000)).padStart(4, '0');
+      if (!taken.has(id)) break;
+    }
+    return id;
+  }
 
-    // Simulated online players + live same-browser tab discovery via BroadcastChannel (zero backend!)
-    this.onlinePlayers = [
-      { name: 'GHOST_ACTUAL', status: 'IN HIDEOUT' },
-      { name: 'KESTREL', status: 'IN LOBBY (1/3)' },
-      { name: 'VEX_99', status: 'GUNSMITH' },
-      { name: 'ROOK_74', status: 'DUSTLINE LOBBY' },
-      { name: 'SABLE_04', status: 'IN HIDEOUT' },
-      { name: 'IRONCLAD', status: 'RUSTYARD LOBBY' }
-    ];
+  _ensureIdentity() {
+    if (!this.profile.social) {
+      this.profile.social = { username: 'NOMAD', tagId: '', callsign: '', friends: [] };
+    }
+    const s = this.profile.social;
+    // Strip legacy hardcoded fake friends if migrating from an older save
+    if (Array.isArray(s.friends)) {
+      s.friends = s.friends.filter(f => f && f.name !== 'GHOST_ACTUAL' && f.name !== 'KESTREL');
+    } else {
+      s.friends = [];
+    }
+    if (!s.username || !s.tagId || !s.callsign || !/#\d{4}$/.test(s.callsign)) {
+      const base = (s.username || (s.callsign ? s.callsign.split('#')[0] : 'NOMAD'))
+        .toUpperCase().replace(/[^A-Z0-9_\-]/g, '').slice(0, 14) || 'NOMAD';
+      s.username = base;
+      s.tagId = /^\d{4}$/.test(s.tagId || '') ? s.tagId : this._generateUniqueTagId(base);
+      s.callsign = `${s.username}#${s.tagId}`;
+      this.saveProfile();
+    }
+  }
+
+  updateUsername(rawName) {
+    const clean = (rawName || '').trim().toUpperCase().replace(/[^A-Z0-9_\-]/g, '').slice(0, 14);
+    if (!clean) {
+      this._showSocialToast('Enter a valid username (letters, numbers, _, -).');
+      return;
+    }
+    const oldCallsign = this.profile.social.callsign;
+    const newTag = this._generateUniqueTagId(clean);
+    const newCallsign = `${clean}#${newTag}`;
+    this.profile.social.username = clean;
+    this.profile.social.tagId = newTag;
+    this.profile.social.callsign = newCallsign;
+
+    if (this.partyHost === oldCallsign) this.partyHost = newCallsign;
+    for (const m of (this.partyMembers || [])) {
+      if (m.isSelf) m.name = newCallsign;
+    }
+    this.saveProfile();
+    this._broadcastPresence();
+    this._syncUsernameSettingsUI();
+    this.renderSocial();
+    this.renderHideout();
+    this._showSocialToast(`Username updated to ${newCallsign}`);
+  }
+
+  _syncUsernameSettingsUI() {
+    const curEl = document.getElementById('setting-current-id');
+    const inpEl = document.getElementById('setting-username');
+    if (curEl && this.profile && this.profile.social) {
+      curEl.textContent = this.profile.social.callsign;
+    }
+    if (inpEl && this.profile && this.profile.social && document.activeElement !== inpEl) {
+      inpEl.value = this.profile.social.username || '';
+    }
+  }
+
+  assignSquadColors() {
+    const palette = (GAME_DATA && GAME_DATA.SQUAD_COLORS) || ['#69f0ae', '#42a5f5', '#ffeb3b', '#ff69b4'];
+    const multi = (this.partyMembers || []).length > 1;
+    (this.partyMembers || []).forEach((m, idx) => {
+      m.squadColor = multi ? palette[idx % palette.length] : '#69f0ae';
+    });
+  }
+
+  _initSocial() {
+    this._ensureIdentity();
+    this._clientId = 'cli_' + Math.random().toString(36).slice(2, 10) + '_' + Date.now().toString(36);
+    this.partyHost = this.profile.social.callsign;
+    this.partyMembers = [{ name: this.profile.social.callsign, isSelf: true, isLeader: true, squadColor: '#69f0ae' }];
+
+    // REAL online clients only (zero fake/simulated players!)
+    this.onlinePlayers = [];
+    this._presenceKey = 'ashfall_online_clients_v2';
+
+    this._syncRealOnlineClients = () => {
+      const now = Date.now();
+      let map = {};
+      try {
+        map = JSON.parse(localStorage.getItem(this._presenceKey) || '{}') || {};
+      } catch (e) { map = {}; }
+
+      // Heartbeat self
+      map[this._clientId] = {
+        name: this.profile.social.callsign,
+        status: 'ONLINE',
+        ts: now
+      };
+
+      // Prune stale clients (> 8s without heartbeat)
+      const list = [];
+      for (const [cid, entry] of Object.entries(map)) {
+        if (!entry || now - (entry.ts || 0) > 8000) {
+          delete map[cid];
+          continue;
+        }
+        if (cid !== this._clientId && entry.name && entry.name !== this.profile.social.callsign) {
+          list.push({ clientId: cid, name: entry.name, status: entry.status || 'ONLINE' });
+        }
+      }
+      try { localStorage.setItem(this._presenceKey, JSON.stringify(map)); } catch (e) {}
+      this.onlinePlayers = list;
+      this.renderSocial();
+    };
+
+    this._broadcastPresence = () => {
+      this._syncRealOnlineClients();
+      try {
+        if (this._socialChannel) {
+          this._socialChannel.postMessage({
+            type: 'presence',
+            clientId: this._clientId,
+            from: this.profile.social.callsign,
+            status: 'ONLINE'
+          });
+        }
+      } catch (e) {}
+    };
 
     try {
       if (typeof BroadcastChannel !== 'undefined') {
-        this._socialChannel = new BroadcastChannel('ashfall_social_v1');
+        this._socialChannel = new BroadcastChannel('ashfall_social_v2');
         this._socialChannel.onmessage = (ev) => {
           const msg = ev.data;
-          if (!msg || msg.from === this.profile.social.callsign) return;
-          if (msg.type === 'ping') {
-            if (!this.onlinePlayers.some(p => p.name === msg.from)) {
-              this.onlinePlayers.unshift({ name: msg.from, status: 'ONLINE (LOCAL TAB)' });
-              this.renderSocial();
-            }
-            this._socialChannel.postMessage({ type: 'pong', from: this.profile.social.callsign });
-          } else if (msg.type === 'pong') {
-            if (!this.onlinePlayers.some(p => p.name === msg.from)) {
-              this.onlinePlayers.unshift({ name: msg.from, status: 'ONLINE (LOCAL TAB)' });
-              this.renderSocial();
-            }
+          if (!msg || msg.clientId === this._clientId) return;
+          if (msg.type === 'presence' || msg.type === 'leave') {
+            this._syncRealOnlineClients();
           } else if (msg.type === 'deploy_raid') {
-            // If another local browser tab in our party deploys, infil together into the same zone!
             if (this.partyMembers.some(m => m.name === msg.from) && this.onDeploy) {
               this.onDeploy(msg.zoneId || 'outpost');
             }
           }
         };
-        this._socialChannel.postMessage({ type: 'ping', from: this.profile.social.callsign });
       }
     } catch (e) {}
+
+    window.addEventListener('storage', (ev) => {
+      if (ev.key === this._presenceKey) this._syncRealOnlineClients();
+    });
+    window.addEventListener('beforeunload', () => {
+      try {
+        const map = JSON.parse(localStorage.getItem(this._presenceKey) || '{}') || {};
+        delete map[this._clientId];
+        localStorage.setItem(this._presenceKey, JSON.stringify(map));
+        if (this._socialChannel) {
+          this._socialChannel.postMessage({ type: 'leave', clientId: this._clientId, from: this.profile.social.callsign });
+        }
+      } catch (e) {}
+    });
+
+    this._broadcastPresence();
+    this._presenceInterval = setInterval(() => this._broadcastPresence(), 3000);
   }
 
   _showSocialToast(msg) {
@@ -135,32 +253,54 @@ class GameUI {
     this._socialToastTimer = setTimeout(() => el.classList.add('hidden'), 2800);
   }
 
-  addFriendByName(rawName) {
-    const clean = (rawName || '').trim().toUpperCase().replace(/[^A-Z0-9_\-]/g, '').slice(0, 16);
-    if (!clean || clean === this.profile.social.callsign) return;
-    const friends = this.profile.social.friends;
-    if (friends.some(f => f.name === clean)) {
-      this._showSocialToast(`${clean} is already on your friends list.`);
+  addFriendByName(rawQuery) {
+    const cleaned = (rawQuery || '').trim().toUpperCase().replace(/[^A-Z0-9_\-#]/g, '').slice(0, 22);
+    if (!cleaned) return;
+
+    // Match either exact Username#1234 or a real online client matching the query
+    let targetTag = cleaned;
+    if (!/#\d{4}$/.test(targetTag)) {
+      const matchOnline = (this.onlinePlayers || []).find(p =>
+        p.name.toUpperCase() === cleaned || p.name.toUpperCase().startsWith(cleaned + '#')
+      );
+      if (matchOnline) {
+        targetTag = matchOnline.name;
+      } else {
+        this._showSocialToast('Use full ID format: USERNAME#1234');
+        return;
+      }
+    }
+
+    if (targetTag === this.profile.social.callsign) {
+      this._showSocialToast('You cannot add yourself.');
       return;
     }
-    const foundOnline = this.onlinePlayers.find(p => p.name === clean);
-    friends.push({
-      name: clean,
-      online: true,
-      status: foundOnline ? foundOnline.status : 'ONLINE // HIDEOUT',
-      partyHost: clean
-    });
-    if (!foundOnline) {
-      this.onlinePlayers.unshift({ name: clean, status: 'ONLINE // HIDEOUT' });
+    const friends = this.profile.social.friends;
+    if (friends.some(f => f.name === targetTag)) {
+      this._showSocialToast(`${targetTag} is already on your friends list.`);
+      return;
     }
+    friends.push({
+      name: targetTag,
+      favorite: false
+    });
     this.saveProfile();
     this.renderSocial();
-    this._showSocialToast(`Added ${clean} as a friend.`);
+    this._showSocialToast(`Added ${targetTag} as a friend.`);
+  }
+
+  toggleFavoriteFriend(friendName) {
+    const friends = this.profile.social.friends || [];
+    const f = friends.find(it => it.name === friendName);
+    if (!f) return;
+    f.favorite = !f.favorite;
+    this.saveProfile();
+    this.renderSocial();
   }
 
   inviteFriendToParty(friendName) {
-    if (this.partyMembers.length >= 3) {
-      this._showSocialToast('Party is full (3/3).');
+    if (this.partyMembers.length >= 4) {
+      this._showSocialToast('Party is full (4/4).');
       return;
     }
     if (this.partyMembers.some(m => m.name === friendName)) {
@@ -175,7 +315,7 @@ class GameUI {
     const pick = presets[this.partyMembers.length % presets.length];
     this._showSocialToast(`Sent party invite to ${friendName}...`);
     setTimeout(() => {
-      if (this.partyMembers.length >= 3 || this.partyMembers.some(m => m.name === friendName)) return;
+      if (this.partyMembers.length >= 4 || this.partyMembers.some(m => m.name === friendName)) return;
       this.partyMembers.push({
         name: friendName,
         isSelf: false,
@@ -184,6 +324,7 @@ class GameUI {
         gearLabel: pick.gearLabel,
         ready: true
       });
+      this.assignSquadColors();
       this.renderSocial();
       this.renderHideout();
       this._showSocialToast(`${friendName} joined your party (${pick.gearLabel})!`);
@@ -196,6 +337,7 @@ class GameUI {
       { name: friendName, isSelf: false, isLeader: true, weaponId: 'ak74m', gearLabel: 'AK-74M · 2-Plate', ready: true },
       { name: this.profile.social.callsign, isSelf: true, isLeader: false, ready: true }
     ];
+    this.assignSquadColors();
     this.renderSocial();
     this.renderHideout();
     this._showSocialToast(`Joined ${friendName}'s party.`);
@@ -204,27 +346,34 @@ class GameUI {
   leaveParty() {
     this.partyHost = this.profile.social.callsign;
     this.partyMembers = [{ name: this.profile.social.callsign, isSelf: true, isLeader: true, ready: true }];
+    this.assignSquadColors();
     this.renderSocial();
     this.renderHideout();
     this._showSocialToast('Returned to your own party.');
   }
 
   renderSocial() {
+    this.assignSquadColors();
     const friends = this.profile.social.friends || [];
+    const onlineSet = new Map((this.onlinePlayers || []).map(p => [p.name, p]));
+
     const onlineCountEl = document.getElementById('social-online-count');
     if (onlineCountEl) onlineCountEl.textContent = `${this.onlinePlayers.length} ONLINE`;
     const fCountEl = document.getElementById('friends-count');
     if (fCountEl) fCountEl.textContent = friends.length;
+    const oTabCountEl = document.getElementById('online-tab-count');
+    if (oTabCountEl) oTabCountEl.textContent = this.onlinePlayers.length;
 
-    // Render current party
+    // Render current party with squad colors (Green, Blue, Yellow, Pink when >1 teammate)
     const partyTitle = document.getElementById('party-title');
     const leaveBtn = document.getElementById('btn-leave-party');
     const partyEl = document.getElementById('party-members');
     const isOwnParty = this.partyHost === this.profile.social.callsign;
+    const multiSquad = this.partyMembers.length > 1;
     if (partyTitle) {
       partyTitle.textContent = isOwnParty
-        ? `YOUR PARTY (${this.partyMembers.length}/3)`
-        : `${this.partyHost}'S PARTY (${this.partyMembers.length}/3)`;
+        ? `YOUR PARTY (${this.partyMembers.length}/4)`
+        : `${this.partyHost}'S PARTY (${this.partyMembers.length}/4)`;
     }
     if (leaveBtn) {
       leaveBtn.classList.toggle('hidden', isOwnParty && this.partyMembers.length <= 1);
@@ -235,12 +384,15 @@ class GameUI {
       for (const m of this.partyMembers) {
         const row = document.createElement('div');
         row.className = 'party-member';
-        row.innerHTML = `<span>${m.name}${m.isSelf ? ' (YOU)' : ''}</span><span class="role-tag">${m.isLeader ? 'LEADER' : 'READY'}</span>`;
+        const dotHtml = multiSquad
+          ? `<span class="squad-color-dot" style="background:${m.squadColor || '#69f0ae'};"></span>`
+          : '';
+        row.innerHTML = `<span style="color:${multiSquad ? (m.squadColor || '#69f0ae') : ''};">${dotHtml}${m.name}${m.isSelf ? ' (YOU)' : ''}</span><span class="role-tag">${m.isLeader ? 'LEADER' : 'READY'}</span>`;
         partyEl.appendChild(row);
       }
     }
 
-    // Show/hide add-friend input bar on Friends tab
+    // Show/hide add-friend search input bar on Friends tab
     const addBar = document.getElementById('add-friend-bar');
     if (addBar) addBar.classList.toggle('hidden', this.socialTab !== 'friends');
 
@@ -250,22 +402,42 @@ class GameUI {
 
     if (this.socialTab === 'friends') {
       if (friends.length === 0) {
-        listEl.innerHTML = '<div style="color:#8f968e;font-size:12px;padding:10px;">No friends yet. Add a callsign above or from Online Players.</div>';
+        listEl.innerHTML = '<div style="color:#8f968e;font-size:11px;padding:10px;">No friends yet. Search by Username#1234 above or add from Online.</div>';
         return;
       }
-      friends.forEach((f, idx) => {
+      // Sort: Favorites pinned to top, then online, then alphabetical
+      const sorted = [...friends].sort((a, b) => {
+        if (!!b.favorite !== !!a.favorite) return b.favorite ? 1 : -1;
+        const aOn = onlineSet.has(a.name) ? 1 : 0;
+        const bOn = onlineSet.has(b.name) ? 1 : 0;
+        if (bOn !== aOn) return bOn - aOn;
+        return a.name.localeCompare(b.name);
+      });
+
+      sorted.forEach((f) => {
+        const isOnline = onlineSet.has(f.name);
+        const onlineInfo = onlineSet.get(f.name);
         const inParty = this.partyMembers.some(m => m.name === f.name);
         const row = document.createElement('div');
         row.className = 'social-row';
         row.innerHTML = `
           <div class="social-info">
-            <span class="social-name"><span class="status-dot ${inParty ? 'party' : (f.online ? 'online' : 'offline')}"></span>${f.name}</span>
-            <span class="social-sub">${inParty ? 'IN YOUR PARTY' : (f.online ? f.status : 'OFFLINE')}</span>
+            <span class="social-name friend-green"><span class="status-dot ${inParty ? 'party' : (isOnline ? 'online' : 'offline')}"></span>${f.favorite ? '★ ' : ''}${f.name}</span>
+            <span class="social-sub">${inParty ? 'IN YOUR PARTY' : (isOnline ? (onlineInfo.status || 'ONLINE') : 'OFFLINE')}</span>
           </div>
           <div class="social-actions"></div>
         `;
         const actions = row.querySelector('.social-actions');
-        if (f.online && !inParty) {
+
+        // Favorite star pin button
+        const btnFav = document.createElement('button');
+        btnFav.className = `btn-small btn-fav${f.favorite ? ' active' : ''}`;
+        btnFav.title = f.favorite ? 'Unpin Favorite' : 'Pin as Favorite';
+        btnFav.textContent = f.favorite ? '★' : '☆';
+        btnFav.addEventListener('click', () => this.toggleFavoriteFriend(f.name));
+        actions.appendChild(btnFav);
+
+        if (isOnline && !inParty) {
           const btnInv = document.createElement('button');
           btnInv.className = 'btn-small';
           btnInv.textContent = 'INVITE';
@@ -280,12 +452,14 @@ class GameUI {
 
           actions.append(btnInv, btnJoin);
         }
+
         const btnRem = document.createElement('button');
         btnRem.className = 'btn-small';
         btnRem.title = 'Remove Friend';
         btnRem.textContent = '✕';
         btnRem.addEventListener('click', () => {
-          friends.splice(idx, 1);
+          const idx = friends.findIndex(it => it.name === f.name);
+          if (idx !== -1) friends.splice(idx, 1);
           this.saveProfile();
           this.renderSocial();
         });
@@ -293,13 +467,18 @@ class GameUI {
         listEl.appendChild(row);
       });
     } else {
+      // Real Online Clients tab (separate from Friends)
+      if (this.onlinePlayers.length === 0) {
+        listEl.innerHTML = '<div style="color:#8f968e;font-size:11px;padding:10px;">No other online clients right now.</div>';
+        return;
+      }
       for (const p of this.onlinePlayers) {
         const isFriend = friends.some(f => f.name === p.name);
         const row = document.createElement('div');
         row.className = 'social-row';
         row.innerHTML = `
           <div class="social-info">
-            <span class="social-name"><span class="status-dot online"></span>${p.name}</span>
+            <span class="social-name${isFriend ? ' friend-green' : ''}"><span class="status-dot online"></span>${p.name}</span>
             <span class="social-sub">${p.status}</span>
           </div>
           <div class="social-actions"></div>
@@ -623,6 +802,18 @@ class GameUI {
       });
     }
     syncSettingsUI();
+    this._syncUsernameSettingsUI();
+
+    const userInp = document.getElementById('setting-username');
+    const userSaveBtn = document.getElementById('btn-save-username');
+    if (userInp && userSaveBtn) {
+      const saveUser = () => {
+        if (!userInp.value.trim()) return;
+        this.updateUsername(userInp.value);
+      };
+      userSaveBtn.addEventListener('click', saveUser);
+      userInp.addEventListener('keydown', (e) => { if (e.key === 'Enter') saveUser(); });
+    }
 
     document.querySelectorAll('#social-tabs .tab-btn').forEach(btn => {
       btn.addEventListener('click', () => {
