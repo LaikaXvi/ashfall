@@ -1,0 +1,581 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ASHFALL // 3D Extraction Looter-Shooter</title>
+  <link rel="stylesheet" href="css/style.css?v=64" />
+  <!-- Three.js r128 UMD for zero-build compatibility (works on both http:// and file://) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+  <!-- 3D Viewport -->
+  <canvas id="game-canvas"></canvas>
+
+  <!-- Damage Vignette & Flash Overlays -->
+  <div id="damage-vignette"></div>
+  <div id="ads-vignette"></div>
+  <div id="damage-indicator-container"></div>
+
+  <!-- ==================== MAIN MENU & UTILITY TABS ==================== -->
+  <div id="hideout-screen" class="screen active">
+    <!-- Top Bar (visible inside utility tabs; hidden on clean Main Menu title card) -->
+    <header id="menu-topbar" class="hideout-header hidden">
+      <div style="display:flex;align-items:center;gap:14px;">
+        <button id="btn-menu-home" class="btn-small">← MAIN MENU</button>
+        <nav class="menu-subnav">
+          <button class="subnav-btn" data-tab="deploy">DEPLOY</button>
+          <button class="subnav-btn" data-tab="stash">STASH</button>
+          <button class="subnav-btn" data-tab="gunsmith">GUNSMITH</button>
+          <button class="subnav-btn" data-tab="operator">OPERATOR</button>
+          <button class="subnav-btn" data-tab="settings">SETTINGS</button>
+        </nav>
+      </div>
+      <div class="player-stats-bar">
+        <div class="stat-pill">
+          <span class="label">CREDITS</span>
+          <span id="ui-credits" class="value accent">₽ 12,500</span>
+        </div>
+        <div class="stat-pill">
+          <span class="label">RAIDS</span>
+          <span id="ui-raids" class="value">0</span>
+        </div>
+        <div class="stat-pill">
+          <span class="label">EXTRACTS</span>
+          <span id="ui-extracts" class="value">0</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- VIEW 0: CLEAN MAIN MENU TITLE CARD & OPTIONS -->
+    <section id="menu-view-home" class="menu-home-stage">
+      <div class="menu-home-card">
+        <div class="title-card">
+          <span class="brand-tag">SECTOR 7 // TACTICAL EXTRACTION</span>
+          <h1 class="main-title">ASHFALL<span class="accent"> // EXTRACTION</span></h1>
+          <p class="title-subtitle">Scavenge the wasteland. Modify your arsenal. Extract alive.</p>
+          <div class="home-stat-strip">
+            <span>CREDITS <b id="home-credits" class="accent">₽ 12,500</b></span>
+            <span class="dot">·</span>
+            <span>RAIDS <b id="home-raids">0</b></span>
+            <span class="dot">·</span>
+            <span>EXTRACTS <b id="home-extracts">0</b></span>
+          </div>
+        </div>
+
+        <nav class="main-menu-list">
+          <button class="menu-option primary" data-menu-action="deploy">
+            <span class="opt-num">01</span>
+            <span class="opt-label">DEPLOY</span>
+            <span class="opt-hint">Select zone &amp; launch raid</span>
+          </button>
+          <button class="menu-option" data-menu-action="stash">
+            <span class="opt-num">02</span>
+            <span class="opt-label">STASH</span>
+            <span class="opt-hint">Hideout inventory &amp; Black Market</span>
+          </button>
+          <button id="btn-open-gunsmith" class="menu-option" data-menu-action="gunsmith">
+            <span class="opt-num">03</span>
+            <span class="opt-label">GUNSMITH</span>
+            <span class="opt-hint">3D weapon mods &amp; cosmetics</span>
+          </button>
+          <button class="menu-option" data-menu-action="operator">
+            <span class="opt-num">04</span>
+            <span class="opt-label">OPERATOR</span>
+            <span class="opt-hint">Equipped gear, armor &amp; rig ammo</span>
+          </button>
+          <button class="menu-option" data-menu-action="settings">
+            <span class="opt-num">05</span>
+            <span class="opt-label">SETTINGS</span>
+            <span class="opt-hint">Controls, audio, sensitivity &amp; dev tools</span>
+          </button>
+        </nav>
+      </div>
+
+      <!-- Right Side: Party, Friends & Online Players Panel -->
+      <aside class="panel social-panel">
+        <div class="panel-header" style="margin-bottom:8px;">
+          <h2>COMMS // SQUAD</h2>
+          <span id="social-online-count" class="sub" style="color:#69f0ae;">6 ONLINE</span>
+        </div>
+
+        <!-- Current Party Box -->
+        <div class="party-box">
+          <div class="party-head">
+            <span id="party-title" class="party-label">YOUR PARTY (1/3)</span>
+            <button id="btn-leave-party" class="btn-small hidden">LEAVE</button>
+          </div>
+          <div id="party-members" class="party-members"></div>
+        </div>
+
+        <!-- Friends / Online Players Switcher -->
+        <div id="social-tabs" class="trader-tabs" style="margin:10px 0 8px;">
+          <button class="tab-btn active" data-social="friends">FRIENDS (<span id="friends-count">2</span>)</button>
+          <button class="tab-btn" data-social="online">ONLINE PLAYERS</button>
+        </div>
+
+        <!-- Quick Add Friend Input -->
+        <div id="add-friend-bar" class="add-friend-bar">
+          <input id="input-add-friend" type="text" maxlength="16" placeholder="Add callsign..." />
+          <button id="btn-add-friend" class="btn-small">+ ADD</button>
+        </div>
+
+        <div id="social-list" class="item-list social-list"></div>
+        <div id="social-toast" class="social-toast hidden"></div>
+      </aside>
+    </section>
+
+    <!-- VIEW 1: DEPLOY TAB -->
+    <main id="menu-view-deploy" class="menu-tab-view hidden">
+      <div class="single-panel-wrap">
+        <section class="panel deploy-tab-panel">
+          <div class="panel-header">
+            <h2>DEPLOYMENT BRIEFING</h2>
+            <span class="sub">SELECT OPERATION ZONE</span>
+          </div>
+
+          <div class="deploy-zone-cards">
+            <label class="zone-card active" data-zone="outpost">
+              <div class="zone-card-head">
+                <span class="zone-name">DUSTLINE OUTPOST</span>
+                <span class="zone-badge std">STANDARD</span>
+              </div>
+              <p class="zone-desc">Abandoned highway checkpoint with 6 patrolling Scavengers &amp; Raiders. Balanced sightlines and steady supply crates.</p>
+            </label>
+            <label class="zone-card" data-zone="industrial">
+              <div class="zone-card-head">
+                <span class="zone-name">RUSTYARD COMPOUND</span>
+                <span class="zone-badge high">HIGH THREAT</span>
+              </div>
+              <p class="zone-desc">Fortified industrial yard guarded by 10 hostiles including Armored Heavies. High-value military loot &amp; optics.</p>
+            </label>
+          </div>
+
+          <div class="zone-select" style="display:none;">
+            <select id="raid-zone-select">
+              <option value="outpost">Dustline Outpost (Standard — 6 Hostiles)</option>
+              <option value="industrial">Rustyard Compound (High Threat — 10 Hostiles, Better Loot)</option>
+            </select>
+          </div>
+
+          <div id="deploy-loadout-summary" class="deploy-summary-bar"></div>
+
+          <button id="btn-deploy" class="btn-primary btn-deploy" style="margin-top:14px;">DEPLOY TO WASTELAND</button>
+          <p class="deploy-note">Survive, loot containers &amp; hostiles, and reach a green Extraction Beacon before time runs out.</p>
+        </section>
+      </div>
+    </main>
+
+    <!-- VIEW 2: STASH & TRADER TAB -->
+    <main id="menu-view-stash" class="menu-tab-view two-col-grid hidden">
+      <section class="panel stash-panel">
+        <div class="panel-header">
+          <h2>HIDEOUT STASH</h2>
+          <div class="panel-actions">
+            <button id="btn-sell-valuables" class="btn-small">SELL ALL VALUABLES</button>
+          </div>
+        </div>
+        <div id="stash-list" class="item-list"></div>
+      </section>
+
+      <section class="panel trader-panel">
+        <div class="panel-header">
+          <h2>TRADER // "RUSTY"</h2>
+          <span class="sub">BLACK MARKET</span>
+        </div>
+        <div id="trader-tabs" class="trader-tabs">
+          <button class="tab-btn active" data-cat="weapons">WEAPONS</button>
+          <button class="tab-btn" data-cat="ammo">AMMO</button>
+          <button class="tab-btn" data-cat="gear">GEAR &amp; MEDS</button>
+        </div>
+        <div id="trader-list" class="item-list"></div>
+      </section>
+    </main>
+
+    <!-- VIEW 3: OPERATOR LOADOUT TAB -->
+    <main id="menu-view-operator" class="menu-tab-view hidden">
+      <div class="single-panel-wrap">
+        <section class="panel loadout-panel">
+          <div class="panel-header">
+            <h2>OPERATOR LOADOUT</h2>
+            <div class="panel-actions">
+              <button id="btn-op-gunsmith" class="btn-small" style="border-color:#d9822b;color:#f5a623;">OPEN GUNSMITH</button>
+              <button id="btn-op-stash" class="btn-small">MANAGE STASH</button>
+            </div>
+          </div>
+          <div class="loadout-slots">
+            <div class="equip-slot" data-slot="primary">
+              <span class="slot-label">PRIMARY WEAPON</span>
+              <div id="slot-primary" class="slot-content empty">None Equipped</div>
+            </div>
+            <div class="equip-slot" data-slot="secondary">
+              <span class="slot-label">SIDEARM</span>
+              <div id="slot-secondary" class="slot-content empty">None Equipped</div>
+            </div>
+            <div class="equip-slot" data-slot="armor">
+              <span class="slot-label">BODY ARMOR</span>
+              <div id="slot-armor" class="slot-content empty">No Armor</div>
+            </div>
+            <div class="equip-slot" data-slot="meds">
+              <span class="slot-label">MEDKITS (H)</span>
+              <div id="slot-meds" class="slot-content">0x Field Medkit</div>
+            </div>
+            <div class="equip-slot" data-slot="lethal">
+              <span class="slot-label">LETHAL (F)</span>
+              <div id="slot-lethal" class="slot-content">2x M67 Frag Grenade</div>
+            </div>
+            <div class="equip-slot" data-slot="tactical">
+              <span class="slot-label">TACTICAL (Q)</span>
+              <div id="slot-tactical" class="slot-content">2x M18 Smoke Grenade</div>
+            </div>
+          </div>
+
+          <div class="ammo-summary">
+            <h3>AMMO IN RIG</h3>
+            <div id="loadout-ammo-list" class="ammo-chips"></div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <!-- VIEW 4: SETTINGS & CONTROLS TAB -->
+    <main id="menu-view-settings" class="menu-tab-view two-col-grid hidden">
+      <section class="panel">
+        <div class="panel-header">
+          <h2>GAME SETTINGS</h2>
+          <span class="sub">PREFERENCES &amp; TOOLS</span>
+        </div>
+        <div class="settings-list">
+          <div class="setting-row">
+            <div>
+              <div class="setting-title">FIELD OF VIEW (FOV)</div>
+              <div class="setting-desc">Adjust first-person camera horizontal/vertical FOV (60° – 110°)</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <input id="setting-fov" type="range" min="60" max="110" step="1" value="75" />
+              <span id="setting-fov-val" class="accent" style="min-width:38px;text-align:right;font-weight:700;">75°</span>
+            </div>
+          </div>
+
+          <div class="setting-row">
+            <div>
+              <div class="setting-title">MOUSE SENSITIVITY</div>
+              <div class="setting-desc">Adjust first-person &amp; ADS look speed</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <input id="setting-sens" type="range" min="0.4" max="2.0" step="0.1" value="1.0" />
+              <span id="setting-sens-val" class="accent" style="min-width:34px;text-align:right;font-weight:700;">1.0x</span>
+            </div>
+          </div>
+
+          <div class="setting-row">
+            <div>
+              <div class="setting-title">MASTER AUDIO</div>
+              <div class="setting-desc">Toggle all gunfire, movement &amp; UI sound effects</div>
+            </div>
+            <button id="btn-setting-mute" class="btn-small">AUDIO: ON</button>
+          </div>
+
+          <div class="setting-row">
+            <div>
+              <div class="setting-title">DEVELOPER MODE (F9)</div>
+              <div class="setting-desc">Immortal HP, infinite ammo/plates/medkits, test animations anytime</div>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <button id="btn-dev-mode" class="btn-small">DEV MODE: ON</button>
+              <button id="btn-dev-grant" class="btn-small">+DEV GEAR</button>
+            </div>
+          </div>
+
+          <div class="setting-row">
+            <div>
+              <div class="setting-title">RESET PROFILE SAVE</div>
+              <div class="setting-desc">Wipe credits, stash, raids, and restore default loadout</div>
+            </div>
+            <button id="btn-reset-save" class="btn-small btn-danger">RESET SAVE</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <h2>KEYBINDINGS &amp; CONTROLS</h2>
+          <span class="sub">REFERENCE</span>
+        </div>
+        <div class="controls-grid">
+          <div class="ctrl-row"><b>WASD</b><span>Move</span></div>
+          <div class="ctrl-row"><b>SHIFT / 2x SHIFT</b><span>Sprint (Infinite) / Tactical Sprint</span></div>
+          <div class="ctrl-row"><b>C / CTRL (Tap)</b><span>Toggle Crouch / Slide (while sprinting)</span></div>
+          <div class="ctrl-row"><b>C / CTRL (Hold)</b><span>Go Prone</span></div>
+          <div class="ctrl-row"><b>SPACE</b><span>Jump / Stand Up / Slide Cancel</span></div>
+          <div class="ctrl-row"><b>LMB / RMB</b><span>Fire / Aim Down Sights (Auto Corner-Lean)</span></div>
+          <div class="ctrl-row"><b>R / I</b><span>Reload / Inspect Weapon</span></div>
+          <div class="ctrl-row"><b>G / 4</b><span>Insert Armor Plates</span></div>
+          <div class="ctrl-row"><b>H</b><span>Use Field Medkit</span></div>
+          <div class="ctrl-row"><b>F (Tap / Hold)</b><span>Lethal: Quick Throw / Cook Frag or Aim Knife</span></div>
+          <div class="ctrl-row"><b>Q (Tap / Hold)</b><span>Tactical: Quick Throw / Aim Smoke or Concussion</span></div>
+          <div class="ctrl-row"><b>1 / 2</b><span>Primary / Sidearm</span></div>
+          <div class="ctrl-row"><b>E / TAB</b><span>Use-Loot / Backpack</span></div>
+          <div class="ctrl-row"><b>V</b><span>Toggle 3rd-Person Camera</span></div>
+          <div class="ctrl-row"><b>F9</b><span>Toggle Dev Mode</span></div>
+          <div class="ctrl-row" style="border-color:rgba(105,240,174,0.35);margin-top:6px;"><b>GAMEPAD (Xbox / PS)</b><span>Full Controller Support</span></div>
+          <div class="ctrl-row"><b>LS / RS</b><span>Move / Look (Rotational Aim Assist)</span></div>
+          <div class="ctrl-row"><b>RT / LT</b><span>Fire / ADS</span></div>
+          <div class="ctrl-row"><b>L3 (Tap / 2x)</b><span>Sprint / Tactical Sprint</span></div>
+          <div class="ctrl-row"><b>A / B (Tap / Hold)</b><span>Jump / Crouch-Slide / Prone</span></div>
+          <div class="ctrl-row"><b>X / Y (Tap / Hold)</b><span>Loot-Reload / Swap-Armor Plates</span></div>
+          <div class="ctrl-row"><b>RB / LB</b><span>Lethal / Tactical Throwable</span></div>
+          <div class="ctrl-row"><b>D-Pad ↑ / ← / →</b><span>Medkit / Inspect / 3rd-Person</span></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ==================== IN-RAID HUD ==================== -->
+  <div id="hud-screen" class="screen">
+    <!-- Top Compass & Timer -->
+    <div class="hud-top">
+      <div class="compass-bar">
+        <div id="compass-track" class="compass-track"></div>
+        <div class="compass-center-tick"></div>
+      </div>
+      <div class="raid-timer-box">
+        <span class="timer-label">RAID TIME</span>
+        <span id="hud-timer" class="timer-value">08:00</span>
+        <span id="hud-dev-badge" class="hidden" style="color:#69f0ae;font-size:11px;font-weight:700;margin-left:6px;">[DEV]</span>
+      </div>
+    </div>
+
+    <!-- Kill / Loot Feed -->
+    <div id="hud-feed" class="hud-feed"></div>
+
+    <!-- Center Crosshair & Prompts -->
+    <div id="crosshair" class="crosshair">
+      <div class="ch-line ch-top"></div>
+      <div class="ch-line ch-bottom"></div>
+      <div class="ch-line ch-left"></div>
+      <div class="ch-line ch-right"></div>
+      <div class="ch-dot"></div>
+    </div>
+    <div id="hitmarker" class="hitmarker"></div>
+
+    <div id="interact-prompt" class="interact-prompt hidden">
+      <span class="key-badge">E</span>
+      <span id="interact-text">Search Military Crate</span>
+    </div>
+
+    <div id="extract-banner" class="extract-banner hidden">
+      <div class="extract-title">EXTRACTING // <span id="extract-zone-name">NORTH HELIPAD</span></div>
+      <div class="extract-bar-bg">
+        <div id="extract-bar-fill" class="extract-bar-fill"></div>
+      </div>
+      <div id="extract-countdown" class="extract-countdown">5.0s</div>
+    </div>
+
+    <div id="reload-indicator" class="reload-indicator hidden">RELOADING...</div>
+
+    <!-- Bottom Left: Vitals + Dynamic Stance Silhouette -->
+    <div class="hud-bottom-left hud-vitals-wrap">
+      <div id="hud-stance-icon" class="stance-silhouette" title="Operator Stance"></div>
+      <div class="vitals-bars-col">
+        <div class="vital-row">
+          <span class="vital-label">HP</span>
+          <div class="bar-bg hp-bg"><div id="hud-hp-bar" class="bar-fill hp-fill"></div></div>
+          <span id="hud-hp-val" class="vital-val">100</span>
+        </div>
+        <div class="vital-row">
+          <span class="vital-label">PLATES</span>
+          <div id="hud-plate-segments" class="plate-segments"></div>
+          <span id="hud-armor-val" class="vital-val">0</span>
+        </div>
+        <div class="vital-row">
+          <span class="vital-label">STM</span>
+          <div class="bar-bg stam-bg"><div id="hud-stam-bar" class="bar-fill stam-fill"></div></div>
+          <span id="hud-stam-val" class="vital-val">100</span>
+        </div>
+        <div class="quick-med" style="justify-content:space-between;">
+          <span><span class="key-badge">H</span> MED: <b id="hud-medkits">0</b></span>
+          <span><span class="key-badge">G</span> PLATES: <b id="hud-plates">3</b></span>
+        </div>
+        <div class="quick-med" style="justify-content:space-between;">
+          <span><span class="key-badge">F</span> <b id="hud-lethal">FRAG 2</b></span>
+          <span><span class="key-badge">Q</span> <b id="hud-tactical">SMOKE 2</b></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Right: Weapon & Ammo -->
+    <div class="hud-bottom-right">
+      <div class="weapon-slots-hud">
+        <span id="hud-slot-1" class="w-slot active">[1] PRIMARY</span>
+        <span id="hud-slot-2" class="w-slot">[2] SIDEARM</span>
+      </div>
+      <div id="hud-weapon-name" class="weapon-name">AK-74M</div>
+      <div class="ammo-counter">
+        <span id="hud-mag" class="mag-count">30</span>
+        <span class="ammo-sep">/</span>
+        <span id="hud-reserve" class="reserve-count">90</span>
+      </div>
+      <div class="backpack-hint"><span class="key-badge">TAB</span> BACKPACK (<span id="hud-bag-value">₽ 0</span>)</div>
+    </div>
+
+    <!-- Click to Lock Pointer Prompt / In-Raid ESC Menu -->
+    <div id="pointer-lock-overlay" class="modal-overlay hidden">
+      <div class="modal-card compact" style="width:460px;">
+        <h2>RAID PAUSED</h2>
+        <p style="font-size:12px;color:var(--text-dim);">Adjust settings or click Resume to return to combat.</p>
+
+        <div id="pause-settings-panel" class="settings-list hidden" style="text-align:left;margin:6px 0;">
+          <div class="setting-row" style="padding:10px 12px;">
+            <div>
+              <div class="setting-title">FIELD OF VIEW (FOV)</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <input id="pause-setting-fov" type="range" min="60" max="110" step="1" value="75" />
+              <span id="pause-setting-fov-val" class="accent" style="min-width:34px;text-align:right;font-weight:700;">75°</span>
+            </div>
+          </div>
+
+          <div class="setting-row" style="padding:10px 12px;">
+            <div>
+              <div class="setting-title">MOUSE SENSITIVITY</div>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <input id="pause-setting-sens" type="range" min="0.4" max="2.0" step="0.1" value="1.0" />
+              <span id="pause-setting-sens-val" class="accent" style="min-width:34px;text-align:right;font-weight:700;">1.0x</span>
+            </div>
+          </div>
+
+          <div class="setting-row" style="padding:10px 12px;">
+            <div class="setting-title">MASTER AUDIO</div>
+            <button id="btn-pause-mute" class="btn-small">AUDIO: ON</button>
+          </div>
+
+          <div class="setting-row" style="padding:10px 12px;">
+            <div class="setting-title">DEVELOPER MODE (F9)</div>
+            <button id="btn-pause-dev" class="btn-small">DEV MODE: ON</button>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button id="btn-resume-raid" class="btn-primary">RESUME</button>
+          <button id="btn-pause-settings" class="btn-small" style="padding:9px 14px;">SETTINGS</button>
+          <button id="btn-abort-raid" class="btn-danger">ABANDON RAID</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loot Container / Backpack Modal -->
+    <div id="loot-modal" class="modal-overlay hidden">
+      <div class="modal-card loot-card">
+        <div class="loot-columns">
+          <div class="loot-col">
+            <div class="panel-header">
+              <h3 id="loot-container-title">CONTAINER</h3>
+              <button id="btn-take-all" class="btn-small">TAKE ALL</button>
+            </div>
+            <div id="loot-container-items" class="item-list"></div>
+          </div>
+          <div class="loot-col">
+            <div class="panel-header">
+              <h3>BACKPACK (<span id="bag-weight">0</span> / <span id="bag-max-weight">25</span> kg)</h3>
+              <span id="bag-total-val" class="accent">₽ 0</span>
+            </div>
+            <div id="loot-backpack-items" class="item-list"></div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <span class="hint">Press <b>TAB</b> or <b>ESC</b> or click Close to return to combat</span>
+          <button id="btn-close-loot" class="btn-primary">CLOSE</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== RAID SUMMARY (EXTRACTED / KIA) ==================== -->
+  <div id="summary-screen" class="screen">
+    <div class="summary-card">
+      <div id="summary-status-badge" class="status-badge extracted">EXTRACTION SUCCESSFUL</div>
+      <h1 id="summary-title">SURVIVED THE WASTELAND</h1>
+      <div class="summary-stats">
+        <div class="sum-stat"><span>TIME IN RAID</span><b id="sum-time">02:14</b></div>
+        <div class="sum-stat"><span>HOSTILES ELIMINATED</span><b id="sum-kills">4</b></div>
+        <div class="sum-stat"><span>LOOT VALUE SECURED</span><b id="sum-value" class="accent">₽ 14,200</b></div>
+      </div>
+      <div class="summary-loot-box">
+        <h3>RECOVERED ITEMS</h3>
+        <div id="sum-items" class="item-list compact-list"></div>
+      </div>
+      <button id="btn-return-hideout" class="btn-primary">RETURN TO HIDEOUT</button>
+    </div>
+  </div>
+
+  <!-- ==================== 3D GUNSMITH WORKBENCH (MW2019+ STYLE) ==================== -->
+  <div id="gunsmith-screen" class="screen">
+    <header class="hideout-header">
+      <div class="brand">
+        <span class="brand-tag">WORKBENCH // MODIFICATION</span>
+        <h1>GUNSMITH <span class="accent" id="gs-weapon-title">MP5-K</span></h1>
+      </div>
+      <div id="gs-weapon-tabs" class="trader-tabs" style="margin:0;max-width:360px;"></div>
+      <div class="trader-tabs" style="margin:0;min-width:220px;">
+        <button id="btn-gs-tab-attach" class="tab-btn active">ATTACHMENTS</button>
+        <button id="btn-gs-tab-custom" class="tab-btn">CUSTOMIZE</button>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button id="btn-gs-preview" class="btn-small">PREVIEW: OFF</button>
+        <button id="btn-gs-reset-view" class="btn-small">RESET VIEW</button>
+        <button id="btn-gs-close" class="btn-primary" style="padding:8px 18px;">BACK TO HIDEOUT</button>
+      </div>
+    </header>
+
+    <main class="gs-stage-full">
+      <canvas id="gunsmith-canvas"></canvas>
+
+      <!-- Floating 3D-projected MW2019+ Attachment Nodes -->
+      <div id="gs-nodes-layer" class="gs-nodes-layer"></div>
+
+      <!-- Compact Attachment / Customize Selector Drawer -->
+      <div id="gs-drawer" class="gs-drawer hidden">
+        <div class="panel-header" style="margin-bottom:8px;">
+          <h3 id="gs-drawer-title">OPTIC</h3>
+          <div id="gs-cosmetic-tabs" class="trader-tabs hidden" style="margin:0;min-width:240px;">
+            <button class="tab-btn gs-cos-btn active" data-cos="camo">CAMO</button>
+            <button class="tab-btn gs-cos-btn" data-cos="sticker">STICKER</button>
+            <button class="tab-btn gs-cos-btn" data-cos="charm">CHARM</button>
+          </div>
+          <button id="btn-gs-drawer-close" class="btn-small">✕</button>
+        </div>
+        <div id="gs-attachment-list" class="gs-card-strip"></div>
+      </div>
+
+      <!-- Floating Right Stats Panel -->
+      <aside id="gs-stats-panel" class="panel gs-stats-overlay">
+        <div class="panel-header">
+          <h2>BALLISTICS &amp; STATS</h2>
+          <span class="sub">LIVE</span>
+        </div>
+        <p id="gs-weapon-desc" class="deploy-note" style="margin-bottom:10px;"></p>
+        <div id="gs-stats-list" class="gs-stats-list"></div>
+      </aside>
+
+      <div class="gs-hint">CLICK AN ATTACHMENT NODE TO MODIFY · DRAG TO ROTATE 360° · SCROLL TO ZOOM</div>
+    </main>
+  </div>
+
+  <!-- Scripts -->
+  <script src="js/data.js?v=62"></script>
+  <script src="js/sfx_samples.js?v=21"></script>
+  <script src="js/audio.js?v=55"></script>
+  <script src="js/world.js?v=18"></script>
+  <script src="js/weapons.js?v=59"></script>
+  <script src="js/throwables.js?v=59"></script>
+  <script src="js/enemies.js?v=55"></script>
+  <script src="js/squad.js?v=66"></script>
+  <script src="js/player.js?v=63"></script>
+  <script src="js/gamepad.js?v=63"></script>
+  <script src="js/gunsmith.js?v=41"></script>
+  <script src="js/ui.js?v=65"></script>
+  <script src="js/main.js?v=66"></script>
+</body>
+</html>
