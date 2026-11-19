@@ -1717,39 +1717,56 @@ class GameUI {
     if (pop) pop.classList.add('hidden');
   }
 
-  showItemPopout(slotEl, context, item, idx) {
+  showItemPopout(slotEl, context, item, idx, opts = {}) {
     const pop = document.getElementById('item-action-popout');
     if (!pop || !item || !slotEl) return;
     const def = GAME_DATA.ITEMS[item.id];
     if (!def) return;
 
-    this._hoveredSlot = { context, item, idx, el: slotEl };
+    const inputMode = opts.inputMode || 'mouse';
+    const mode = opts.mode || (inputMode === 'gamepad' ? 'all' : 'details');
+    const isGamepad = inputMode === 'gamepad';
+
+    this._hoveredSlot = { context, item, idx, el: slotEl, inputMode, mode };
     const rarKey = def.rarity || 'common';
     const rarInfo = (GAME_DATA.RARITIES && GAME_DATA.RARITIES[rarKey]) || { label: rarKey.toUpperCase(), color: '#69f0ae' };
     const hasContainer = !!this.activeLootSource;
     const canSplit = def.stackable && item.qty > 1;
+    const badge = (btn) => (isGamepad ? `<span class="gp-btn-badge">${btn}</span> ` : '');
 
     let actionsHtml = '';
-    if (context === 'container') {
-      actionsHtml += `<button class="pop-act" data-act="quick"><span class="gp-btn-badge">A</span> Quick-Move to Pack</button>`;
-    } else if (context === 'backpack') {
-      if (hasContainer) {
-        actionsHtml += `<button class="pop-act" data-act="quick"><span class="gp-btn-badge">A</span> Quick-Move to Container</button>`;
-      } else if (def.type === 'weapon' || def.type === 'armor' || def.type === 'backpack' || def.type === 'field_upgrade' || def.type === 'killstreak' || def.type === 'melee' || def.type === 'plate' || def.type === 'med') {
-        actionsHtml += `<button class="pop-act" data-act="quick"><span class="gp-btn-badge">A</span> Equip / Use</button>`;
+    if (mode === 'all' || mode === 'details') {
+      if (context === 'container') {
+        actionsHtml += `<button class="pop-act" data-act="quick">${badge('A')}Quick-Move to Pack</button>`;
+      } else if (context === 'backpack') {
+        if (hasContainer) {
+          actionsHtml += `<button class="pop-act" data-act="quick">${badge('A')}Quick-Move to Container</button>`;
+        } else if (def.type === 'weapon' || def.type === 'armor' || def.type === 'backpack' || def.type === 'field_upgrade' || def.type === 'killstreak' || def.type === 'melee' || def.type === 'plate' || def.type === 'med') {
+          actionsHtml += `<button class="pop-act" data-act="quick">${badge('A')}Equip / Use</button>`;
+        }
       }
     }
-    if (canSplit) {
-      actionsHtml += `<button class="pop-act" data-act="split"><span class="gp-btn-badge">Y</span> Split Stack</button>`;
+    if (mode === 'all' || mode === 'context') {
+      if (canSplit) {
+        actionsHtml += `<button class="pop-act" data-act="split">${badge('Y')}Split Stack</button>`;
+      }
+      if (context === 'backpack') {
+        actionsHtml += `<button class="pop-act danger" data-act="drop">${badge('X')}Drop Item</button>`;
+      }
     }
-    if (context === 'backpack') {
-      actionsHtml += `<button class="pop-act danger" data-act="drop"><span class="gp-btn-badge">X</span> Drop Item</button>`;
-    }
+
+    const descHtml = (mode !== 'context' && def.desc)
+      ? `<div class="pop-desc">${def.desc}</div>`
+      : '';
+    const emptyCtxHtml = (mode === 'context' && !actionsHtml)
+      ? `<div class="pop-desc" style="margin-bottom:0;">No split or drop options for this item.</div>`
+      : '';
 
     pop.innerHTML = `
       <div class="pop-title" style="color:${rarInfo.color}">${def.name}${item.qty > 1 ? ' x' + item.qty : ''}</div>
       <div class="pop-meta">${rarInfo.label} · ₽${(def.value * item.qty).toLocaleString()} · ${(def.weight * item.qty).toFixed(1)}kg</div>
-      <div class="pop-actions">${actionsHtml}</div>
+      ${descHtml}
+      ${actionsHtml ? `<div class="pop-actions">${actionsHtml}</div>` : emptyCtxHtml}
     `;
     pop.querySelectorAll('.pop-act').forEach(btn => {
       btn.addEventListener('click', (e) => {
@@ -1758,17 +1775,29 @@ class GameUI {
       });
     });
 
-    // Position popout to the RIGHT of the hovered slot (clamp inside viewport)
+    // Position popout next to the slot (clamp inside viewport)
     pop.classList.remove('hidden');
     const rect = slotEl.getBoundingClientRect();
-    const popW = 195;
+    const popW = 215;
     let left = rect.right + 8;
     if (left + popW > window.innerWidth - 10) {
       left = Math.max(10, rect.left - popW - 8);
     }
-    const top = Math.min(window.innerHeight - 140, Math.max(12, rect.top));
+    const popH = pop.offsetHeight || 140;
+    const top = Math.min(window.innerHeight - popH - 10, Math.max(12, rect.top));
     pop.style.left = `${left}px`;
     pop.style.top = `${top}px`;
+
+    // Dismiss popup when clicking outside on mouse
+    if (!this._popoutDismissBound) {
+      this._popoutDismissBound = true;
+      document.addEventListener('mousedown', (e) => {
+        const popEl = document.getElementById('item-action-popout');
+        if (!popEl || popEl.classList.contains('hidden')) return;
+        if (popEl.contains(e.target) || (e.target.closest && e.target.closest('.inv-slot'))) return;
+        this.hideItemPopout();
+      });
+    }
   }
 
   handleSlotAction(action) {
@@ -1946,10 +1975,18 @@ class GameUI {
                 <span class="slot-val">₽${(def.value * item.qty).toLocaleString()}</span>
                 ${item.qty > 1 ? `<span class="slot-qty">x${item.qty}</span>` : ''}
               `;
-              slot.addEventListener('mouseenter', () => this.showItemPopout(slot, 'container', item, idx));
-              slot.addEventListener('click', () => {
-                this._hoveredSlot = { context: 'container', item, idx, el: slot };
-                this.handleSlotAction('quick');
+              slot.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (this._hoveredSlot && this._hoveredSlot.el === slot && this._hoveredSlot.mode === 'details') {
+                  this.hideItemPopout();
+                } else {
+                  this.showItemPopout(slot, 'container', item, idx, { inputMode: 'mouse', mode: 'details' });
+                }
+              });
+              slot.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.showItemPopout(slot, 'container', item, idx, { inputMode: 'mouse', mode: 'context' });
               });
             }
             cList.appendChild(slot);
@@ -1981,10 +2018,18 @@ class GameUI {
             <span class="slot-val">₽${(def.value * item.qty).toLocaleString()}</span>
             ${item.qty > 1 ? `<span class="slot-qty">x${item.qty}</span>` : ''}
           `;
-          slot.addEventListener('mouseenter', () => this.showItemPopout(slot, 'backpack', item, idx));
-          slot.addEventListener('click', () => {
-            this._hoveredSlot = { context: 'backpack', item, idx, el: slot };
-            this.handleSlotAction('quick');
+          slot.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (this._hoveredSlot && this._hoveredSlot.el === slot && this._hoveredSlot.mode === 'details') {
+              this.hideItemPopout();
+            } else {
+              this.showItemPopout(slot, 'backpack', item, idx, { inputMode: 'mouse', mode: 'details' });
+            }
+          });
+          slot.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.showItemPopout(slot, 'backpack', item, idx, { inputMode: 'mouse', mode: 'context' });
           });
         } else {
           slot.classList.add('empty-slot');
