@@ -357,13 +357,26 @@
     }
   });
 
+  function isOperatorEnemy(enemy) {
+    return !!(enemy && (enemy.isOperator || enemy.tier === 'operator'));
+  }
+
   function onThrowableHit(isHead, killed, enemy, meta = {}) {
-    window.soundEngine.playHitmarker(isHead, killed);
-    ui.triggerHitmarker(isHead, killed);
+    const downed = !!(meta && meta.downed);
+    window.soundEngine.playHitmarker(isHead, killed || downed);
+    ui.triggerHitmarker(isHead, killed || downed);
     if (killed) {
       raidKills += 1;
-      ui.addKillFeedEntry(enemy.name, meta.weaponName || 'LETHAL', isHead);
       ui.triggerKillFeedback(enemy, isHead, meta);
+    }
+    if ((killed || downed) && isOperatorEnemy(enemy)) {
+      ui.addKillFeedEntry({
+        killerName: 'YOU',
+        weaponName: meta.weaponName || 'LETHAL',
+        victimName: enemy.name,
+        action: downed && !killed ? 'downed' : 'eliminated',
+        isHead
+      });
     }
   }
 
@@ -371,12 +384,21 @@
     const slotObj = player.getActiveWeaponSlot();
     if (!slotObj) return;
     const fired = weaponSystem.tryFire(player, slotObj, world, enemyManager, (isHead, killed, enemy, meta = {}) => {
-      window.soundEngine.playHitmarker(isHead, killed);
-      ui.triggerHitmarker(isHead, killed);
+      const downed = !!(meta && meta.downed);
+      window.soundEngine.playHitmarker(isHead, killed || downed);
+      ui.triggerHitmarker(isHead, killed || downed);
       if (killed) {
         raidKills += 1;
-        ui.addKillFeedEntry(enemy.name, meta.weaponName || '', isHead);
         ui.triggerKillFeedback(enemy, isHead, meta);
+      }
+      if ((killed || downed) && isOperatorEnemy(enemy)) {
+        ui.addKillFeedEntry({
+          killerName: 'YOU',
+          weaponName: meta.weaponName || '',
+          victimName: enemy.name,
+          action: downed && !killed ? 'downed' : 'eliminated',
+          isHead
+        });
       }
     });
     if (fired && gamepad && gamepad.connected) {
@@ -563,8 +585,16 @@
             weaponSystem,
             raidTimeLeft,
             (msg, color) => ui.addFeedMessage(msg, color),
-            (allyName, enemyName) => {
-              // AI squadmate kills are intentionally omitted from the player kill feed
+            (allyName, enemy, weaponName = '', action = 'eliminated') => {
+              // Left-side kill feed only tracks downs/eliminations against enemy operators
+              if (isOperatorEnemy(enemy)) {
+                ui.addKillFeedEntry({
+                  killerName: allyName,
+                  weaponName,
+                  victimName: enemy.name,
+                  action
+                });
+              }
             }
           );
         }
