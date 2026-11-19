@@ -1327,6 +1327,185 @@ class GameUI {
     setTimeout(() => div.remove(), 4200);
   }
 
+  _getWeaponSilhouetteSVG(weaponId = '', weaponName = '') {
+    const key = (weaponId || weaponName || '').toLowerCase();
+    if (key.includes('pm9') || key.includes('g17') || key.includes('pistol')) {
+      return '<svg viewBox="0 0 36 18" fill="currentColor" aria-hidden="true"><path d="M5 4h24v3.5h-2v1.5h-12l-1.5 2.5h2.2l-.7 1.5h-4.5l-2 4.5H4.2l2.3-7.5H5V4zm21-1h2.5v1H26V3z"/></svg>';
+    }
+    if (key.includes('mp5')) {
+      return '<svg viewBox="0 0 46 18" fill="currentColor" aria-hidden="true"><path d="M4 5.5h28v1.5h6v2h-6v1.5h-3.5v4.5h-2.5v-4.5h-3.2l1.6 5.5-2.6.8-1.9-6.3h-4.2l-1.8 5h-3l1.6-5H6.5v1.5H4v-6.5zm22-2h3v2h-3v-2z"/></svg>';
+    }
+    if (key.includes('m870') || key.includes('shotgun')) {
+      return '<svg viewBox="0 0 54 18" fill="currentColor" aria-hidden="true"><path d="M2 7.5l8.5-2h40.5v2h-11v1.2h5.5v1.8h-17v-.8h-6.5l-1.8 1.3h-3.5l-3.5 3.5H2.5l1.5-4.5H2v-2.5z"/></svg>';
+    }
+    if (key.includes('m24') || key.includes('sniper')) {
+      return '<svg viewBox="0 0 58 18" fill="currentColor" aria-hidden="true"><path d="M18 2h15v2.5h-3v1.5h26v1.8H35v1.4h-8.5l-2 1.8h-5.5l-3.5 3.5H2v-4l10-2.5h9V4.5h-3V2z"/></svg>';
+    }
+    if (key.includes('frag') || key.includes('grenade')) {
+      return '<svg viewBox="0 0 18 18" fill="currentColor" aria-hidden="true"><path d="M7 2h4v2h1.8l1.2 2.2-1.2.7-.8-1.5H11v.8c2 .7 3.3 2.5 3.3 4.6 0 2.8-2.3 5-5.3 5s-5.3-2.2-5.3-5c0-2.1 1.4-3.9 3.3-4.6V4H6V2h1zm-2.3 1a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3z"/></svg>';
+    }
+    if (key.includes('knife') || key.includes('melee')) {
+      return '<svg viewBox="0 0 36 16" fill="currentColor" aria-hidden="true"><path d="M3 7h9v-1.8h2V7h19l-5.5 3.2H14v1.6h-2v-1.6H3V7z"/></svg>';
+    }
+    return '<svg viewBox="0 0 52 18" fill="currentColor" aria-hidden="true"><path d="M2 6.5l9-1.5h22v-1.2h4v1.2h9v-1.8h2v2.2h2v1.8h-12v1.3h-6.5l2.2 6.2-2.8.8-2.4-7h-5.8l-1.8 5h-2.8l1.5-5h-5.2L2.5 12H2V6.5z"/></svg>';
+  }
+
+  addKillFeedEntry({
+    killerName = 'YOU',
+    killerIsEnemy = false,
+    weaponId = '',
+    weaponName = '',
+    victimName = '',
+    victimIsEnemy = true,
+    action = 'eliminated',
+    isHead = false
+  } = {}) {
+    const kf = document.getElementById('hud-kill-feed');
+    if (!kf || !victimName) return;
+
+    const isDowned = action === 'downed';
+    const row = document.createElement('div');
+    row.className = 'kill-feed-item' + (isDowned ? ' downed' : '') + (!victimIsEnemy ? ' ally-victim' : '');
+
+    // Killer name (blue for ally/player, red for enemy)
+    const killerSpan = document.createElement('span');
+    killerSpan.className = `kf-player ${killerIsEnemy ? 'enemy' : 'ally'}`;
+    killerSpan.textContent = killerName;
+    row.appendChild(killerSpan);
+
+    // Weapon silhouette SVG
+    const wpnSpan = document.createElement('span');
+    wpnSpan.className = 'kf-weapon-icon';
+    wpnSpan.title = weaponName || weaponId || '';
+    wpnSpan.innerHTML = this._getWeaponSilhouetteSVG(weaponId, weaponName);
+    row.appendChild(wpnSpan);
+
+    // Optional headshot crosshair glyph
+    if (isHead) {
+      const hsSpan = document.createElement('span');
+      hsSpan.className = 'kf-glyph headshot';
+      hsSpan.title = 'Headshot';
+      hsSpan.innerHTML = '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="8" cy="8" r="4.5"/><path d="M8 1.5v3M8 11.5v3M1.5 8h3M11.5 8h3"/></svg>';
+      row.appendChild(hsSpan);
+    }
+
+    // Downed glyph (medical cross inside circle) OR Elimination skull glyph
+    const glyphSpan = document.createElement('span');
+    glyphSpan.className = `kf-glyph ${isDowned ? 'downed' : 'eliminated'}`;
+    glyphSpan.title = isDowned ? 'Operator Downed' : 'Operator Eliminated';
+    if (isDowned) {
+      glyphSpan.innerHTML = '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M8 4.8v6.4M4.8 8h6.4" stroke-linecap="round"/></svg>';
+    } else {
+      glyphSpan.innerHTML = '<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M8 1C4.7 1 2 3.4 2 6.5c0 1.9 1 3.5 2.5 4.5V13c0 .6.4 1 1 1h5c.6 0 1-.4 1-1v-2c1.5-1 2.5-2.6 2.5-4.5C14 3.4 11.3 1 8 1zM5.6 8.2a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6zm4.8 0a1.3 1.3 0 1 1 0-2.6 1.3 1.3 0 0 1 0 2.6zM6.5 12v-1.2h1V12h-1zm2 0v-1.2h1V12h-1z"/></svg>';
+    }
+    row.appendChild(glyphSpan);
+
+    // Victim name (red for enemy, blue for ally/player)
+    const victimSpan = document.createElement('span');
+    victimSpan.className = `kf-player ${victimIsEnemy ? 'enemy' : 'ally'}`;
+    victimSpan.textContent = victimName;
+    row.appendChild(victimSpan);
+
+    kf.prepend(row);
+    while (kf.children.length > 6) kf.lastElementChild.remove();
+    setTimeout(() => row.remove(), 5500);
+  }
+
+  showXpFeedback({ label = 'KILL', xp = 100, isDowned = false, isRevive = false } = {}) {
+    const totalEl = document.getElementById('hud-xp-total');
+    const eventsEl = document.getElementById('hud-xp-events');
+    if (!totalEl || !eventsEl) return;
+
+    this._activeXpTotal = (this._activeXpTotal || 0) + xp;
+    totalEl.textContent = `+${this._activeXpTotal} XP`;
+    totalEl.classList.toggle('downed', isDowned);
+    totalEl.classList.toggle('revive', isRevive);
+    totalEl.classList.remove('bump');
+    void totalEl.offsetWidth;
+    totalEl.classList.add('visible', 'bump');
+
+    const row = document.createElement('div');
+    row.className = 'xp-event-row' + (isDowned ? ' downed' : '') + (isRevive ? ' revive' : '');
+    row.textContent = label;
+    eventsEl.prepend(row);
+    while (eventsEl.children.length > 4) eventsEl.lastElementChild.remove();
+
+    clearTimeout(this._xpFadeTimer);
+    this._xpFadeTimer = setTimeout(() => {
+      totalEl.classList.remove('visible');
+      eventsEl.innerHTML = '';
+      this._activeXpTotal = 0;
+    }, 2800);
+  }
+
+  updateReviveBanner(player, revivingAlly = null, isDragging = false) {
+    const banner = document.getElementById('revive-banner');
+    if (!banner) return;
+    const titleEl = document.getElementById('revive-title');
+    const timerEl = document.getElementById('revive-timer');
+    const fillEl = document.getElementById('revive-bar-fill');
+    const subEl = document.getElementById('revive-sub');
+
+    if (revivingAlly) {
+      banner.classList.remove('hidden');
+      banner.classList.add('reviving');
+      const pct = Math.round((revivingAlly.reviveProgress || 0) * 100);
+      const isSlow = !!revivingAlly.dead;
+      titleEl.textContent = isDragging
+        ? `DRAGGING & REVIVING ${revivingAlly.name}`
+        : (isSlow ? `REVIVING FALLEN ${revivingAlly.name} (SLOW)` : `REVIVING ${revivingAlly.name}`);
+      timerEl.textContent = `${pct}%`;
+      fillEl.style.width = `${pct}%`;
+      subEl.textContent = isSlow
+        ? 'Hold [E] — Reviving eliminated teammate takes longer'
+        : 'Hold [E] — Move with WASD to drag teammate into cover';
+      return;
+    }
+
+    if (player && player.isDowned) {
+      banner.classList.remove('hidden');
+      const beingRevived = !!player.beingRevivedBy;
+      banner.classList.toggle('reviving', beingRevived);
+      if (beingRevived) {
+        const pct = Math.round((player.reviveProgress || 0) * 100);
+        titleEl.textContent = player.beingDragged
+          ? `DRAGGED TO COVER BY ${player.beingRevivedBy}`
+          : `BEING REVIVED BY ${player.beingRevivedBy}`;
+        timerEl.textContent = `${pct}%`;
+        fillEl.style.width = `${pct}%`;
+        subEl.textContent = 'Bleedout paused while being revived';
+      } else {
+        const pct = Math.max(0, Math.min(100, (player.downedBleedTimer / player.downedBleedMax) * 100));
+        titleEl.textContent = 'DOWNED — CRAWL TO COVER';
+        timerEl.textContent = `${Math.max(0, player.downedBleedTimer).toFixed(1)}s`;
+        fillEl.style.width = `${pct}%`;
+        subEl.textContent = 'Use WASD to crawl · Ally must revive before bleedout expires';
+      }
+      return;
+    }
+
+    if (player && player.dead) {
+      banner.classList.remove('hidden');
+      const beingRevived = !!player.beingRevivedBy;
+      banner.classList.toggle('reviving', beingRevived);
+      if (beingRevived) {
+        const pct = Math.round((player.reviveProgress || 0) * 100);
+        titleEl.textContent = `${player.beingRevivedBy} REVIVING YOU (SLOW)`;
+        timerEl.textContent = `${pct}%`;
+        fillEl.style.width = `${pct}%`;
+        subEl.textContent = 'Full revival in progress...';
+      } else {
+        titleEl.textContent = 'ELIMINATED — AWAITING ALLY REVIVE';
+        timerEl.textContent = 'DEAD';
+        fillEl.style.width = '0%';
+        subEl.textContent = 'Allies can still revive you at slower speed · Press ESC to Abandon';
+      }
+      return;
+    }
+
+    banner.classList.add('hidden');
+  }
+
   triggerHitmarker(headshot = false) {
     const hm = document.getElementById('hitmarker');
     hm.classList.toggle('headshot', headshot);
