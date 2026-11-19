@@ -2979,11 +2979,17 @@ class WeaponSystem {
         const hit = enemyHits[0];
         hitPoint = hit.point;
         const { enemy, part } = hit.object.userData;
-        const isHead = part === 'head';
-        const dmg = Math.round(def.damage * (isHead ? 2.0 : 1.0));
-        const killed = enemy.takeDamage(dmg, origin);
-        this._spawnImpact(hitPoint, 0x991111, 5);
-        onHitCallback(isHead, killed, enemy);
+        if (enemy && !enemy.dead) {
+          const isHead = part === 'head';
+          const dmg = Math.round(def.damage * (isHead ? 2.0 : 1.0));
+          const killed = enemy.takeDamage(dmg, origin);
+          this._spawnImpact(hitPoint, 0x991111, 5);
+          onHitCallback(isHead, killed, enemy, {
+            damage: dmg,
+            weaponName: def.name,
+            distance: hit.distance
+          });
+        }
       } else if (worldHits.length > 0) {
         this._spawnImpact(hitPoint, 0xc8b898, 4);
       }
