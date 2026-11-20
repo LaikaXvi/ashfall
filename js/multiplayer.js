@@ -26,7 +26,7 @@ class MultiplayerSession {
     this.myCallsign = myCallsign || 'OPERATOR';
     this.partyMembers = partyMembers.filter(m => m && !m.isSelf);
     this._onRemoteEvent = onRemoteEvent;
-    this._topic = `ashfall_m_${String(matchId).replace(/[^a-zA-Z0-9_-]/g, '')}`;
+    this._topic = `ashfall/raid/${String(matchId).replace(/[^a-zA-Z0-9_-]/g, '')}`;
     this._sendAccum = 0;
     this._fallbackAccum = 0;
     this._seenSignalIds.clear();
@@ -40,16 +40,31 @@ class MultiplayerSession {
         this._ensurePeer(m.clientId, true);
       }
     }
-    // Announce presence in match room
+    // Announce presence in match room (immediately + 1.2s follow-up so both sides handshake fast)
     this._postSignal({
       type: 'match_hello',
       fromId: this.myClientId,
       fromName: this.myCallsign
     });
+    setTimeout(() => {
+      if (this.active) {
+        this._postSignal({
+          type: 'match_hello',
+          fromId: this.myClientId,
+          fromName: this.myCallsign
+        });
+      }
+    }, 1200);
   }
 
   stop() {
     this.active = false;
+    if (this._topic && window.ashfallNetBus) {
+      window.ashfallNetBus.unsubscribe(this._topic);
+    }
+    if (window.ashfallSetExtraNetHandler) {
+      window.ashfallSetExtraNetHandler(null);
+    }
     if (this.ws) {
       try { this.ws.close(); } catch (e) {}
       this.ws = null;
@@ -72,37 +87,25 @@ class MultiplayerSession {
       fromId: this.myClientId,
       fromName: this.myCallsign
     };
-    fetch(`https://ntfy.sh/${this._topic}`, {
-      method: 'POST',
-      body: JSON.stringify(msg),
-      mode: 'cors'
-    }).catch(() => {});
+    if (window.ashfallNetBus) {
+      window.ashfallNetBus.publish(this._topic, msg);
+    }
   }
 
   _connectSignalingWS() {
     if (!this.active || !this._topic) return;
-    try {
-      const ws = new WebSocket(`wss://ntfy.sh/${this._topic}/ws?since=30s`);
-      this.ws = ws;
-      ws.onmessage = (ev) => {
-        if (!this.active) return;
-        try {
-          const outer = JSON.parse(ev.data);
-          if (!outer || outer.event !== 'message' || !outer.message) return;
-          const pkt = JSON.parse(outer.message);
-          if (!pkt || pkt.fromId === this.myClientId) return;
-          if (pkt.sid && this._seenSignalIds.has(pkt.sid)) return;
-          if (pkt.sid) this._seenSignalIds.add(pkt.sid);
-          if (pkt.toId && pkt.toId !== this.myClientId) return;
-          this._handleSignal(pkt);
-        } catch (e) {}
-      };
-      ws.onclose = () => {
-        if (this.active) {
-          setTimeout(() => this._connectSignalingWS(), 3000);
-        }
-      };
-    } catch (e) {}
+    if (window.ashfallNetBus && window.ashfallSetExtraNetHandler) {
+      window.ashfallSetExtraNetHandler((topic, pkt) => {
+        if (!this.active || topic !== this._topic) return;
+        if (!pkt || pkt.fromId === this.myClientId) return;
+        if (pkt.sid && this._seenSignalIds.has(pkt.sid)) return;
+        if (pkt.sid) this._seenSignalIds.add(pkt.sid);
+        if (pkt.toId && pkt.toId !== this.myClientId) return;
+        this._handleSignal(pkt);
+      });
+      window.ashfallNetBus.subscribe(this._topic);
+      if (!window.ashfallNetBus.isConnected()) window.ashfallNetBus.connect();
+    }
   }
 
   _ensurePeer(peerId, shouldOfferIfLower = false) {
@@ -309,7 +312,7 @@ class MultiplayerSession {
       }
     } else {
       this._enemyFallbackAccum += dt;
-      if (this._enemyFallbackAccum < 1.8) return; // Fallback over ntfy.sh until WebRTC opens
+      if (this._enemyFallbackAccum < 0.25) return; // 4Hz over persistent WSS MQTT until WebRTC opens
       this._enemyFallbackAccum = 0;
       const list = enemyManager.serializeSnapshot();
       this._postSignal({ type: 'enemies_sync', list });
@@ -376,10 +379,10 @@ class MultiplayerSession {
       }
     }
 
-    // 1.2s fallback over ntfy.sh ONLY if WebRTC DataChannel is not open yet
+    // 10Hz fallback over persistent WSS MQTT ONLY if WebRTC DataChannel is not open yet
     if (!this._hasAnyWebRTCConnected()) {
       this._fallbackAccum += dt;
-      if (this._fallbackAccum >= 1.2) {
+      if (this._fallbackAccum >= 0.10) {
         this._fallbackAccum = 0;
         this._postSignal(statePkt);
       }

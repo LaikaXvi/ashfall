@@ -302,7 +302,7 @@ class GameUI {
     this._ws = null;
     this._seenPktIds = new Set();
 
-    const PEER_TTL_MS = 55000;
+    const PEER_TTL_MS = 35000;
 
     this._rebuildOnlineList = () => {
       const now = Date.now();
@@ -359,6 +359,12 @@ class GameUI {
       const effectiveTs = (typeof serverTimeSec === 'number' && serverTimeSec > 0)
         ? Math.min(now, serverTimeSec * 1000)
         : now;
+
+      if (msg.type === 'presence_req') {
+        // Newly connected player asked who is online — reply immediately!
+        if (this._broadcastPresence) this._broadcastPresence();
+        return;
+      }
 
       if (msg.type === 'presence' || msg.type === 'rename') {
         const name = (msg.from || msg.name || '').trim().toUpperCase();
@@ -551,89 +557,59 @@ class GameUI {
       }
     };
 
+    this._lobbyMqttTopic = 'ashfall/lobby/v4';
     this._sendSocialPacket = (payload, useBeacon = false) => {
       const fullPayload = {
         ...payload,
         pid: payload.pid || (this._clientId.slice(-6) + '_' + Math.random().toString(36).slice(2, 8))
       };
-      const json = JSON.stringify(fullPayload);
       // 1. Local same-browser tabs via BroadcastChannel
       try {
         if (this._socialChannel) this._socialChannel.postMessage(fullPayload);
       } catch (e) {}
-      // 2. Global cross-device live lobby via ntfy.sh HTTPS POST / Beacon
-      const url = `https://ntfy.sh/${this._lobbyTopic}`;
+      // 2. Global cross-device live lobby over persistent WSS MQTT (zero HTTP 429 rate limits!)
       try {
-        if (useBeacon && navigator.sendBeacon) {
-          navigator.sendBeacon(url, new Blob([json], { type: 'text/plain;charset=UTF-8' }));
-        } else {
-          fetch(url, {
-            method: 'POST',
-            body: json,
-            mode: 'cors',
-            keepalive: useBeacon
-          }).catch(() => {});
+        if (this._netBus) {
+          this._netBus.publish(this._lobbyMqttTopic, fullPayload);
         }
       } catch (e) {}
     };
 
-    this._pollRemoteLobby = () => {
-      fetch(`https://ntfy.sh/${this._lobbyTopic}/json?poll=1&since=65s`, { mode: 'cors' })
-        .then(r => r.ok ? r.text() : '')
-        .then((txt) => {
-          if (!txt) return;
-          const lines = txt.split('\n');
-          for (const line of lines) {
-            if (!line.trim()) continue;
-            try {
-              const outer = JSON.parse(line);
-              if (outer && outer.event === 'message' && outer.message) {
-                const pkt = JSON.parse(outer.message);
-                this._handleSocialPacket(pkt, outer.time);
-              }
-            } catch (e) {}
-          }
-        })
-        .catch(() => {});
-    };
+    this._pollRemoteLobby = () => {};
 
     this._connectLobbyWS = () => {
-      if (this._ws && (this._ws.readyState === WebSocket.OPEN || this._ws.readyState === WebSocket.CONNECTING)) return;
-      try {
-        const ws = new WebSocket(`wss://ntfy.sh/${this._lobbyTopic}/ws?since=90s`);
-        this._ws = ws;
-        ws.onopen = () => {
-          this._wsConnected = true;
-          this._wsRetryMs = 3000;
-          this._broadcastPresence();
-          this.renderSocial();
-        };
-        ws.onmessage = (ev) => {
-          try {
-            const outer = JSON.parse(ev.data);
-            if (outer && outer.event === 'message' && outer.message) {
-              const pkt = JSON.parse(outer.message);
-              this._handleSocialPacket(pkt, outer.time);
+      if (typeof AshfallNetBus === 'undefined') return;
+      if (!this._netBus) {
+        this._netBus = new AshfallNetBus({
+          onOpen: () => {
+            this._wsConnected = true;
+            this._netBus.subscribe(this._lobbyMqttTopic);
+            this._broadcastPresence();
+            // Ask everyone currently online to announce themselves immediately!
+            this._sendSocialPacket({
+              type: 'presence_req',
+              clientId: this._clientId,
+              from: this.profile.social.callsign
+            });
+            this.renderSocial();
+          },
+          onClose: () => {
+            this._wsConnected = false;
+            this.renderSocial();
+          },
+          onMessage: (topic, pkt) => {
+            if (topic === this._lobbyMqttTopic) {
+              this._handleSocialPacket(pkt, null);
+            } else if (this._netBusExtraHandler) {
+              this._netBusExtraHandler(topic, pkt);
             }
-          } catch (e) {}
-        };
-        ws.onerror = () => {};
-        ws.onclose = () => {
-          this._wsConnected = false;
-          this._ws = null;
-          this.renderSocial();
-          // Fallback poll & auto-reconnect
-          this._pollRemoteLobby();
-          clearTimeout(this._wsReconnectTimer);
-          this._wsReconnectTimer = setTimeout(() => {
-            this._wsRetryMs = Math.min(15000, Math.round(this._wsRetryMs * 1.4));
-            this._connectLobbyWS();
-          }, this._wsRetryMs);
-        };
-      } catch (e) {
-        this._wsConnected = false;
-        this._pollRemoteLobby();
+          }
+        });
+        window.ashfallNetBus = this._netBus;
+        window.ashfallSetExtraNetHandler = (fn) => { this._netBusExtraHandler = fn; };
       }
+      this._netBus.subscribe(this._lobbyMqttTopic);
+      this._netBus.connect();
     };
 
     this._broadcastPresence = () => {
@@ -697,8 +673,7 @@ class GameUI {
     this._broadcastPresence();
     this._presenceInterval = setInterval(() => {
       this._broadcastPresence();
-      if (!this._wsConnected) this._pollRemoteLobby();
-    }, 18000);
+    }, 8000);
     this._pruneInterval = setInterval(() => this._rebuildOnlineList(), 5000);
   }
 
