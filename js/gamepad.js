@@ -213,12 +213,30 @@ class GamepadController {
       if (actions.onControllerActivate) actions.onControllerActivate();
     }
 
+    const gb = window.GAMEPAD_BINDS || {};
+    const bPause = gb.pause ?? 9;
+    const bMap = gb.map ?? 8;
+    const bBackpack = gb.backpack ?? 13;
+    const bAds = gb.ads ?? 6;
+    const bFire = gb.fire ?? 7;
+    const bSprint = gb.sprint ?? 10;
+    const bJump = gb.jump ?? 0;
+    const bCrouch = gb.crouch ?? 1;
+    const bInteract = gb.interactReload ?? 2;
+    const bSwap = gb.swapPlates ?? 3;
+    const bTactical = gb.tactical ?? 4;
+    const bLethal = gb.lethal ?? 5;
+    const bMelee = gb.melee ?? 11;
+    const bMedkit = gb.medkit ?? 12;
+    const bInspect = gb.inspect ?? 14;
+    const bKillstreak = gb.killstreak ?? 15;
+
     // Start (9): Toggle Pause
-    if (this._justPressed(pad, 9) && actions.togglePause) {
+    if (this._justPressed(pad, bPause) && actions.togglePause) {
       actions.togglePause();
     }
     // Back / Select (8): Toggle Full-Size Tactical Map
-    if (this._justPressed(pad, 8) && actions.toggleTacMap) {
+    if (this._justPressed(pad, bMap) && actions.toggleTacMap) {
       actions.toggleTacMap();
       this._snapshot(pad);
       return;
@@ -230,7 +248,7 @@ class GamepadController {
       return;
     }
     // D-Pad Down (13): Hold while looking at a ground weapon (with Weapon Backpack) to stow; tap to toggle Backpack Modal
-    const dpadDown = this._isDown(pad, 13);
+    const dpadDown = this._isDown(pad, bBackpack);
     const canStow = !ctx.isModalOpen && actions.canStowGroundWeapon && actions.canStowGroundWeapon();
     if (dpadDown) {
       if (canStow) {
@@ -239,14 +257,14 @@ class GamepadController {
           actions.stowGroundWeapon();
           this._dpadDownStowed = true;
         }
-      } else if (this._justPressed(pad, 13) && actions.toggleBackpack) {
+      } else if (this._justPressed(pad, bBackpack) && actions.toggleBackpack) {
         actions.toggleBackpack();
         this._dpadDownHoldTime = 0;
         this._dpadDownStowed = true;
         this._snapshot(pad);
         return;
       }
-    } else if (this.prevButtons[13]) {
+    } else if (this.prevButtons[bBackpack]) {
       if (!this._dpadDownStowed && (this._dpadDownHoldTime || 0) > 0 && actions.toggleBackpack) {
         actions.toggleBackpack();
         this._dpadDownHoldTime = 0;
@@ -365,9 +383,9 @@ class GamepadController {
     }
     this._wasSliding = !!player.isSliding;
 
-    // === LT (6): AIM DOWN SIGHTS (OR CANCEL THROWABLE PREP) ===
-    const ltDown = this._isDown(pad, 6);
-    if (this._justPressed(pad, 6)) {
+    // === LT: AIM DOWN SIGHTS (OR CANCEL THROWABLE PREP) ===
+    const ltDown = this._isDown(pad, bAds);
+    if (this._justPressed(pad, bAds)) {
       if (throwableSystem && throwableSystem.state === 'prep') {
         throwableSystem.cancelPrep();
         if (weaponSystem && !player.isThirdPerson) weaponSystem.viewmodelGroup.visible = true;
@@ -379,21 +397,21 @@ class GamepadController {
       this._lastLtDown = ltDown;
     }
 
-    // === RT (7): FIRE WEAPON ===
-    const rtDown = this._isDown(pad, 7);
-    if (this._justPressed(pad, 7)) {
+    // === RT: FIRE WEAPON ===
+    const rtDown = this._isDown(pad, bFire);
+    if (this._justPressed(pad, bFire)) {
       if (!throwableSystem || !throwableSystem.isBusy()) {
         player.isFiring = true;
         if (actions.fire) actions.fire();
       }
-    } else if (this._justReleased(pad, 7)) {
+    } else if (this._justReleased(pad, bFire)) {
       player.isFiring = false;
     }
     if (!rtDown && this._lastRtDown) player.isFiring = false;
     this._lastRtDown = rtDown;
 
-    // === L3 (10): SPRINT / TAC SPRINT ===
-    if (this._justPressed(pad, 10)) {
+    // === L3: SPRINT / TAC SPRINT ===
+    if (this._justPressed(pad, bSprint)) {
       if (player.padMoveY > 0.35) {
         this.sprintToggled = true;
         player.onSprintKeyDown();
@@ -401,20 +419,20 @@ class GamepadController {
     }
     player.padSprint = this.sprintToggled && player.padMoveY > 0.35;
 
-    // === A / CROSS (0): JUMP / STAND UP / SLIDE-CANCEL ===
-    if (this._justPressed(pad, 0)) {
+    // === A / CROSS: JUMP / STAND UP / SLIDE-CANCEL ===
+    if (this._justPressed(pad, bJump)) {
       player.onJumpKeyDown();
     }
 
-    // === B / CIRCLE (1): TAP = CROUCH / SLIDE, HOLD = PRONE ===
-    if (this._justPressed(pad, 1)) {
+    // === B / CIRCLE: TAP = CROUCH / SLIDE, HOLD = PRONE ===
+    if (this._justPressed(pad, bCrouch)) {
       player.onCrouchKeyDown();
-    } else if (this._justReleased(pad, 1)) {
+    } else if (this._justReleased(pad, bCrouch)) {
       player.onCrouchKeyUp();
     }
 
-    // === X / SQUARE (2): LOOT / INTERACT OR RELOAD ===
-    if (this._justPressed(pad, 2)) {
+    // === X / SQUARE: LOOT / INTERACT OR RELOAD ===
+    if (this._justPressed(pad, bInteract)) {
       if (actions.interact && actions.interact()) {
         // interacted with nearby crate/corpse
       } else {
@@ -422,14 +440,14 @@ class GamepadController {
       }
     }
 
-    // === Y / TRIANGLE (3): TAP = SWAP WEAPON, HOLD = ARMOR PLATES (WARZONE/DMZ STYLE!) ===
-    if (this._isDown(pad, 3)) {
+    // === Y / TRIANGLE: TAP = SWAP WEAPON, HOLD = ARMOR PLATES (WARZONE/DMZ STYLE!) ===
+    if (this._isDown(pad, bSwap)) {
       this.yHoldTime += dt;
       if (!this.yHoldTriggered && this.yHoldTime >= 0.34) {
         this.yHoldTriggered = true;
         player.startPlating();
       }
-    } else if (this._justReleased(pad, 3)) {
+    } else if (this._justReleased(pad, bSwap)) {
       if (!this.yHoldTriggered && this.yHoldTime < 0.34) {
         const nextSlot = player.activeSlot === 'primary' ? 'secondary' : 'primary';
         player.switchSlot(nextSlot);
@@ -438,9 +456,9 @@ class GamepadController {
       this.yHoldTriggered = false;
     }
 
-    // === LB (4) + RB (5) TOGETHER: ACTIVATE FIELD UPGRADE ===
-    const lbDown = this._isDown(pad, 4);
-    const rbDown = this._isDown(pad, 5);
+    // === LB + RB TOGETHER: ACTIVATE FIELD UPGRADE ===
+    const lbDown = this._isDown(pad, bTactical);
+    const rbDown = this._isDown(pad, bLethal);
     if (!lbDown && !rbDown) {
       this._fuChordConsumed = false;
     }
@@ -454,31 +472,31 @@ class GamepadController {
         actions.activateFieldUpgrade();
       }
     } else if (!this._fuChordConsumed) {
-      // === RB (5): LETHAL THROWABLE (TAP = QUICK THROW, HOLD = COOK / AIM) ===
-      if (this._justPressed(pad, 5) && !player.isDowned && !player.dead && throwableSystem) {
+      // === RB: LETHAL THROWABLE (TAP = QUICK THROW, HOLD = COOK / AIM) ===
+      if (this._justPressed(pad, bLethal) && !player.isDowned && !player.dead && throwableSystem) {
         throwableSystem.startPrep('lethal', player, weaponSystem);
-      } else if (this._justReleased(pad, 5) && throwableSystem) {
+      } else if (this._justReleased(pad, bLethal) && throwableSystem) {
         throwableSystem.releaseThrow('lethal', player, ctx.enemyManager, actions.onThrowableHit);
       }
 
-      // === LB (4): TACTICAL THROWABLE (TAP = QUICK THROW, HOLD = AIM) ===
-      if (this._justPressed(pad, 4) && !player.isDowned && !player.dead && throwableSystem) {
+      // === LB: TACTICAL THROWABLE (TAP = QUICK THROW, HOLD = AIM) ===
+      if (this._justPressed(pad, bTactical) && !player.isDowned && !player.dead && throwableSystem) {
         throwableSystem.startPrep('tactical', player, weaponSystem);
-      } else if (this._justReleased(pad, 4) && throwableSystem) {
+      } else if (this._justReleased(pad, bTactical) && throwableSystem) {
         throwableSystem.releaseThrow('tactical', player, ctx.enemyManager, actions.onThrowableHit);
       }
     }
 
-    // === R3 (11): TAP = QUICK MELEE, HOLD = EQUIP DEDICATED MELEE WEAPON ===
+    // === R3: TAP = QUICK MELEE, HOLD = EQUIP DEDICATED MELEE WEAPON ===
     if (!player.isDowned && !player.dead) {
-      if (this._isDown(pad, 11)) {
+      if (this._isDown(pad, bMelee)) {
         this.r3HoldTime += dt;
         if (!this.r3HoldTriggered && this.r3HoldTime >= 0.32) {
           this.r3HoldTriggered = true;
           player.switchSlot('melee');
           if (ui) ui.addFeedMessage('Equipped Melee Weapon', '#f5a623');
         }
-      } else if (this._justReleased(pad, 11)) {
+      } else if (this._justReleased(pad, bMelee)) {
         if (!this.r3HoldTriggered && this.r3HoldTime < 0.32) {
           if (actions.quickMelee) actions.quickMelee();
         }
@@ -487,14 +505,14 @@ class GamepadController {
       }
     }
 
-    // === D-PAD: UP (12) = MEDKIT, LEFT (14) = INSPECT, RIGHT (15) = KILLSTREAK ===
-    if (this._justPressed(pad, 12)) {
+    // === D-PAD: MEDKIT, INSPECT, KILLSTREAK ===
+    if (this._justPressed(pad, bMedkit)) {
       if (player.startMedkit() && ui) ui.addFeedMessage('Applying Field Medkit...', '#69f0ae');
     }
-    if (this._justPressed(pad, 14)) {
+    if (this._justPressed(pad, bInspect)) {
       player.startInspect();
     }
-    if (this._justPressed(pad, 15)) {
+    if (this._justPressed(pad, bKillstreak)) {
       if (actions.activateKillstreak) actions.activateKillstreak();
     }
 
