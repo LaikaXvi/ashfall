@@ -3272,6 +3272,93 @@ button:disabled {
 .lg-extract { background: #69f0ae; }
 .lg-redzone { background: #ff3d3d; border-radius: 1px; }
 
+/* ==================== ROUNDED FROSTED-GLASS MENU UPGRADE & AMBER SELECTOR SYSTEM ==================== */
+.panel,
+.menu-home-card,
+.summary-card,
+.modal-box,
+.tacmap-card,
+.inv-panel,
+.item-popout,
+.gs-drawer,
+.gs-stats-overlay,
+.mm-overlay-left,
+.mm-countdown-box,
+.revive-banner,
+.extract-banner,
+.redzone-banner,
+.hud-center-toast {
+  border-radius: 12px;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.hideout-header {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.party-box,
+.setting-row,
+.ctrl-row,
+.item-row,
+.social-row,
+.zone-card,
+.map-node,
+.stat-pill,
+.equip-slot,
+.deploy-summary-bar,
+.menu-version-badge {
+  border-radius: 9px;
+}
+
+.menu-option,
+.btn-primary,
+.btn-small,
+.btn-danger,
+.subnav-btn,
+.tab-btn,
+.pop-act,
+.inv-slot,
+.op-slot-card {
+  border-radius: 7px;
+  transition: border-color 0.12s ease, box-shadow 0.14s ease, background-color 0.12s ease, transform 0.1s ease;
+}
+
+/* Signature Amber Selector Box (prioritized for WASD / Arrow Keys & Controller D-Pad) */
+.ui-selected,
+.gp-focus,
+.inv-slot.ui-selected,
+.inv-slot.gp-focus,
+.inv-slot.gp-hover,
+.op-slot-card.ui-selected,
+.op-slot-card.gp-focus,
+button.ui-selected,
+button.gp-focus,
+.menu-option.ui-selected,
+.menu-option.gp-focus,
+.map-node.ui-selected,
+.map-node.gp-focus,
+.zone-card.ui-selected,
+.zone-card.gp-focus {
+  border-color: #f5a623 !important;
+  box-shadow:
+    0 0 0 2px rgba(245, 166, 35, 0.85),
+    0 0 16px rgba(245, 166, 35, 0.36),
+    inset 0 0 12px rgba(245, 166, 35, 0.14) !important;
+  outline: none !important;
+  position: relative;
+  z-index: 3;
+}
+
+input[type="range"].ui-selected,
+input[type="range"].gp-focus {
+  box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.85), 0 0 12px rgba(245, 166, 35, 0.45) !important;
+  border-radius: 6px;
+  outline: none !important;
+}
+
 /* ==================== CENTER-SCREEN HUD TOAST ==================== */
 /* Horizontally centered, vertically aligned with the middle of the bottom health & ammo widgets */
 .hud-center-toast {
