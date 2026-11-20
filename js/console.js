@@ -470,17 +470,37 @@ class DevConsole {
 
     this.registerCommand('pvp', {
       usage: '/pvp [on|off]',
-      desc: 'Toggle or set Squad PvP (Friendly Fire).',
+      desc: 'Toggle or set Squad PvP (enabling PvP disables Dev Mode for all squadmates).',
       handler: (args) => {
         const ui = this.ctx.getUI && this.ctx.getUI();
+        const player = this.ctx.getPlayer && this.ctx.getPlayer();
         if (args[0]) {
           window.SQUAD_PVP = ['on', '1', 'true'].includes(args[0].toLowerCase());
         } else {
           window.SQUAD_PVP = !window.SQUAD_PVP;
         }
-        if (ui && ui.syncSettingsUI) ui.syncSettingsUI();
+        if (window.SQUAD_PVP) {
+          window.DEV_MODE = false;
+          if (player) {
+            player.godMode = false;
+            player.noclip = false;
+          }
+        }
+        if (ui) {
+          if (ui.renderHideout) ui.renderHideout();
+          if (ui.syncSettingsUI) ui.syncSettingsUI();
+          if (ui._sendSocialPacket) {
+            ui._sendSocialPacket({
+              type: 'party_pvp',
+              clientId: ui._clientId,
+              partyId: ui.partyId,
+              enabled: window.SQUAD_PVP,
+              ts: Date.now()
+            });
+          }
+        }
         if (typeof window.onSquadPvpToggle === 'function') window.onSquadPvpToggle(window.SQUAD_PVP);
-        this.log(`Squad PvP: ${window.SQUAD_PVP ? 'ON' : 'OFF'}`, window.SQUAD_PVP ? 'ok' : 'warn');
+        this.log(window.SQUAD_PVP ? 'Squad PvP: ON (Dev Mode disabled for squad)' : 'Squad PvP: OFF', window.SQUAD_PVP ? 'ok' : 'warn');
       }
     });
 

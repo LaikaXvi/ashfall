@@ -518,8 +518,13 @@ class GameUI {
       if (msg.type === 'party_pvp' && msg.partyId && msg.partyId === this.partyId) {
         if (now - effectiveTs > 30000) return;
         window.SQUAD_PVP = !!msg.enabled;
+        if (window.SQUAD_PVP) {
+          window.DEV_MODE = false;
+          if (typeof window.onSquadPvpForceFair === 'function') window.onSquadPvpForceFair();
+        }
+        this.renderHideout();
         if (this.syncSettingsUI) this.syncSettingsUI();
-        this._showSocialToast(`Squad PvP (Friendly Fire): ${window.SQUAD_PVP ? 'ON' : 'OFF'}`);
+        this._showSocialToast(window.SQUAD_PVP ? 'Squad PvP: ON — Dev Mode disabled for squad' : 'Squad PvP (Friendly Fire): OFF');
         return;
       }
 
@@ -1525,6 +1530,10 @@ class GameUI {
     const pauseDevBtn = document.getElementById('btn-pause-dev');
     if (pauseDevBtn) {
       pauseDevBtn.addEventListener('click', () => {
+        if (!window.DEV_MODE && window.SQUAD_PVP) {
+          this._showSocialToast('Disable Squad PvP first to enable Dev Mode.');
+          return;
+        }
         window.DEV_MODE = !window.DEV_MODE;
         this.renderHideout();
         syncSettingsUI();
@@ -1535,6 +1544,11 @@ class GameUI {
       if (el) {
         el.addEventListener('click', () => {
           window.SQUAD_PVP = !window.SQUAD_PVP;
+          if (window.SQUAD_PVP) {
+            window.DEV_MODE = false;
+            if (typeof window.onSquadPvpForceFair === 'function') window.onSquadPvpForceFair();
+          }
+          this.renderHideout();
           syncSettingsUI();
           if (this._sendSocialPacket) {
             this._sendSocialPacket({
@@ -1548,7 +1562,7 @@ class GameUI {
           if (typeof window.onSquadPvpToggle === 'function') {
             window.onSquadPvpToggle(window.SQUAD_PVP);
           }
-          this._showSocialToast(`Squad PvP (Friendly Fire): ${window.SQUAD_PVP ? 'ON' : 'OFF'}`);
+          this._showSocialToast(window.SQUAD_PVP ? 'Squad PvP: ON — Dev Mode disabled for squad' : 'Squad PvP (Friendly Fire): OFF');
         });
       }
     });
@@ -1634,8 +1648,13 @@ class GameUI {
     });
 
     document.getElementById('btn-dev-mode').addEventListener('click', () => {
+      if (!window.DEV_MODE && window.SQUAD_PVP) {
+        this._showSocialToast('Disable Squad PvP first to enable Dev Mode.');
+        return;
+      }
       window.DEV_MODE = !window.DEV_MODE;
       this.renderHideout();
+      syncSettingsUI();
     });
 
     document.getElementById('btn-dev-grant').addEventListener('click', () => {

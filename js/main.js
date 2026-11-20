@@ -149,7 +149,23 @@
     enemyManager = new EnemyManager(scene, world, zone, weaponSystem, hasRemoteParty && !isMatchHost);
     squadManager = new SquadManager(scene, world, ui.partyMembers || []);
 
+    window.onSquadPvpForceFair = () => {
+      if (player) {
+        player.godMode = false;
+        player.noclip = false;
+      }
+    };
+
     window.onSquadPvpToggle = (enabled) => {
+      if (enabled) {
+        window.DEV_MODE = false;
+        if (player) {
+          player.godMode = false;
+          player.noclip = false;
+        }
+        ui.renderHideout();
+        if (ui.syncSettingsUI) ui.syncSettingsUI();
+      }
       if (mpSession && mpSession.active) {
         mpSession.sendEvent({ type: 'pvp_toggle', enabled: !!enabled });
       }
@@ -226,8 +242,16 @@
             world.removeGroundItemByUid(pkt.uid);
           } else if (pkt.type === 'pvp_toggle') {
             window.SQUAD_PVP = !!pkt.enabled;
+            if (window.SQUAD_PVP) {
+              window.DEV_MODE = false;
+              if (player) {
+                player.godMode = false;
+                player.noclip = false;
+              }
+            }
+            ui.renderHideout();
             if (ui.syncSettingsUI) ui.syncSettingsUI();
-            ui.addFeedMessage(`SQUAD PVP: ${window.SQUAD_PVP ? 'ON' : 'OFF'}`, window.SQUAD_PVP ? '#ff5252' : '#69f0ae');
+            ui.addFeedMessage(window.SQUAD_PVP ? 'SQUAD PVP: ON (DEV MODE DISABLED)' : 'SQUAD PVP: OFF', window.SQUAD_PVP ? '#ff5252' : '#69f0ae');
           } else if (pkt.type === 'revive_progress') {
             if (pkt.targetClientId === ui._clientId && player && (player.isDowned || player.dead)) {
               player.beingRevivedBy = pkt.reviverName || 'SQUAD';
