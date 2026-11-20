@@ -319,23 +319,31 @@ class Player {
 
     if (p.handMag) p.handMag.visible = false;
     if (p.handShell) p.handShell.visible = false;
+    if (p.weaponMount) p.weaponMount.visible = !this.isDowned && !this.dead;
 
     if (this.isDowned) {
-      // === DOWNED SEATED POSTURE: LEGS STRETCHED OUT IN FRONT, SCOOTING ON GROUND OR DRAGGED FROM BEHIND ===
+      // === DOWNED SEATED POSTURE: SUPPORTING ARM PLANTED TO SCOOT, NO WEAPON HELD, LEGS BENT IN FRONT ===
       autoClampFeet = false;
-      pelvisY = 0.24;
-      torsoPitch = -0.32 + breathe * 0.02;
-      const scoot = (!this.beingDragged && horizSpeed > 0.15) ? Math.sin(this.animCycle * 1.1) : 0;
-      lHipX = 1.44 + Math.max(0, scoot) * 0.14;
-      lHipZ = -0.10;
-      lKneeX = -0.26 - Math.max(0, scoot) * 0.26;
-      lAnkX = 0.22;
-      rHipX = 1.44 + Math.max(0, -scoot) * 0.14;
-      rHipZ = 0.10;
-      rKneeX = -0.26 - Math.max(0, -scoot) * 0.26;
-      rAnkX = 0.22;
-      lShX = -0.42; lElbX = 0.35; lShZ = -0.36;
-      rShX = -0.42; rElbX = 0.35; rShZ = 0.36;
+      const isScooting = !this.beingDragged && horizSpeed > 0.15;
+      const phase = isScooting ? Math.sin(this.animCycle * 0.65) : 0;
+      const heave = isScooting ? Math.max(0, phase) : 0;
+      pelvisY = 0.23 + heave * 0.045;
+      rigRoll = phase * 0.06;
+      torsoPitch = -0.34 - heave * 0.06 + breathe * 0.02;
+      if (this.beingDragged) {
+        lHipX = 1.48; lHipZ = -0.08; lKneeX = -0.10; lAnkX = 0.25;
+        rHipX = 1.48; rHipZ = 0.08;  rKneeX = -0.10; rAnkX = 0.25;
+        lShX = -0.32; lElbX = 0.25; lShZ = -0.25;
+        rShX = -0.32; rElbX = 0.25; rShZ = 0.25;
+      } else {
+        // Knees bent with heels planting & pulling while supporting left arm pushes off the ground behind/beside!
+        lHipX = 1.28 + heave * 0.18; lHipZ = -0.10; lKneeX = -0.58 - heave * 0.22; lAnkX = 0.32;
+        rHipX = 1.34 + heave * 0.12; rHipZ = 0.10;  rKneeX = -0.48 - heave * 0.16; rAnkX = 0.28;
+        // Left supporting arm braced downward/back on ground pushing body forward
+        lShX = -0.68 - phase * 0.28; lElbX = 0.22 + heave * 0.24; lShZ = -0.42;
+        // Right arm clutching wound / steadying torso (no weapon)
+        rShX = 0.35; rElbX = 1.25; rShZ = -0.35;
+      }
     } else if (this.isSliding) {
       // === LOW, FOCUSED COMBAT SLIDE: SKIMMING GROUND, LEAD LEG FLAT OUT, TRAILING KNEE TUCKED HORIZONTALLY, ARMS LOW STABILIZING GUN ===
       autoClampFeet = false;

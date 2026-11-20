@@ -709,10 +709,24 @@ class WeaponSystem {
 
     const leftLeg = makeLeg(-0.15);
     const rightLeg = makeLeg(0.15);
+
+    // Supporting left arm & gloved hand visible bracing on the ground to push/scoot the body
+    const supportArm = new THREE.Group();
+    supportArm.position.set(-0.32, -0.22, -0.18);
+    const sleeveMat = new THREE.MeshLambertMaterial({ color: 0x2f332c });
+    const forearm = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.042, 0.34, 8), sleeveMat);
+    forearm.rotation.x = Math.PI / 2 - 0.55;
+    forearm.position.set(0, -0.08, -0.10);
+    const palm = this._createHand(false, 'grip');
+    palm.position.set(-0.02, -0.18, -0.22);
+    palm.rotation.set(0.55, 0.25, -0.25);
+    supportArm.add(forearm, palm);
+    root.add(supportArm);
+
     root.visible = false;
     this.viewmodelCamera.add(root);
     this.downedLegsGroup = root;
-    this.downedLegsParts = { leftLeg, rightLeg };
+    this.downedLegsParts = { leftLeg, rightLeg, supportArm };
   }
 
   buildViewmodel(weaponDef, mods = {}, withHands = true) {
@@ -1356,17 +1370,36 @@ class WeaponSystem {
       if (showDownedLegs) {
         this.viewmodelGroup.visible = false;
         const scootSpd = Math.hypot(player.velocity.x, player.velocity.z);
-        if (scootSpd > 0.15 && !player.beingDragged) {
-          this.downedScootCycle += dt * 7.5;
+        const isScooting = scootSpd > 0.15 && !player.beingDragged;
+        if (isScooting) {
+          this.downedScootCycle += dt * 4.8; // deliberate scoot-heave cadence, not frantic kicking
         }
-        const kick = (scootSpd > 0.15 && !player.beingDragged) ? Math.sin(this.downedScootCycle) : 0;
+        const phase = isScooting ? Math.sin(this.downedScootCycle) : 0;
+        const heave = isScooting ? Math.max(0, Math.sin(this.downedScootCycle)) : 0;
         const p = this.downedLegsParts;
-        // Keep legs grounded horizontally regardless of camera look pitch
-        this.downedLegsGroup.rotation.x = -player.pitch * 0.75;
-        p.leftLeg.hip.rotation.x = 0.08 + Math.max(0, kick) * 0.16;
-        p.leftLeg.knee.rotation.x = -0.18 - Math.max(0, kick) * 0.28;
-        p.rightLeg.hip.rotation.x = 0.08 + Math.max(0, -kick) * 0.16;
-        p.rightLeg.knee.rotation.x = -0.18 - Math.max(0, -kick) * 0.28;
+        // Keep legs grounded horizontally + subtle body heave/roll as supporting arm pushes you forward!
+        this.downedLegsGroup.position.y = heave * 0.038;
+        this.downedLegsGroup.rotation.x = -player.pitch * 0.72 - heave * 0.045;
+        this.downedLegsGroup.rotation.z = phase * 0.045;
+
+        // Planted heels pull/push steadily with bent knees while scooting; relaxed flat when dragged
+        if (player.beingDragged) {
+          p.leftLeg.hip.rotation.x = 0.02;
+          p.leftLeg.knee.rotation.x = -0.08;
+          p.rightLeg.hip.rotation.x = 0.02;
+          p.rightLeg.knee.rotation.x = -0.08;
+        } else {
+          p.leftLeg.hip.rotation.x = 0.18 + heave * 0.16;
+          p.leftLeg.knee.rotation.x = -0.34 - heave * 0.24;
+          p.rightLeg.hip.rotation.x = 0.14 + heave * 0.12;
+          p.rightLeg.knee.rotation.x = -0.28 - heave * 0.18;
+        }
+        if (p.supportArm) {
+          // Supporting left arm reaches out, plants palm, and pushes body along the ground
+          p.supportArm.position.z = -0.18 - phase * 0.12;
+          p.supportArm.position.y = -0.22 - heave * 0.04;
+          p.supportArm.rotation.x = phase * 0.28;
+        }
         return;
       } else if (!this.isThirdPerson && !this.isHealing && !player.dead) {
         this.viewmodelGroup.visible = true;
@@ -3250,14 +3283,15 @@ class WeaponSystem {
     }
 
     // Angle blade naturally forward-left like a real FPS combat knife ready stance
-    bladeRoot.position.set(0.01, -0.01, -0.02);
-    bladeRoot.rotation.set(-0.78, 0.35, 0.28);
+    bladeRoot.scale.setScalar(1.18);
+    bladeRoot.position.set(0.0, 0.02, -0.02);
+    bladeRoot.rotation.set(-0.68, 0.32, 0.25);
     g.add(bladeRoot);
 
     // Attach proper gloved right hand & forearm!
-    this.rightHand = this._createGlovedHand(true, 'grip');
-    this.rightHand.position.set(0.015, -0.055, 0.02);
-    this.rightHand.rotation.set(-0.45, 0.25, 0.20);
+    this.rightHand = this._createHand(true, 'grip');
+    this.rightHand.position.set(0.012, -0.045, 0.02);
+    this.rightHand.rotation.set(-0.42, 0.22, 0.18);
     this.rightHandRestPos.copy(this.rightHand.position);
     this.rightHandRestRot.copy(this.rightHand.rotation);
     this.rightArm = this._createForearm();

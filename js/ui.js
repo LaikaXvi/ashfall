@@ -2332,7 +2332,7 @@ class GameUI {
       if (def.type === 'weapon') {
         actionsHtml += `<button class="pop-act" data-act="equip_primary">Equip Primary</button>`;
         actionsHtml += `<button class="pop-act" data-act="equip_secondary">Equip Secondary</button>`;
-      } else if (def.type === 'armor' || def.type === 'backpack' || def.type === 'field_upgrade' || def.type === 'killstreak' || def.type === 'self_revive' || def.type === 'headgear' || def.type === 'melee') {
+      } else if (def.type === 'armor' || def.type === 'backpack' || def.type === 'field_upgrade' || def.type === 'killstreak' || def.type === 'self_revive' || def.type === 'headgear' || def.type === 'melee' || def.type === 'lethal' || def.type === 'tactical') {
         actionsHtml += `<button class="pop-act" data-act="equip_gear">Equip / Swap</button>`;
       }
 
@@ -2446,6 +2446,40 @@ class GameUI {
     return null;
   }
 
+  _swapThrowableWithPlayer(player, item) {
+    const def = GAME_DATA.ITEMS[item.id];
+    if (!def || (def.type !== 'lethal' && def.type !== 'tactical')) return { consumed: false, returned: null };
+    const idKey = def.type === 'lethal' ? 'lethal' : 'tactical';
+    const qtyKey = def.type === 'lethal' ? 'lethalQty' : 'tacticalQty';
+    const curId = player[idKey];
+    const curQty = player[qtyKey] || 0;
+
+    if (curId === item.id) {
+      // Same grenade type -> top up active slot up to 4
+      const space = Math.max(0, 4 - curQty);
+      if (space <= 0) return { consumed: false, returned: null };
+      const move = Math.min(space, item.qty);
+      player[qtyKey] = curQty + move;
+      const leftover = item.qty - move;
+      return {
+        consumed: true,
+        returned: leftover > 0 ? { id: item.id, qty: leftover, revealed: true } : null
+      };
+    }
+
+    // Different grenade type -> swap active slot cleanly with backpack/container!
+    const move = Math.min(4, item.qty);
+    player[idKey] = item.id;
+    player[qtyKey] = move;
+    const prevItem = (curId && curQty > 0) ? { id: curId, qty: curQty, revealed: true } : null;
+    const leftover = item.qty - move;
+    return {
+      consumed: true,
+      returned: prevItem,
+      extra: leftover > 0 ? { id: item.id, qty: leftover, revealed: true } : null
+    };
+  }
+
   handleSlotAction(action) {
     if (!this._hoveredSlot || !this._lootPlayer) return;
     const { context, item, idx } = this._hoveredSlot;
@@ -2468,12 +2502,24 @@ class GameUI {
       }
     } else if (action === 'equip_gear') {
       if (context === 'container' && item.revealed === false) return;
-      const prev = this._swapGearWithPlayer(player, item.id);
-      sourceList.splice(idx, 1);
-      if (prev) {
-        sourceList.splice(idx, 0, { id: prev, qty: 1, revealed: true });
+      if (def.type === 'lethal' || def.type === 'tactical') {
+        const res = this._swapThrowableWithPlayer(player, item);
+        if (res.consumed) {
+          sourceList.splice(idx, 1);
+          if (res.returned) sourceList.splice(idx, 0, res.returned);
+          if (res.extra) sourceList.push(res.extra);
+          this.addFeedMessage(`Equipped ${def.name}`, '#69f0ae');
+        } else {
+          this.addFeedMessage(`${def.type.toUpperCase()} slot already full (4)`, '#a0a8a3');
+        }
+      } else {
+        const prev = this._swapGearWithPlayer(player, item.id);
+        sourceList.splice(idx, 1);
+        if (prev) {
+          sourceList.splice(idx, 0, { id: prev, qty: 1, revealed: true });
+        }
+        this.addFeedMessage(`Equipped ${def.name}`, '#69f0ae');
       }
-      this.addFeedMessage(`Equipped ${def.name}`, '#69f0ae');
     } else if (action === 'quick') {
       if (context === 'container' && this.activeLootSource) {
         if (item.revealed === false) return;
@@ -2504,6 +2550,16 @@ class GameUI {
             return;
           } else {
             this.addFeedMessage('Health already full', '#a0a8a3');
+          }
+        } else if (def.type === 'lethal' || def.type === 'tactical') {
+          const res = this._swapThrowableWithPlayer(player, item);
+          if (res.consumed) {
+            player.backpack.splice(idx, 1);
+            if (res.returned) player.backpack.splice(idx, 0, res.returned);
+            if (res.extra) player.backpack.push(res.extra);
+            this.addFeedMessage(`Equipped ${def.name}`, '#69f0ae');
+          } else {
+            this.addFeedMessage(`${def.type.toUpperCase()} slot already full (4)`, '#a0a8a3');
           }
         } else if (def.type === 'armor' || def.type === 'backpack' || def.type === 'field_upgrade' || def.type === 'killstreak' || def.type === 'self_revive' || def.type === 'headgear' || def.type === 'melee') {
           const prev = this._swapGearWithPlayer(player, item.id);

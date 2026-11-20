@@ -258,13 +258,13 @@ class Enemy {
 
     // Arms + Rifle
     const armGeo = new THREE.BoxGeometry(0.18, 0.56, 0.18);
-    const leftArm = new THREE.Mesh(armGeo, limbMat);
-    leftArm.position.set(-0.38, 1.16, 0.12);
-    leftArm.rotation.x = -0.8;
+    this.leftArm = new THREE.Mesh(armGeo, limbMat);
+    this.leftArm.position.set(-0.38, 1.16, 0.12);
+    this.leftArm.rotation.x = -0.8;
 
-    const rightArm = new THREE.Mesh(armGeo, limbMat);
-    rightArm.position.set(0.38, 1.16, 0.15);
-    rightArm.rotation.x = -1.1;
+    this.rightArm = new THREE.Mesh(armGeo, limbMat);
+    this.rightArm.position.set(0.38, 1.16, 0.15);
+    this.rightArm.rotation.x = -1.1;
 
     // Actual 3D game weapon in hands (built from WeaponSystem)
     const wDef = GAME_DATA.ITEMS[this.weaponId];
@@ -296,7 +296,7 @@ class Enemy {
 
     this.group.add(
       this.leftHip, this.rightHip, torso, head,
-      leftArm, rightArm, weaponObj, this.muzzleMesh, this.muzzleLight
+      this.leftArm, this.rightArm, weaponObj, this.muzzleMesh, this.muzzleLight
     );
   }
 
@@ -417,11 +417,14 @@ class Enemy {
         this.downedBleedTimer = this.downedBleedMax;
         this.downedBy = attackerInfo || { name: 'YOU', isPlayer: true, weaponId: '', weaponName: '' };
         this.state = 'DOWNED';
-        // Seated downed posture: legs stretched out in front on the ground
+        // Seated downed posture: hide weapon, plant supporting arm to scoot, legs extended in front
+        if (this.weaponMeshGroup) this.weaponMeshGroup.visible = false;
         this.group.position.y = -0.52;
-        this.group.rotation.x = -0.22;
-        if (this.leftHip) this.leftHip.rotation.x = -1.42;
-        if (this.rightHip) this.rightHip.rotation.x = -1.42;
+        this.group.rotation.x = -0.24;
+        if (this.leftHip) this.leftHip.rotation.x = -1.38;
+        if (this.rightHip) this.rightHip.rotation.x = -1.38;
+        if (this.leftArm) { this.leftArm.rotation.x = 0.65; this.leftArm.rotation.z = 0.25; }
+        if (this.rightArm) { this.rightArm.rotation.x = -0.45; this.rightArm.rotation.z = -0.35; }
         if (this.alertSprite) this.alertSprite.visible = false;
         // Never show enemy revive symbols or bleedout status to the player
         if (this.bleedSprite) this.bleedSprite.visible = false;
@@ -582,8 +585,11 @@ class Enemy {
     this.reviveProgress = 0;
     this.group.position.y = 0;
     this.group.rotation.x = 0;
+    if (this.weaponMeshGroup) this.weaponMeshGroup.visible = true;
     if (this.leftHip) this.leftHip.rotation.x = 0;
     if (this.rightHip) this.rightHip.rotation.x = 0;
+    if (this.leftArm) { this.leftArm.rotation.x = -0.8; this.leftArm.rotation.z = 0; }
+    if (this.rightArm) { this.rightArm.rotation.x = -1.1; this.rightArm.rotation.z = 0; }
     if (this.bleedSprite) this.bleedSprite.visible = false;
     this.state = 'ALERT';
     this.alertTimer = 4.0;
@@ -758,13 +764,19 @@ class Enemy {
             this.group.position.z = this.position.z;
           }
           this.group.rotation.y = Math.atan2(awayX, awayZ);
-          this._scootCycle = (this._scootCycle || 0) + dt * 7.0;
-          if (this.leftHip) this.leftHip.rotation.x = -1.42 + Math.sin(this._scootCycle) * 0.16;
-          if (this.rightHip) this.rightHip.rotation.x = -1.42 - Math.sin(this._scootCycle) * 0.16;
+          // Supporting arm push-off scoot animation (heaving body along ground instead of kicking feet)
+          this._scootCycle = (this._scootCycle || 0) + dt * 4.5;
+          const phase = Math.sin(this._scootCycle);
+          const heave = Math.max(0, phase);
+          this.group.position.y = -0.52 + heave * 0.04;
+          if (this.leftArm) this.leftArm.rotation.x = 0.65 + phase * 0.35;
+          if (this.leftHip) this.leftHip.rotation.x = -1.32 - heave * 0.14;
+          if (this.rightHip) this.rightHip.rotation.x = -1.36 - heave * 0.10;
         }
       } else {
-        if (this.leftHip) this.leftHip.rotation.x = -1.42;
-        if (this.rightHip) this.rightHip.rotation.x = -1.42;
+        this.group.position.y = -0.52;
+        if (this.leftHip) this.leftHip.rotation.x = -1.44;
+        if (this.rightHip) this.rightHip.rotation.x = -1.44;
       }
       if (!this.beingRevivedBy && this.downedBleedTimer <= 0) {
         this.die();

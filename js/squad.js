@@ -97,6 +97,7 @@ class SquadMate {
 
     const rifle = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.09, 0.62), gearMat);
     rifle.position.set(0.24, 1.24, 0.30);
+    this.rifleMesh = rifle;
     this.muzzleMesh = new THREE.Mesh(
       new THREE.SphereGeometry(0.055, 6, 6),
       new THREE.MeshBasicMaterial({ color: 0xffdd77, transparent: true, opacity: 0 })
@@ -298,11 +299,12 @@ class SquadMate {
       this.downedBy = attackerInfo || { name: 'HOSTILE', weaponId: 'ak74m', weaponName: 'AK-74M' };
       this.reviveProgress = 0;
       this.state = 'DOWNED';
-      // Seated downed posture: legs stretched out in front on the ground
+      // Seated downed posture: hide weapon, legs extended in front on the ground
+      if (this.rifleMesh) this.rifleMesh.visible = false;
       this.group.position.y = -0.52;
-      this.group.rotation.x = -0.22;
-      if (this.leftHip) this.leftHip.rotation.x = -1.42;
-      if (this.rightHip) this.rightHip.rotation.x = -1.42;
+      this.group.rotation.x = -0.24;
+      if (this.leftHip) this.leftHip.rotation.x = -1.38;
+      if (this.rightHip) this.rightHip.rotation.x = -1.38;
       this._redrawTag('DOWNED', '#ff5252');
       if (this.bleedSprite && window.drawDownedBleedoutCanvas) {
         window.drawDownedBleedoutCanvas(this.bleedCanvas, 1, { isAlly: true });
@@ -342,6 +344,9 @@ class SquadMate {
     this.state = 'FOLLOW';
     this.group.rotation.x = 0;
     this.group.position.y = 0;
+    if (this.rifleMesh) this.rifleMesh.visible = true;
+    if (this.leftHip) this.leftHip.rotation.x = 0;
+    if (this.rightHip) this.rightHip.rotation.x = 0;
     if (this.bleedSprite) this.bleedSprite.visible = false;
     this._redrawTag('REVIVED', '#69f0ae');
   }
