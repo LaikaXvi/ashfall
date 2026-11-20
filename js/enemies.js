@@ -175,7 +175,7 @@ class Enemy {
       this.damage = 18;
       this.fireInterval = 0.20;
       this.accuracy = 0.06;
-      this.speed = 3.9;
+      this.speed = 3.0;
       this.armorColor = 0x3b1e22;
       this.headColor = 0x1d1e22;
       const bossWpns = ['ak74m', 'm24', 'm870'];
@@ -186,7 +186,7 @@ class Enemy {
       this.damage = 16;
       this.fireInterval = 0.22;
       this.accuracy = 0.085;
-      this.speed = 3.4;
+      this.speed = 2.6;
       this.armorColor = 0x2a2f33;
       this.headColor = 0x3b4045;
       this.weaponId = 'ak74m';
@@ -196,7 +196,7 @@ class Enemy {
       this.damage = 13;
       this.fireInterval = 0.28;
       this.accuracy = 0.075;
-      this.speed = 4.5;
+      this.speed = 3.5;
       this.armorColor = 0x4b4232;
       this.headColor = 0x6b5a48;
       const raiderWpns = ['ak74m', 'mp5k', 'm870'];
@@ -207,7 +207,7 @@ class Enemy {
       this.damage = 9;
       this.fireInterval = 0.42;
       this.accuracy = 0.11;
-      this.speed = 4.1;
+      this.speed = 3.2;
       this.armorColor = 0x5c4738;
       this.headColor = 0x8f735c;
       this.weaponId = Math.random() < 0.5 ? 'pm9' : 'g17';
