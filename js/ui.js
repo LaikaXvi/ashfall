@@ -29,6 +29,25 @@ window.DEFAULT_KEYBINDS = {
   thirdPerson: 'KeyV'
 };
 window.KEYBINDS = { ...window.DEFAULT_KEYBINDS };
+window.DEFAULT_GAMEPAD_BINDS = {
+  fire: 7,
+  ads: 6,
+  sprint: 10,
+  jump: 0,
+  crouch: 1,
+  interactReload: 2,
+  swapPlates: 3,
+  tactical: 4,
+  lethal: 5,
+  melee: 11,
+  medkit: 12,
+  backpack: 13,
+  inspect: 14,
+  killstreak: 15,
+  map: 8,
+  pause: 9
+};
+window.GAMEPAD_BINDS = { ...window.DEFAULT_GAMEPAD_BINDS };
 
 class GameUI {
   constructor(onDeployCallback) {
@@ -47,6 +66,8 @@ class GameUI {
     this.profile = this._loadProfile();
     this._normalizeStash();
     window.KEYBINDS = { ...window.DEFAULT_KEYBINDS, ...(this.profile.keybinds || {}) };
+    window.GAMEPAD_BINDS = { ...window.DEFAULT_GAMEPAD_BINDS, ...(this.profile.gamepadBinds || {}) };
+    this.keybindsTab = 'kbm';
     this._initSocial();
     this._bindHideoutEvents();
     this._bindWeaponStagingModal();
@@ -1183,15 +1204,19 @@ class GameUI {
     if (topbar) topbar.classList.toggle('hidden', isHome);
     if (homeView) homeView.classList.toggle('hidden', !isHome);
 
-    ['deploy', 'map', 'matchmaking', 'workbench', 'stash', 'operator', 'settings'].forEach((t) => {
+    ['deploy', 'map', 'matchmaking', 'workbench', 'stash', 'operator', 'settings', 'keybinds'].forEach((t) => {
       const el = document.getElementById(`menu-view-${t}`);
       if (el) el.classList.toggle('hidden', tabName !== t);
     });
     document.querySelectorAll('.subnav-btn').forEach((btn) => {
       const activeMatch = btn.dataset.tab === tabName ||
-        (btn.dataset.tab === 'deploy' && (tabName === 'map' || tabName === 'matchmaking'));
+        (btn.dataset.tab === 'deploy' && (tabName === 'map' || tabName === 'matchmaking')) ||
+        (btn.dataset.tab === 'settings' && tabName === 'keybinds');
       btn.classList.toggle('active', activeMatch);
     });
+    if (tabName === 'keybinds') {
+      this.renderKeybindSettings();
+    }
     if (tabName === 'deploy') {
       this._updateDeployResponsiveScale();
       this.renderPreMatchLoadout();
@@ -1327,6 +1352,26 @@ class GameUI {
     if (opGs) opGs.addEventListener('click', () => this.openMenuTab('gunsmith'));
     const opSt = document.getElementById('btn-op-stash');
     if (opSt) opSt.addEventListener('click', () => this.openMenuTab('stash'));
+
+    // Dedicated Keybinds entry inside Settings + KB/M & Controller tabs
+    const openKbBtn = document.getElementById('btn-open-keybinds');
+    if (openKbBtn) openKbBtn.addEventListener('click', () => this.openMenuTab('keybinds'));
+    const backKbBtn = document.getElementById('btn-keybinds-back');
+    if (backKbBtn) backKbBtn.addEventListener('click', () => this.openMenuTab('settings'));
+    document.querySelectorAll('#keybinds-tabs .tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (this._rebindCleanup) this._rebindCleanup();
+        this.keybindsTab = btn.dataset.kbTab || 'kbm';
+        document.querySelectorAll('#keybinds-tabs .tab-btn').forEach((b) => {
+          b.classList.toggle('active', b === btn);
+        });
+        const kbmPane = document.getElementById('keybinds-kbm-pane');
+        const ctrlPane = document.getElementById('keybinds-controller-pane');
+        if (kbmPane) kbmPane.classList.toggle('hidden', this.keybindsTab !== 'kbm');
+        if (ctrlPane) ctrlPane.classList.toggle('hidden', this.keybindsTab !== 'controller');
+        this.renderKeybindSettings();
+      });
+    });
 
     // Pre-Match Step 1 -> Step 2 (Map for Solo / Party Leader, or Ready Up for Party Member)
     const btnNext = document.getElementById('btn-prematch-next');
@@ -2133,10 +2178,35 @@ class GameUI {
     return map[code] || code.toUpperCase();
   }
 
+  _formatGamepadButton(idx) {
+    const names = {
+      0: 'A / Cross',
+      1: 'B / Circle',
+      2: 'X / Square',
+      3: 'Y / Triangle',
+      4: 'LB / L1',
+      5: 'RB / R1',
+      6: 'LT / L2',
+      7: 'RT / R2',
+      8: 'Back / Select',
+      9: 'Start / Menu',
+      10: 'L3 (Left Stick)',
+      11: 'R3 (Right Stick)',
+      12: 'D-Pad Up',
+      13: 'D-Pad Down',
+      14: 'D-Pad Left',
+      15: 'D-Pad Right'
+    };
+    return names[idx] !== undefined ? names[idx] : `BTN ${idx}`;
+  }
+
   renderKeybindSettings() {
-    const grid = document.querySelector('#menu-view-settings .controls-grid');
-    if (!grid) return;
-    const labels = [
+    const kbmPane = document.getElementById('keybinds-kbm-pane');
+    const ctrlPane = document.getElementById('keybinds-controller-pane');
+    if (!kbmPane || !ctrlPane) return;
+
+    // 1. Keyboard & Mouse Controls Tab
+    const kbmLabels = [
       ['moveForward', 'Move Forward'],
       ['moveBack', 'Move Backward'],
       ['moveLeft', 'Move Left'],
@@ -2157,17 +2227,31 @@ class GameUI {
       ['slotMelee', 'Dedicated Melee Weapon'],
       ['quickMelee', 'Quick Melee Strike'],
       ['interact', 'Loot / Interact / Revive'],
-      ['backpack', 'Open Backpack'],
-      ['map', 'Toggle Full-Size Map'],
+      ['backpack', 'Open Backpack (Hold: Stow Ground Weapon)'],
+      ['map', 'Toggle Full-Size Tactical Map'],
       ['thirdPerson', 'Toggle 3rd-Person Camera']
     ];
-    grid.innerHTML = '';
-    for (const [action, label] of labels) {
+    kbmPane.innerHTML = '';
+
+    // Mouse Controls (reference rows)
+    const mouseRows = [
+      ['LMB / RMB', 'Fire / Aim Down Sights'],
+      ['MMB (Tap / 2x / Hold)', 'Ping Location / Enemy Ping / Ping Wheel'],
+      ['SCROLL', 'Switch Weapon Slot']
+    ];
+    for (const [keyTxt, desc] of mouseRows) {
+      const row = document.createElement('div');
+      row.className = 'ctrl-row';
+      row.innerHTML = `<b style="min-width:110px;">${keyTxt}</b><span>${desc}</span>`;
+      kbmPane.appendChild(row);
+    }
+
+    for (const [action, label] of kbmLabels) {
       const row = document.createElement('div');
       row.className = 'ctrl-row';
       const btn = document.createElement('button');
       btn.className = 'btn-small';
-      btn.style.minWidth = '78px';
+      btn.style.minWidth = '88px';
       btn.textContent = this._formatKeyCode(window.KEYBINDS[action]);
       btn.addEventListener('click', () => {
         if (this._rebindCleanup) this._rebindCleanup();
@@ -2195,26 +2279,133 @@ class GameUI {
       const lbl = document.createElement('span');
       lbl.textContent = label;
       row.append(btn, lbl);
-      grid.appendChild(row);
+      kbmPane.appendChild(row);
     }
 
-    const resetRow = document.createElement('div');
-    resetRow.className = 'ctrl-row';
-    resetRow.style.marginTop = '6px';
-    const resetBtn = document.createElement('button');
-    resetBtn.className = 'btn-small btn-danger';
-    resetBtn.textContent = 'RESET KEYBINDS';
-    resetBtn.addEventListener('click', () => {
+    const kbmResetRow = document.createElement('div');
+    kbmResetRow.className = 'ctrl-row';
+    kbmResetRow.style.marginTop = '6px';
+    const kbmResetBtn = document.createElement('button');
+    kbmResetBtn.className = 'btn-small btn-danger';
+    kbmResetBtn.textContent = 'RESET KB/M DEFAULTS';
+    kbmResetBtn.addEventListener('click', () => {
       window.KEYBINDS = { ...window.DEFAULT_KEYBINDS };
       this.profile.keybinds = { ...window.KEYBINDS };
       this.saveProfile();
       this.renderKeybindSettings();
     });
-    const gpNote = document.createElement('span');
-    gpNote.style.color = '#69f0ae';
-    gpNote.textContent = 'Controller: LB+RB Field Upgrade · R3 Tap Quick Melee / Hold Equip Melee';
-    resetRow.append(resetBtn, gpNote);
-    grid.appendChild(resetRow);
+    kbmResetRow.appendChild(kbmResetBtn);
+    kbmPane.appendChild(kbmResetRow);
+
+    // 2. Controller Button Bindings Tab
+    const gpLabels = [
+      ['fire', 'Fire Weapon'],
+      ['ads', 'Aim Down Sights / Cancel Throw'],
+      ['sprint', 'Sprint / 2x Tactical Sprint'],
+      ['jump', 'Jump / Stand / Slide-Cancel'],
+      ['crouch', 'Crouch / Slide / Hold Prone'],
+      ['interactReload', 'Loot / Interact / Reload'],
+      ['swapPlates', 'Tap: Swap Weapon · Hold: Armor Plates'],
+      ['lethal', 'Lethal Throwable (LB+RB: Field Upgrade)'],
+      ['tactical', 'Tactical Throwable (LB+RB: Field Upgrade)'],
+      ['melee', 'Tap: Quick Melee · Hold: Equip Melee'],
+      ['medkit', 'Use Field Medkit'],
+      ['backpack', 'Open Backpack (Hold: Stow Ground Weapon)'],
+      ['inspect', 'Inspect Weapon'],
+      ['killstreak', 'Activate Killstreak'],
+      ['map', 'Toggle Full-Size Tactical Map'],
+      ['pause', 'Pause Menu']
+    ];
+    ctrlPane.innerHTML = '';
+
+    const stickRows = [
+      ['LEFT STICK', 'Move / Inventory Cursor'],
+      ['RIGHT STICK', 'Aim / Look (Rotational Aim Assist)']
+    ];
+    for (const [keyTxt, desc] of stickRows) {
+      const row = document.createElement('div');
+      row.className = 'ctrl-row';
+      row.innerHTML = `<b style="min-width:110px;">${keyTxt}</b><span>${desc}</span>`;
+      ctrlPane.appendChild(row);
+    }
+
+    for (const [action, label] of gpLabels) {
+      const row = document.createElement('div');
+      row.className = 'ctrl-row';
+      const btn = document.createElement('button');
+      btn.className = 'btn-small';
+      btn.style.minWidth = '112px';
+      btn.textContent = this._formatGamepadButton(window.GAMEPAD_BINDS[action]);
+      btn.addEventListener('click', () => {
+        if (this._rebindCleanup) this._rebindCleanup();
+        btn.textContent = 'PRESS BUTTON...';
+        btn.style.borderColor = '#69f0ae';
+        btn.style.color = '#69f0ae';
+        let rafId = null;
+        let armed = false;
+        const pollPad = () => {
+          const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+          let activePad = null;
+          for (const p of pads) { if (p && p.connected) { activePad = p; break; } }
+          if (activePad) {
+            const anyDown = activePad.buttons.some(b => b && (b.pressed || b.value > 0.55));
+            if (!armed) {
+              if (!anyDown) armed = true;
+            } else {
+              for (let i = 0; i < activePad.buttons.length; i++) {
+                const b = activePad.buttons[i];
+                if (b && (b.pressed || b.value > 0.55)) {
+                  window.GAMEPAD_BINDS[action] = i;
+                  this.profile.gamepadBinds = { ...window.GAMEPAD_BINDS };
+                  this.saveProfile();
+                  cleanup();
+                  this.renderKeybindSettings();
+                  return;
+                }
+              }
+            }
+          }
+          rafId = requestAnimationFrame(pollPad);
+        };
+        const onEsc = (ev) => {
+          if (ev.code === 'Escape') {
+            ev.preventDefault();
+            cleanup();
+            this.renderKeybindSettings();
+          }
+        };
+        const cleanup = () => {
+          if (rafId) cancelAnimationFrame(rafId);
+          window.removeEventListener('keydown', onEsc, true);
+          this._rebindCleanup = null;
+        };
+        this._rebindCleanup = cleanup;
+        window.addEventListener('keydown', onEsc, true);
+        rafId = requestAnimationFrame(pollPad);
+      });
+      const lbl = document.createElement('span');
+      lbl.textContent = label;
+      row.append(btn, lbl);
+      ctrlPane.appendChild(row);
+    }
+
+    const gpResetRow = document.createElement('div');
+    gpResetRow.className = 'ctrl-row';
+    gpResetRow.style.marginTop = '6px';
+    const gpResetBtn = document.createElement('button');
+    gpResetBtn.className = 'btn-small btn-danger';
+    gpResetBtn.textContent = 'RESET CONTROLLER DEFAULTS';
+    gpResetBtn.addEventListener('click', () => {
+      window.GAMEPAD_BINDS = { ...window.DEFAULT_GAMEPAD_BINDS };
+      this.profile.gamepadBinds = { ...window.GAMEPAD_BINDS };
+      this.saveProfile();
+      this.renderKeybindSettings();
+    });
+    const gpTip = document.createElement('span');
+    gpTip.style.color = '#69f0ae';
+    gpTip.textContent = 'Click any button and press a controller input (ESC to cancel)';
+    gpResetRow.append(gpResetBtn, gpTip);
+    ctrlPane.appendChild(gpResetRow);
   }
 
   _equipOrPackFromStash(stashIdx, maxBagSlots) {
