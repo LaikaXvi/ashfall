@@ -72,6 +72,7 @@ class GameUI {
     this._bindHideoutEvents();
     this._bindWeaponStagingModal();
     this._bindSpatialKeyboardNav();
+    this._bindDragAndDrop();
     window.addEventListener('resize', () => this._updateDeployResponsiveScale());
     this.renderKeybindSettings();
     window.showCenterToast = (msg, color) => this.showCenterToast(msg, color);
@@ -99,10 +100,13 @@ class GameUI {
 
   _getSpatialFocusables(scope) {
     if (!scope) return [];
+    const slotSel = this._dragState
+      ? '.inv-slot:not(.searching)'
+      : '.inv-slot:not(.empty-slot):not(.searching)';
     const selector = [
       'button:not(:disabled)',
       'input[type="range"]',
-      '.inv-slot:not(.empty-slot):not(.searching)',
+      slotSel,
       '.op-slot-card',
       '.map-node',
       '.zone-card'
@@ -126,6 +130,11 @@ class GameUI {
       try {
         this._selectedEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
       } catch (e) {}
+
+      // If currently dragging with controller RT, update drag ghost & drop highlight to the selected slot
+      if (this._dragState && this._dragState.mode === 'gamepad') {
+        this._updateDragVisualTarget(this._selectedEl);
+      }
 
       // If inside in-raid loot/inventory modal and selecting an item slot, sync hoveredSlot
       const lootMod = document.getElementById('loot-modal');
@@ -283,6 +292,7 @@ class GameUI {
 
     // Sync amber selector cleanly on mouse hover over buttons & inventory slots
     document.addEventListener('mouseover', (e) => {
+      if (this._dragState) return;
       const scope = this._getNavScope();
       if (!scope) return;
       const target = e.target && e.target.closest
@@ -292,6 +302,461 @@ class GameUI {
         this.setSelectedElement(target, { inputMode: 'mouse' });
       }
     });
+  }
+
+  // ==================== UNIVERSAL DRAG-AND-DROP (LMB HOLD & CONTROLLER RT HOLD) ====================
+  _describeSlotElement(el) {
+    if (!el) return null;
+    const slotEl = el.closest ? el.closest('.inv-slot, .op-slot-card[data-op-key]') : null;
+    if (!slotEl) return null;
+    if (slotEl.dataset.unrevealed === '1' || slotEl.classList.contains('searching')) return null;
+
+    if (slotEl.classList.contains('op-slot-card') && slotEl.dataset.opKey) {
+      const opKey = slotEl.dataset.opKey;
+      if (slotEl.closest('#prematch-op-slots')) return { zone: 'pm_op', opKey, el: slotEl };
+      if (slotEl.closest('#inv-op-slots')) return { zone: 'raid_op', opKey, el: slotEl };
+      if (slotEl.closest('#loot-enemy-op-slots')) return { zone: 'raid_enemy_op', opKey, el: slotEl };
+      return null;
+    }
+
+    if (slotEl.classList.contains('backpack-weapon-slot')) {
+      if (slotEl.closest('#prematch-bag-grid')) return { zone: 'pm_op', opKey: 'backpackWeapon', el: slotEl };
+      if (slotEl.closest('#loot-backpack-items')) return { zone: 'raid_op', opKey: 'backpackWeapon', el: slotEl };
+    }
+
+    if (slotEl.closest('#prematch-weapon-stash-grid')) {
+      const idx = Array.from(slotEl.parentElement.children).indexOf(slotEl);
+      return { zone: 'pm_wpn_stash', idx, el: slotEl };
+    }
+    if (slotEl.closest('#prematch-stash-grid')) {
+      const idx = Array.from(slotEl.parentElement.children).indexOf(slotEl);
+      return { zone: 'pm_stash', idx, el: slotEl };
+    }
+    if (slotEl.closest('#prematch-bag-grid')) {
+      const nonWpn = Array.from(slotEl.parentElement.querySelectorAll('.inv-slot:not(.backpack-weapon-slot)'));
+      const idx = nonWpn.indexOf(slotEl);
+      return idx >= 0 ? { zone: 'pm_bag', idx, el: slotEl } : null;
+    }
+    if (slotEl.closest('#loot-container-items')) {
+      const idx = parseInt(slotEl.dataset.idx, 10);
+      return Number.isFinite(idx) ? { zone: 'raid_container', idx, el: slotEl } : null;
+    }
+    if (slotEl.closest('#loot-backpack-items')) {
+      const idx = parseInt(slotEl.dataset.idx, 10);
+      return Number.isFinite(idx) ? { zone: 'raid_bag', idx, el: slotEl } : null;
+    }
+    return null;
+  }
+
+  _readSlotItem(desc) {
+    if (!desc) return null;
+    const L = this.profile && this.profile.loadout;
+    const p = this._lootPlayer;
+
+    switch (desc.zone) {
+      case 'pm_wpn_stash': {
+        const it = (this.profile.weaponStash || [])[desc.idx];
+        return it ? { ...it, qty: it.qty || 1 } : null;
+      }
+      case 'pm_stash': {
+        const it = (this.profile.stash || [])[desc.idx];
+        return it ? { ...it } : null;
+      }
+      case 'pm_bag': {
+        const it = (L && L.backpackItems || [])[desc.idx];
+        return it ? { ...it } : null;
+      }
+      case 'pm_op': {
+        if (!L) return null;
+        const k = desc.opKey;
+        if (k === 'plates') return (L.plates || 0) > 0 ? { id: 'armor_plate', qty: L.plates } : null;
+        if (k === 'lethal') return (L.lethal && (L.lethalQty || 0) > 0) ? { id: L.lethal, qty: L.lethalQty } : null;
+        if (k === 'tactical') return (L.tactical && (L.tacticalQty || 0) > 0) ? { id: L.tactical, qty: L.tacticalQty } : null;
+        if (k === 'cash' || k === 'dogtag') return null;
+        return L[k] ? { id: L[k], qty: 1 } : null;
+      }
+      case 'raid_container': {
+        const it = this.activeLootSource && this.activeLootSource.items[desc.idx];
+        return (it && it.revealed !== false) ? { ...it } : null;
+      }
+      case 'raid_bag': {
+        const it = p && p.backpack && p.backpack[desc.idx];
+        return it ? { ...it } : null;
+      }
+      case 'raid_op': {
+        if (!p) return null;
+        const k = desc.opKey;
+        if (k === 'primary' || k === 'secondary') {
+          const sl = p.slots && p.slots[k];
+          return sl ? { id: sl.id, qty: 1, mods: sl.mods || null, mag: sl.mag, rarityOverride: sl.rarityOverride || null } : null;
+        }
+        if (k === 'backpackWeapon') {
+          const bw = p.backpackWeapon;
+          return bw ? { id: bw.id, qty: 1, mods: bw.mods || null, mag: bw.mag, rarityOverride: bw.rarityOverride || null } : null;
+        }
+        if (k === 'plates') return (p.plates || 0) > 0 ? { id: 'armor_plate', qty: p.plates } : null;
+        if (k === 'lethal') return (p.lethal && (p.lethalQty || 0) > 0) ? { id: p.lethal, qty: p.lethalQty } : null;
+        if (k === 'tactical') return (p.tactical && (p.tacticalQty || 0) > 0) ? { id: p.tactical, qty: p.tacticalQty } : null;
+        if (k === 'armor') return p.armorId ? { id: p.armorId, qty: 1 } : null;
+        if (k === 'backpack') return p.backpackId ? { id: p.backpackId, qty: 1 } : null;
+        if (k === 'cash' || k === 'dogtag') return null;
+        return p[k] ? { id: p[k], qty: 1 } : null;
+      }
+      case 'raid_enemy_op': {
+        const eq = this.activeLootSource && this.activeLootSource.operatorEquipment;
+        if (!eq) return null;
+        const k = desc.opKey;
+        if (eq.revealedSlots && !eq.revealedSlots[k]) return null;
+        if (k === 'plates') return (eq.plates || 0) > 0 ? { id: 'armor_plate', qty: eq.plates } : null;
+        if (k === 'cash' || k === 'dogtag') return null;
+        return eq[k] ? { id: eq[k], qty: 1, rarityOverride: (k === 'primary' ? eq.primaryRarity : (k === 'secondary' ? eq.secondaryRarity : null)) } : null;
+      }
+    }
+    return null;
+  }
+
+  _canAcceptItem(desc, item) {
+    if (!desc) return false;
+    if (!item) return true; // clearing a slot is always valid
+    const def = GAME_DATA.ITEMS[item.id];
+    if (!def) return false;
+
+    if (desc.zone === 'pm_wpn_stash') return def.type === 'weapon';
+    if (desc.zone === 'pm_stash' || desc.zone === 'pm_bag' || desc.zone === 'raid_bag' || desc.zone === 'raid_container') {
+      return true;
+    }
+    if (desc.zone === 'pm_op' || desc.zone === 'raid_op' || desc.zone === 'raid_enemy_op') {
+      const k = desc.opKey;
+      if (k === 'primary' || k === 'secondary' || k === 'backpackWeapon') return def.type === 'weapon';
+      if (k === 'melee') return def.type === 'melee';
+      if (k === 'armor') return def.type === 'armor';
+      if (k === 'backpack') return def.type === 'backpack';
+      if (k === 'headgear') return def.type === 'headgear';
+      if (k === 'selfRevive') return def.type === 'self_revive';
+      if (k === 'fieldUpgrade') return def.type === 'field_upgrade';
+      if (k === 'killstreak') return def.type === 'killstreak';
+      if (k === 'lethal') return def.type === 'lethal';
+      if (k === 'tactical') return def.type === 'tactical';
+      if (k === 'plates') return def.type === 'plate' || item.id === 'armor_plate';
+      return false;
+    }
+    return false;
+  }
+
+  _writeSlotItem(desc, item) {
+    if (!desc) return;
+    const L = this.profile && this.profile.loadout;
+    const p = this._lootPlayer;
+
+    switch (desc.zone) {
+      case 'pm_wpn_stash': {
+        if (!Array.isArray(this.profile.weaponStash)) this.profile.weaponStash = [];
+        this.profile.weaponStash[desc.idx] = item ? { id: item.id, qty: 1, mods: item.mods || undefined, rarityOverride: item.rarityOverride || undefined } : null;
+        return;
+      }
+      case 'pm_stash': {
+        if (!Array.isArray(this.profile.stash)) this.profile.stash = [];
+        this.profile.stash[desc.idx] = item ? { ...item } : null;
+        return;
+      }
+      case 'pm_bag': {
+        if (!Array.isArray(L.backpackItems)) L.backpackItems = [];
+        L.backpackItems[desc.idx] = item ? { ...item } : null;
+        return;
+      }
+      case 'pm_op': {
+        const k = desc.opKey;
+        if (k === 'plates') { L.plates = item ? Math.min(6, item.qty || 1) : 0; return; }
+        if (k === 'lethal') { L.lethal = item ? item.id : null; L.lethalQty = item ? (item.qty || 1) : 0; return; }
+        if (k === 'tactical') { L.tactical = item ? item.id : null; L.tacticalQty = item ? (item.qty || 1) : 0; return; }
+        L[k] = item ? item.id : null;
+        return;
+      }
+      case 'raid_container': {
+        if (!this.activeLootSource) return;
+        this.activeLootSource.items[desc.idx] = item ? { ...item, revealed: true } : null;
+        return;
+      }
+      case 'raid_bag': {
+        if (!p) return;
+        p.backpack[desc.idx] = item ? { ...item } : null;
+        return;
+      }
+      case 'raid_op': {
+        if (!p) return;
+        const k = desc.opKey;
+        if (k === 'primary' || k === 'secondary') {
+          if (item) {
+            const def = GAME_DATA.ITEMS[item.id];
+            const mods = item.mods || (this.profile.weaponMods && this.profile.weaponMods[item.id]) || {};
+            const eff = GAME_DATA.getEffectiveWeaponStats(item.id, mods);
+            p.slots[k] = {
+              id: item.id,
+              mods,
+              mag: item.mag !== undefined ? item.mag : (eff ? eff.magSize : (def ? def.magSize : 30)),
+              rarityOverride: item.rarityOverride || null
+            };
+          } else {
+            p.slots[k] = null;
+          }
+          if (p.activeSlot === k && p.weaponSystem && p.switchSlot) {
+            p.switchSlot(k);
+          }
+          return;
+        }
+        if (k === 'backpackWeapon') {
+          if (item) {
+            const def = GAME_DATA.ITEMS[item.id];
+            const mods = item.mods || (this.profile.weaponMods && this.profile.weaponMods[item.id]) || {};
+            const eff = GAME_DATA.getEffectiveWeaponStats(item.id, mods);
+            p.backpackWeapon = {
+              id: item.id,
+              mods,
+              mag: item.mag !== undefined ? item.mag : (eff ? eff.magSize : (def ? def.magSize : 30)),
+              rarityOverride: item.rarityOverride || null
+            };
+          } else {
+            p.backpackWeapon = null;
+          }
+          return;
+        }
+        if (k === 'plates') { p.plates = item ? Math.min(6, item.qty || 1) : 0; return; }
+        if (k === 'lethal') { p.lethal = item ? item.id : null; p.lethalQty = item ? (item.qty || 1) : 0; return; }
+        if (k === 'tactical') { p.tactical = item ? item.id : null; p.tacticalQty = item ? (item.qty || 1) : 0; return; }
+        if (k === 'armor') {
+          p.armorId = item ? item.id : null;
+          const def = item ? GAME_DATA.ITEMS[item.id] : null;
+          p.plateSlots = def ? (def.plateSlots || Math.ceil((def.maxArmor || 100) / 50)) : 0;
+          p.maxArmor = p.plateSlots * 50;
+          p.armor = Math.min(p.armor, p.maxArmor);
+          return;
+        }
+        if (k === 'backpack') {
+          p.backpackId = item ? item.id : null;
+          const def = item ? GAME_DATA.ITEMS[item.id] : null;
+          p.backpackMaxSlots = def ? (def.bagSlots || def.slots || 8) : 6;
+          return;
+        }
+        p[k] = item ? item.id : null;
+        return;
+      }
+      case 'raid_enemy_op': {
+        const eq = this.activeLootSource && this.activeLootSource.operatorEquipment;
+        if (!eq) return;
+        const k = desc.opKey;
+        if (k === 'plates') { eq.plates = item ? Math.min(6, item.qty || 1) : 0; return; }
+        eq[k] = item ? item.id : null;
+        return;
+      }
+    }
+  }
+
+  _cleanSparseArray(arr) {
+    if (!Array.isArray(arr)) return;
+    while (arr.length > 0 && !arr[arr.length - 1]) arr.pop();
+    for (let i = arr.length - 1; i >= 0; i--) {
+      if (!arr[i]) arr.splice(i, 1);
+    }
+  }
+
+  performSlotDrop(srcDesc, dstDesc) {
+    if (!srcDesc || !dstDesc) return false;
+    if (srcDesc.zone === dstDesc.zone && srcDesc.idx === dstDesc.idx && srcDesc.opKey === dstDesc.opKey) return false;
+
+    const srcItem = this._readSlotItem(srcDesc);
+    if (!srcItem) return false;
+    const dstItem = this._readSlotItem(dstDesc);
+
+    if (!this._canAcceptItem(dstDesc, srcItem)) {
+      if (window.showCenterToast) window.showCenterToast('INCOMPATIBLE SLOT', '#ff5252');
+      return false;
+    }
+    if (dstItem && !this._canAcceptItem(srcDesc, dstItem)) {
+      if (window.showCenterToast) window.showCenterToast('CANNOT SWAP INTO SOURCE SLOT', '#ff5252');
+      return false;
+    }
+
+    // Merge if same stackable item with room under maxStack
+    const def = GAME_DATA.ITEMS[srcItem.id];
+    if (dstItem && dstItem.id === srcItem.id && def && def.stackable) {
+      const maxS = (dstDesc.opKey === 'plates') ? 6 : (def.maxStack || Infinity);
+      const room = maxS === Infinity ? srcItem.qty : Math.max(0, maxS - dstItem.qty);
+      if (room > 0) {
+        const move = Math.min(room, srcItem.qty);
+        dstItem.qty += move;
+        srcItem.qty -= move;
+        this._writeSlotItem(dstDesc, dstItem);
+        this._writeSlotItem(srcDesc, srcItem.qty > 0 ? srcItem : null);
+      } else {
+        // Stack full -> swap!
+        this._writeSlotItem(dstDesc, srcItem);
+        this._writeSlotItem(srcDesc, dstItem);
+      }
+    } else {
+      // Direct move or swap places!
+      this._writeSlotItem(dstDesc, srcItem);
+      this._writeSlotItem(srcDesc, dstItem);
+    }
+
+    // Clean up nulls in dynamic lists (only if we didn't swap into a sparse stash grid)
+    if (srcDesc.zone === 'pm_bag' || dstDesc.zone === 'pm_bag') this._cleanSparseArray(this.profile.loadout.backpackItems);
+    if (srcDesc.zone === 'pm_stash' || dstDesc.zone === 'pm_stash') this._cleanSparseArray(this.profile.stash);
+    if (srcDesc.zone === 'pm_wpn_stash' || dstDesc.zone === 'pm_wpn_stash') this._cleanSparseArray(this.profile.weaponStash);
+    if (this._lootPlayer && (srcDesc.zone === 'raid_bag' || dstDesc.zone === 'raid_bag')) this._cleanSparseArray(this._lootPlayer.backpack);
+    if (this.activeLootSource && (srcDesc.zone === 'raid_container' || dstDesc.zone === 'raid_container')) this._cleanSparseArray(this.activeLootSource.items);
+
+    if (window.soundEngine && window.soundEngine.playClick) {
+      try { window.soundEngine.playClick(); } catch (e) {}
+    }
+
+    this.hideItemPopout();
+    if (srcDesc.zone.startsWith('pm_') || dstDesc.zone.startsWith('pm_')) {
+      this.saveProfile();
+      this.renderHideout();
+    } else if (this._lootPlayer) {
+      this.renderLootModal(this._lootPlayer);
+    }
+    return true;
+  }
+
+  _showDragGhost(item, x, y) {
+    let ghost = document.getElementById('inv-drag-ghost');
+    if (!ghost) {
+      ghost = document.createElement('div');
+      ghost.id = 'inv-drag-ghost';
+      ghost.className = 'inv-drag-ghost';
+      document.body.appendChild(ghost);
+    }
+    const def = GAME_DATA.ITEMS[item.id];
+    const name = def ? def.name : item.id;
+    const qtyTxt = item.qty > 1 ? ` x${item.qty}` : '';
+    ghost.innerHTML = `${name}${qtyTxt}<span class="dg-sub">DROP ON SLOT TO MOVE / SWAP</span>`;
+    ghost.style.left = `${x}px`;
+    ghost.style.top = `${y}px`;
+    ghost.classList.remove('hidden');
+  }
+
+  _hideDragGhost() {
+    const ghost = document.getElementById('inv-drag-ghost');
+    if (ghost) ghost.classList.add('hidden');
+  }
+
+  _clearDragHighlights() {
+    document.querySelectorAll('.drag-source, .drag-target, .drag-target-invalid').forEach((el) => {
+      el.classList.remove('drag-source', 'drag-target', 'drag-target-invalid');
+    });
+  }
+
+  _updateDragVisualTarget(targetEl) {
+    if (!this._dragState) return;
+    document.querySelectorAll('.drag-target, .drag-target-invalid').forEach((el) => {
+      el.classList.remove('drag-target', 'drag-target-invalid');
+    });
+    const dstDesc = this._describeSlotElement(targetEl);
+    this._dragState.dstDesc = dstDesc;
+    if (dstDesc && dstDesc.el) {
+      const dstItem = this._readSlotItem(dstDesc);
+      const ok = this._canAcceptItem(dstDesc, this._dragState.srcItem) &&
+        (!dstItem || this._canAcceptItem(this._dragState.srcDesc, dstItem));
+      dstDesc.el.classList.add(ok ? 'drag-target' : 'drag-target-invalid');
+      if (this._dragState.mode === 'gamepad') {
+        const r = dstDesc.el.getBoundingClientRect();
+        this._showDragGhost(this._dragState.srcItem, r.left + r.width / 2, r.top - 16);
+      }
+    }
+  }
+
+  startDragFromSelected() {
+    if (this._dragState) return true;
+    const el = this._selectedEl;
+    const srcDesc = this._describeSlotElement(el);
+    const srcItem = this._readSlotItem(srcDesc);
+    if (!srcDesc || !srcItem) return false;
+
+    this._dragState = { mode: 'gamepad', srcDesc, srcItem, dstDesc: srcDesc };
+    if (srcDesc.el) srcDesc.el.classList.add('drag-source');
+    const r = srcDesc.el.getBoundingClientRect();
+    this._showDragGhost(srcItem, r.left + r.width / 2, r.top - 16);
+    return true;
+  }
+
+  finishDragToSelected() {
+    if (!this._dragState) return false;
+    const { srcDesc, dstDesc } = this._dragState;
+    const finalDst = dstDesc || this._describeSlotElement(this._selectedEl);
+    this.cancelDrag();
+    if (srcDesc && finalDst) {
+      return this.performSlotDrop(srcDesc, finalDst);
+    }
+    return false;
+  }
+
+  cancelDrag() {
+    this._dragState = null;
+    this._pendingMouseDrag = null;
+    this._hideDragGhost();
+    this._clearDragHighlights();
+  }
+
+  _bindDragAndDrop() {
+    document.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      const srcDesc = this._describeSlotElement(e.target);
+      if (!srcDesc) return;
+      const srcItem = this._readSlotItem(srcDesc);
+      if (!srcItem) return;
+      this._pendingMouseDrag = {
+        startX: e.clientX,
+        startY: e.clientY,
+        srcDesc,
+        srcItem
+      };
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (this._pendingMouseDrag && !this._dragState) {
+        const dist = Math.hypot(e.clientX - this._pendingMouseDrag.startX, e.clientY - this._pendingMouseDrag.startY);
+        if (dist >= 6) {
+          this._dragState = {
+            mode: 'mouse',
+            srcDesc: this._pendingMouseDrag.srcDesc,
+            srcItem: this._pendingMouseDrag.srcItem,
+            dstDesc: null
+          };
+          if (this._dragState.srcDesc.el) this._dragState.srcDesc.el.classList.add('drag-source');
+          this.hideItemPopout();
+        }
+      }
+      if (this._dragState && this._dragState.mode === 'mouse') {
+        this._showDragGhost(this._dragState.srcItem, e.clientX, e.clientY);
+        const under = document.elementFromPoint(e.clientX, e.clientY);
+        this._updateDragVisualTarget(under);
+      }
+    });
+
+    document.addEventListener('mouseup', (e) => {
+      if (e.button !== 0) return;
+      if (this._dragState && this._dragState.mode === 'mouse') {
+        const under = document.elementFromPoint(e.clientX, e.clientY);
+        const dstDesc = this._describeSlotElement(under);
+        const srcDesc = this._dragState.srcDesc;
+        this._suppressNextClickUntil = performance.now() + 140;
+        this.cancelDrag();
+        if (srcDesc && dstDesc) {
+          this.performSlotDrop(srcDesc, dstDesc);
+        }
+      } else {
+        this._pendingMouseDrag = null;
+      }
+    });
+
+    // Suppress synthetic click right after completing a drag-and-drop so popups don't flash open
+    document.addEventListener('click', (e) => {
+      if (this._suppressNextClickUntil && performance.now() < this._suppressNextClickUntil) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }, true);
   }
 
   _defaultProfile() {
