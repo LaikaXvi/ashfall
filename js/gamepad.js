@@ -453,9 +453,12 @@ class GamepadController {
       }
     }
 
-    // === D-PAD: UP (12) = MEDKIT, LEFT (14) = INSPECT, RIGHT (15) = 3RD PERSON ===
+    // === D-PAD: UP (12) = MEDKIT, DOWN (13) = KILLSTREAK, LEFT (14) = INSPECT, RIGHT (15) = 3RD PERSON ===
     if (this._justPressed(pad, 12)) {
       if (player.startMedkit() && ui) ui.addFeedMessage('Applying Field Medkit...', '#69f0ae');
+    }
+    if (this._justPressed(pad, 13)) {
+      if (actions.activateKillstreak) actions.activateKillstreak();
     }
     if (this._justPressed(pad, 14)) {
       player.startInspect();

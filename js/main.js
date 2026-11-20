@@ -129,6 +129,10 @@
     raidKills = 0;
     raidXp = 0;
     extractProgress = 0;
+    activeAirstrikes = [];
+    ksExplosions = [];
+    uavDroneMesh = null;
+    ksCooldown = 0;
     inRaid = true;
     isModalOpen = false;
 
@@ -387,6 +391,8 @@
     } else if (e.code === (kb.fieldUpgrade || 'KeyZ')) {
       const fuMsg = player.activateFieldUpgrade ? player.activateFieldUpgrade() : null;
       if (fuMsg) ui.addFeedMessage(fuMsg, '#69f0ae');
+    } else if (e.code === (kb.killstreak || 'KeyK')) {
+      activateKillstreak();
     } else if (e.code === (kb.interact || 'KeyE') && nearbyInteractable) {
       openNearbyInteractable();
     }
@@ -450,6 +456,326 @@
   }
 
   let activeReviveAlly = null;
+  let activeAirstrikes = [];
+  let ksExplosions = [];
+  let uavDroneMesh = null;
+  let ksCooldown = 0;
+
+  function _createUavDroneMesh() {
+    const g = new THREE.Group();
+    const bodyMat = new THREE.MeshLambertMaterial({ color: 0x3a424a });
+    const wingMat = new THREE.MeshLambertMaterial({ color: 0x525d68 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.24, 2.2), bodyMat);
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(4.4, 0.08, 0.55), wingMat);
+    const tail = new THREE.Mesh(new THREE.BoxGeometry(1.3, 0.08, 0.35), wingMat);
+    tail.position.set(0, 0.14, 0.95);
+    const strobe = new THREE.Mesh(
+      new THREE.SphereGeometry(0.18, 6, 6),
+      new THREE.MeshBasicMaterial({ color: 0x69f0ae })
+    );
+    strobe.position.set(0, -0.18, -0.6);
+    g.userData.strobe = strobe;
+    g.add(body, wing, tail, strobe);
+    return g;
+  }
+
+  function _createFighterJetMesh() {
+    const g = new THREE.Group();
+    const darkMat = new THREE.MeshLambertMaterial({ color: 0x2c333a });
+    const wingMat = new THREE.MeshLambertMaterial({ color: 0x45505c });
+    const glowMat = new THREE.MeshBasicMaterial({ color: 0xff9800 });
+    const fuselage = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.65, 6.2), darkMat);
+    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.58, 2.2, 6), darkMat);
+    nose.rotation.x = -Math.PI / 2;
+    nose.position.z = -4.2;
+    const wings = new THREE.Mesh(new THREE.BoxGeometry(7.2, 0.14, 2.1), wingMat);
+    wings.position.z = 0.2;
+    const vTailL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.35, 1.3), wingMat);
+    vTailL.position.set(-0.7, 0.72, 2.2);
+    vTailL.rotation.z = 0.24;
+    const vTailR = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.35, 1.3), wingMat);
+    vTailR.position.set(0.7, 0.72, 2.2);
+    vTailR.rotation.z = -0.24;
+    const burnerL = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.12, 1.6, 6), glowMat);
+    burnerL.rotation.x = Math.PI / 2;
+    burnerL.position.set(-0.34, -0.05, 3.8);
+    const burnerR = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.12, 1.6, 6), glowMat);
+    burnerR.rotation.x = Math.PI / 2;
+    burnerR.position.set(0.34, -0.05, 3.8);
+    g.add(fuselage, nose, wings, vTailL, vTailR, burnerL, burnerR);
+    return g;
+  }
+
+  function _spawnAirstrikeExplosion(pos) {
+    if (!scene) return;
+    const dist = player ? player.position.distanceTo(pos) : 25;
+    if (window.soundEngine && window.soundEngine.playExplosion) {
+      window.soundEngine.playExplosion(dist);
+    }
+    // Subtle camera rumble kick if nearby
+    if (player && dist < 38) {
+      const shake = (1 - dist / 38) * 0.045;
+      player.applyRecoil(shake * (0.6 + Math.random() * 0.6), (Math.random() - 0.5) * shake);
+    }
+
+    const fireMat = new THREE.MeshBasicMaterial({ color: 0xff8c1a, transparent: true, opacity: 0.95 });
+    const fireMesh = new THREE.Mesh(new THREE.SphereGeometry(1.1, 10, 8), fireMat);
+    fireMesh.position.set(pos.x, pos.y + 0.9, pos.z);
+    scene.add(fireMesh);
+
+    const smokeMat = new THREE.MeshLambertMaterial({ color: 0x262422, transparent: true, opacity: 0.75 });
+    const smokeMesh = new THREE.Mesh(new THREE.SphereGeometry(1.6, 8, 6), smokeMat);
+    smokeMesh.position.set(pos.x, pos.y + 1.6, pos.z);
+    scene.add(smokeMesh);
+
+    const light = new THREE.PointLight(0xffaa33, 5.5, 24);
+    light.position.set(pos.x, pos.y + 2.8, pos.z);
+    scene.add(light);
+
+    ksExplosions.push({ fireMesh, smokeMesh, light, age: 0, maxAge: 1.65 });
+
+    // Heavy AoE damage to enemies & enemy operators
+    const blastRadius = 11.5;
+    if (enemyManager && enemyManager.enemies) {
+      const attackerInfo = {
+        name: getPlayerCallsign(),
+        isPlayer: true,
+        weaponId: 'ks_airstrike',
+        weaponName: 'Precision Airstrike'
+      };
+      for (const e of enemyManager.enemies) {
+        if (e.dead) continue;
+        const d = Math.hypot(e.position.x - pos.x, e.position.z - pos.z);
+        if (d <= blastRadius) {
+          const falloff = 1 - (d / blastRadius) * 0.65;
+          const dmg = Math.round(185 * falloff);
+          const killed = e.takeDamage(dmg, pos, attackerInfo);
+          onThrowableHit(false, killed, e, attackerInfo);
+        }
+      }
+    }
+
+    // Mild self-damage if player stands directly inside their own airstrike zone
+    if (player && !player.dead && !player.isDowned) {
+      const pd = Math.hypot(player.position.x - pos.x, player.position.z - pos.z);
+      if (pd < 8.5) {
+        const selfDmg = Math.round(45 * (1 - pd / 8.5));
+        if (selfDmg > 4) {
+          ui.triggerDamageFlash();
+          player.takeDamage(selfDmg, { name: 'AIRSTRIKE', weaponId: 'ks_airstrike', weaponName: 'Precision Airstrike' });
+        }
+      }
+    }
+  }
+
+  function _getKillstreakTargetPoint() {
+    const origin = new THREE.Vector3();
+    const dir = new THREE.Vector3();
+    camera.getWorldPosition(origin);
+    camera.getWorldDirection(dir);
+
+    const ray = new THREE.Raycaster(origin, dir, 1.0, 165);
+    if (world && world.meshes && world.meshes.length > 0) {
+      const hits = ray.intersectObjects(world.meshes, false);
+      if (hits.length > 0) {
+        return new THREE.Vector3(hits[0].point.x, 0.05, hits[0].point.z);
+      }
+    }
+    if (dir.y < -0.02) {
+      const t = Math.min(155, Math.max(8, -origin.y / dir.y));
+      return new THREE.Vector3(origin.x + dir.x * t, 0.05, origin.z + dir.z * t);
+    }
+    return new THREE.Vector3(origin.x + dir.x * 48, 0.05, origin.z + dir.z * 48);
+  }
+
+  function activateKillstreak() {
+    if (!inRaid || !player || player.isDowned || player.dead || isModalOpen) return false;
+    if (ksCooldown > 0) return false;
+    const ksId = player.killstreak;
+    if (!ksId) {
+      ui.showCenterToast('NO KILLSTREAK EQUIPPED', '#a0a8a3');
+      return false;
+    }
+
+    if (ksId === 'ks_uav') {
+      player.uavTimer = 25.0;
+      if (!window.DEV_MODE) player.killstreak = null;
+      ksCooldown = 1.5;
+      if (!uavDroneMesh && scene) {
+        uavDroneMesh = _createUavDroneMesh();
+        scene.add(uavDroneMesh);
+      }
+      if (window.soundEngine) {
+        if (window.soundEngine.playCookTick) window.soundEngine.playCookTick(true);
+        if (window.soundEngine.playHeal) window.soundEngine.playHeal();
+      }
+      ui.showCenterToast('UAV RECON ONLINE — 25s', '#69f0ae');
+      ui.addFeedMessage('UAV Recon Drone deployed — All hostiles revealed on radar (25s)', '#69f0ae');
+      return true;
+    }
+
+    if (ksId === 'ks_airstrike') {
+      const targetPos = _getKillstreakTargetPoint();
+      if (!window.DEV_MODE) player.killstreak = null;
+      ksCooldown = 2.0;
+
+      // Strike axis perpendicular to player's view so jets fly dramatically across the sightline
+      const strikeDir = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw)).normalize();
+
+      // Red target laser pillar + pulsing ground warning ring
+      const beaconGroup = new THREE.Group();
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(10.6, 11.5, 32),
+        new THREE.MeshBasicMaterial({ color: 0xff3d3d, side: THREE.DoubleSide, transparent: true, opacity: 0.72 })
+      );
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.08;
+      const beam = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.14, 0.14, 38, 8),
+        new THREE.MeshBasicMaterial({ color: 0xff3d3d, transparent: true, opacity: 0.55 })
+      );
+      beam.position.y = 19;
+      beaconGroup.add(ring, beam);
+      beaconGroup.position.copy(targetPos);
+      scene.add(beaconGroup);
+
+      // Schedule 2 staggered jet passes, each dropping 6 ordnance blasts along a 26m corridor
+      const jets = [0, 1].map((passIdx) => {
+        const mesh = _createFighterJetMesh();
+        mesh.visible = false;
+        scene.add(mesh);
+        const startDelay = 1.9 + passIdx * 1.15;
+        const bombs = [];
+        for (let b = 0; b < 6; b++) {
+          const along = -13 + b * 5.2 + (passIdx === 1 ? 1.8 : 0);
+          const sideJitter = (Math.random() - 0.5) * 3.5;
+          const perp = new THREE.Vector3(-strikeDir.z, 0, strikeDir.x);
+          const bPos = targetPos.clone()
+            .addScaledVector(strikeDir, along)
+            .addScaledVector(perp, sideJitter);
+          bPos.y = 0.05;
+          bombs.push({ pos: bPos, triggerTime: startDelay + 0.52 + b * 0.11, detonated: false });
+        }
+        return { mesh, startDelay, duration: 2.3, bombs, passIdx };
+      });
+
+      activeAirstrikes.push({
+        targetPos,
+        strikeDir,
+        beaconGroup,
+        jets,
+        elapsed: 0,
+        maxDuration: 5.8
+      });
+
+      if (window.soundEngine && window.soundEngine.playCookTick) {
+        window.soundEngine.playCookTick(true);
+      }
+      ui.showCenterToast('PRECISION AIRSTRIKE INBOUND — 2.0s', '#ff5252');
+      ui.addFeedMessage('Precision Airstrike called on target coordinates!', '#ffca28');
+      return true;
+    }
+
+    return false;
+  }
+
+  function updateKillstreaks(dt) {
+    if (ksCooldown > 0) ksCooldown = Math.max(0, ksCooldown - dt);
+
+    // 1. Orbiting 3D UAV Recon Drone
+    if (uavDroneMesh) {
+      if (player && (player.uavTimer || 0) > 0) {
+        const ang = performance.now() * 0.00075;
+        const rad = 34;
+        const cx = player.position.x + Math.cos(ang) * rad;
+        const cz = player.position.z + Math.sin(ang) * rad;
+        uavDroneMesh.position.set(cx, 44, cz);
+        uavDroneMesh.rotation.y = -ang;
+        uavDroneMesh.rotation.z = 0.22;
+        if (uavDroneMesh.userData.strobe) {
+          uavDroneMesh.userData.strobe.visible = Math.floor(performance.now() / 320) % 2 === 0;
+        }
+      } else {
+        scene.remove(uavDroneMesh);
+        uavDroneMesh = null;
+        ui.addFeedMessage('UAV Recon Drone offline', '#a0a8a3');
+      }
+    }
+
+    // 2. Active Precision Airstrikes (Beacon + 2 Fighter Jets + Carpet Ordnance)
+    for (let i = activeAirstrikes.length - 1; i >= 0; i--) {
+      const st = activeAirstrikes[i];
+      st.elapsed += dt;
+
+      if (st.beaconGroup) {
+        const pulse = 0.45 + 0.35 * Math.sin(st.elapsed * 12);
+        st.beaconGroup.children.forEach((ch) => {
+          if (ch.material) ch.material.opacity = st.elapsed < 3.8 ? pulse : Math.max(0, 1 - (st.elapsed - 3.8));
+        });
+        if (st.elapsed >= 4.6) {
+          scene.remove(st.beaconGroup);
+          st.beaconGroup = null;
+        }
+      }
+
+      for (const jet of st.jets) {
+        if (st.elapsed >= jet.startDelay && st.elapsed <= jet.startDelay + jet.duration) {
+          jet.mesh.visible = true;
+          const p = (st.elapsed - jet.startDelay) / jet.duration;
+          const travel = THREE.MathUtils.lerp(-115, 115, p);
+          const alt = 29 + jet.passIdx * 3.5;
+          const perp = new THREE.Vector3(-st.strikeDir.z, 0, st.strikeDir.x);
+          const jPos = st.targetPos.clone()
+            .addScaledVector(st.strikeDir, travel)
+            .addScaledVector(perp, jet.passIdx === 0 ? -3.2 : 3.2);
+          jPos.y = alt;
+          jet.mesh.position.copy(jPos);
+          jet.mesh.lookAt(jPos.clone().add(st.strikeDir));
+          jet.mesh.rotateY(Math.PI); // cone nose points -Z
+        } else {
+          jet.mesh.visible = false;
+        }
+
+        for (const bomb of jet.bombs) {
+          if (!bomb.detonated && st.elapsed >= bomb.triggerTime) {
+            bomb.detonated = true;
+            _spawnAirstrikeExplosion(bomb.pos);
+          }
+        }
+      }
+
+      if (st.elapsed >= st.maxDuration) {
+        if (st.beaconGroup) scene.remove(st.beaconGroup);
+        for (const jet of st.jets) scene.remove(jet.mesh);
+        activeAirstrikes.splice(i, 1);
+      }
+    }
+
+    // 3. Expanding Explosion Fireballs & Smoke Clouds
+    for (let i = ksExplosions.length - 1; i >= 0; i--) {
+      const ex = ksExplosions[i];
+      ex.age += dt;
+      const t = Math.min(1, ex.age / ex.maxAge);
+      const fireScale = 1 + t * 5.8;
+      ex.fireMesh.scale.setScalar(fireScale);
+      ex.fireMesh.position.y += dt * 2.2;
+      ex.fireMesh.material.opacity = Math.max(0, 1 - t * 1.45);
+
+      const smokeScale = 1.2 + t * 6.4;
+      ex.smokeMesh.scale.setScalar(smokeScale);
+      ex.smokeMesh.position.y += dt * 3.4;
+      ex.smokeMesh.material.opacity = Math.max(0, 0.72 * (1 - t));
+
+      ex.light.intensity = Math.max(0, 5.5 * (1 - t * 2.4));
+
+      if (ex.age >= ex.maxAge) {
+        scene.remove(ex.fireMesh);
+        scene.remove(ex.smokeMesh);
+        scene.remove(ex.light);
+        ksExplosions.splice(i, 1);
+      }
+    }
+  }
 
   function handleOperatorHitResult(isHead, killed, enemy, attackerInfo = null) {
     if (!enemy) return;
@@ -794,6 +1120,7 @@
             const fuMsg = player.activateFieldUpgrade ? player.activateFieldUpgrade() : null;
             if (fuMsg) ui.addFeedMessage(fuMsg, '#69f0ae');
           },
+          activateKillstreak: () => activateKillstreak(),
           quickMelee: () => performMeleeStrike(true)
         }
       });
@@ -981,6 +1308,7 @@
         }
 
         updatePlayerRevive(dt);
+        updateKillstreaks(dt);
         checkInteractions();
         checkExtraction(dt);
         ui.updateSearchReveal(dt);

@@ -17,6 +17,7 @@ window.DEFAULT_KEYBINDS = {
   lethal: 'KeyF',
   tactical: 'KeyQ',
   fieldUpgrade: 'KeyZ',
+  killstreak: 'KeyK',
   slotPrimary: 'Digit1',
   slotSecondary: 'Digit2',
   slotMelee: 'Digit3',
@@ -908,7 +909,7 @@ class GameUI {
 
     document.getElementById('btn-dev-grant').addEventListener('click', () => {
       this.profile.credits += 50000;
-      ['pm9', 'g17', 'mp5k', 'ak74m', 'm870', 'm24', 'vest_1plate', 'vest_2plate_gel', 'vest_2plate_helmet', 'vest_3plate', 'bag_large', 'boss_key', 'melee_karambit', 'fu_dead_silence'].forEach(id => this.addToStash(id, 1));
+      ['pm9', 'g17', 'mp5k', 'ak74m', 'm870', 'm24', 'vest_1plate', 'vest_2plate_gel', 'vest_2plate_helmet', 'vest_3plate', 'bag_large', 'boss_key', 'melee_karambit', 'fu_dead_silence', 'ks_uav', 'ks_airstrike'].forEach(id => this.addToStash(id, 1));
       this.addToStash('medkit', 5);
       this.addToStash('armor_plate', 6);
       this.addToStash('scrap_metal', 10);
@@ -1251,6 +1252,7 @@ class GameUI {
       ['lethal', 'Lethal Throwable'],
       ['tactical', 'Tactical Throwable'],
       ['fieldUpgrade', 'Activate Field Upgrade'],
+      ['killstreak', 'Activate Killstreak'],
       ['slotPrimary', 'Primary Weapon'],
       ['slotSecondary', 'Secondary Weapon'],
       ['slotMelee', 'Dedicated Melee Weapon'],
@@ -2058,6 +2060,46 @@ class GameUI {
       fuRing.style.stroke = charge >= 0.99 ? '#69f0ae' : '#f5a623';
     }
 
+    // Killstreak HUD Badge (3D Icon, Keybind & Live UAV Countdown)
+    const ksWrap = document.getElementById('hud-ks-wrap');
+    if (ksWrap) {
+      const ksId = player.killstreak || null;
+      const uavActive = (player.uavTimer || 0) > 0;
+      ksWrap.classList.toggle('empty', !ksId && !uavActive);
+      ksWrap.classList.toggle('uav-active', uavActive);
+      const ksKeyEl = document.getElementById('hud-ks-key');
+      if (ksKeyEl) {
+        const kb = window.KEYBINDS || {};
+        ksKeyEl.textContent = this._formatKeyCode(kb.killstreak || 'KeyK');
+      }
+      const ksStatusEl = document.getElementById('hud-ks-status');
+      if (ksStatusEl) {
+        if (uavActive) {
+          ksStatusEl.textContent = `UAV ${Math.ceil(player.uavTimer)}s`;
+          ksStatusEl.classList.remove('hidden');
+        } else {
+          ksStatusEl.classList.add('hidden');
+        }
+      }
+      const ksRenderKey = `${ksId || 'none'}|${uavActive ? 1 : 0}`;
+      if (this._lastKsRenderKey !== ksRenderKey) {
+        this._lastKsRenderKey = ksRenderKey;
+        const ksIconEl = document.getElementById('hud-ks-icon');
+        if (ksIconEl) {
+          const iconTarget = ksId || (uavActive ? 'ks_uav' : null);
+          if (iconTarget && window.itemIcons && window.itemIcons.getIcon) {
+            const url = window.itemIcons.getIcon(iconTarget);
+            const ksDef = GAME_DATA.ITEMS[iconTarget];
+            ksIconEl.innerHTML = url ? `<img src="${url}" alt="${ksDef ? ksDef.name : iconTarget}" />` : (iconTarget === 'ks_airstrike' ? 'AIR' : 'UAV');
+            ksWrap.title = ksDef ? `${ksDef.name} [${this._formatKeyCode((window.KEYBINDS || {}).killstreak || 'KeyK')}]` : 'Killstreak';
+          } else {
+            ksIconEl.textContent = 'KS';
+            ksWrap.title = 'No Killstreak Equipped';
+          }
+        }
+      }
+    }
+
     // Weapon
     const wSlot = player.getActiveWeaponSlot();
     const wDef = player.getActiveWeaponDef();
@@ -2193,17 +2235,49 @@ class GameUI {
     }
 
     // Hostile Operators (shown when UAV active, or in combat / close)
+    const uavActive = (player.uavTimer || 0) > 0;
+    if (uavActive) {
+      // Animated rotating green UAV radar sweep wedge
+      const sweepAng = (performance.now() * 0.0024) % (Math.PI * 2);
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.fillStyle = 'rgba(105, 240, 174, 0.14)';
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, 70, sweepAng - 0.55, sweepAng);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(105, 240, 174, 0.65)';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(sweepAng) * 70, Math.sin(sweepAng) * 70);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     if (enemyManager && enemyManager.enemies) {
-      const uavActive = (player.uavTimer || 0) > 0;
       for (const e of enemyManager.enemies) {
         if (e.dead) continue;
         const dist = e.position.distanceTo(player.position);
         const visible = uavActive || e.state === 'COMBAT' || dist < 24;
         if (!visible) continue;
         const p = toMap(e.position.x, e.position.z);
-        ctx.fillStyle = e.isDowned ? '#ffca28' : '#ff5252';
+        // When UAV is active, clamp distant hostiles onto radar perimeter so player sees bearing to every squad!
+        let px = p.x, py = p.y;
+        const dxM = px - cx, dyM = py - cy;
+        const rM = Math.hypot(dxM, dyM);
+        const maxR = 66;
+        let clamped = false;
+        if (rM > maxR) {
+          if (!uavActive) continue;
+          px = cx + (dxM / rM) * maxR;
+          py = cy + (dyM / rM) * maxR;
+          clamped = true;
+        }
+        ctx.fillStyle = e.isDowned ? '#ffca28' : (e.isOperator ? '#ff3d3d' : '#ff7043');
         ctx.beginPath();
-        ctx.arc(p.x, p.y, e.isDowned ? 2.5 : 3, 0, Math.PI * 2);
+        ctx.arc(px, py, clamped ? 2.4 : (e.isDowned ? 2.5 : (e.isOperator ? 3.5 : 2.8)), 0, Math.PI * 2);
         ctx.fill();
       }
     }
