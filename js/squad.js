@@ -356,6 +356,7 @@ class SquadMate {
     this.downedBleedTimer = this.downedBleedMax;
     this.reviveProgress = 0;
     this.beingRevivedBy = null;
+    this._reviveGraceUntil = performance.now() + 2800;
     this.state = 'FOLLOW';
     this.group.rotation.x = 0;
     this.group.position.y = 0;
@@ -454,8 +455,15 @@ class SquadMate {
     if (typeof st.hp === 'number') this.hp = st.hp;
     if (typeof st.armor === 'number') this.armor = st.armor;
     if (st.wpn) this.weaponId = st.wpn;
-    this.isDowned = !!st.downed;
-    this.dead = !!st.dead;
+    const inReviveGrace = performance.now() < (this._reviveGraceUntil || 0);
+    if (!inReviveGrace || (!st.downed && !st.dead)) {
+      this.isDowned = !!st.downed;
+      this.dead = !!st.dead;
+      if (!this.isDowned && !this.dead) {
+        this.reviveProgress = 0;
+        this.beingRevivedBy = null;
+      }
+    }
     if (typeof st.bleed === 'number') this.downedBleedTimer = st.bleed;
   }
 

@@ -35,6 +35,34 @@
   const matchmaking = new MatchmakingStage(ui, (zoneId, matchId) => startRaid(zoneId, matchId));
   ui.matchmakingStage = matchmaking;
   const mpSession = (typeof MultiplayerSession !== 'undefined') ? new MultiplayerSession() : null;
+  const devConsole = (typeof DevConsole !== 'undefined') ? new DevConsole({
+    getPlayer: () => player,
+    getWorld: () => world,
+    getScene: () => scene,
+    getEnemyManager: () => enemyManager,
+    getSquadManager: () => squadManager,
+    getWeaponSystem: () => weaponSystem,
+    getUI: () => ui,
+    getMpSession: () => mpSession,
+    isInRaid: () => inRaid,
+    isMatchHost: () => isMatchHost,
+    getCallsign: () => getPlayerCallsign(),
+    onOpenChange: (opened) => {
+      if (!inRaid) return;
+      if (opened) {
+        if (player) {
+          player.keys = {};
+          player.isFiring = false;
+          player.isADS = false;
+        }
+        document.getElementById('pointer-lock-overlay').classList.add('hidden');
+        if (document.pointerLockElement === canvas) document.exitPointerLock();
+      } else if (!isModalOpen && !ui.isTacMapOpen && !gamepad.active) {
+        canvas.requestPointerLock();
+      }
+    }
+  }) : null;
+  window.devConsole = devConsole;
   const gamepad = new GamepadController();
   let padPaused = false;
   gamepad.onStatusChange = (connected) => {
@@ -200,6 +228,21 @@
             window.SQUAD_PVP = !!pkt.enabled;
             if (ui.syncSettingsUI) ui.syncSettingsUI();
             ui.addFeedMessage(`SQUAD PVP: ${window.SQUAD_PVP ? 'ON' : 'OFF'}`, window.SQUAD_PVP ? '#ff5252' : '#69f0ae');
+          } else if (pkt.type === 'revive_progress') {
+            if (pkt.targetClientId === ui._clientId && player && (player.isDowned || player.dead)) {
+              player.beingRevivedBy = pkt.reviverName || 'SQUAD';
+              if (typeof pkt.progress === 'number') player.reviveProgress = pkt.progress;
+              player._remoteReviveExpire = performance.now() + 800;
+            }
+          } else if (pkt.type === 'revive_complete') {
+            if (pkt.targetClientId === ui._clientId && player && (player.isDowned || player.dead)) {
+              player.revive(pkt.hp || 45);
+              if (mpSession && mpSession.active && mpSession.sendStateNow) {
+                mpSession.sendStateNow(player);
+              }
+              ui.showCenterToast(`REVIVED BY ${pkt.reviverName || 'SQUAD'}`, '#69f0ae');
+              ui.addFeedMessage(`Revived by ${pkt.reviverName || 'SQUAD'}`, '#69f0ae');
+            }
           } else if (pkt.type === 'pvp_hit') {
             if (pkt.targetClientId === ui._clientId && window.SQUAD_PVP && player && !player.dead) {
               ui.triggerDamageFlash();
@@ -389,7 +432,7 @@
       player.isFiring = false;
       player.isADS = false;
     }
-    if (!locked && !isModalOpen && !ui.isTacMapOpen) {
+    if (!locked && !isModalOpen && !ui.isTacMapOpen && !(devConsole && devConsole.isOpen)) {
       document.getElementById('pointer-lock-overlay').classList.remove('hidden');
     } else if (locked) {
       document.getElementById('pointer-lock-overlay').classList.add('hidden');
@@ -454,7 +497,7 @@
   });
 
   window.addEventListener('mousedown', (e) => {
-    if (!inRaid || isModalOpen) return;
+    if (!inRaid || isModalOpen || (devConsole && devConsole.isOpen)) return;
     if (ui.isTacMapOpen) return; // map canvas handles clicks when full map is open
     if (document.pointerLockElement !== canvas) {
       if (e.target === canvas) canvas.requestPointerLock();
@@ -542,6 +585,7 @@
   });
 
   window.addEventListener('keydown', (e) => {
+    if (devConsole && devConsole.isOpen) return;
     if (!inRaid) {
       if (e.code === 'Escape' && !gunsmith.isOpen && ui.activeMenuTab !== 'home') {
         ui.openMenuTab('home');
@@ -1488,18 +1532,26 @@
     return best;
   }
 
+  let _lastRemoteRevivePing = 0;
+
   function updatePlayerRevive(dt) {
     const kb = window.KEYBINDS || {};
     const interactKey = kb.interact || 'KeyE';
+    // Clear expired remote revive lock if teammate let go of Interact
+    if (player && player.beingRevivedBy && player.beingRevivedBy !== 'SELF-REVIVE' && player._remoteReviveExpire && performance.now() > player._remoteReviveExpire) {
+      player.beingRevivedBy = null;
+      player._remoteReviveExpire = 0;
+    }
     // Self-Revive Kit: hold [Interact] while downed to channel Self-Revive AND pause the death/bleedout timer!
     if (player && player.isDowned && !player.dead) {
       const canSelfRevive = !player.beingRevivedBy || player.beingRevivedBy === 'SELF-REVIVE';
-      if (player.selfRevive && !isModalOpen && player.keys[interactKey] && canSelfRevive) {
+      if (player.selfRevive && !isModalOpen && !(devConsole && devConsole.isOpen) && player.keys[interactKey] && canSelfRevive) {
         player.beingRevivedBy = 'SELF-REVIVE';
         player.reviveProgress = Math.min(1, (player.reviveProgress || 0) + dt / 4.5);
         if (player.reviveProgress >= 1) {
           player.selfRevive = null;
           player.revive(45);
+          if (mpSession && mpSession.active && mpSession.sendStateNow) mpSession.sendStateNow(player);
           ui.showCenterToast('SELF-REVIVE COMPLETE', '#69f0ae');
           ui.addFeedMessage('Used Self-Revive Kit', '#69f0ae');
         }
@@ -1510,7 +1562,7 @@
       return;
     }
 
-    const holdingRevive = !!(player && !player.isDowned && !player.dead && !isModalOpen && player.keys[interactKey]);
+    const holdingRevive = !!(player && !player.isDowned && !player.dead && !isModalOpen && !(devConsole && devConsole.isOpen) && player.keys[interactKey]);
     const candidate = activeReviveAlly || findRevivableAlly();
 
     if (holdingRevive && candidate && (candidate.isDowned || candidate.dead)) {
@@ -1525,6 +1577,18 @@
         const dur = candidate.dead ? 7.5 : 3.5;
         candidate.reviveProgress = Math.min(1, (candidate.reviveProgress || 0) + dt / dur);
 
+        // Notify remote human teammate of active revive progress (pauses their bleedout + shows banner!)
+        const nowMs = performance.now();
+        if (candidate.isRemoteHuman && mpSession && mpSession.active && candidate.clientId && (nowMs - _lastRemoteRevivePing > 220)) {
+          _lastRemoteRevivePing = nowMs;
+          mpSession.sendEvent({
+            type: 'revive_progress',
+            targetClientId: candidate.clientId,
+            progress: Math.round(candidate.reviveProgress * 100) / 100,
+            reviverName: getPlayerCallsign()
+          });
+        }
+
         // Moving while reviving a DOWNED ally drags them smoothly into cover!
         const moving = Math.hypot(player.velocity.x, player.velocity.z) > 0.25;
         if (candidate.isDowned && moving) {
@@ -1537,6 +1601,14 @@
 
         if (candidate.reviveProgress >= 1) {
           candidate.revive(45);
+          if (candidate.isRemoteHuman && mpSession && mpSession.active && candidate.clientId) {
+            mpSession.sendEvent({
+              type: 'revive_complete',
+              targetClientId: candidate.clientId,
+              hp: 45,
+              reviverName: getPlayerCallsign()
+            });
+          }
           raidXp += 75;
           ui.showXpFeedback({ label: 'REVIVE', xp: 75, isRevive: true });
           ui.addFeedMessage(`Revived ${candidate.name} (+75 XP)`, '#69f0ae');

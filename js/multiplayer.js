@@ -248,7 +248,8 @@ class MultiplayerSession {
       pkt.type === 'state' || pkt.type === 'shot' || pkt.type === 'ping' ||
       pkt.type === 'enemy_hit' || pkt.type === 'enemies_sync' || pkt.type === 'enemy_shot' ||
       pkt.type === 'ground_drop' || pkt.type === 'ground_pickup' ||
-      pkt.type === 'pvp_hit' || pkt.type === 'pvp_toggle' || pkt.type === 'revive_ping'
+      pkt.type === 'pvp_hit' || pkt.type === 'pvp_toggle' || pkt.type === 'revive_ping' ||
+      pkt.type === 'revive_progress' || pkt.type === 'revive_complete'
     ) {
       this._handleDataPacket(peerId, pkt);
     }
@@ -313,6 +314,34 @@ class MultiplayerSession {
       const list = enemyManager.serializeSnapshot();
       this._postSignal({ type: 'enemies_sync', list });
     }
+  }
+
+  sendStateNow(player) {
+    if (!this.active || !player || this.partyMembers.length === 0) return;
+    const wSlot = player.getActiveWeaponSlot ? player.getActiveWeaponSlot() : null;
+    const statePkt = {
+      type: 'state',
+      x: Math.round(player.position.x * 100) / 100,
+      y: Math.round((player.position.y - player.currentEyeHeight) * 100) / 100,
+      z: Math.round(player.position.z * 100) / 100,
+      yaw: Math.round(player.yaw * 1000) / 1000,
+      pitch: Math.round(player.pitch * 1000) / 1000,
+      hp: Math.ceil(player.hp),
+      armor: Math.ceil(player.armor),
+      stance: player.isDowned ? 'downed' : (player.dead ? 'dead' : (player.isSliding ? 'slide' : (player.isProne ? 'prone' : (player.isCrouching ? 'crouch' : 'stand')))),
+      wpn: wSlot ? wSlot.id : 'melee',
+      downed: !!player.isDowned,
+      dead: !!player.dead,
+      bleed: Math.round((player.downedBleedTimer || 0) * 10) / 10
+    };
+    const json = JSON.stringify(statePkt);
+    let sentRtc = false;
+    for (const [, p] of this.peers.entries()) {
+      if (p.dc && p.dc.readyState === 'open') {
+        try { p.dc.send(json); sentRtc = true; } catch (e) {}
+      }
+    }
+    if (!sentRtc) this._postSignal(statePkt);
   }
 
   update(dt, player) {

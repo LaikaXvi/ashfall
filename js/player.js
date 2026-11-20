@@ -17,6 +17,8 @@ class Player {
     this.currentEyeHeight = this.standEyeHeight;
     this.radius = 0.4;
     this.onGround = true;
+    this.noclip = false;
+    this.godMode = false;
 
     // Stance & tactical slide state
     this.stance = 'stand'; // 'stand' | 'crouch' | 'prone'
@@ -968,7 +970,7 @@ class Player {
   }
 
   takeDamage(amount, attackerInfo = null) {
-    if (this.dead) return null;
+    if (this.dead || this.godMode) return null;
     if (this.isDowned) {
       if (attackerInfo) this.downedBy = attackerInfo;
       if (!window.DEV_MODE) {
@@ -1292,6 +1294,36 @@ class Player {
     wishDir.addScaledVector(rightVec, moveRight);
     const moveMag = Math.min(1, wishDir.length());
     if (wishDir.lengthSq() > 0) wishDir.normalize();
+
+    // Developer Noclip free-flight mode (WASD flies in camera look direction, Space up, C/Ctrl down, Shift boost)
+    if (this.noclip && !this.dead) {
+      const flySpeed = (this.keys['ShiftLeft'] || this.keys['ShiftRight']) ? 28.0 : 13.0;
+      const lookDir = new THREE.Vector3(
+        -Math.sin(this.yaw) * Math.cos(this.pitch),
+        Math.sin(this.pitch),
+        -Math.cos(this.yaw) * Math.cos(this.pitch)
+      );
+      const flyVec = new THREE.Vector3();
+      flyVec.addScaledVector(lookDir, moveForward);
+      flyVec.addScaledVector(rightVec, moveRight);
+      if (this.keys[kb.jump || 'Space']) flyVec.y += 1;
+      if (this.keys['ControlLeft'] || this.keys[kb.crouch || 'KeyC']) flyVec.y -= 1;
+      if (flyVec.lengthSq() > 0) flyVec.normalize();
+      this.velocity.copy(flyVec).multiplyScalar(flySpeed);
+      this.position.addScaledVector(this.velocity, dt);
+      this.onGround = false;
+      this.isSprinting = false;
+      this.isTacSprinting = false;
+      this.isSliding = false;
+      this.headBobY = 0;
+      this.headRoll = 0;
+      this.camera.position.copy(this.position);
+      this.camera.rotation.order = 'YXZ';
+      this.camera.rotation.y = this.yaw;
+      this.camera.rotation.x = this.pitch;
+      this.camera.rotation.z = 0;
+      return;
+    }
 
     // Sprinting out of crouch/prone smoothly stands player up (Normal sprint is infinite like DMZ!)
     const wantsSprintInput = !!((this.keys['ShiftLeft'] || this.padSprint) && moveForward > 0.35 && !this.isADS);
