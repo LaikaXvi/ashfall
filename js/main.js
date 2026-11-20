@@ -454,32 +454,36 @@
     if (enemy.justDowned) {
       enemy.justDowned = false;
       raidXp += 50;
-      ui.addKillFeedEntry({
-        killerName,
-        killerIsEnemy: false,
-        weaponId: wId,
-        weaponName: wName,
-        victimName: enemy.name,
-        victimIsEnemy: true,
-        action: 'downed',
-        isHead
-      });
+      if (enemy.isOperator) {
+        ui.addKillFeedEntry({
+          killerName,
+          killerIsEnemy: false,
+          weaponId: wId,
+          weaponName: wName,
+          victimName: enemy.name,
+          victimIsEnemy: true,
+          action: 'downed',
+          isHead
+        });
+      }
       ui.showXpFeedback({ label: 'DOWNED', xp: 50, isDowned: true });
     }
     if (killed) {
       raidKills += 1;
       const xp = isHead ? 150 : 100;
       raidXp += xp;
-      ui.addKillFeedEntry({
-        killerName,
-        killerIsEnemy: false,
-        weaponId: wId,
-        weaponName: wName,
-        victimName: enemy.name,
-        victimIsEnemy: true,
-        action: 'eliminated',
-        isHead
-      });
+      if (enemy.isOperator) {
+        ui.addKillFeedEntry({
+          killerName,
+          killerIsEnemy: false,
+          weaponId: wId,
+          weaponName: wName,
+          victimName: enemy.name,
+          victimIsEnemy: true,
+          action: 'eliminated',
+          isHead
+        });
+      }
       ui.showXpFeedback({ label: isHead ? 'HEADSHOT' : 'KILL', xp });
     }
   }
@@ -904,16 +908,18 @@
             (msg, color) => ui.addFeedMessage(msg, color),
             (ally, enemy, action) => {
               if (action === 'eliminated') raidKills += 1;
-              const wDef = GAME_DATA.ITEMS[ally.weaponId];
-              ui.addKillFeedEntry({
-                killerName: ally.name,
-                killerIsEnemy: false,
-                weaponId: ally.weaponId || 'ak74m',
-                weaponName: wDef ? wDef.name : 'AK-74M',
-                victimName: enemy.name,
-                victimIsEnemy: true,
-                action: action || 'eliminated'
-              });
+              if (enemy && enemy.isOperator) {
+                const wDef = GAME_DATA.ITEMS[ally.weaponId];
+                ui.addKillFeedEntry({
+                  killerName: ally.name,
+                  killerIsEnemy: false,
+                  weaponId: ally.weaponId || 'ak74m',
+                  weaponName: wDef ? wDef.name : 'AK-74M',
+                  victimName: enemy.name,
+                  victimIsEnemy: true,
+                  action: action || 'eliminated'
+                });
+              }
             },
             (evtType, target, info) => {
               if (evtType === 'downed' || evtType === 'eliminated') {

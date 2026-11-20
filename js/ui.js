@@ -1613,7 +1613,7 @@ class GameUI {
     row.appendChild(victimSpan);
 
     kf.prepend(row);
-    while (kf.children.length > 6) kf.lastElementChild.remove();
+    while (kf.children.length > 4) kf.lastElementChild.remove();
     setTimeout(() => row.remove(), 5500);
   }
 
