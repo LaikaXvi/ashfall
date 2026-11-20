@@ -1029,13 +1029,10 @@ class GameUI {
     };
 
     const renderBadge = () => {
-      if (pagesReadyVer) {
-        badge.textContent = `NEW VERSION AVAILABLE (${pagesReadyVer}) · CLICK TO UPDATE`;
+      const nextVer = pagesReadyVer || githubPendingVer;
+      if (nextVer) {
+        badge.textContent = `NEW VERSION AVAILABLE (${nextVer})`;
         badge.style.opacity = '1';
-        badge.classList.remove('hidden');
-      } else if (githubPendingVer) {
-        badge.textContent = `NEW VERSION AVAILABLE (${githubPendingVer}) · PUBLISHING...`;
-        badge.style.opacity = '0.9';
         badge.classList.remove('hidden');
       }
     };
