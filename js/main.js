@@ -29,10 +29,11 @@
   let nearbyInteractable = null; // { type: 'crate'|'corpse', label, items, container }
   let lastFrameTime = performance.now();
 
-  const ui = new GameUI((zoneId) => startRaid(zoneId));
+  const ui = new GameUI((zoneId, matchId) => startRaid(zoneId, matchId));
   const gunsmith = new GunsmithController(ui);
-  const matchmaking = new MatchmakingStage(ui, (zoneId) => startRaid(zoneId));
+  const matchmaking = new MatchmakingStage(ui, (zoneId, matchId) => startRaid(zoneId, matchId));
   ui.matchmakingStage = matchmaking;
+  const mpSession = (typeof MultiplayerSession !== 'undefined') ? new MultiplayerSession() : null;
   const gamepad = new GamepadController();
   let padPaused = false;
   gamepad.onStatusChange = (connected) => {
@@ -59,7 +60,8 @@
     if (matchmaking && matchmaking.active) matchmaking._resize();
   });
 
-  function startRaid(zoneId) {
+  function startRaid(zoneId, matchId = null) {
+    if (inRaid) return;
     window.soundEngine.init();
     const zone = GAME_DATA.ZONES[zoneId] || GAME_DATA.ZONES.outpost;
 
@@ -114,11 +116,56 @@
     enemyManager = new EnemyManager(scene, world, zone, weaponSystem);
     squadManager = new SquadManager(scene, world, ui.partyMembers || []);
 
-    // Notify any local browser tab in our party to infil into the same raid zone
-    if (ui._socialChannel && ui.partyMembers && ui.partyMembers.length > 1) {
-      try {
-        ui._socialChannel.postMessage({ type: 'deploy_raid', from: ui.profile.social.callsign, zoneId });
-      } catch (e) {}
+    // Start real-time co-op multiplayer sync when deploying with party members into the SAME match!
+    const activeMatchId = matchId || (ui.partyId + '_' + zoneId);
+    const hasRemoteParty = (ui.partyMembers || []).some(m => !m.isSelf && m.isRemoteHuman);
+    if (mpSession && hasRemoteParty) {
+      mpSession.start({
+        matchId: activeMatchId,
+        myClientId: ui._clientId,
+        myCallsign: getPlayerCallsign(),
+        partyMembers: ui.partyMembers || [],
+        onRemoteEvent: (peerId, pkt) => {
+          if (!inRaid || !pkt) return;
+          if (pkt.type === 'shot') {
+            const ally = squadManager && squadManager.getAllyByClientId(peerId);
+            if (ally) {
+              ally.triggerRemoteMuzzleFlash();
+              if (weaponSystem && weaponSystem.spawnEnemyShot && pkt.tx !== undefined) {
+                const startPos = ally.position.clone().add(new THREE.Vector3(0, 1.35, 0));
+                const endPos = new THREE.Vector3(pkt.tx, pkt.ty, pkt.tz);
+                weaponSystem.spawnEnemyShot(startPos, endPos, false, world);
+              }
+            }
+          } else if (pkt.type === 'ping') {
+            _placePing(pkt.pingType || 'location', new THREE.Vector3(pkt.x || 0, pkt.y || 0.1, pkt.z || 0), null, false, pkt.fromName || 'SQUAD');
+          } else if (pkt.type === 'enemy_hit' && enemyManager && enemyManager.enemies && typeof pkt.enemyIdx === 'number') {
+            const target = enemyManager.enemies[pkt.enemyIdx];
+            if (target && !target.dead) {
+              const killed = target.takeDamage(pkt.dmg || 25, null, {
+                name: pkt.fromName || 'SQUAD',
+                isPlayer: false,
+                isOperator: false,
+                weaponId: pkt.weaponId || 'ak74m',
+                weaponName: pkt.weaponName || 'AK-74M'
+              });
+              if (killed && target.isOperator) {
+                ui.addKillFeedEntry({
+                  killerName: pkt.fromName || 'SQUAD',
+                  killerIsEnemy: false,
+                  weaponId: pkt.weaponId || 'ak74m',
+                  weaponName: pkt.weaponName || 'AK-74M',
+                  victimName: target.name,
+                  victimIsEnemy: true,
+                  action: 'eliminated'
+                });
+              }
+            }
+          }
+        }
+      });
+    } else if (mpSession) {
+      mpSession.stop();
     }
 
     ui.profile.raids += 1;
@@ -176,6 +223,8 @@
   }
 
   function endRaid(extracted) {
+    if (mpSession) mpSession.stop();
+    if (ui && ui.setSelfPartyReady) ui.setSelfPartyReady(false);
     if (inRaid) {
       ui.toggleTacMap(false);
       const rzEl = document.getElementById('redzone-banner');
@@ -645,7 +694,7 @@
     return { pos: origin.clone().addScaledVector(dir, 80), enemy: null };
   }
 
-  function _placePing(type = 'location', worldPos = new THREE.Vector3(), targetEnemy = null, fromMap = false) {
+  function _placePing(type = 'location', worldPos = new THREE.Vector3(), targetEnemy = null, fromMap = false, remoteCaller = null) {
     const cfg = PING_DEFS[type] || PING_DEFS.location;
     // Cap simultaneous pings to 4 (oldest fades out) and avoid duplicate live markers on same enemy
     if (targetEnemy) {
@@ -685,13 +734,23 @@
       position: worldPos.clone(),
       targetEnemy: targetEnemy || null,
       beamMesh,
-      owner: getPlayerCallsign(),
-      isOwn: true,
+      owner: remoteCaller || getPlayerCallsign(),
+      isOwn: !remoteCaller,
       duration: targetEnemy ? 8.0 : cfg.duration,
       age: 0
     };
     activePings.push(ping);
     window.activePings = activePings;
+
+    if (!remoteCaller && mpSession && mpSession.active) {
+      mpSession.sendEvent({
+        type: 'ping',
+        pingType: type,
+        x: Math.round(worldPos.x * 10) / 10,
+        y: Math.round(worldPos.y * 10) / 10,
+        z: Math.round(worldPos.z * 10) / 10
+      });
+    }
 
     if (window.soundEngine && window.soundEngine.playCookTick) {
       window.soundEngine.playCookTick(type === 'enemy');
@@ -699,7 +758,7 @@
 
     const dist = player ? Math.round(player.position.distanceTo(ping.position)) : null;
     ui.addPingFeedEntry({
-      caller: getPlayerCallsign(),
+      caller: remoteCaller || getPlayerCallsign(),
       label: `PINGED ${label}`,
       color: cfg.color,
       symbol: cfg.symbol,
@@ -1262,6 +1321,17 @@
     if (fired) {
       const wDef = player.getActiveWeaponDef();
       enemyManager.alertNearby(player.position, (wDef && wDef.suppressed) ? 12 : 26);
+      if (mpSession && mpSession.active && camera) {
+        const dir = new THREE.Vector3();
+        camera.getWorldDirection(dir);
+        const endPt = player.position.clone().addScaledVector(dir, 45);
+        mpSession.sendEvent({
+          type: 'shot',
+          tx: Math.round(endPt.x * 10) / 10,
+          ty: Math.round(endPt.y * 10) / 10,
+          tz: Math.round(endPt.z * 10) / 10
+        });
+      }
     }
   }
 
@@ -1563,6 +1633,10 @@
         }
 
         player.update(dt);
+        if (mpSession && mpSession.active) {
+          mpSession.update(dt, player);
+          if (squadManager) squadManager.syncRemotePlayers(mpSession);
+        }
         weaponSystem.update(dt, player, wDef);
         if (throwableSystem) {
           throwableSystem.update(dt, player, weaponSystem, enemyManager, onThrowableHit, null);

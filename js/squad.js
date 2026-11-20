@@ -7,6 +7,12 @@ class SquadMate {
     this.name = memberInfo.name || 'ALLY';
     this.squadColor = memberInfo.squadColor || '#69f0ae';
     this.weaponId = memberInfo.weaponId || 'ak74m';
+    this.isRemoteHuman = !!memberInfo.isRemoteHuman;
+    this.clientId = memberInfo.clientId || null;
+    this._remoteTargetPos = spawnPos.clone();
+    this._remoteTargetYaw = 0;
+    this._remoteStance = 'stand';
+    this._hasRemoteSync = false;
     this.lastPlayerDist = 0;
     this.position = spawnPos.clone();
 
@@ -433,11 +439,94 @@ class SquadMate {
     }
   }
 
+  applyRemoteState(st) {
+    if (!st) return;
+    this._hasRemoteSync = true;
+    this._remoteTargetPos.set(st.x || 0, st.y || 0, st.z || 0);
+    // Player camera looks down -Z; SquadMate mesh faces +Z -> add PI to yaw!
+    this._remoteTargetYaw = (st.yaw || 0) + Math.PI;
+    this._remoteStance = st.stance || 'stand';
+    if (typeof st.hp === 'number') this.hp = st.hp;
+    if (typeof st.armor === 'number') this.armor = st.armor;
+    if (st.wpn) this.weaponId = st.wpn;
+    this.isDowned = !!st.downed;
+    this.dead = !!st.dead;
+    if (typeof st.bleed === 'number') this.downedBleedTimer = st.bleed;
+  }
+
+  triggerRemoteMuzzleFlash() {
+    this.muzzleTimer = 0.08;
+    if (this.muzzleMesh) this.muzzleMesh.material.opacity = 1;
+    if (this.muzzleLight) this.muzzleLight.intensity = 2.6;
+  }
+
   update(dt, player, enemyManager, weaponSystem, raidTimeLeft, onComms, onAllyKill, allAllies = [], onAllyEvent = null) {
     if (this.extracted) return;
 
     if (player && player.position) {
       this.lastPlayerDist = Math.hypot(this.position.x - player.position.x, this.position.z - player.position.z);
+    }
+
+    // Remote Human Party Member: smoothly interpolate live network transform, stance, and vitals!
+    if (this.isRemoteHuman) {
+      if (this.muzzleTimer > 0) {
+        this.muzzleTimer -= dt;
+        if (this.muzzleTimer <= 0) {
+          if (this.muzzleMesh) this.muzzleMesh.material.opacity = 0;
+          if (this.muzzleLight) this.muzzleLight.intensity = 0;
+        }
+      }
+      if (this._hasRemoteSync) {
+        const prevX = this.position.x;
+        const prevZ = this.position.z;
+        const lerpRate = Math.min(1, dt * 14);
+        this.position.lerp(this._remoteTargetPos, lerpRate);
+        this.group.position.x = this.position.x;
+        this.group.position.z = this.position.z;
+
+        // Shortest-angle yaw interpolation
+        let dYaw = this._remoteTargetYaw - this.group.rotation.y;
+        while (dYaw > Math.PI) dYaw -= Math.PI * 2;
+        while (dYaw < -Math.PI) dYaw += Math.PI * 2;
+        this.group.rotation.y += dYaw * lerpRate;
+
+        const moveDist = Math.hypot(this.position.x - prevX, this.position.z - prevZ) / Math.max(0.001, dt);
+        const moving = moveDist > 0.35;
+
+        if (this.dead) {
+          this.group.position.y = 0.14;
+          this.group.rotation.x = Math.PI / 2;
+          this._redrawTag('ELIMINATED', '#ff5252');
+          this._updateBleedSprite(dt);
+        } else if (this.isDowned) {
+          const phase = moving ? Math.sin(performance.now() * 0.006) : 0;
+          const heave = Math.max(0, phase);
+          this.group.position.y = -0.56 + heave * 0.035;
+          this.group.rotation.x = -0.22 - heave * 0.04;
+          if (this.leftHip) this.leftHip.rotation.x = -1.38 - heave * 0.14;
+          if (this.rightHip) this.rightHip.rotation.x = -1.38 - Math.max(0, -phase) * 0.10;
+          this._redrawTag(`DOWNED ${Math.ceil(Math.max(0, this.downedBleedTimer))}s`, '#ff5252');
+          this._updateBleedSprite(dt);
+        } else {
+          if (this.bleedSprite) this.bleedSprite.visible = false;
+          const stanceY = this._remoteStance === 'prone' ? -0.68 : (this._remoteStance === 'crouch' || this._remoteStance === 'slide' ? -0.32 : 0);
+          const stancePitch = this._remoteStance === 'prone' ? 1.35 : 0;
+          this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, this.position.y + stanceY, lerpRate);
+          this.group.rotation.x = THREE.MathUtils.lerp(this.group.rotation.x, stancePitch, lerpRate);
+          if (moving) {
+            this.animCycle += dt * Math.min(12, moveDist * 1.4);
+            if (this.leftHip) this.leftHip.rotation.x = Math.sin(this.animCycle) * 0.48;
+            if (this.rightHip) this.rightHip.rotation.x = -Math.sin(this.animCycle) * 0.48;
+          } else {
+            if (this.leftHip) this.leftHip.rotation.x = THREE.MathUtils.lerp(this.leftHip.rotation.x, 0, dt * 10);
+            if (this.rightHip) this.rightHip.rotation.x = THREE.MathUtils.lerp(this.rightHip.rotation.x, 0, dt * 10);
+          }
+          this._redrawTag(this._remoteStance === 'crouch' ? 'CROUCH' : (this._remoteStance === 'prone' ? 'PRONE' : 'SQUAD'), this.squadColor);
+        }
+      } else {
+        this._redrawTag('SYNCING...', '#ffca28');
+      }
+      return;
     }
 
     // Dead ally: still update overhead revivable medical-cross sprite (can be slow-revived!)
@@ -815,11 +904,26 @@ class SquadManager {
       );
       this.allies.push(new SquadMate(scene, world, spawn, {
         name: m.name,
+        clientId: m.clientId || null,
+        isRemoteHuman: !!m.isRemoteHuman,
         squadColor: m.squadColor || squadColors[(idx + 1) % squadColors.length],
         weaponId: m.weaponId || (idx % 2 === 0 ? 'ak74m' : 'mp5k'),
         flankSide: side
       }));
     });
+  }
+
+  syncRemotePlayers(mpSession) {
+    if (!mpSession || !mpSession.active) return;
+    for (const ally of this.allies) {
+      if (!ally.isRemoteHuman || !ally.clientId) continue;
+      const st = mpSession.remoteStates.get(ally.clientId);
+      if (st) ally.applyRemoteState(st);
+    }
+  }
+
+  getAllyByClientId(clientId) {
+    return this.allies.find(a => a.clientId === clientId) || null;
   }
 
   update(dt, player, enemyManager, weaponSystem, raidTimeLeft, onComms, onAllyKill, onAllyEvent) {

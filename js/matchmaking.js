@@ -138,57 +138,98 @@ class MatchmakingStage {
     return root;
   }
 
-  start(zoneId) {
+  start(zoneId, matchId = null) {
     this.zoneId = zoneId || 'outpost';
+    this.matchId = matchId || ('m_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6));
     this.countdown = 15.0;
     this.active = true;
     this.animTime = 0;
+    this._launched = false;
 
-    // Clear & rebuild 3D operator + squadmates with overhead usernames & squad colors
-    while (this.operatorsGroup.children.length > 0) {
-      this.operatorsGroup.remove(this.operatorsGroup.children[0]);
-    }
+    this.refreshSquadUI(true);
+    this._resize();
+  }
+
+  refreshSquadUI(rebuildMeshes = false) {
     const squadColors = (GAME_DATA && GAME_DATA.SQUAD_COLORS) || ['#69f0ae', '#42a5f5', '#ffeb3b', '#ff69b4'];
     const party = this.ui.partyMembers || [];
     const multiSquad = party.length > 1;
-    const selfMember = party.find(m => m.isSelf) || { name: (this.ui.profile.social && this.ui.profile.social.callsign) || 'OPERATOR' };
-    const selfColor = multiSquad ? (selfMember.squadColor || squadColors[0]) : '#69f0ae';
 
-    const L = this.ui.profile.loadout;
-    const mods = this.ui.profile.weaponMods || {};
-    const mainOp = this._buildOperatorMesh(L, mods, false, selfMember.name, selfColor);
-    this.operatorsGroup.add(mainOp);
+    if (rebuildMeshes && this.operatorsGroup) {
+      while (this.operatorsGroup.children.length > 0) {
+        this.operatorsGroup.remove(this.operatorsGroup.children[0]);
+      }
+      const selfMember = party.find(m => m.isSelf) || { name: (this.ui.profile.social && this.ui.profile.social.callsign) || 'OPERATOR' };
+      const selfColor = multiSquad ? (selfMember.squadColor || squadColors[0]) : '#69f0ae';
 
-    const allies = party.filter(m => !m.isSelf);
-    const offsets = [
-      { x: -0.95, z: -0.45, rotY: 0.22 },
-      { x: 0.95,  z: -0.45, rotY: -0.22 },
-      { x: -1.75, z: -0.85, rotY: 0.32 }
-    ];
-    allies.forEach((a, idx) => {
-      const col = multiSquad ? (a.squadColor || squadColors[(idx + 1) % squadColors.length]) : '#69f0ae';
-      const allyMesh = this._buildOperatorMesh({
-        primary: a.weaponId || 'ak74m',
-        armor: 'vest_2plate',
-        backpack: 'bag_medium'
-      }, {}, true, a.name, col);
-      const pos = offsets[idx % offsets.length];
-      allyMesh.position.set(pos.x, 0, pos.z);
-      allyMesh.rotation.y = pos.rotY;
-      this.operatorsGroup.add(allyMesh);
-    });
+      const L = this.ui.profile.loadout;
+      const mods = this.ui.profile.weaponMods || {};
+      const mainOp = this._buildOperatorMesh(L, mods, false, selfMember.name, selfColor);
+      this.operatorsGroup.add(mainOp);
+
+      const allies = party.filter(m => !m.isSelf);
+      const offsets = [
+        { x: -0.95, z: -0.45, rotY: 0.22 },
+        { x: 0.95,  z: -0.45, rotY: -0.22 },
+        { x: -1.75, z: -0.85, rotY: 0.32 }
+      ];
+      allies.forEach((a, idx) => {
+        const col = multiSquad ? (a.squadColor || squadColors[(idx + 1) % squadColors.length]) : '#69f0ae';
+        const allyMesh = this._buildOperatorMesh({
+          primary: a.weaponId || 'ak74m',
+          armor: 'vest_2plate',
+          backpack: 'bag_medium'
+        }, {}, true, a.name, col);
+        const pos = offsets[idx % offsets.length];
+        allyMesh.position.set(pos.x, 0, pos.z);
+        allyMesh.rotation.y = pos.rotY;
+        this.operatorsGroup.add(allyMesh);
+      });
+    }
 
     const zDef = GAME_DATA.ZONES[this.zoneId] || GAME_DATA.ZONES.outpost;
     const titleEl = document.getElementById('mm-zone-title');
     if (titleEl) titleEl.textContent = zDef.name.toUpperCase();
+
     const sqEl = document.getElementById('mm-squad-list');
     if (sqEl) {
       sqEl.innerHTML = party.map((m, idx) => {
         const col = multiSquad ? (m.squadColor || squadColors[idx % squadColors.length]) : '#69f0ae';
-        return `<div style="color:${col};">● ${m.name}${m.isSelf ? ' (YOU)' : ''} — READY</div>`;
+        const isReady = !multiSquad || !!m.ready;
+        const badge = isReady
+          ? `<span style="color:#69f0ae;font-weight:800;">✓ READY</span>`
+          : `<span style="color:#ffca28;font-weight:700;">○ NOT READY</span>`;
+        return `<div style="color:${col};">● ${m.name}${m.isSelf ? ' (YOU)' : ''}${m.isLeader && multiSquad ? ' [LDR]' : ''} — ${badge}</div>`;
       }).join('');
     }
-    this._resize();
+
+    const deployBtn = document.getElementById('btn-deploy');
+    if (deployBtn) {
+      const self = party.find(m => m.isSelf);
+      const allReady = !multiSquad || party.every(m => !!m.ready);
+      const isLeader = this.ui.isPartyLeader();
+      if (!multiSquad) {
+        deployBtn.textContent = 'DEPLOY NOW';
+        deployBtn.style.background = '';
+        deployBtn.disabled = false;
+      } else if (!self || !self.ready) {
+        deployBtn.textContent = 'READY UP ✓';
+        deployBtn.style.background = '#2e7d32';
+        deployBtn.disabled = false;
+      } else if (!allReady) {
+        deployBtn.textContent = 'UNREADY (WAITING...)';
+        deployBtn.style.background = '#5a4618';
+        deployBtn.disabled = false;
+      } else if (isLeader) {
+        deployBtn.textContent = 'DEPLOY SQUAD NOW →';
+        deployBtn.style.background = '';
+        deployBtn.disabled = false;
+      } else {
+        deployBtn.textContent = 'ALL READY — DEPLOYING...';
+        deployBtn.style.background = '#2e7d32';
+        deployBtn.disabled = true;
+      }
+    }
   }
 
   stop() {
@@ -208,15 +249,41 @@ class MatchmakingStage {
   update(dt) {
     if (!this.active) return;
     this.animTime += dt;
-    this.countdown = Math.max(0, this.countdown - dt);
+
+    const party = this.ui.partyMembers || [];
+    const multiSquad = party.length > 1;
+    const readyCount = party.filter(m => !!m.ready).length;
+    const allReady = !multiSquad || (party.length > 0 && readyCount === party.length);
+
+    if (allReady) {
+      this.countdown = Math.max(0, this.countdown - dt);
+    } else {
+      // Wait at 15s until EVERY party member has clicked READY on all ends!
+      this.countdown = 15.0;
+    }
 
     const valEl = document.getElementById('mm-countdown-val');
-    if (valEl) valEl.textContent = Math.ceil(this.countdown);
+    if (valEl) {
+      valEl.textContent = allReady ? Math.ceil(this.countdown) : 'WAIT';
+      valEl.style.color = allReady ? '' : '#ffca28';
+    }
     const statusEl = document.getElementById('mm-status-text');
     if (statusEl) {
-      if (this.countdown > 10) statusEl.textContent = 'SEARCHING FOR 6-SQUAD SECTOR INSTANCE...';
-      else if (this.countdown > 5) statusEl.textContent = 'MATCH FOUND (6/6 SQUADS) — SYNCING LOADOUTS...';
-      else statusEl.textContent = 'DEPLOYING HELO INSERTION...';
+      if (!allReady) {
+        statusEl.textContent = `WAITING FOR ALL PARTY MEMBERS TO READY UP (${readyCount}/${party.length})...`;
+        statusEl.style.color = '#ffca28';
+      } else if (this.countdown > 10) {
+        statusEl.textContent = multiSquad
+          ? `ALL OPERATORS READY (${party.length}/${party.length}) — LOCKING SECTOR INSTANCE...`
+          : 'SEARCHING FOR 6-SQUAD SECTOR INSTANCE...';
+        statusEl.style.color = '#69f0ae';
+      } else if (this.countdown > 5) {
+        statusEl.textContent = 'MATCH FOUND (6/6 SQUADS) — SYNCING SQUAD LOADOUTS...';
+        statusEl.style.color = '#69f0ae';
+      } else {
+        statusEl.textContent = 'DEPLOYING HELO INSERTION...';
+        statusEl.style.color = '#69f0ae';
+      }
     }
 
     // Idle breathing & subtle heroic sway
@@ -232,9 +299,13 @@ class MatchmakingStage {
       this.renderer.render(this.scene, this.camera);
     }
 
-    if (this.countdown <= 0) {
+    if (allReady && this.countdown <= 0 && !this._launched) {
+      this._launched = true;
       this.active = false;
-      if (this.onLaunchRaid) this.onLaunchRaid(this.zoneId);
+      if (multiSquad && this.ui.isPartyLeader() && this.ui.broadcastPartyDeploy) {
+        this.ui.broadcastPartyDeploy(this.zoneId, this.matchId);
+      }
+      if (this.onLaunchRaid) this.onLaunchRaid(this.zoneId, this.matchId);
     }
   }
 }

@@ -277,8 +277,18 @@ class GameUI {
   _initSocial() {
     this._ensureIdentity();
     this._clientId = 'cli_' + Math.random().toString(36).slice(2, 10) + '_' + Date.now().toString(36);
+    this.partyId = 'p_' + this._clientId;
     this.partyHost = this.profile.social.callsign;
-    this.partyMembers = [{ name: this.profile.social.callsign, isSelf: true, isLeader: true, squadColor: '#69f0ae' }];
+    this.partyMembers = [{
+      clientId: this._clientId,
+      name: this.profile.social.callsign,
+      isSelf: true,
+      isLeader: true,
+      isRemoteHuman: false,
+      ready: false,
+      squadColor: '#69f0ae'
+    }];
+    this.pendingPartyInvite = null; // { partyId, from, fromClientId, leaderWeapon }
 
     // REAL online clients only (cross-device live WebSocket lobby + local same-browser fallback, zero fake players!)
     this.onlinePlayers = [];
@@ -289,8 +299,9 @@ class GameUI {
     this._wsConnected = false;
     this._wsRetryMs = 3000;
     this._ws = null;
+    this._seenPktIds = new Set();
 
-    const PEER_TTL_MS = 52000;
+    const PEER_TTL_MS = 55000;
 
     this._rebuildOnlineList = () => {
       const now = Date.now();
@@ -336,22 +347,29 @@ class GameUI {
       this.renderSocial();
     };
 
-    this._handleSocialPacket = (msg) => {
+    this._handleSocialPacket = (msg, serverTimeSec = null) => {
       if (!msg || !msg.clientId || msg.clientId === this._clientId) return;
+      if (msg.pid && this._seenPktIds.has(msg.pid)) return;
+      if (msg.pid) this._seenPktIds.add(msg.pid);
       const now = Date.now();
+      const myName = (this.profile && this.profile.social && this.profile.social.callsign || '').toUpperCase();
+
+      // Use server receipt time (or local Date.now() for live WS) — NEVER sender's PC clock, which can have clock skew!
+      const effectiveTs = (typeof serverTimeSec === 'number' && serverTimeSec > 0)
+        ? Math.min(now, serverTimeSec * 1000)
+        : now;
+
       if (msg.type === 'presence' || msg.type === 'rename') {
         const name = (msg.from || msg.name || '').trim().toUpperCase();
         if (!name) return;
-        const pktTs = (typeof msg.ts === 'number' && msg.ts <= now + 5000) ? msg.ts : now;
-        if (now - pktTs > PEER_TTL_MS) return;
+        if (now - effectiveTs > PEER_TTL_MS) return;
         this._peers.set(msg.clientId, {
           clientId: msg.clientId,
           name,
           status: msg.status || 'ONLINE',
-          ts: pktTs
+          ts: effectiveTs
         });
         this._knownRealUsers.add(name);
-        // If a friend renamed themselves, update their callsign in our friends list automatically
         if (msg.type === 'rename' && msg.oldName) {
           const oldUp = msg.oldName.toUpperCase();
           const f = (this.profile.social.friends || []).find(it => it.name.toUpperCase() === oldUp);
@@ -361,21 +379,159 @@ class GameUI {
           }
         }
         this._rebuildOnlineList();
-      } else if (msg.type === 'leave') {
+        return;
+      }
+
+      if (msg.type === 'leave') {
         this._peers.delete(msg.clientId);
+        // Remove disconnected player from party if they were in our party
+        const idx = this.partyMembers.findIndex(m => !m.isSelf && m.clientId === msg.clientId);
+        if (idx !== -1) {
+          const left = this.partyMembers.splice(idx, 1)[0];
+          this.assignSquadColors();
+          this._showSocialToast(`${left.name} disconnected from party.`);
+          if (this.matchmakingStage && this.matchmakingStage.active) this.matchmakingStage.refreshSquadUI(true);
+        }
         this._rebuildOnlineList();
-      } else if (msg.type === 'deploy_raid') {
-        if (this.partyMembers.some(m => m.name === msg.from) && this.onDeploy) {
-          this.onDeploy(msg.zoneId || 'outpost');
+        return;
+      }
+
+      // === REAL CROSS-DEVICE PARTY INVITES, JOINS, READY-UP & SYNCHRONIZED DEPLOY ===
+      const isAddressedToMe = (msg.toClientId && msg.toClientId === this._clientId) ||
+        (msg.to && msg.to.toUpperCase() === myName);
+
+      if (msg.type === 'party_invite' && isAddressedToMe) {
+        if (now - effectiveTs > 45000) return;
+        this.pendingPartyInvite = {
+          partyId: msg.partyId,
+          from: (msg.from || 'OPERATOR').toUpperCase(),
+          fromClientId: msg.clientId,
+          leaderWeapon: msg.leaderWeapon || 'ak74m'
+        };
+        this._showSocialToast(`Party invite from ${this.pendingPartyInvite.from}! Click ACCEPT in COMMS.`);
+        this.renderSocial();
+        return;
+      }
+
+      if ((msg.type === 'party_accept' || msg.type === 'party_join_req') && isAddressedToMe) {
+        if (!this.isPartyLeader()) return;
+        if (this.partyMembers.length >= 4) return;
+        const joinName = (msg.from || 'OPERATOR').toUpperCase();
+        if (!this.partyMembers.some(m => m.clientId === msg.clientId || m.name.toUpperCase() === joinName)) {
+          this.partyMembers.push({
+            clientId: msg.clientId,
+            name: joinName,
+            isSelf: false,
+            isLeader: false,
+            isRemoteHuman: true,
+            weaponId: msg.weaponId || 'ak74m',
+            gearLabel: msg.gearLabel || 'OPERATOR',
+            ready: false
+          });
+        }
+        this.assignSquadColors();
+        this._broadcastPartySync();
+        this.renderSocial();
+        this.renderHideout();
+        if (this.matchmakingStage && this.matchmakingStage.active) this.matchmakingStage.refreshSquadUI(true);
+        this._showSocialToast(`${joinName} joined your party!`);
+        return;
+      }
+
+      if (msg.type === 'party_sync' && msg.partyId && msg.partyId === this.partyId && Array.isArray(msg.members)) {
+        const myPrev = this.partyMembers.find(m => m.isSelf);
+        this.partyHost = msg.hostName || this.partyHost;
+        this.partyMembers = msg.members.map((m) => ({
+          clientId: m.clientId,
+          name: m.name,
+          isSelf: m.clientId === this._clientId,
+          isLeader: !!m.isLeader,
+          isRemoteHuman: m.clientId !== this._clientId,
+          weaponId: m.weaponId || 'ak74m',
+          gearLabel: m.gearLabel || 'OPERATOR',
+          ready: m.clientId === this._clientId ? (myPrev ? !!myPrev.ready : !!m.ready) : !!m.ready
+        }));
+        this.assignSquadColors();
+        this.renderSocial();
+        this.renderHideout();
+        if (this.matchmakingStage && this.matchmakingStage.active) this.matchmakingStage.refreshSquadUI(true);
+        return;
+      }
+
+      if (msg.type === 'party_ready' && msg.partyId && msg.partyId === this.partyId) {
+        const m = this.partyMembers.find(it => it.clientId === msg.clientId || it.name.toUpperCase() === (msg.from || '').toUpperCase());
+        if (m) {
+          m.ready = !!msg.ready;
+          this.renderSocial();
+          this.renderPreMatchLoadout();
+          if (this.matchmakingStage && this.matchmakingStage.active) {
+            this.matchmakingStage.refreshSquadUI(false);
+          }
+        }
+        return;
+      }
+
+      if (msg.type === 'party_leave' && msg.partyId && msg.partyId === this.partyId) {
+        const idx = this.partyMembers.findIndex(it => it.clientId === msg.clientId);
+        if (idx !== -1) {
+          const left = this.partyMembers.splice(idx, 1)[0];
+          if (left.isLeader) {
+            // Leader disbanded -> return everyone to their own solo party
+            this.partyId = 'p_' + this._clientId;
+            this.partyHost = this.profile.social.callsign;
+            this.partyMembers = [{
+              clientId: this._clientId,
+              name: this.profile.social.callsign,
+              isSelf: true,
+              isLeader: true,
+              isRemoteHuman: false,
+              ready: false,
+              squadColor: '#69f0ae'
+            }];
+            this._showSocialToast(`${left.name} disbanded the party.`);
+          } else {
+            this._showSocialToast(`${left.name} left the party.`);
+          }
+          this.assignSquadColors();
+          this.renderSocial();
+          this.renderHideout();
+          if (this.matchmakingStage && this.matchmakingStage.active) this.matchmakingStage.refreshSquadUI(true);
+        }
+        return;
+      }
+
+      if (msg.type === 'party_stage' && msg.partyId && msg.partyId === this.partyId) {
+        if (now - effectiveTs > 30000) return;
+        const zoneId = msg.zoneId || 'outpost';
+        const matchId = msg.matchId;
+        const sel = document.getElementById('raid-zone-select');
+        if (sel) sel.value = zoneId;
+        this.openMenuTab('matchmaking');
+        if (this.matchmakingStage) {
+          this.matchmakingStage.start(zoneId, matchId);
+        }
+        this._showSocialToast(`Leader selected ${(GAME_DATA.ZONES[zoneId] || { name: zoneId }).name} — Click READY UP to start countdown!`);
+        return;
+      }
+
+      if (msg.type === 'deploy_raid' && msg.partyId && msg.partyId === this.partyId) {
+        if (now - effectiveTs > 25000) return;
+        if (this.matchmakingStage) this.matchmakingStage.stop();
+        if (this.onDeploy) {
+          this.onDeploy(msg.zoneId || 'outpost', msg.matchId || null);
         }
       }
     };
 
     this._sendSocialPacket = (payload, useBeacon = false) => {
-      const json = JSON.stringify(payload);
+      const fullPayload = {
+        ...payload,
+        pid: payload.pid || (this._clientId.slice(-6) + '_' + Math.random().toString(36).slice(2, 8))
+      };
+      const json = JSON.stringify(fullPayload);
       // 1. Local same-browser tabs via BroadcastChannel
       try {
-        if (this._socialChannel) this._socialChannel.postMessage(payload);
+        if (this._socialChannel) this._socialChannel.postMessage(fullPayload);
       } catch (e) {}
       // 2. Global cross-device live lobby via ntfy.sh HTTPS POST / Beacon
       const url = `https://ntfy.sh/${this._lobbyTopic}`;
@@ -405,7 +561,7 @@ class GameUI {
               const outer = JSON.parse(line);
               if (outer && outer.event === 'message' && outer.message) {
                 const pkt = JSON.parse(outer.message);
-                this._handleSocialPacket(pkt);
+                this._handleSocialPacket(pkt, outer.time);
               }
             } catch (e) {}
           }
@@ -429,7 +585,7 @@ class GameUI {
             const outer = JSON.parse(ev.data);
             if (outer && outer.event === 'message' && outer.message) {
               const pkt = JSON.parse(outer.message);
-              this._handleSocialPacket(pkt);
+              this._handleSocialPacket(pkt, outer.time);
             }
           } catch (e) {}
         };
@@ -591,54 +747,199 @@ class GameUI {
     this.renderSocial();
   }
 
+  _broadcastPartySync() {
+    if (!this.isPartyLeader()) return;
+    this._sendSocialPacket({
+      type: 'party_sync',
+      clientId: this._clientId,
+      partyId: this.partyId,
+      hostName: this.partyHost,
+      members: this.partyMembers.map(m => ({
+        clientId: m.clientId,
+        name: m.name,
+        isLeader: !!m.isLeader,
+        weaponId: m.weaponId || 'ak74m',
+        gearLabel: m.gearLabel || 'OPERATOR',
+        ready: !!m.ready
+      }))
+    });
+  }
+
+  setSelfPartyReady(readyState) {
+    const self = (this.partyMembers || []).find(m => m.isSelf);
+    if (self) self.ready = !!readyState;
+    this._partyReady = !!readyState;
+    if ((this.partyMembers || []).length > 1) {
+      this._sendSocialPacket({
+        type: 'party_ready',
+        clientId: this._clientId,
+        partyId: this.partyId,
+        from: this.profile.social.callsign,
+        ready: !!readyState
+      });
+    }
+    this.renderSocial();
+    this.renderPreMatchLoadout();
+    if (this.matchmakingStage && this.matchmakingStage.active) {
+      this.matchmakingStage.refreshSquadUI(false);
+    }
+  }
+
+  broadcastPartyStage(zoneId, matchId) {
+    if ((this.partyMembers || []).length <= 1) return;
+    this._sendSocialPacket({
+      type: 'party_stage',
+      clientId: this._clientId,
+      partyId: this.partyId,
+      from: this.profile.social.callsign,
+      zoneId,
+      matchId
+    });
+  }
+
+  broadcastPartyDeploy(zoneId, matchId) {
+    if ((this.partyMembers || []).length <= 1) return;
+    this._sendSocialPacket({
+      type: 'deploy_raid',
+      clientId: this._clientId,
+      partyId: this.partyId,
+      from: this.profile.social.callsign,
+      zoneId,
+      matchId
+    });
+  }
+
+  acceptPendingPartyInvite() {
+    const inv = this.pendingPartyInvite;
+    if (!inv) return;
+    this.pendingPartyInvite = null;
+    this.partyId = inv.partyId;
+    this.partyHost = inv.from;
+    const L = this.profile.loadout || {};
+    const myWpn = L.primary || L.secondary || 'mp5k';
+    this.partyMembers = [
+      {
+        clientId: inv.fromClientId,
+        name: inv.from,
+        isSelf: false,
+        isLeader: true,
+        isRemoteHuman: true,
+        weaponId: inv.leaderWeapon || 'ak74m',
+        gearLabel: 'LEADER',
+        ready: false
+      },
+      {
+        clientId: this._clientId,
+        name: this.profile.social.callsign,
+        isSelf: true,
+        isLeader: false,
+        isRemoteHuman: false,
+        weaponId: myWpn,
+        gearLabel: myWpn.toUpperCase(),
+        ready: false
+      }
+    ];
+    this._partyReady = false;
+    this.assignSquadColors();
+    this._sendSocialPacket({
+      type: 'party_accept',
+      clientId: this._clientId,
+      partyId: this.partyId,
+      from: this.profile.social.callsign,
+      to: inv.from,
+      toClientId: inv.fromClientId,
+      weaponId: myWpn,
+      gearLabel: myWpn.toUpperCase()
+    });
+    this.renderSocial();
+    this.renderHideout();
+    this._showSocialToast(`Joined ${inv.from}'s party!`);
+  }
+
+  declinePendingPartyInvite() {
+    this.pendingPartyInvite = null;
+    this.renderSocial();
+  }
+
   inviteFriendToParty(friendName) {
     if (this.partyMembers.length >= 4) {
       this._showSocialToast('Party is full (4/4).');
       return;
     }
-    if (this.partyMembers.some(m => m.name === friendName)) {
+    if (this.partyMembers.some(m => m.name.toUpperCase() === friendName.toUpperCase())) {
       this._showSocialToast(`${friendName} is already in your party.`);
       return;
     }
-    const presets = [
-      { weaponId: 'ak74m', gearLabel: 'AK-74M · 2-Plate' },
-      { weaponId: 'mp5k', gearLabel: 'MP5-K · 2-Plate' },
-      { weaponId: 'm24', gearLabel: 'M24 Marksman · 2-Plate' }
-    ];
-    const pick = presets[this.partyMembers.length % presets.length];
-    this._showSocialToast(`Sent party invite to ${friendName}...`);
-    setTimeout(() => {
-      if (this.partyMembers.length >= 4 || this.partyMembers.some(m => m.name === friendName)) return;
-      this.partyMembers.push({
-        name: friendName,
-        isSelf: false,
-        isLeader: false,
-        weaponId: pick.weaponId,
-        gearLabel: pick.gearLabel,
-        ready: true
-      });
-      this.assignSquadColors();
-      this.renderSocial();
-      this.renderHideout();
-      this._showSocialToast(`${friendName} joined your party (${pick.gearLabel})!`);
-    }, 550);
+    const peer = (this.onlinePlayers || []).find(p => p.name.toUpperCase() === friendName.toUpperCase());
+    if (!peer) {
+      this._showSocialToast(`${friendName} is not currently online.`);
+      return;
+    }
+    const L = this.profile.loadout || {};
+    this._sendSocialPacket({
+      type: 'party_invite',
+      clientId: this._clientId,
+      partyId: this.partyId,
+      from: this.profile.social.callsign,
+      to: peer.name,
+      toClientId: peer.clientId,
+      leaderWeapon: L.primary || L.secondary || 'ak74m'
+    });
+    this._showSocialToast(`Party invite sent to ${peer.name} — waiting for acceptance...`);
   }
 
   joinFriendParty(friendName) {
-    this.partyHost = friendName;
+    const peer = (this.onlinePlayers || []).find(p => p.name.toUpperCase() === friendName.toUpperCase());
+    if (!peer) {
+      this._showSocialToast(`${friendName} is not currently online.`);
+      return;
+    }
+    const L = this.profile.loadout || {};
+    const myWpn = L.primary || L.secondary || 'mp5k';
+    this.partyId = 'p_' + peer.clientId;
+    this.partyHost = peer.name;
     this.partyMembers = [
-      { name: friendName, isSelf: false, isLeader: true, weaponId: 'ak74m', gearLabel: 'AK-74M · 2-Plate', ready: true },
-      { name: this.profile.social.callsign, isSelf: true, isLeader: false, ready: true }
+      { clientId: peer.clientId, name: peer.name, isSelf: false, isLeader: true, isRemoteHuman: true, weaponId: 'ak74m', gearLabel: 'LEADER', ready: false },
+      { clientId: this._clientId, name: this.profile.social.callsign, isSelf: true, isLeader: false, isRemoteHuman: false, weaponId: myWpn, gearLabel: myWpn.toUpperCase(), ready: false }
     ];
+    this._partyReady = false;
     this.assignSquadColors();
+    this._sendSocialPacket({
+      type: 'party_join_req',
+      clientId: this._clientId,
+      partyId: this.partyId,
+      from: this.profile.social.callsign,
+      to: peer.name,
+      toClientId: peer.clientId,
+      weaponId: myWpn,
+      gearLabel: myWpn.toUpperCase()
+    });
     this.renderSocial();
     this.renderHideout();
-    this._showSocialToast(`Joined ${friendName}'s party.`);
+    this._showSocialToast(`Joined ${peer.name}'s party!`);
   }
 
   leaveParty() {
+    if ((this.partyMembers || []).length > 1) {
+      this._sendSocialPacket({
+        type: 'party_leave',
+        clientId: this._clientId,
+        partyId: this.partyId,
+        from: this.profile.social.callsign
+      });
+    }
+    this.partyId = 'p_' + this._clientId;
     this.partyHost = this.profile.social.callsign;
-    this.partyMembers = [{ name: this.profile.social.callsign, isSelf: true, isLeader: true, ready: true }];
+    this.partyMembers = [{
+      clientId: this._clientId,
+      name: this.profile.social.callsign,
+      isSelf: true,
+      isLeader: true,
+      isRemoteHuman: false,
+      ready: false,
+      squadColor: '#69f0ae'
+    }];
+    this._partyReady = false;
     this.assignSquadColors();
     this.renderSocial();
     this.renderHideout();
@@ -679,13 +980,26 @@ class GameUI {
     }
     if (partyEl) {
       partyEl.innerHTML = '';
+      if (this.pendingPartyInvite) {
+        const inv = this.pendingPartyInvite;
+        const invRow = document.createElement('div');
+        invRow.className = 'party-member';
+        invRow.style.cssText = 'border-left-color:#ffca28;background:rgba(255,202,40,0.14);flex-wrap:wrap;gap:6px;';
+        invRow.innerHTML = `<span style="color:#ffca28;font-weight:800;">INVITE: ${inv.from}</span><span style="display:flex;gap:4px;"><button class="btn-small" id="btn-accept-inv" style="border-color:#69f0ae;color:#69f0ae;">ACCEPT</button><button class="btn-small" id="btn-decline-inv">✕</button></span>`;
+        partyEl.appendChild(invRow);
+        invRow.querySelector('#btn-accept-inv').addEventListener('click', () => this.acceptPendingPartyInvite());
+        invRow.querySelector('#btn-decline-inv').addEventListener('click', () => this.declinePendingPartyInvite());
+      }
       for (const m of this.partyMembers) {
         const row = document.createElement('div');
         row.className = 'party-member';
         const dotHtml = multiSquad
           ? `<span class="squad-color-dot" style="background:${m.squadColor || '#69f0ae'};"></span>`
           : '';
-        row.innerHTML = `<span style="color:${multiSquad ? (m.squadColor || '#69f0ae') : ''};">${dotHtml}${m.name}${m.isSelf ? ' (YOU)' : ''}</span><span class="role-tag">${m.isLeader ? 'LEADER' : 'READY'}</span>`;
+        const statusTxt = multiSquad
+          ? (m.ready ? '<span style="color:#69f0ae;">✓ READY</span>' : '<span style="color:#ffca28;">NOT READY</span>')
+          : 'LEADER';
+        row.innerHTML = `<span style="color:${multiSquad ? (m.squadColor || '#69f0ae') : ''};">${dotHtml}${m.name}${m.isSelf ? ' (YOU)' : ''}${m.isLeader && multiSquad ? ' ★' : ''}</span><span class="role-tag">${statusTxt}</span>`;
         partyEl.appendChild(row);
       }
     }
@@ -1012,18 +1326,10 @@ class GameUI {
         if (this.isPartyLeader()) {
           this.openMenuTab('map');
         } else {
-          this._partyReady = !this._partyReady;
-          this.renderPreMatchLoadout();
-          if (this._partyReady) {
-            this._showSocialToast('READY! Waiting for Party Leader to select sector...');
-            setTimeout(() => {
-              if (this.activeMenuTab === 'deploy' && this._partyReady && !this.isPartyLeader()) {
-                const zoneId = (document.getElementById('raid-zone-select') || {}).value || 'outpost';
-                this.openMenuTab('matchmaking');
-                if (this.matchmakingStage) this.matchmakingStage.start(zoneId);
-              }
-            }, 1300);
-          }
+          this.setSelfPartyReady(!this._partyReady);
+          this._showSocialToast(this._partyReady
+            ? 'READY ✓ — Waiting for Party Leader to select sector...'
+            : 'Unready — Adjust your loadout.');
         }
       });
     }
@@ -1051,8 +1357,14 @@ class GameUI {
     if (btnMapConfirm) {
       btnMapConfirm.addEventListener('click', () => {
         const zoneId = (document.getElementById('raid-zone-select') || {}).value || 'outpost';
+        const matchId = 'm_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6);
+        // Mark leader ready when entering matchmaking; non-leader party members keep their actual ready status until they click READY!
+        if ((this.partyMembers || []).length > 1) {
+          this.setSelfPartyReady(true);
+          this.broadcastPartyStage(zoneId, matchId);
+        }
         this.openMenuTab('matchmaking');
-        if (this.matchmakingStage) this.matchmakingStage.start(zoneId);
+        if (this.matchmakingStage) this.matchmakingStage.start(zoneId, matchId);
       });
     }
 
@@ -1060,7 +1372,7 @@ class GameUI {
     if (btnMmCancel) {
       btnMmCancel.addEventListener('click', () => {
         if (this.matchmakingStage) this.matchmakingStage.stop();
-        this._partyReady = false;
+        this.setSelfPartyReady(false);
         this.openMenuTab(this.isPartyLeader() ? 'map' : 'deploy');
       });
     }
@@ -1301,6 +1613,25 @@ class GameUI {
     });
 
     document.getElementById('btn-deploy').addEventListener('click', () => {
+      const party = this.partyMembers || [];
+      const multiSquad = party.length > 1;
+      const self = party.find(m => m.isSelf);
+      const allReady = !multiSquad || party.every(m => !!m.ready);
+
+      // In a multi-player party, require ALL members to ready up before deploying!
+      if (multiSquad) {
+        if (!self || !self.ready) {
+          this.setSelfPartyReady(true);
+          return;
+        }
+        if (!allReady) {
+          this.setSelfPartyReady(false);
+          return;
+        }
+        if (!this.isPartyLeader()) return;
+      }
+
+      const matchId = (this.matchmakingStage && this.matchmakingStage.matchId) || ('m_' + Date.now().toString(36));
       if (this.matchmakingStage) this.matchmakingStage.stop();
       // Ensure player at least has a fallback pistol if completely naked
       const L = this.profile.loadout;
@@ -1309,7 +1640,10 @@ class GameUI {
         L.ammo.ammo_9x18 = (L.ammo.ammo_9x18 || 0) + 16;
       }
       const zoneId = document.getElementById('raid-zone-select').value;
-      this.onDeploy(zoneId);
+      if (multiSquad && this.isPartyLeader()) {
+        this.broadcastPartyDeploy(zoneId, matchId);
+      }
+      this.onDeploy(zoneId, matchId);
     });
   }
 
