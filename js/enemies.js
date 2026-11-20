@@ -446,7 +446,12 @@ class Enemy {
     if (this.alertSprite) this.alertSprite.visible = false;
     if (this.bleedSprite) this.bleedSprite.visible = false;
     this.group.rotation.x = -Math.PI / 2;
-    this.group.position.y = 0.25;
+    this.group.position.y = 0.16;
+    // Reset limbs flat so corpses never have legs sticking up in the air from a downed pose!
+    if (this.leftHip) this.leftHip.rotation.set(0, 0, -0.06);
+    if (this.rightHip) this.rightHip.rotation.set(0, 0, 0.06);
+    if (this.leftArm) this.leftArm.rotation.set(0, 0, 0.28);
+    if (this.rightArm) this.rightArm.rotation.set(0, 0, -0.28);
 
     // Scavengers, Raiders, and Bosses physically drop their gun in-hand + occasional plates/ammo (up to 60) + Boss Small Pack!
     if (!this.isOperator && this.world && this.world.spawnGroundItem) {

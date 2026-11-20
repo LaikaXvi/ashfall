@@ -713,44 +713,85 @@ class ThrowableSystem {
         }
       }
 
-      // Ground collision
-      if (nextPos.y <= 0.07) {
-        nextPos.y = 0.07;
-        if (pr.isKnife) {
-          pr.pos.copy(nextPos);
-          pr.mesh.position.copy(pr.pos);
-          pr.stuck = true;
-          window.soundEngine.playGrenadeBounce();
-          continue;
-        } else {
-          pr.vel.y = -pr.vel.y * 0.38;
-          pr.vel.x *= 0.68;
-          pr.vel.z *= 0.68;
-          if (Math.abs(pr.vel.y) > 1.2) window.soundEngine.playGrenadeBounce();
-          pr.bounces += 1;
-        }
-      }
+      // Proper 3-axis separated collision (floors, ceilings, walls, crates & ground) with throttled bounce sound
+      const r = 0.08;
+      const nowMs = performance.now();
+      const tryBounceSound = (impactSpeed) => {
+        if (impactSpeed < 1.35 || pr.bounces >= 6) return;
+        if (nowMs - (pr.lastBounceSound || 0) < 130) return;
+        pr.lastBounceSound = nowMs;
+        pr.bounces += 1;
+        window.soundEngine.playGrenadeBounce();
+      };
 
-      // Wall AABB collision (axis-separated bounce or knife stick)
-      const hitCol = this._pointHitsCollider(nextPos, 0.08);
-      if (hitCol) {
-        if (pr.isKnife) {
-          pr.pos.copy(prevPos);
+      if (pr.isKnife) {
+        if (nextPos.y <= 0.07 || this._pointHitsCollider(nextPos, r)) {
+          pr.pos.copy(nextPos.y <= 0.07 ? new THREE.Vector3(nextPos.x, 0.07, nextPos.z) : prevPos);
           pr.mesh.position.copy(pr.pos);
           pr.stuck = true;
-          window.soundEngine.playGrenadeBounce();
+          tryBounceSound(pr.vel.length());
           continue;
-        } else {
-          // Determine bounce normal axis
-          const testX = new THREE.Vector3(nextPos.x, prevPos.y, prevPos.z);
-          const testZ = new THREE.Vector3(prevPos.x, prevPos.y, nextPos.z);
-          if (this._pointHitsCollider(testX, 0.08)) pr.vel.x = -pr.vel.x * 0.45;
-          if (this._pointHitsCollider(testZ, 0.08)) pr.vel.z = -pr.vel.z * 0.45;
-          pr.vel.y *= 0.65;
-          nextPos.copy(prevPos).addScaledVector(pr.vel, dt * 0.5);
-          window.soundEngine.playGrenadeBounce();
-          pr.bounces += 1;
         }
+      } else {
+        const resolved = prevPos.clone();
+
+        // 1. X axis
+        resolved.x = nextPos.x;
+        const hitX = this._pointHitsCollider(resolved, r);
+        if (hitX) {
+          const impX = Math.abs(pr.vel.x);
+          resolved.x = prevPos.x;
+          pr.vel.x = -pr.vel.x * 0.42;
+          pr.vel.z *= 0.82;
+          tryBounceSound(impX);
+        }
+
+        // 2. Z axis
+        resolved.z = nextPos.z;
+        const hitZ = this._pointHitsCollider(resolved, r);
+        if (hitZ) {
+          const impZ = Math.abs(pr.vel.z);
+          resolved.z = prevPos.z;
+          pr.vel.z = -pr.vel.z * 0.42;
+          pr.vel.x *= 0.82;
+          tryBounceSound(impZ);
+        }
+
+        // 3. Y axis (ground plane, building floors/crates, or ceilings!)
+        resolved.y = nextPos.y;
+        const hitY = this._pointHitsCollider(resolved, r);
+        if (hitY) {
+          const impY = Math.abs(pr.vel.y);
+          if (pr.vel.y <= 0) {
+            // Landed on top of a floor/crate/roof
+            resolved.y = hitY.maxY + r + 0.005;
+            pr.vel.y = impY > 0.85 ? -pr.vel.y * 0.36 : 0;
+            pr.vel.x *= 0.72;
+            pr.vel.z *= 0.72;
+            if (Math.hypot(pr.vel.x, pr.vel.z) < 0.18 && pr.vel.y === 0) {
+              pr.vel.x = 0;
+              pr.vel.z = 0;
+            }
+          } else {
+            // Hit ceiling from below
+            resolved.y = hitY.minY - r - 0.005;
+            pr.vel.y = -pr.vel.y * 0.35;
+          }
+          tryBounceSound(impY);
+        } else if (resolved.y <= 0.07) {
+          const impY = Math.abs(pr.vel.y);
+          resolved.y = 0.07;
+          pr.vel.y = impY > 0.85 ? -pr.vel.y * 0.36 : 0;
+          pr.vel.x *= 0.72;
+          pr.vel.z *= 0.72;
+          if (Math.hypot(pr.vel.x, pr.vel.z) < 0.18 && pr.vel.y === 0) {
+            pr.vel.x = 0;
+            pr.vel.z = 0;
+          }
+          tryBounceSound(impY);
+        }
+
+        nextPos.copy(resolved);
       }
 
       pr.pos.copy(nextPos);

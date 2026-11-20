@@ -415,10 +415,14 @@ class GameUI {
       }
 
       if ((msg.type === 'party_accept' || msg.type === 'party_join_req') && isAddressedToMe) {
-        if (!this.isPartyLeader()) return;
+        if (!this.isPartyLeader()) {
+          // If someone clicked Join on a non-leader member, forward them the current party sync so they join our party!
+          return;
+        }
         if (this.partyMembers.length >= 4) return;
         const joinName = (msg.from || 'OPERATOR').toUpperCase();
-        if (!this.partyMembers.some(m => m.clientId === msg.clientId || m.name.toUpperCase() === joinName)) {
+        const alreadyIn = this.partyMembers.some(m => m.clientId === msg.clientId || m.name.toUpperCase() === joinName);
+        if (!alreadyIn) {
           this.partyMembers.push({
             clientId: msg.clientId,
             name: joinName,
@@ -432,14 +436,19 @@ class GameUI {
         }
         this.assignSquadColors();
         this._broadcastPartySync();
+        setTimeout(() => { if (this.isPartyLeader()) this._broadcastPartySync(); }, 1100);
         this.renderSocial();
         this.renderHideout();
         if (this.matchmakingStage && this.matchmakingStage.active) this.matchmakingStage.refreshSquadUI(true);
-        this._showSocialToast(`${joinName} joined your party!`);
+        if (!alreadyIn) this._showSocialToast(`${joinName} joined your party!`);
         return;
       }
 
-      if (msg.type === 'party_sync' && msg.partyId && msg.partyId === this.partyId && Array.isArray(msg.members)) {
+      if (msg.type === 'party_sync' && msg.partyId && Array.isArray(msg.members)) {
+        const includesMe = msg.members.some(m => m.clientId === this._clientId || (m.name && m.name.toUpperCase() === myName));
+        if (msg.partyId !== this.partyId && !includesMe) return;
+        this.partyId = msg.partyId;
+        this._partySynced = true;
         const myPrev = this.partyMembers.find(m => m.isSelf);
         this.partyHost = msg.hostName || this.partyHost;
         this.partyMembers = msg.members.map((m) => ({
@@ -452,6 +461,11 @@ class GameUI {
           gearLabel: m.gearLabel || 'OPERATOR',
           ready: m.clientId === this._clientId ? (myPrev ? !!myPrev.ready : !!m.ready) : !!m.ready
         }));
+        if (typeof msg.pvp === 'boolean') {
+          window.SQUAD_PVP = msg.pvp;
+          if (window.SQUAD_PVP) window.DEV_MODE = false;
+          if (this.syncSettingsUI) this.syncSettingsUI();
+        }
         this.assignSquadColors();
         this.renderSocial();
         this.renderHideout();
@@ -768,6 +782,7 @@ class GameUI {
       clientId: this._clientId,
       partyId: this.partyId,
       hostName: this.partyHost,
+      pvp: !!window.SQUAD_PVP,
       members: this.partyMembers.map(m => ({
         clientId: m.clientId,
         name: m.name,
@@ -855,7 +870,8 @@ class GameUI {
     ];
     this._partyReady = false;
     this.assignSquadColors();
-    this._sendSocialPacket({
+    this._partySynced = false;
+    const acceptPkt = {
       type: 'party_accept',
       clientId: this._clientId,
       partyId: this.partyId,
@@ -864,7 +880,11 @@ class GameUI {
       toClientId: inv.fromClientId,
       weaponId: myWpn,
       gearLabel: myWpn.toUpperCase()
-    });
+    };
+    this._sendSocialPacket(acceptPkt);
+    const targetPid = this.partyId;
+    setTimeout(() => { if (!this._partySynced && this.partyId === targetPid) this._sendSocialPacket({ ...acceptPkt }); }, 1400);
+    setTimeout(() => { if (!this._partySynced && this.partyId === targetPid) this._sendSocialPacket({ ...acceptPkt }); }, 3000);
     this.renderSocial();
     this.renderHideout();
     this._showSocialToast(`Joined ${inv.from}'s party!`);
@@ -918,7 +938,8 @@ class GameUI {
     ];
     this._partyReady = false;
     this.assignSquadColors();
-    this._sendSocialPacket({
+    this._partySynced = false;
+    const joinPkt = {
       type: 'party_join_req',
       clientId: this._clientId,
       partyId: this.partyId,
@@ -927,10 +948,14 @@ class GameUI {
       toClientId: peer.clientId,
       weaponId: myWpn,
       gearLabel: myWpn.toUpperCase()
-    });
+    };
+    this._sendSocialPacket(joinPkt);
+    const targetPid = this.partyId;
+    setTimeout(() => { if (!this._partySynced && this.partyId === targetPid) this._sendSocialPacket({ ...joinPkt }); }, 1400);
+    setTimeout(() => { if (!this._partySynced && this.partyId === targetPid) this._sendSocialPacket({ ...joinPkt }); }, 3000);
     this.renderSocial();
     this.renderHideout();
-    this._showSocialToast(`Joined ${peer.name}'s party!`);
+    this._showSocialToast(`Joining ${peer.name}'s party...`);
   }
 
   leaveParty() {

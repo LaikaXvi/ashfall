@@ -339,7 +339,11 @@ class SquadMate {
     this.reviveProgress = 0;
     this.beingRevivedBy = null;
     this.group.rotation.x = -Math.PI / 2;
-    this.group.position.y = 0.25;
+    this.group.position.y = 0.16;
+    if (this.leftHip) this.leftHip.rotation.set(0, 0, -0.06);
+    if (this.rightHip) this.rightHip.rotation.set(0, 0, 0.06);
+    if (this.leftArm) this.leftArm.rotation.set(0, 0, 0.28);
+    if (this.rightArm) this.rightArm.rotation.set(0, 0, -0.28);
     this._redrawTag('ELIMINATED', '#ff5252');
     if (this.bleedSprite && window.drawDownedBleedoutCanvas) {
       window.drawDownedBleedoutCanvas(this.bleedCanvas, 0, { isAlly: true, isDead: true });
@@ -507,8 +511,12 @@ class SquadMate {
         const moving = moveDist > 0.35;
 
         if (this.dead) {
-          this.group.position.y = 0.14;
-          this.group.rotation.x = Math.PI / 2;
+          this.group.position.y = 0.16;
+          this.group.rotation.x = -Math.PI / 2;
+          if (this.leftHip) this.leftHip.rotation.set(0, 0, -0.06);
+          if (this.rightHip) this.rightHip.rotation.set(0, 0, 0.06);
+          if (this.leftArm) this.leftArm.rotation.set(0, 0, 0.28);
+          if (this.rightArm) this.rightArm.rotation.set(0, 0, -0.28);
           this._redrawTag('ELIMINATED', '#ff5252');
           this._updateBleedSprite(dt);
         } else if (this.isDowned) {
