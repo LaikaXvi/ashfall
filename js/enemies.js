@@ -140,8 +140,12 @@ class Enemy {
         armor: vests[Math.min(vests.length - 1, Math.floor(Math.random() * (vests.length - (Math.random() < 0.65 ? 1 : 0))))],
         dogtag: 'dogtag',
         dogtagOwner: this.name,
+        cash: 400 + Math.floor(Math.random() * 46) * 100,
         plates: 1 + Math.floor(Math.random() * 4),
+        headgear: Math.random() < 0.35 ? 'gas_mask' : (Math.random() < 0.16 ? 'nvg_goggles' : null),
         backpack: bags[Math.floor(Math.random() * bags.length)],
+        tactical: Math.random() < 0.6 ? 'smoke_grenade' : 'concussion_grenade',
+        lethal: Math.random() < 0.65 ? 'frag_grenade' : 'throwing_knife',
         fieldUpgrade: fus[Math.floor(Math.random() * fus.length)],
         killstreak: Math.random() < 0.38 ? (Math.random() < 0.7 ? 'ks_uav' : 'ks_airstrike') : null,
         selfRevive: Math.random() < 0.35 ? 'self_revive' : null

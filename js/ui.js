@@ -40,6 +40,7 @@ class GameUI {
         fieldUpgrade: 'fu_ammo_box',
         killstreak: 'ks_uav',
         selfRevive: 'self_revive',
+        headgear: null,
         plates: 3,
         lethal: 'frag_grenade',
         lethalQty: 2,
@@ -1045,74 +1046,48 @@ class GameUI {
       stashGrid.appendChild(cell);
     }
 
-    // 2. Operator Equipment Slots (Organized into Weapons / Armor & Pack / Support)
-    const opGroups = [
-      {
-        title: 'WEAPONS',
-        cols: 3,
-        slots: [
-          { key: 'primary', label: 'PRIMARY', id: L.primary },
-          { key: 'secondary', label: 'SECONDARY', id: L.secondary },
-          { key: 'melee', label: 'MELEE', id: L.melee }
-        ]
-      },
-      {
-        title: 'ARMOR & PACK',
-        cols: 3,
-        slots: [
-          { key: 'armor', label: 'VEST', id: L.armor },
-          { key: 'plates', label: 'PLATES', text: `${L.plates || 0} / 6`, rarity: 'rare', unequip: () => {
-            if ((L.plates || 0) > 0) { L.plates -= 1; this.addToStash('armor_plate', 1); }
-          }},
-          { key: 'backpack', label: 'BACKPACK', id: L.backpack }
-        ]
-      },
-      {
-        title: 'SUPPORT',
-        cols: 3,
-        slots: [
-          { key: 'fieldUpgrade', label: 'FIELD UPGRADE', id: L.fieldUpgrade },
-          { key: 'killstreak', label: 'KILLSTREAK', id: L.killstreak },
-          { key: 'selfRevive', label: 'SELF-REVIVE', id: L.selfRevive }
-        ]
+    // 2. Operator Equipment Slots — 5-Column Tactical Grid (Cash/Plates/Dogtag/Headgear/Self-Revive | Primary/Vest/Secondary | Tactical/Lethal/Backpack/FieldUpgrade/Killstreak | Melee)
+    const myCallsign = (this.profile && this.profile.social && this.profile.social.callsign) || 'OPERATOR';
+    this._renderOperatorTacticalGrid(opSlotsEl, {
+      cash: this.profile.credits || 0,
+      cashLabel: 'CREDITS',
+      plates: L.plates || 0,
+      dogtag: 'dogtag',
+      dogtagText: myCallsign,
+      headgear: L.headgear,
+      selfRevive: L.selfRevive,
+      primary: L.primary,
+      armor: L.armor,
+      secondary: L.secondary,
+      tactical: L.tactical,
+      tacticalQty: L.tacticalQty || 0,
+      lethal: L.lethal,
+      lethalQty: L.lethalQty || 0,
+      backpack: L.backpack,
+      fieldUpgrade: L.fieldUpgrade,
+      killstreak: L.killstreak,
+      melee: L.melee
+    }, (key) => {
+      if (key === 'cash' || key === 'dogtag') return;
+      if (key === 'plates') {
+        if ((L.plates || 0) > 0) { L.plates -= 1; this.addToStash('armor_plate', 1); }
+      } else if (key === 'tactical') {
+        if (L.tactical && (L.tacticalQty || 0) > 0) {
+          this.addToStash(L.tactical, L.tacticalQty);
+          L.tactical = null; L.tacticalQty = 0;
+        }
+      } else if (key === 'lethal') {
+        if (L.lethal && (L.lethalQty || 0) > 0) {
+          this.addToStash(L.lethal, L.lethalQty);
+          L.lethal = null; L.lethalQty = 0;
+        }
+      } else if (L[key]) {
+        this.addToStash(L[key], 1);
+        L[key] = null;
       }
-    ];
-    opSlotsEl.innerHTML = '';
-    for (const grp of opGroups) {
-      const groupEl = document.createElement('div');
-      groupEl.className = 'op-slot-group';
-      const titleEl = document.createElement('div');
-      titleEl.className = 'op-group-label';
-      titleEl.textContent = grp.title;
-      groupEl.appendChild(titleEl);
-
-      const rowEl = document.createElement('div');
-      rowEl.className = `op-group-row cols-${grp.cols}`;
-      for (const s of grp.slots) {
-        const card = document.createElement('div');
-        const def = s.id ? GAME_DATA.ITEMS[s.id] : null;
-        const rar = def ? (def.rarity || 'common') : (s.rarity || 'common');
-        card.className = `op-slot-card ${def || s.text ? `rarity-${rar}` : ''}`;
-        card.innerHTML = `
-          <span class="op-slot-label">${s.label}</span>
-          <span class="op-slot-val">${def ? def.name : (s.text || 'EMPTY')}</span>
-        `;
-        card.title = 'Click to unequip back to Stash';
-        card.addEventListener('click', () => {
-          if (s.unequip) {
-            s.unequip();
-          } else if (s.id) {
-            this.addToStash(s.id, 1);
-            L[s.key] = null;
-          }
-          this.saveProfile();
-          this.renderHideout();
-        });
-        rowEl.appendChild(card);
-      }
-      groupEl.appendChild(rowEl);
-      opSlotsEl.appendChild(groupEl);
-    }
+      this.saveProfile();
+      this.renderHideout();
+    }, 'Click to unequip back to Stash');
 
     // 3. Pre-Match Backpack Grid (Right Bottom)
     const bagCountEl = document.getElementById('prematch-bag-count');
@@ -1158,6 +1133,7 @@ class GameUI {
       field_upgrade: 'fieldUpgrade',
       killstreak: 'killstreak',
       self_revive: 'selfRevive',
+      headgear: 'headgear',
       melee: 'melee'
     };
     const targetSlot = slotMap[def.type];
@@ -2150,7 +2126,7 @@ class GameUI {
       if (def.type === 'weapon') {
         actionsHtml += `<button class="pop-act" data-act="equip_primary">Equip Primary</button>`;
         actionsHtml += `<button class="pop-act" data-act="equip_secondary">Equip Secondary</button>`;
-      } else if (def.type === 'armor' || def.type === 'backpack' || def.type === 'field_upgrade' || def.type === 'killstreak' || def.type === 'self_revive' || def.type === 'melee') {
+      } else if (def.type === 'armor' || def.type === 'backpack' || def.type === 'field_upgrade' || def.type === 'killstreak' || def.type === 'self_revive' || def.type === 'headgear' || def.type === 'melee') {
         actionsHtml += `<button class="pop-act" data-act="equip_gear">Equip / Swap</button>`;
       }
 
@@ -2251,6 +2227,11 @@ class GameUI {
       player.selfRevive = itemId;
       return prev;
     }
+    if (def.type === 'headgear') {
+      const prev = player.headgear;
+      player.headgear = itemId;
+      return prev;
+    }
     if (def.type === 'melee') {
       const prev = player.melee;
       player.melee = itemId;
@@ -2318,7 +2299,7 @@ class GameUI {
           } else {
             this.addFeedMessage('Health already full', '#a0a8a3');
           }
-        } else if (def.type === 'armor' || def.type === 'backpack' || def.type === 'field_upgrade' || def.type === 'killstreak' || def.type === 'self_revive' || def.type === 'melee') {
+        } else if (def.type === 'armor' || def.type === 'backpack' || def.type === 'field_upgrade' || def.type === 'killstreak' || def.type === 'self_revive' || def.type === 'headgear' || def.type === 'melee') {
           const prev = this._swapGearWithPlayer(player, item.id);
           player.backpack.splice(idx, 1);
           if (prev) player.backpack.splice(idx, 0, { id: prev, qty: 1 });
@@ -2341,6 +2322,68 @@ class GameUI {
     this.renderLootModal(player);
   }
 
+  _renderOperatorTacticalGrid(containerEl, data, onSlotClick = null, tooltipText = '') {
+    if (!containerEl) return;
+    const itemDef = (id) => (id && GAME_DATA.ITEMS[id]) ? GAME_DATA.ITEMS[id] : null;
+    const card = (opts) => {
+      const def = opts.id ? itemDef(opts.id) : null;
+      const hasVal = !!(def || opts.hasValue);
+      const rar = opts.rarity || (def ? (def.rarity || 'common') : 'common');
+      const val = opts.text !== undefined ? opts.text : (def ? def.name : 'EMPTY');
+      const sub = opts.sub ? `<span class="op-slot-sub">${opts.sub}</span>` : '';
+      const cls = [
+        'op-slot-card',
+        hasVal ? `rarity-${rar}` : 'empty-slot-card',
+        opts.span ? `span-${opts.span}` : '',
+        opts.spine ? 'spine-slot' : ''
+      ].filter(Boolean).join(' ');
+      const clickable = !!(onSlotClick && hasVal && opts.clickable !== false);
+      return `<div class="${cls}" data-op-key="${opts.key}" title="${clickable ? tooltipText : (val || 'Empty')}" style="cursor:${clickable ? 'pointer' : 'default'};">
+        <span class="op-slot-label">${opts.label}</span>
+        <span class="op-slot-val">${val}</span>
+        ${sub}
+      </div>`;
+    };
+
+    const pDef = itemDef(data.primary);
+    const sDef = itemDef(data.secondary);
+    const tacDef = itemDef(data.tactical);
+    const lethDef = itemDef(data.lethal);
+
+    containerEl.innerHTML = `
+      <div class="op-tactical-grid">
+        <!-- Row 1: Cash | Plates | DOGTAG (Center) | Headgear | Self-Revive -->
+        ${card({ key: 'cash', label: data.cashLabel || 'CASH', text: `₽${(data.cash || 0).toLocaleString()}`, hasValue: (data.cash || 0) > 0, rarity: 'legendary' })}
+        ${card({ key: 'plates', label: 'PLATES', text: `${data.plates || 0} / 6`, hasValue: (data.plates || 0) > 0, rarity: 'rare' })}
+        ${card({ key: 'dogtag', label: 'DOGTAG', id: data.dogtag, text: data.dogtag ? (data.dogtagText || 'Operator Tag') : 'LOOTED', hasValue: !!data.dogtag, rarity: 'rare', spine: true })}
+        ${card({ key: 'headgear', label: 'HEADGEAR', id: data.headgear, text: itemDef(data.headgear) ? itemDef(data.headgear).name : 'MASK / NVG' })}
+        ${card({ key: 'selfRevive', label: 'SELF-REVIVE', id: data.selfRevive })}
+
+        <!-- Row 2: PRIMARY (2 cols) | VEST (Center) | SECONDARY (2 cols) -->
+        ${card({ key: 'primary', label: 'PRIMARY', id: data.primary, sub: pDef && data.primaryMag !== undefined ? `${data.primaryMag} RDS` : '', span: 2 })}
+        ${card({ key: 'armor', label: 'VEST', id: data.armor, spine: true })}
+        ${card({ key: 'secondary', label: 'SECONDARY', id: data.secondary, sub: sDef && data.secondaryMag !== undefined ? `${data.secondaryMag} RDS` : '', span: 2 })}
+
+        <!-- Row 3: Tactical | Lethal | BACKPACK (Center) | Field Upgrade | Killstreak -->
+        ${card({ key: 'tactical', label: 'TACTICAL', id: data.tactical, text: tacDef ? `${tacDef.name.split(' ')[0]}${data.tacticalQty ? ' x' + data.tacticalQty : ''}` : 'EMPTY' })}
+        ${card({ key: 'lethal', label: 'LETHAL', id: data.lethal, text: lethDef ? `${lethDef.name.split(' ')[0]}${data.lethalQty ? ' x' + data.lethalQty : ''}` : 'EMPTY' })}
+        ${card({ key: 'backpack', label: 'BACKPACK', id: data.backpack, spine: true })}
+        ${card({ key: 'fieldUpgrade', label: 'FIELD UPG', id: data.fieldUpgrade })}
+        ${card({ key: 'killstreak', label: 'KILLSTREAK', id: data.killstreak })}
+
+        <!-- Row 4: Melee (bottom-right 2 cols, matching reference) -->
+        <div class="span-3" style="grid-column:span 3;"></div>
+        ${card({ key: 'melee', label: 'MELEE', id: data.melee, span: 2 })}
+      </div>
+    `;
+
+    if (onSlotClick) {
+      containerEl.querySelectorAll('.op-slot-card[data-op-key]').forEach((el) => {
+        el.addEventListener('click', () => onSlotClick(el.dataset.opKey));
+      });
+    }
+  }
+
   renderLootModal(player) {
     const cList = document.getElementById('loot-container-items');
     const bList = document.getElementById('loot-backpack-items');
@@ -2348,63 +2391,32 @@ class GameUI {
     const btnTakeAll = document.getElementById('btn-take-all');
     const opSlotsEl = document.getElementById('inv-op-slots');
 
-    // 1. Separate Operator Equipment Section (Organized into Weapons / Armor & Pack / Support)
+    // 1. Player Operator Equipment — Exact 5-Column Tactical Grid
     if (opSlotsEl) {
       const pSlot = (player.slots && player.slots.primary) || (player.weapons && player.weapons.primary);
       const sSlot = (player.slots && player.slots.secondary) || (player.weapons && player.weapons.secondary);
-      const pDef = pSlot ? GAME_DATA.ITEMS[pSlot.id] : null;
-      const sDef = sSlot ? GAME_DATA.ITEMS[sSlot.id] : null;
-      const mDef = GAME_DATA.ITEMS[player.melee || 'melee_knife'];
-      const vDef = player.armorId ? GAME_DATA.ITEMS[player.armorId] : null;
-      const bDef = GAME_DATA.ITEMS[player.backpackId || 'bag_small'];
-      const fDef = GAME_DATA.ITEMS[player.fieldUpgrade || 'fu_ammo_box'];
-      const kDef = player.killstreak ? GAME_DATA.ITEMS[player.killstreak] : null;
-      const srDef = player.selfRevive ? GAME_DATA.ITEMS[player.selfRevive] : null;
-
       const myCallsign = (this.profile && this.profile.social && this.profile.social.callsign) || 'OPERATOR';
-      const opGroups = [
-        {
-          title: 'WEAPONS',
-          cols: 3,
-          items: [
-            { label: 'PRIMARY', name: pDef ? pDef.name : 'None', rarity: pDef ? pDef.rarity : 'common' },
-            { label: 'SECONDARY', name: sDef ? sDef.name : 'None', rarity: sDef ? sDef.rarity : 'common' },
-            { label: 'MELEE', name: mDef ? mDef.name : 'Combat Knife', rarity: mDef ? mDef.rarity : 'common' }
-          ]
-        },
-        {
-          title: 'ARMOR · DOGTAG · PACK',
-          cols: 3,
-          items: [
-            { label: 'VEST', name: vDef ? vDef.name : 'No Vest', rarity: vDef ? vDef.rarity : 'common' },
-            { label: 'DOGTAG', name: myCallsign, rarity: 'rare' },
-            { label: 'BACKPACK', name: bDef ? bDef.name : 'Small Pack', rarity: bDef ? bDef.rarity : 'common' }
-          ]
-        },
-        {
-          title: 'SUPPORT',
-          cols: 4,
-          items: [
-            { label: 'PLATES', name: `${player.plates} / 6`, rarity: 'rare' },
-            { label: 'FIELD UPGRADE', name: fDef ? fDef.name : 'None', rarity: fDef ? fDef.rarity : 'rare' },
-            { label: 'KILLSTREAK', name: kDef ? kDef.name : 'None', rarity: kDef ? kDef.rarity : 'common' },
-            { label: 'SELF-REVIVE', name: srDef ? srDef.name : 'None', rarity: srDef ? srDef.rarity : 'common' }
-          ]
-        }
-      ];
-      opSlotsEl.innerHTML = opGroups.map(grp => `
-        <div class="op-slot-group">
-          <div class="op-group-label">${grp.title}</div>
-          <div class="op-group-row cols-${grp.cols}">
-            ${grp.items.map(s => `
-              <div class="op-slot-card rarity-${s.rarity || 'common'}">
-                <span class="op-slot-label">${s.label}</span>
-                <span class="op-slot-val">${s.name}</span>
-              </div>
-            `).join('')}
-          </div>
-        </div>
-      `).join('');
+      this._renderOperatorTacticalGrid(opSlotsEl, {
+        cash: player.cash || 0,
+        plates: player.plates || 0,
+        dogtag: 'dogtag',
+        dogtagText: myCallsign,
+        headgear: player.headgear,
+        selfRevive: player.selfRevive,
+        primary: pSlot ? pSlot.id : null,
+        primaryMag: pSlot ? pSlot.mag : undefined,
+        armor: player.armorId,
+        secondary: sSlot ? sSlot.id : null,
+        secondaryMag: sSlot ? sSlot.mag : undefined,
+        tactical: player.tactical,
+        tacticalQty: player.tacticalQty,
+        lethal: player.lethal,
+        lethalQty: player.lethalQty,
+        backpack: player.backpackId,
+        fieldUpgrade: player.fieldUpgrade,
+        killstreak: player.killstreak,
+        melee: player.melee
+      }, null);
     }
 
     // 2. Active Container Grid (TOP) + Enemy Operator Inventory (BOTTOM when looting an Operator!)
@@ -2420,97 +2432,91 @@ class GameUI {
           enemyEqEl.style.paddingTop = '8px';
           enemyEqEl.style.borderTop = '1px solid rgba(255,255,255,0.10)';
         }
-        // Always place Enemy Operator Equipment BELOW their Backpack (flipped relative to player!)
+        // Always place Enemy Operator Inventory BELOW their Backpack (flipped!)
         cPanel.appendChild(enemyEqEl);
 
         const eq = this.activeLootSource.operatorEquipment;
-        const makeCard = (key, label, id, customText = null, customRarity = null) => {
-          const def = id ? GAME_DATA.ITEMS[id] : null;
-          const rar = customRarity || (def ? def.rarity : 'common');
-          const txt = customText || (def ? def.name : 'Empty');
-          const clickable = !!(id || (key === 'plates' && eq.plates > 0));
-          return `<div class="op-slot-card rarity-${rar}" data-op-key="${key}" title="${clickable ? 'Click to Equip / Swap or Loot' : 'Empty'}" style="cursor:${clickable ? 'pointer' : 'default'};">
-            <span class="op-slot-label">${label}</span>
-            <span class="op-slot-val">${txt}</span>
-          </div>`;
-        };
-        enemyEqEl.innerHTML = `
-          <div class="op-slot-group">
-            <div class="op-group-label">OPERATOR WEAPONS (CLICK TO SWAP / EQUIP)</div>
-            <div class="op-group-row cols-3">
-              ${makeCard('primary', 'PRIMARY', eq.primary)}
-              ${makeCard('secondary', 'SECONDARY', eq.secondary)}
-              ${makeCard('melee', 'MELEE', eq.melee)}
-            </div>
-          </div>
-          <div class="op-slot-group">
-            <div class="op-group-label">ARMOR · DOGTAG · PACK</div>
-            <div class="op-group-row cols-3">
-              ${makeCard('armor', 'VEST', eq.armor)}
-              ${makeCard('dogtag', 'DOGTAG', eq.dogtag, eq.dogtag ? (eq.dogtagOwner || 'Operator Tag') : 'Looted', eq.dogtag ? 'rare' : 'common')}
-              ${makeCard('backpack', 'BACKPACK', eq.backpack)}
-            </div>
-          </div>
-          <div class="op-slot-group">
-            <div class="op-group-label">OPERATOR SUPPORT</div>
-            <div class="op-group-row cols-4">
-              ${makeCard('plates', 'PLATES', null, `${eq.plates || 0} / 6`, 'rare')}
-              ${makeCard('fieldUpgrade', 'FIELD UPGRADE', eq.fieldUpgrade)}
-              ${makeCard('killstreak', 'KILLSTREAK', eq.killstreak)}
-              ${makeCard('selfRevive', 'SELF-REVIVE', eq.selfRevive)}
-            </div>
-          </div>
-        `;
-        enemyEqEl.querySelectorAll('.op-slot-card[data-op-key]').forEach((card) => {
-          card.addEventListener('click', () => {
-            const k = card.dataset.opKey;
-            if (k === 'plates') {
-              if ((eq.plates || 0) <= 0) return;
-              const need = Math.max(0, 6 - player.plates);
-              if (need > 0) {
-                const take = Math.min(need, eq.plates);
-                player.plates += take;
-                eq.plates -= take;
-              } else if (player.addToBackpack('armor_plate', eq.plates)) {
-                eq.plates = 0;
-              } else {
-                this.addFeedMessage('Backpack full / too heavy!', '#d94141');
-                return;
-              }
+        this._renderOperatorTacticalGrid(enemyEqEl, {
+          cash: eq.cash || 0,
+          plates: eq.plates || 0,
+          dogtag: eq.dogtag,
+          dogtagText: eq.dogtagOwner || 'Operator Tag',
+          headgear: eq.headgear,
+          selfRevive: eq.selfRevive,
+          primary: eq.primary,
+          armor: eq.armor,
+          secondary: eq.secondary,
+          tactical: eq.tactical,
+          lethal: eq.lethal,
+          backpack: eq.backpack,
+          fieldUpgrade: eq.fieldUpgrade,
+          killstreak: eq.killstreak,
+          melee: eq.melee
+        }, (k) => {
+          if (k === 'cash') {
+            if ((eq.cash || 0) <= 0) return;
+            const amt = eq.cash;
+            player.cash = (player.cash || 0) + amt;
+            eq.cash = 0;
+            this.addFeedMessage(`Looted ₽${amt.toLocaleString()} Cash`, '#ffc107');
+            this.renderLootModal(player);
+            return;
+          }
+          if (k === 'plates') {
+            if ((eq.plates || 0) <= 0) return;
+            const need = Math.max(0, 6 - player.plates);
+            if (need > 0) {
+              const take = Math.min(need, eq.plates);
+              player.plates += take;
+              eq.plates -= take;
+            } else if (player.addToBackpack('armor_plate', eq.plates)) {
+              eq.plates = 0;
+            } else {
+              this.addFeedMessage('Backpack full / too heavy!', '#d94141');
+              return;
+            }
+            this.renderLootModal(player);
+            return;
+          }
+          const itemId = eq[k];
+          if (!itemId) return;
+          const def = GAME_DATA.ITEMS[itemId];
+          if (k === 'primary' || k === 'secondary') {
+            const res = player.equipWeaponInRaid(itemId, k);
+            if (res.equipped) {
+              eq[k] = res.prevId || null;
+              if (def) this.addFeedMessage(`Swapped ${k.toUpperCase()} → ${def.name}`, '#69f0ae');
               this.renderLootModal(player);
-              return;
             }
-            const itemId = eq[k];
-            if (!itemId) return;
-            const def = GAME_DATA.ITEMS[itemId];
-            if (k === 'primary' || k === 'secondary') {
-              const res = player.equipWeaponInRaid(itemId, k);
-              if (res.equipped) {
-                eq[k] = res.prevId || null;
-                if (def) this.addFeedMessage(`Swapped ${k.toUpperCase()} → ${def.name}`, '#69f0ae');
-                this.renderLootModal(player);
-              }
-              return;
-            }
-            if (k === 'dogtag') {
-              if (player.addToBackpack('dogtag', 1)) {
-                eq.dogtag = null;
-                this.addFeedMessage(`Secured ${eq.dogtagOwner || 'Operator'} Dogtag`, '#ffca28');
-                this.renderLootModal(player);
-              } else {
-                this.addFeedMessage('Backpack full / too heavy!', '#d94141');
-              }
-              return;
-            }
-            if (k === 'armor' || k === 'backpack' || k === 'fieldUpgrade' || k === 'killstreak' || k === 'selfRevive' || k === 'melee') {
-              const prev = this._swapGearWithPlayer(player, itemId);
-              eq[k] = prev || null;
-              if (def) this.addFeedMessage(`Equipped ${def.name}`, '#69f0ae');
+            return;
+          }
+          if (k === 'dogtag') {
+            if (player.addToBackpack('dogtag', 1)) {
+              eq.dogtag = null;
+              this.addFeedMessage(`Secured ${eq.dogtagOwner || 'Operator'} Dogtag`, '#ffca28');
               this.renderLootModal(player);
-              return;
+            } else {
+              this.addFeedMessage('Backpack full / too heavy!', '#d94141');
             }
-          });
-        });
+            return;
+          }
+          if (k === 'tactical' || k === 'lethal') {
+            if (player.addToBackpack(itemId, 1)) {
+              eq[k] = null;
+              if (def) this.addFeedMessage(`Looted ${def.name}`, '#69f0ae');
+              this.renderLootModal(player);
+            } else {
+              this.addFeedMessage('Backpack full / too heavy!', '#d94141');
+            }
+            return;
+          }
+          if (k === 'armor' || k === 'backpack' || k === 'fieldUpgrade' || k === 'killstreak' || k === 'selfRevive' || k === 'headgear' || k === 'melee') {
+            const prev = this._swapGearWithPlayer(player, itemId);
+            eq[k] = prev || null;
+            if (def) this.addFeedMessage(`Equipped ${def.name}`, '#69f0ae');
+            this.renderLootModal(player);
+          }
+        }, 'Click to Swap / Loot');
       } else if (enemyEqEl) {
         enemyEqEl.remove();
       }

@@ -79,6 +79,8 @@ class Player {
     this.killstreak = loadoutState.killstreak || null;
     this.selfRevive = loadoutState.selfRevive || null;
     this.selfReviveProgress = 0;
+    this.headgear = loadoutState.headgear || null;
+    this.cash = loadoutState.cash || 0;
     this.melee = loadoutState.melee || 'melee_knife';
     this.uavTimer = 0;
     this.deadSilenceTimer = 0;

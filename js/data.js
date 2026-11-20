@@ -1,7 +1,7 @@
 // Game Item Database, 5-Tier Loot Rarity, Logical POI Tables, Workbench & Attachments
 // IMPORTANT: Update GAME_DATA.VERSION (and ?v= cache-busters in index.html) with EVERY new commit!
 window.GAME_DATA = {
-  VERSION: 'v0.85',
+  VERSION: 'v0.86',
   SQUAD_COLORS: ['#69f0ae', '#42a5f5', '#ffeb3b', '#ff69b4'], // Green, Blue, Yellow, Pink
 
   RARITIES: {
@@ -434,6 +434,26 @@ window.GAME_DATA = {
       desc: 'Common tactical polymers for Workbench crafting. Stacks to 10.'
     },
 
+    // === HEADGEAR (Gas Mask / NVG) ===
+    gas_mask: {
+      id: 'gas_mask',
+      name: 'M50 Gas Mask',
+      type: 'headgear',
+      rarity: 'rare',
+      value: 3200,
+      weight: 0.45,
+      desc: 'Filtered tactical respirator. Protects against radiation & gas clouds.'
+    },
+    nvg_goggles: {
+      id: 'nvg_goggles',
+      name: 'GPNVG-18 Night Vision',
+      type: 'headgear',
+      rarity: 'epic',
+      value: 7400,
+      weight: 0.65,
+      desc: 'Panoramic quad-tube night vision goggles for low-light operations.'
+    },
+
     // === SELF-REVIVE & KEYS & HIGH-VALUE BARTER ===
     self_revive: {
       id: 'self_revive',
@@ -581,7 +601,7 @@ window.GAME_DATA = {
     weapons: ['pm9', 'g17', 'mp5k', 'm870', 'ak74m', 'm24'],
     ammo: ['ammo_9x18', 'ammo_9x19', 'ammo_12g', 'ammo_545', 'ammo_762', 'ammo_rocket'],
     gear: [
-      'bandage', 'painkillers', 'medkit', 'self_revive', 'armor_plate',
+      'bandage', 'painkillers', 'medkit', 'self_revive', 'gas_mask', 'nvg_goggles', 'armor_plate',
       'vest_1plate', 'vest_2plate', 'vest_2plate_gel', 'vest_2plate_helmet', 'vest_3plate',
       'bag_small', 'bag_medium', 'bag_large',
       'fu_ammo_box', 'fu_dead_silence', 'fu_trophy',
@@ -645,6 +665,8 @@ window.GAME_DATA = {
       { id: 'vest_2plate_helmet', min: 1, max: 1, w: 5 },
       { id: 'vest_3plate', min: 1, max: 1, w: 2 },
       { id: 'bag_medium', min: 1, max: 1, w: 6 },
+      { id: 'gas_mask', min: 1, max: 1, w: 5 },
+      { id: 'nvg_goggles', min: 1, max: 1, w: 3 },
       { id: 'intel_drive', min: 1, max: 1, w: 8 },
       { id: 'gpu_unit', min: 1, max: 1, w: 5 },
       { id: 'ak74m', min: 1, max: 1, w: 6 },

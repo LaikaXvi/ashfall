@@ -169,7 +169,18 @@
 
     if (extracted) {
       ui.profile.extracts += 1;
-      // Keep equipped loadout & remaining ammo/plates; backpack loot (including medkits) returns to stash
+      // Persist all swapped/looted operator equipment & cash back to hideout profile
+      ui.profile.credits = (ui.profile.credits || 0) + (player.cash || 0);
+      totalVal += (player.cash || 0);
+      ui.profile.loadout.primary = player.slots.primary ? player.slots.primary.id : null;
+      ui.profile.loadout.secondary = player.slots.secondary ? player.slots.secondary.id : null;
+      ui.profile.loadout.melee = player.melee || null;
+      ui.profile.loadout.armor = player.armorId || null;
+      ui.profile.loadout.backpack = player.backpackId || 'bag_small';
+      ui.profile.loadout.fieldUpgrade = player.fieldUpgrade || null;
+      ui.profile.loadout.killstreak = player.killstreak || null;
+      ui.profile.loadout.selfRevive = player.selfRevive || null;
+      ui.profile.loadout.headgear = player.headgear || null;
       ui.profile.loadout.plates = player.plates;
       ui.profile.loadout.ammo = {};
 

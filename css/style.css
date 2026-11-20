@@ -1982,6 +1982,46 @@ button:disabled {
   grid-template-columns: repeat(2, 1fr);
 }
 
+/* 5-Column DMZ/Tactical Operator Loadout Grid (matches reference layout) */
+.op-tactical-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
+}
+
+.op-tactical-grid .op-slot-card {
+  min-height: 44px;
+  justify-content: space-between;
+  padding: 5px 6px;
+}
+
+.op-tactical-grid .op-slot-card.span-2 {
+  grid-column: span 2;
+}
+
+.op-tactical-grid .op-slot-card.span-3 {
+  grid-column: span 3;
+}
+
+.op-tactical-grid .op-slot-card.spine-slot {
+  box-shadow: inset 0 0 0 1px rgba(245, 166, 35, 0.30);
+}
+
+.op-tactical-grid .op-slot-card.empty-slot-card {
+  opacity: 0.58;
+  border-style: dashed;
+}
+
+.op-tactical-grid .op-slot-sub {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  color: var(--accent-bright);
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .op-slot-card {
   padding: 4px 6px;
   background: rgba(10, 12, 11, 0.82);
