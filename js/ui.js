@@ -1002,7 +1002,6 @@ class GameUI {
   _initLiveUpdateTracker() {
     const badge = document.getElementById('menu-update-badge');
     if (!badge) return;
-    if (window.location.protocol === 'file:') return; // only poll when hosted on web/GitHub Pages
 
     let latestAvailable = null;
     const parseVer = (v) => String(v || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0);
@@ -1025,29 +1024,46 @@ class GameUI {
       window.location.replace(`${base}?v=${bust}&t=${Date.now()}`);
     });
 
+    const handleVersionText = (txt, localVer) => {
+      if (!txt) return false;
+      const m = txt.match(/VERSION\s*:\s*['"]([^'"]+)['"]/);
+      const remoteVer = m && m[1];
+      if (remoteVer && isNewer(remoteVer, localVer)) {
+        if (!latestAvailable || isNewer(remoteVer, latestAvailable)) {
+          latestAvailable = remoteVer;
+        }
+        badge.textContent = `NEW VERSION AVAILABLE (${latestAvailable})`;
+        badge.classList.remove('hidden');
+        return true;
+      }
+      return false;
+    };
+
     const checkForUpdate = () => {
       const localVer = (window.GAME_DATA && GAME_DATA.VERSION) || '';
       if (!localVer) return;
-      fetch(`./js/data.js?nocache=${Date.now()}`, { cache: 'no-store' })
-        .then(r => (r.ok ? r.text() : ''))
-        .then((txt) => {
-          if (!txt) return;
-          const m = txt.match(/VERSION\s*:\s*['"]([^'"]+)['"]/);
-          const remoteVer = m && m[1];
-          if (remoteVer && isNewer(remoteVer, localVer)) {
-            latestAvailable = remoteVer;
-            badge.textContent = `NEW VERSION AVAILABLE (${remoteVer})`;
-            badge.classList.remove('hidden');
-          }
-        })
-        .catch(() => {});
+      const ts = Date.now();
+      // Check both live GitHub Pages and raw GitHub main so updates are detected immediately!
+      const urls = [
+        `https://raw.githubusercontent.com/LaikaXvi/ashfall/main/js/data.js?t=${ts}`
+      ];
+      if (window.location.protocol !== 'file:') {
+        urls.unshift(`./js/data.js?nocache=${ts}`);
+      }
+      for (const u of urls) {
+        fetch(u, { cache: 'no-store' })
+          .then(r => (r.ok ? r.text() : ''))
+          .then(txt => handleVersionText(txt, localVer))
+          .catch(() => {});
+      }
     };
 
-    setTimeout(checkForUpdate, 4000);
-    this._updateCheckInterval = setInterval(checkForUpdate, 25000);
+    setTimeout(checkForUpdate, 1500);
+    this._updateCheckInterval = setInterval(checkForUpdate, 15000);
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') checkForUpdate();
     });
+    window.addEventListener('focus', checkForUpdate);
   }
 
   _initSocial() {

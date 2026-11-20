@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ASHFALL // 3D Extraction Looter-Shooter</title>
-  <link rel="stylesheet" href="css/style.css?v=146" />
+  <link rel="stylesheet" href="css/style.css?v=149" />
   <!-- Three.js r128 UMD for zero-build compatibility (works on both http:// and file://) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
@@ -19,6 +19,11 @@
 
   <!-- ==================== MAIN MENU & UTILITY TABS ==================== -->
   <div id="hideout-screen" class="screen active">
+    <!-- IMPORTANT: Update version in GAME_DATA.VERSION (js/data.js) and here with EVERY new commit -->
+    <div class="menu-version-stack">
+      <button id="menu-update-badge" class="menu-update-badge hidden" title="Click to reload into the latest version">NEW VERSION AVAILABLE</button>
+      <div id="menu-version-badge" class="menu-version-badge">v1.49</div>
+    </div>
     <!-- Top Bar (visible inside utility tabs; hidden on clean Main Menu title card) -->
     <header id="menu-topbar" class="hideout-header hidden">
       <div style="display:flex;align-items:center;gap:14px;">
@@ -51,11 +56,6 @@
 
     <!-- VIEW 0: CLEAN MAIN MENU TITLE CARD & OPTIONS -->
     <section id="menu-view-home" class="menu-home-stage">
-      <!-- IMPORTANT: Update version in GAME_DATA.VERSION (js/data.js) and here with EVERY new commit -->
-      <div class="menu-version-stack">
-        <button id="menu-update-badge" class="menu-update-badge hidden" title="Click to reload into the latest version">NEW VERSION AVAILABLE</button>
-        <div id="menu-version-badge" class="menu-version-badge">v1.48</div>
-      </div>
       <div class="menu-home-card">
         <div class="title-card">
           <span class="brand-tag">SECTOR 7 // TACTICAL EXTRACTION</span>
@@ -903,7 +903,7 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION with every new commit) -->
-  <script src="js/data.js?v=148"></script>
+  <script src="js/data.js?v=149"></script>
   <script src="js/net.js?v=123"></script>
   <script src="js/sfx_samples.js?v=21"></script>
   <script src="js/audio.js?v=139"></script>
@@ -918,7 +918,7 @@
   <script src="js/gamepad.js?v=136"></script>
   <script src="js/gunsmith.js?v=41"></script>
   <script src="js/matchmaking.js?v=114"></script>
-  <script src="js/ui.js?v=148"></script>
+  <script src="js/ui.js?v=149"></script>
   <script src="js/console.js?v=117"></script>
   <script src="js/main.js?v=142"></script>
 </body>
