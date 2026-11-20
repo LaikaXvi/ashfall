@@ -278,9 +278,29 @@ class GamepadController {
 
     const gpCursor = document.getElementById('gp-cursor');
 
-    // If Inventory / Container modal is open: Left-Stick Circular Cursor + Controller Item Actions
+    // If Inventory / Container modal is open: Prioritize D-Pad Amber Spatial Selector (Left Stick cursor fallback)
     if (ctx.isModalOpen) {
-      if (gpCursor) {
+      if (this._menuNavCooldown > 0) this._menuNavCooldown = Math.max(0, this._menuNavCooldown - dt);
+
+      const dUp = this._isDown(pad, 12);
+      const dDown = this._isDown(pad, 13);
+      const dLeft = this._isDown(pad, 14);
+      const dRight = this._isDown(pad, 15);
+      const anyDpad = dUp || dDown || dLeft || dRight;
+
+      if (anyDpad) {
+        this._modalNavMode = 'dpad';
+        if (gpCursor) gpCursor.classList.add('hidden');
+        if (this._menuNavCooldown <= 0 && ui && ui.moveSpatialSelection) {
+          const dir = dUp ? 'up' : (dDown ? 'down' : (dLeft ? 'left' : 'right'));
+          ui.moveSpatialSelection(dir, { inputMode: 'gamepad' });
+          this._menuNavCooldown = 0.16;
+        }
+      } else if (ls.mag > 0.25) {
+        this._modalNavMode = 'cursor';
+      }
+
+      if (this._modalNavMode === 'cursor' && gpCursor) {
         gpCursor.classList.remove('hidden');
         const speed = 640;
         this.cursorX = THREE.MathUtils.clamp(this.cursorX + ls.x * speed * dt, 10, window.innerWidth - 10);
@@ -288,7 +308,6 @@ class GamepadController {
         gpCursor.style.left = `${this.cursorX}px`;
         gpCursor.style.top = `${this.cursorY}px`;
 
-        // Hit-test slot or button under circular cursor
         const el = document.elementFromPoint(this.cursorX, this.cursorY);
         const slot = el ? el.closest('.inv-slot') : null;
         if (this._lastHoverSlot && this._lastHoverSlot !== slot) {
@@ -297,43 +316,29 @@ class GamepadController {
         this._lastHoverSlot = slot;
         if (slot) {
           slot.classList.add('gp-hover');
-          if (ui && !slot.classList.contains('empty-slot') && !slot.classList.contains('searching')) {
-            const ctxName = slot.dataset.context;
-            const idx = parseInt(slot.dataset.idx, 10);
-            const item = ctxName === 'container'
-              ? (ui.activeLootSource && ui.activeLootSource.items[idx])
-              : (player && player.backpack[idx]);
-            if (item && (!ui._hoveredSlot || ui._hoveredSlot.el !== slot)) {
-              ui.showItemPopout(slot, ctxName, item, idx, { inputMode: 'gamepad', mode: 'all' });
-            }
-          }
+          if (ui && ui.setSelectedElement) ui.setSelectedElement(slot, { inputMode: 'gamepad' });
+        } else if (el && el.closest('.op-slot-card, button') && ui && ui.setSelectedElement) {
+          ui.setSelectedElement(el.closest('.op-slot-card, button'), { inputMode: 'gamepad' });
         } else if (ui && ui._hoveredSlot) {
           ui.hideItemPopout();
         }
-
-        // A (0): Quick-Move hovered item, swap/loot enemy operator equipment slot, or click hovered button
-        if (this._justPressed(pad, 0)) {
-          if (slot && ui && ui._hoveredSlot) {
-            ui.handleSlotAction('quick');
-          } else if (el && el.closest('.op-slot-card[data-op-key]')) {
-            el.closest('.op-slot-card[data-op-key]').click();
-          } else if (el && el.closest('button')) {
-            el.closest('button').click();
-          }
-        }
-        // Y (3): Split Stack
-        if (this._justPressed(pad, 3) && ui && ui._hoveredSlot) {
-          ui.handleSlotAction('split');
-        }
-        // X (2): Drop hovered backpack item (or Take All if not over backpack)
-        if (this._justPressed(pad, 2)) {
-          if (ui && ui._hoveredSlot && ui._hoveredSlot.context === 'backpack') {
-            ui.handleSlotAction('drop');
-          } else if (actions.takeAll) {
-            actions.takeAll();
-          }
-        }
+      } else if (ui && !ui._selectedEl) {
+        ui.ensureInitialSelection({ inputMode: 'gamepad' });
       }
+
+      // A (0): Activate / Quick-Move selected slot, operator card, or button
+      if (this._justPressed(pad, 0) && ui) {
+        ui.activateSelectedElement({ inputMode: 'gamepad' });
+      }
+      // Y (3): Split Stack
+      if (this._justPressed(pad, 3) && ui && ui._hoveredSlot) {
+        ui.handleSlotAction('split');
+      }
+      // X (2): Drop selected backpack item
+      if (this._justPressed(pad, 2) && ui && ui._hoveredSlot && ui._hoveredSlot.context === 'backpack') {
+        ui.handleSlotAction('drop');
+      }
+      // B (1): Close modal
       if (this._justPressed(pad, 1) && actions.closeModal) {
         if (gpCursor) gpCursor.classList.add('hidden');
         actions.closeModal();
@@ -580,48 +585,54 @@ class GamepadController {
       }
     }
 
-    const scope = this._getMenuScope();
-    const items = this._getVisibleFocusables(scope);
-    if (items.length === 0) {
-      this._snapshot(pad);
-      return;
-    }
+    // Prioritize D-Pad (Left Stick fallback) using the Unified Amber Spatial Selector!
+    const dUp = this._isDown(pad, 12);
+    const dDown = this._isDown(pad, 13);
+    const dLeft = this._isDown(pad, 14);
+    const dRight = this._isDown(pad, 15);
+    const sUp = !dUp && !dDown && !dLeft && !dRight && ls.y < -0.58;
+    const sDown = !dUp && !dDown && !dLeft && !dRight && ls.y > 0.58;
+    const sLeft = !dUp && !dDown && !dLeft && !dRight && ls.x < -0.58;
+    const sRight = !dUp && !dDown && !dLeft && !dRight && ls.x > 0.58;
 
-    // Ensure valid focused element when controller is used in menus
-    const dUp = this._isDown(pad, 12) || ls.y < -0.55;
-    const dDown = this._isDown(pad, 13) || ls.y > 0.55;
-    const dLeft = this._isDown(pad, 14) || ls.x < -0.55;
-    const dRight = this._isDown(pad, 15) || ls.x > 0.55;
-    const anyNav = dUp || dDown || dLeft || dRight || this._justPressed(pad, 0) || this._justPressed(pad, 1);
+    const dir = (dUp || sUp) ? 'up'
+      : (dDown || sDown) ? 'down'
+      : (dLeft || sLeft) ? 'left'
+      : (dRight || sRight) ? 'right'
+      : null;
 
-    let idx = items.indexOf(this._focusedEl);
-    if (idx < 0 && anyNav) {
-      this._setMenuFocus(items[0]);
-      idx = 0;
-    }
-
-    // Range slider adjustment with Left / Right
-    if (this._focusedEl && this._focusedEl.tagName === 'INPUT' && this._focusedEl.type === 'range') {
-      if ((dLeft || dRight) && this._menuNavCooldown <= 0) {
-        const step = parseFloat(this._focusedEl.step) || 1;
-        const min = parseFloat(this._focusedEl.min);
-        const max = parseFloat(this._focusedEl.max);
-        const cur = parseFloat(this._focusedEl.value);
-        const next = THREE.MathUtils.clamp(cur + (dRight ? step : -step), min, max);
-        this._focusedEl.value = next;
-        this._focusedEl.dispatchEvent(new Event('input', { bubbles: true }));
-        this._menuNavCooldown = 0.12;
+    if (ui && ui.moveSpatialSelection) {
+      if (dir && this._menuNavCooldown <= 0) {
+        ui.moveSpatialSelection(dir, { inputMode: 'gamepad' });
+        this._menuNavCooldown = (dUp || dDown || dLeft || dRight) ? 0.16 : 0.20;
+      } else if ((this._justPressed(pad, 0) || this._justPressed(pad, 1)) && !ui._selectedEl) {
+        ui.ensureInitialSelection({ inputMode: 'gamepad' });
       }
-    } else if ((dUp || dDown || dLeft || dRight) && this._menuNavCooldown <= 0) {
-      const delta = (dDown || dRight) ? 1 : -1;
-      const nextIdx = (idx + delta + items.length) % items.length;
-      this._setMenuFocus(items[nextIdx]);
-      this._menuNavCooldown = 0.18;
-    }
 
-    // A (0): Activate / Click focused button
-    if (this._justPressed(pad, 0) && this._focusedEl) {
-      this._focusedEl.click();
+      // A (0): Activate / Click focused element
+      if (this._justPressed(pad, 0)) {
+        ui.activateSelectedElement({ inputMode: 'gamepad' });
+      }
+    } else {
+      const scope = this._getMenuScope();
+      const items = this._getVisibleFocusables(scope);
+      if (items.length === 0) {
+        this._snapshot(pad);
+        return;
+      }
+      let idx = items.indexOf(this._focusedEl);
+      if (idx < 0 && dir) {
+        this._setMenuFocus(items[0]);
+        idx = 0;
+      }
+      if (dir && this._menuNavCooldown <= 0) {
+        const delta = (dir === 'down' || dir === 'right') ? 1 : -1;
+        this._setMenuFocus(items[(idx + delta + items.length) % items.length]);
+        this._menuNavCooldown = 0.18;
+      }
+      if (this._justPressed(pad, 0) && this._focusedEl) {
+        this._focusedEl.click();
+      }
     }
 
     // B (1): Back / Close
