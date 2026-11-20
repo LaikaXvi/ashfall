@@ -850,7 +850,7 @@ class GameUI {
       if (def.type === 'weapon') {
         const count = Math.max(1, item.qty || 1);
         for (let c = 0; c < count; c++) {
-          if (this.profile.weaponStash.length < 15) {
+          if (this.profile.weaponStash.length < 16) {
             this.profile.weaponStash.push({ id: item.id, qty: 1, ...(item.mods ? { mods: item.mods } : {}) });
           }
         }
@@ -864,7 +864,7 @@ class GameUI {
     const bagDef = GAME_DATA.ITEMS[L.backpack || 'bag_small'];
     const hasWpnSlot = !!(bagDef && bagDef.weaponSlot);
     if (!hasWpnSlot && L.backpackWeapon) {
-      if (this.profile.weaponStash.length < 15) {
+      if (this.profile.weaponStash.length < 16) {
         this.profile.weaponStash.push({ id: L.backpackWeapon, qty: 1 });
       }
       L.backpackWeapon = null;
@@ -875,7 +875,7 @@ class GameUI {
       if (def.type === 'weapon') {
         if (hasWpnSlot && !L.backpackWeapon) {
           L.backpackWeapon = item.id;
-        } else if (this.profile.weaponStash.length < 15) {
+        } else if (this.profile.weaponStash.length < 16) {
           this.profile.weaponStash.push({ id: item.id, qty: 1 });
         }
         return false;
@@ -2493,7 +2493,7 @@ class GameUI {
     // Weapons always go into the 15 dedicated double-wide weapon stash slots!
     if (def.type === 'weapon') {
       let added = 0;
-      for (let i = 0; i < qty && this.profile.weaponStash.length < 15; i++) {
+      for (let i = 0; i < qty && this.profile.weaponStash.length < 16; i++) {
         this.profile.weaponStash.push({ id, qty: 1, ...(mods ? { mods } : {}) });
         added++;
       }
@@ -2706,10 +2706,10 @@ class GameUI {
       }
     }
 
-    // 1A. 15 Dedicated Double-Wide Weapon Slots at the Top of the Stash (Left Top)
+    // 1A. 16 Uniform Double-Wide Weapon Slots (4x4, aligned 8-col flush with 64-slot Stash below)
     if (weaponStashGrid) {
       weaponStashGrid.innerHTML = '';
-      for (let i = 0; i < 15; i++) {
+      for (let i = 0; i < 16; i++) {
         const wItem = this.profile.weaponStash[i];
         const cell = document.createElement('div');
         cell.className = 'inv-slot weapon-slot-wide';
