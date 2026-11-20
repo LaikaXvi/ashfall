@@ -148,7 +148,8 @@ class Enemy {
         lethal: Math.random() < 0.65 ? 'frag_grenade' : 'throwing_knife',
         fieldUpgrade: fus[Math.floor(Math.random() * fus.length)],
         killstreak: Math.random() < 0.38 ? (Math.random() < 0.7 ? 'ks_uav' : 'ks_airstrike') : null,
-        selfRevive: Math.random() < 0.35 ? 'self_revive' : null
+        selfRevive: Math.random() < 0.35 ? 'self_revive' : null,
+        revealedSlots: {}
       };
     } else if (tier === 'boss') {
       this.name = 'COMMANDER VULTURE';

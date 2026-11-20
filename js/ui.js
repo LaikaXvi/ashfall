@@ -2064,32 +2064,88 @@ class GameUI {
     this._lootPlayer = null;
   }
 
+  _getOperatorSlotOrder() {
+    return ['cash', 'plates', 'dogtag', 'headgear', 'selfRevive', 'primary', 'armor', 'secondary', 'tactical', 'lethal', 'backpack', 'fieldUpgrade', 'killstreak', 'melee'];
+  }
+
+  _isOperatorSlotOccupied(eq, key) {
+    if (!eq) return false;
+    if (key === 'cash') return (eq.cash || 0) > 0;
+    if (key === 'plates') return (eq.plates || 0) > 0;
+    return !!eq[key];
+  }
+
+  _getOperatorSlotRarity(eq, key) {
+    if (key === 'cash') return 'legendary';
+    if (key === 'plates' || key === 'dogtag') return 'rare';
+    const def = eq && eq[key] ? GAME_DATA.ITEMS[eq[key]] : null;
+    return (def && def.rarity) || 'common';
+  }
+
+  _getNextUnrevealedOperatorSlot(eq) {
+    if (!eq) return null;
+    if (!eq.revealedSlots) eq.revealedSlots = {};
+    for (const key of this._getOperatorSlotOrder()) {
+      if (this._isOperatorSlotOccupied(eq, key) && !eq.revealedSlots[key]) {
+        return key;
+      }
+    }
+    return null;
+  }
+
   updateSearchReveal(dt) {
     if (!this.activeLootSource || !this._lootPlayer) return;
     const modal = document.getElementById('loot-modal');
     if (!modal || modal.classList.contains('hidden')) return;
 
+    // 1. Reveal container / backpack grid items one at a time
     const items = this.activeLootSource.items;
     const nextIdx = items.findIndex(it => it && it.revealed === false);
-    if (nextIdx === -1) return;
+    if (nextIdx !== -1) {
+      const item = items[nextIdx];
+      const def = GAME_DATA.ITEMS[item.id];
+      const rarKey = item.rarityOverride || (def && def.rarity) || 'common';
+      const rarInfo = (GAME_DATA.RARITIES && GAME_DATA.RARITIES[rarKey]) || { revealTime: 0.45 };
+      const duration = rarInfo.revealTime || 0.45;
 
-    const item = items[nextIdx];
-    const def = GAME_DATA.ITEMS[item.id];
-    const rarKey = (def && def.rarity) || 'common';
+      this._searchRevealProgress += dt / duration;
+
+      const ring = document.querySelector(`#loot-container-items .inv-slot[data-idx="${nextIdx}"] .reveal-ring-fg`);
+      if (ring) {
+        const pct = Math.min(1, this._searchRevealProgress);
+        ring.style.strokeDashoffset = (100.5 * (1 - pct)).toFixed(1);
+      }
+
+      if (this._searchRevealProgress >= 1) {
+        item.revealed = true;
+        this._searchRevealProgress = 0;
+        if (window.soundEngine && window.soundEngine.playClick) {
+          try { window.soundEngine.playClick(); } catch (e) {}
+        }
+        this.renderLootModal(this._lootPlayer);
+      }
+      return;
+    }
+
+    // 2. Reveal unsearched Enemy Operator Equipment slots one at a time!
+    const eq = this.activeLootSource.operatorEquipment;
+    const nextKey = this._getNextUnrevealedOperatorSlot(eq);
+    if (!nextKey) return;
+
+    const rarKey = this._getOperatorSlotRarity(eq, nextKey);
     const rarInfo = (GAME_DATA.RARITIES && GAME_DATA.RARITIES[rarKey]) || { revealTime: 0.45 };
     const duration = rarInfo.revealTime || 0.45;
 
     this._searchRevealProgress += dt / duration;
 
-    // Update live circular SVG ring on the currently searching slot
-    const ring = document.querySelector(`#loot-container-items .inv-slot[data-idx="${nextIdx}"] .reveal-ring-fg`);
+    const ring = document.querySelector(`#loot-enemy-op-slots .op-slot-card[data-op-key="${nextKey}"] .reveal-ring-fg`);
     if (ring) {
       const pct = Math.min(1, this._searchRevealProgress);
       ring.style.strokeDashoffset = (100.5 * (1 - pct)).toFixed(1);
     }
 
     if (this._searchRevealProgress >= 1) {
-      item.revealed = true;
+      eq.revealedSlots[nextKey] = true;
       this._searchRevealProgress = 0;
       if (window.soundEngine && window.soundEngine.playClick) {
         try { window.soundEngine.playClick(); } catch (e) {}
@@ -2322,12 +2378,31 @@ class GameUI {
     this.renderLootModal(player);
   }
 
-  _renderOperatorTacticalGrid(containerEl, data, onSlotClick = null, tooltipText = '') {
+  _renderOperatorTacticalGrid(containerEl, data, onSlotClick = null, tooltipText = '', revealConfig = null) {
     if (!containerEl) return;
     const itemDef = (id) => (id && GAME_DATA.ITEMS[id]) ? GAME_DATA.ITEMS[id] : null;
     const card = (opts) => {
       const def = opts.id ? itemDef(opts.id) : null;
       const hasVal = !!(def || opts.hasValue);
+
+      // If searching an unsearched enemy operator, hide unrevealed occupied slots behind circular search reveal!
+      if (revealConfig && hasVal && !(revealConfig.revealedMap && revealConfig.revealedMap[opts.key])) {
+        const isSearchingNow = revealConfig.activeKey === opts.key;
+        const cls = [
+          'op-slot-card',
+          'searching',
+          opts.span ? `span-${opts.span}` : '',
+          opts.spine ? 'spine-slot' : ''
+        ].filter(Boolean).join(' ');
+        const inner = isSearchingNow
+          ? `<div class="reveal-ring-wrap">
+               <svg viewBox="0 0 36 36"><circle class="reveal-ring-bg" cx="18" cy="18" r="16"/><circle class="reveal-ring-fg" cx="18" cy="18" r="16" stroke-dasharray="100.5" stroke-dashoffset="100.5"/></svg>
+               <span class="reveal-q">?</span>
+             </div>`
+          : `<span class="reveal-q queued">?</span>`;
+        return `<div class="${cls}" data-op-key="${opts.key}" data-unrevealed="1">${inner}</div>`;
+      }
+
       const rar = opts.rarity || (def ? (def.rarity || 'common') : 'common');
       const val = opts.text !== undefined ? opts.text : (def ? def.name : 'EMPTY');
       const sub = opts.sub ? `<span class="op-slot-sub">${opts.sub}</span>` : '';
@@ -2379,6 +2454,7 @@ class GameUI {
 
     if (onSlotClick) {
       containerEl.querySelectorAll('.op-slot-card[data-op-key]').forEach((el) => {
+        if (el.dataset.unrevealed === '1') return;
         el.addEventListener('click', () => onSlotClick(el.dataset.opKey));
       });
     }
@@ -2436,6 +2512,10 @@ class GameUI {
         cPanel.appendChild(enemyEqEl);
 
         const eq = this.activeLootSource.operatorEquipment;
+        if (!eq.revealedSlots) eq.revealedSlots = {};
+        const hasUnrevealedBag = (this.activeLootSource.items || []).some(it => it && it.revealed === false);
+        const activeOpRevealKey = hasUnrevealedBag ? null : this._getNextUnrevealedOperatorSlot(eq);
+
         this._renderOperatorTacticalGrid(enemyEqEl, {
           cash: eq.cash || 0,
           plates: eq.plates || 0,
@@ -2516,7 +2596,7 @@ class GameUI {
             if (def) this.addFeedMessage(`Equipped ${def.name}`, '#69f0ae');
             this.renderLootModal(player);
           }
-        }, 'Click to Swap / Loot');
+        }, 'Click to Swap / Loot', { revealedMap: eq.revealedSlots, activeKey: activeOpRevealKey });
       } else if (enemyEqEl) {
         enemyEqEl.remove();
       }
@@ -2550,7 +2630,7 @@ class GameUI {
                      <span class="reveal-q">?</span>
                    </div>
                    <span class="slot-val">SEARCHING</span>`
-                : `<span class="reveal-q" style="opacity:0.4;">?</span><span class="slot-val">QUEUED</span>`;
+                : `<span class="reveal-q queued">?</span><span class="slot-val">QUEUED</span>`;
             } else {
               const effRar = item.rarityOverride || def.rarity || 'common';
               slot.classList.add(`rarity-${effRar}`);
