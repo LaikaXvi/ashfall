@@ -1470,23 +1470,30 @@ class Player {
         const adsBoost = this.isADS ? 1.0 : 0.78;
         targetLean = (rightOpen ? 1 : -1) * Math.min(1.0, forwardProx * 0.55 + edgeFactor * 0.55) * adsBoost;
       } else if (!frontBlocked) {
-        // Rounding a corner: detect nearby side wall within a 1.25m radius and lean further right at the wall's edge!
+        // Rounding a corner: ONLY lean when a nearby side wall actually ENDS just ahead (true corner edge — never along a flat wall!)
         const wallDistL = rayBlockedAt(this.position.x, eyeY, this.position.z, -rX, -rZ, 1.25);
         const wallDistR = rayBlockedAt(this.position.x, eyeY, this.position.z, rX, rZ, 1.25);
-        const wallLeft = wallDistL < 1.18;
-        const wallRight = wallDistR < 1.18;
+        const wallLeft = wallDistL < 1.15;
+        const wallRight = wallDistR < 1.15;
 
         if (wallLeft && !wallRight) {
-          // Check how close the wall is to ending ahead (true corner edge vs long corridor)
-          const aheadWallL = this._collidesAt(this.position.x - rX * (wallDistL + 0.20) + fwdX * 0.85, eyeY, this.position.z - rZ * (wallDistL + 0.20) + fwdZ * 0.85);
-          const proxL = THREE.MathUtils.clamp((1.18 - wallDistL) / 0.75, 0.20, 1.0);
-          const edgeBoost = aheadWallL ? 0.52 : 1.0; // full deep lean right at the corner edge!
-          targetLean = proxL * edgeBoost * (this.isADS ? 0.88 : 0.64);
+          const wallProbeX = this.position.x - rX * (wallDistL + 0.22);
+          const wallProbeZ = this.position.z - rZ * (wallDistL + 0.22);
+          const wallContinuesMid = this._collidesAt(wallProbeX + fwdX * 0.65, eyeY, wallProbeZ + fwdZ * 0.65);
+          const wallContinuesFar = this._collidesAt(wallProbeX + fwdX * 1.20, eyeY, wallProbeZ + fwdZ * 1.20);
+          if (!wallContinuesMid && !wallContinuesFar) {
+            const proxL = THREE.MathUtils.clamp((1.15 - wallDistL) / 0.72, 0.25, 1.0);
+            targetLean = proxL * (this.isADS ? 0.92 : 0.68);
+          }
         } else if (wallRight && !wallLeft) {
-          const aheadWallR = this._collidesAt(this.position.x + rX * (wallDistR + 0.20) + fwdX * 0.85, eyeY, this.position.z + rZ * (wallDistR + 0.20) + fwdZ * 0.85);
-          const proxR = THREE.MathUtils.clamp((1.18 - wallDistR) / 0.75, 0.20, 1.0);
-          const edgeBoost = aheadWallR ? 0.52 : 1.0;
-          targetLean = -proxR * edgeBoost * (this.isADS ? 0.88 : 0.64);
+          const wallProbeX = this.position.x + rX * (wallDistR + 0.22);
+          const wallProbeZ = this.position.z + rZ * (wallDistR + 0.22);
+          const wallContinuesMid = this._collidesAt(wallProbeX + fwdX * 0.65, eyeY, wallProbeZ + fwdZ * 0.65);
+          const wallContinuesFar = this._collidesAt(wallProbeX + fwdX * 1.20, eyeY, wallProbeZ + fwdZ * 1.20);
+          if (!wallContinuesMid && !wallContinuesFar) {
+            const proxR = THREE.MathUtils.clamp((1.15 - wallDistR) / 0.72, 0.25, 1.0);
+            targetLean = -proxR * (this.isADS ? 0.92 : 0.68);
+          }
         }
       }
     }
