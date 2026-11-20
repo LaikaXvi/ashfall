@@ -3405,6 +3405,94 @@ input[type="range"].gp-focus {
   box-shadow: 0 0 0 2px rgba(255, 82, 82, 0.75) !important;
 }
 
+/* ==================== 4X BINOCULAR LASER DESIGNATOR OVERLAY ==================== */
+.designator-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 24;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 36% 50%, transparent 25%, rgba(4, 7, 6, 0.94) 37%),
+    radial-gradient(circle at 64% 50%, transparent 25%, rgba(4, 7, 6, 0.94) 37%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 26px 24px 36px;
+  font-family: var(--font-mono);
+}
+
+.desig-reticle {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 140px;
+  height: 140px;
+  border: 1px solid rgba(255, 82, 82, 0.55);
+  border-radius: 50%;
+  box-shadow: 0 0 18px rgba(255, 61, 61, 0.25);
+}
+
+.desig-reticle::before,
+.desig-reticle::after {
+  content: '';
+  position: absolute;
+  background: rgba(255, 82, 82, 0.75);
+}
+
+.desig-reticle::before {
+  left: 50%;
+  top: -18px;
+  bottom: -18px;
+  width: 1px;
+  transform: translateX(-50%);
+}
+
+.desig-reticle::after {
+  top: 50%;
+  left: -18px;
+  right: -18px;
+  height: 1px;
+  transform: translateY(-50%);
+}
+
+.desig-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ff3d3d;
+  box-shadow: 0 0 10px #ff3d3d;
+  transform: translate(-50%, -50%);
+}
+
+.desig-hud-top {
+  display: flex;
+  gap: 18px;
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: rgba(8, 12, 10, 0.78);
+  border: 1px solid rgba(255, 82, 82, 0.45);
+  color: #ff6b6b;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+}
+
+.desig-hud-bottom {
+  padding: 6px 14px;
+  border-radius: 8px;
+  background: rgba(8, 12, 10, 0.80);
+  border: 1px solid rgba(245, 166, 35, 0.45);
+  color: #f5a623;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.9px;
+}
+
 /* ==================== CENTER-SCREEN HUD TOAST ==================== */
 /* Horizontally centered, vertically aligned with the middle of the bottom health & ammo widgets */
 .hud-center-toast {
