@@ -3416,6 +3416,65 @@ class WeaponSystem {
 
     this.meleeMesh = g;
     this.currentMesh = g;
+    this.isFistsMode = false;
+    this.viewmodelGroup.add(g);
+    this.sightHeight = 0.12;
+    this.adsZ = -0.34;
+    this.viewmodelGroup.visible = !this.isThirdPerson;
+  }
+
+  buildFistsViewmodel() {
+    this.isMeleeMode = true;
+    this.isFistsMode = true;
+    if (this.currentMesh) {
+      this.viewmodelGroup.remove(this.currentMesh);
+      this.currentMesh = null;
+    }
+    if (this.meleeMesh) {
+      this.viewmodelGroup.remove(this.meleeMesh);
+      this.meleeMesh = null;
+    }
+    this.magMesh = null;
+    this.spareMagMesh = null;
+    this.boltMesh = null;
+    this.charmPivot = null;
+    this.leftFist = null;
+
+    const g = new THREE.Group();
+    const skinMat = new THREE.MeshLambertMaterial({ color: 0xd1a483 });
+    const knuckleMat = new THREE.MeshLambertMaterial({ color: 0xbd8d6c });
+    const makeBareFist = (isRight) => {
+      const side = isRight ? 1 : -1;
+      const f = new THREE.Group();
+      const palm = new THREE.Mesh(new THREE.BoxGeometry(0.054, 0.062, 0.064), skinMat);
+      const fingers = new THREE.Mesh(new THREE.BoxGeometry(0.056, 0.040, 0.030), knuckleMat);
+      fingers.position.set(0, 0.008, -0.036);
+      const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.020, 0.044), skinMat);
+      thumb.position.set(-side * 0.032, 0.018, -0.008);
+      thumb.rotation.y = side * 0.25;
+      f.add(palm, fingers, thumb);
+      return f;
+    };
+
+    // Left guard bare fist (raised forward-left)
+    this.leftHand = makeBareFist(false);
+    this.leftHand.position.set(-0.29, -0.07, -0.05);
+    this.leftHand.rotation.set(-0.25, 0.35, -0.22);
+    this.leftHandRestPos.copy(this.leftHand.position);
+    this.leftHandRestRot.copy(this.leftHand.rotation);
+    this.leftArm = this._createForearm();
+
+    // Right power bare fist (slightly back-right)
+    this.rightHand = makeBareFist(true);
+    this.rightHand.position.set(0.02, -0.09, 0.04);
+    this.rightHand.rotation.set(-0.20, -0.30, 0.18);
+    this.rightHandRestPos.copy(this.rightHand.position);
+    this.rightHandRestRot.copy(this.rightHand.rotation);
+    this.rightArm = this._createForearm();
+
+    g.add(this.leftHand, this.leftArm, this.rightHand, this.rightArm);
+    this.meleeMesh = g;
+    this.currentMesh = g;
     this.viewmodelGroup.add(g);
     this.sightHeight = 0.12;
     this.adsZ = -0.34;

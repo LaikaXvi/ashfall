@@ -3072,14 +3072,18 @@ class GameUI {
     document.getElementById('hud-slot-2').classList.toggle('active', player.activeSlot === 'secondary');
 
     if (player.activeSlot === 'melee') {
-      const mDef = GAME_DATA.ITEMS[player.melee || 'melee_knife'];
-      document.getElementById('hud-weapon-name').textContent = (mDef ? mDef.name : 'COMBAT KNIFE').toUpperCase();
+      const mDef = player.melee && GAME_DATA.ITEMS[player.melee];
+      document.getElementById('hud-weapon-name').textContent = (mDef ? mDef.name : 'BARE FISTS').toUpperCase();
       document.getElementById('hud-mag').textContent = '—';
-      document.getElementById('hud-reserve').textContent = 'MELEE';
+      document.getElementById('hud-reserve').textContent = mDef ? 'MELEE' : 'UNARMED';
     } else if (wDef && wSlot) {
       document.getElementById('hud-weapon-name').textContent = wDef.name.toUpperCase();
       document.getElementById('hud-mag').textContent = wSlot.mag;
       document.getElementById('hud-reserve').textContent = player.getReserveAmmo(wDef.ammoType);
+    } else {
+      document.getElementById('hud-weapon-name').textContent = 'BARE FISTS';
+      document.getElementById('hud-mag').textContent = '—';
+      document.getElementById('hud-reserve').textContent = 'UNARMED';
     }
 
     document.getElementById('hud-bag-value').textContent = `₽ ${player.getBackpackValue().toLocaleString()}`;
@@ -4392,10 +4396,7 @@ class GameUI {
                 player.slots[k] = res.prevId
                   ? { id: res.prevId, mods: (res.prevSlotObj && res.prevSlotObj.mods) || {}, mag: res.prevSlotObj && res.prevSlotObj.mag, rarityOverride: (res.prevSlotObj && res.prevSlotObj.rarityOverride) || null }
                   : null;
-                if (player.activeSlot === k && !player.slots[k]) {
-                  player.activeSlot = player.slots.primary ? 'primary' : (player.slots.secondary ? 'secondary' : 'melee');
-                  player._equipCurrentWeapon();
-                } else if (player.activeSlot === k) {
+                if (player.activeSlot === k) {
                   player._equipCurrentWeapon();
                 }
               }
@@ -4415,7 +4416,6 @@ class GameUI {
           if (!wObj) return;
           player.slots[k] = null;
           if (player.activeSlot === k) {
-            player.activeSlot = player.slots.primary ? 'primary' : (player.slots.secondary ? 'secondary' : 'melee');
             player._equipCurrentWeapon();
           }
           if (typeof this.onDropItem === 'function') {

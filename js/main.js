@@ -1536,7 +1536,11 @@
       return;
     }
     const slotObj = player.getActiveWeaponSlot();
-    if (!slotObj) return;
+    if (!slotObj) {
+      // Empty weapon slot -> bare fists punch!
+      performMeleeStrike(false);
+      return;
+    }
     const fired = weaponSystem.tryFire(player, slotObj, world, enemyManager, (isHead, killed, enemy, attackerInfo, dmg) => {
       window.soundEngine.playHitmarker(isHead);
       ui.triggerHitmarker(isHead);

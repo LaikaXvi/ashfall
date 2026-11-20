@@ -771,16 +771,34 @@ class Player {
     this.weaponSystem.cancelPlating();
     this.weaponSystem.cancelMedkit();
     if (this.activeSlot === 'melee') {
-      const mDef = GAME_DATA.ITEMS[this.melee || 'melee_knife'];
-      this.weaponSystem.buildMeleeViewmodel(mDef);
+      if (this.melee && GAME_DATA.ITEMS[this.melee]) {
+        const mDef = GAME_DATA.ITEMS[this.melee];
+        this.weaponSystem.buildMeleeViewmodel(mDef);
+      } else if (this.weaponSystem.buildFistsViewmodel) {
+        this.weaponSystem.buildFistsViewmodel();
+      }
+      if (this.tpWeapon && this.tpWeapon.group && this.avatarParts && this.avatarParts.weaponMount) {
+        this.avatarParts.weaponMount.remove(this.tpWeapon.group);
+        this.tpWeapon = null;
+      }
       return;
     }
     const slotObj = this.getActiveWeaponSlot();
     if (slotObj) {
       this.weaponSystem.isMeleeMode = false;
+      this.weaponSystem.isFistsMode = false;
       const def = GAME_DATA.ITEMS[slotObj.id];
       this.weaponSystem.buildViewmodel(def, slotObj.mods, true);
       this._rebuildThirdPersonWeapon(def, slotObj.mods);
+    } else {
+      // Empty weapon slot -> show operator's bare fists!
+      if (this.weaponSystem.buildFistsViewmodel) {
+        this.weaponSystem.buildFistsViewmodel();
+      }
+      if (this.tpWeapon && this.tpWeapon.group && this.avatarParts && this.avatarParts.weaponMount) {
+        this.avatarParts.weaponMount.remove(this.tpWeapon.group);
+        this.tpWeapon = null;
+      }
     }
   }
 
@@ -811,7 +829,8 @@ class Player {
       }
       return;
     }
-    if (slotName === this.activeSlot || !this.slots[slotName]) return;
+    if (slotName === this.activeSlot) return;
+    if (slotName !== 'primary' && slotName !== 'secondary') return;
     this.activeSlot = slotName;
     this._equipCurrentWeapon();
     if (this.weaponSystem && this.weaponSystem.startDraw) {
