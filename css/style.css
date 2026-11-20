@@ -2082,10 +2082,12 @@ button:disabled {
   font-size: 11px;
 }
 
-/* Unified edge-anchored inventory: Container on Left Edge (when looting), Backpack + Operator Equipment always on Right Edge — ZERO scrollbars! */
+/* Unified edge-anchored inventory: Container raised to mid-left (above vitals HUD), Backpack + Operator Equipment on Right Edge — ZERO scrollbars! */
 .inv-overlay .inv-container-panel {
   left: 10px;
-  bottom: 10px;
+  top: 52%;
+  bottom: auto;
+  transform: translateY(-50%);
   width: fit-content;
   min-width: 358px;
   overflow: visible;
