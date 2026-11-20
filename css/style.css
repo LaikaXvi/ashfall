@@ -1913,14 +1913,16 @@ button:disabled {
 .inv-overlay .inv-container-panel {
   left: 10px;
   bottom: 10px;
-  width: min(28vw, 336px);
+  width: fit-content;
+  min-width: 278px;
   overflow: visible;
 }
 
 .inv-overlay .inv-operator-panel {
   right: 10px;
   bottom: 10px;
-  width: min(29vw, 352px);
+  width: fit-content;
+  min-width: 278px;
   overflow: visible;
 }
 
@@ -1978,25 +1980,28 @@ button:disabled {
   grid-template-columns: repeat(2, 1fr);
 }
 
-/* 5-Column DMZ/Tactical Operator Loadout Grid (matches reference layout) */
+/* 5-Column DMZ/Tactical Operator Loadout Grid — Uniform 48x48px square slots (256px wide, matches 5-col backpack grid!) */
 .op-tactical-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(5, 48px);
   gap: 4px;
+  width: fit-content;
 }
 
 .op-tactical-grid .op-slot-card {
+  width: 48px;
   height: 48px;
   min-height: 48px;
   max-height: 48px;
   box-sizing: border-box;
   overflow: hidden;
   justify-content: space-between;
-  padding: 5px 6px;
+  padding: 4px 4px;
 }
 
 .op-tactical-grid .op-slot-card.span-2 {
   grid-column: span 2;
+  width: 100px; /* 48 + 4 + 48 */
 }
 
 .op-tactical-grid .op-slot-card.span-3 {
@@ -2061,17 +2066,18 @@ button:disabled {
 
 .inv-grid, .inv-grid-compact {
   display: grid;
-  grid-template-columns: repeat(auto-fill, 24px);
-  gap: 3px;
+  grid-template-columns: repeat(5, 48px);
+  gap: 4px;
   overflow: visible;
   max-height: none;
   padding: 2px 0;
+  width: fit-content;
 }
 
 .stash-grid-64 {
   display: grid;
-  grid-template-columns: repeat(8, 24px);
-  gap: 3px;
+  grid-template-columns: repeat(8, 48px);
+  gap: 4px;
   overflow: visible;
   max-height: none;
   padding: 2px;
@@ -2081,15 +2087,15 @@ button:disabled {
 .inv-slot,
 .stash-grid-64 .inv-slot {
   position: relative;
-  width: 24px;
-  height: 24px;
-  min-width: 24px;
-  max-width: 24px;
-  min-height: 24px;
-  max-height: 24px;
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
+  max-width: 48px;
+  min-height: 48px;
+  max-height: 48px;
   box-sizing: border-box;
   overflow: hidden;
-  padding: 1px;
+  padding: 3px;
   background: rgba(12, 14, 13, 0.88);
   border: 1px solid rgba(255, 255, 255, 0.14);
   display: flex;
@@ -2103,7 +2109,7 @@ button:disabled {
 
 .inv-slot:hover, .inv-slot.gp-hover {
   border-color: var(--accent-bright) !important;
-  transform: scale(1.08);
+  transform: translateY(-1px);
   z-index: 2;
 }
 
@@ -2114,14 +2120,14 @@ button:disabled {
 
 .inv-slot-name, .slot-name {
   font-family: var(--font-mono);
-  font-size: 7.5px;
+  font-size: 9.5px;
   font-weight: 800;
-  line-height: 1;
-  letter-spacing: -0.2px;
+  line-height: 1.05;
+  letter-spacing: 0.2px;
   text-align: center;
   white-space: nowrap;
   overflow: hidden;
-  max-width: 22px;
+  max-width: 42px;
 }
 
 .slot-val {
@@ -2130,10 +2136,10 @@ button:disabled {
 
 .slot-qty {
   position: absolute;
-  right: 1px;
-  bottom: 0;
+  right: 3px;
+  bottom: 2px;
   font-family: var(--font-mono);
-  font-size: 6.5px;
+  font-size: 8px;
   font-weight: 800;
   line-height: 1;
   color: var(--accent-bright);
@@ -2160,19 +2166,15 @@ button:disabled {
   cursor: default !important;
 }
 
-.reveal-ring-wrap {
+.reveal-ring-wrap,
+.op-slot-card .reveal-ring-wrap {
   position: relative;
-  width: 18px;
-  height: 18px;
+  width: 26px;
+  height: 26px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.op-slot-card .reveal-ring-wrap {
-  width: 24px;
-  height: 24px;
 }
 
 .reveal-ring-wrap svg,
