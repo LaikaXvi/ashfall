@@ -1642,24 +1642,39 @@ class WeaponSystem {
     const customRot = this.isReloading || this.isInspecting || this.isPlating || this.isHealing || (this.meleeSwingTimer > 0);
 
     // 2-stage wall handling: Stage 1 pulls weapon smoothly backwards (+Z), Stage 2 tucks barrel up into CQB high-port
+    // While actively ADS (not wall-blocked), only pull back along Z so the red dot / iron sights stay 100% zeroed to bullet impact!
     const wp = customRot ? 0 : this.wallPush;
     const tuck = Math.max(0, (wp - 0.42) / 0.58);
     const smoothTuck = tuck * tuck * (3 - 2 * tuck);
-    const wallPosX = -wp * 0.055;
-    const wallPosY = -wp * 0.028 + smoothTuck * 0.022;
-    const wallPosZ = wp * 0.24;
-    const wallRotX = smoothTuck * 0.56;
-    const wallRotY = wp * 0.14 + smoothTuck * 0.26;
-    const wallRotZ = -wp * 0.10 - smoothTuck * 0.16;
+    const wallPosX = isAdsActive ? 0 : (-wp * 0.055);
+    const wallPosY = isAdsActive ? 0 : (-wp * 0.028 + smoothTuck * 0.022);
+    const wallPosZ = isAdsActive ? (wp * 0.08) : (wp * 0.24);
+    const wallRotX = isAdsActive ? 0 : (smoothTuck * 0.56);
+    const wallRotY = isAdsActive ? 0 : (wp * 0.14 + smoothTuck * 0.26);
+    const wallRotZ = isAdsActive ? 0 : (-wp * 0.10 - smoothTuck * 0.16);
 
-    // When leaning around a corner with clearance, progressively cant & align gun around the edge
+    // When leaning around a corner with clearance, progressively cant & align gun around the edge (hipfire only; ADS stays dead-center on camera roll!)
     const leanClear = 1 - Math.min(1, wp * 1.8);
     const leanAlignX = (!customRot && !isAdsActive) ? (-player.lean * 0.095 * leanClear) : 0;
     const leanCantY = (!customRot && !isAdsActive) ? (-player.lean * 0.09 * leanClear) : 0;
 
+    // Sprint tilt, DMZ Tactical Sprint high-port skyward carry, tactical slide cant (subtle when ADS), wall tuck & progressive corner-lean cant
+    const slideCantZ = (!customRot && player.isSliding) ? (isAdsActive ? -0.10 : -0.32) : 0;
+    const slideCantY = (!customRot && player.isSliding) ? (isAdsActive ? 0.0 : 0.18) : 0;
+    const sprintRotX = tacSprintingHip ? 0.86 : (sprintingHip ? -0.14 : 0);
+    const sprintRotY = tacSprintingHip ? 0.16 : (sprintingHip ? 0.22 : 0);
+    const sprintRotZ = tacSprintingHip ? -0.14 : (sprintingHip ? 0.08 : 0);
+    const leanRotZ = isAdsActive ? 0 : (-player.lean * 0.21);
+    const targetRotX = (customRot ? activeRotOff.x : (sprintRotX + swayRotX + this.recoilOffset * 1.8 + wallRotX)) + drawRot.x;
+    const targetRotY = (customRot ? activeRotOff.y : (sprintRotY + slideCantY + wallRotY + leanCantY)) + drawRot.y;
+    const targetRotZ = (customRot ? activeRotOff.z : (sprintRotZ + swayRotZ + slideCantZ + wallRotZ + leanRotZ)) + drawRot.z;
+
     // MW2/DMZ One-Handed High-Port Tactical Sprint: weapon held UP in right hand, left fist pumping apart!
-    const basePosX = isAdsActive ? 0.0 : (tacSprintingHip ? 0.24 : (sprintingHip ? 0.19 : 0.22));
-    const basePosY = isAdsActive ? -this.sightHeight : (tacSprintingHip ? -0.14 : (sprintingHip ? -0.235 : -0.20));
+    // When ADS with any Z-roll (e.g., slide cant), pivot around sightHeight so the red dot stays locked to exact screen center!
+    const adsPivotX = (isAdsActive && !customRot) ? (Math.sin(targetRotZ) * this.sightHeight) : 0;
+    const adsPivotY = (isAdsActive && !customRot) ? ((1 - Math.cos(targetRotZ)) * this.sightHeight) : 0;
+    const basePosX = isAdsActive ? adsPivotX : (tacSprintingHip ? 0.24 : (sprintingHip ? 0.19 : 0.22));
+    const basePosY = isAdsActive ? (-this.sightHeight + adsPivotY) : (tacSprintingHip ? -0.14 : (sprintingHip ? -0.235 : -0.20));
     const basePosZ = isAdsActive ? this.adsZ : (tacSprintingHip ? -0.34 : (sprintingHip ? -0.40 : -0.42));
 
     const targetX = basePosX + activePosOff.x + wallPosX + leanAlignX + drawPos.x;
@@ -1671,15 +1686,6 @@ class WeaponSystem {
     this.viewmodelGroup.position.y = THREE.MathUtils.lerp(this.viewmodelGroup.position.y, targetY - bobY, Math.min(1, dt * lerpRate));
     this.viewmodelGroup.position.z = THREE.MathUtils.lerp(this.viewmodelGroup.position.z, targetZ, Math.min(1, dt * (lerpRate + 2)));
 
-    // Sprint tilt, DMZ Tactical Sprint high-port skyward carry, tactical slide cant (subtle when ADS), wall tuck & progressive corner-lean cant
-    const slideCantZ = (!customRot && player.isSliding) ? (isAdsActive ? -0.10 : -0.32) : 0;
-    const slideCantY = (!customRot && player.isSliding) ? (isAdsActive ? 0.0 : 0.18) : 0;
-    const sprintRotX = tacSprintingHip ? 0.86 : (sprintingHip ? -0.14 : 0);
-    const sprintRotY = tacSprintingHip ? 0.16 : (sprintingHip ? 0.22 : 0);
-    const sprintRotZ = tacSprintingHip ? -0.14 : (sprintingHip ? 0.08 : 0);
-    const targetRotX = (customRot ? activeRotOff.x : (sprintRotX + swayRotX + this.recoilOffset * 1.8 + wallRotX)) + drawRot.x;
-    const targetRotY = (customRot ? activeRotOff.y : (sprintRotY + slideCantY + wallRotY + leanCantY)) + drawRot.y;
-    const targetRotZ = (customRot ? activeRotOff.z : (sprintRotZ + swayRotZ + slideCantZ + wallRotZ)) - player.lean * (isAdsActive ? 0.075 : 0.21) + drawRot.z;
     const rotRate = this.isReloading ? 26 : ((this.isPlating || this.isHealing) ? 14 : (this.isInspecting ? 8 : 11));
     this.viewmodelGroup.rotation.x = THREE.MathUtils.lerp(this.viewmodelGroup.rotation.x, targetRotX, Math.min(1, dt * rotRate));
     this.viewmodelGroup.rotation.y = THREE.MathUtils.lerp(this.viewmodelGroup.rotation.y, targetRotY, Math.min(1, dt * rotRate));
