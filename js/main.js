@@ -27,7 +27,9 @@
   let extractProgress = 0;
   const EXTRACT_REQUIRED = 5.0;
 
-  let nearbyInteractable = null; // { type: 'crate'|'corpse', label, items, container }
+  let nearbyInteractable = null; // { type: 'crate'|'corpse'|'ground', label, items, container }
+  let tabStowHoldStart = 0;
+  let tabStowTriggered = false;
   let lastFrameTime = performance.now();
 
   const ui = new GameUI((zoneId, matchId) => startRaid(zoneId, matchId));
@@ -623,8 +625,13 @@
 
     if (e.code === (kb.backpack || 'Tab')) {
       e.preventDefault();
+      if (e.repeat) return;
       if (isModalOpen) {
         closeLootAndResume();
+      } else if (_getLookedAtGroundWeapon() && player && player.hasWeaponBackpack && player.hasWeaponBackpack()) {
+        // Hold Tab while looking at a ground weapon -> stow into Weapon Backpack; quick tap opens backpack!
+        tabStowHoldStart = performance.now();
+        tabStowTriggered = false;
       } else {
         isModalOpen = true;
         document.exitPointerLock();
@@ -704,6 +711,16 @@
     if (!inRaid || !player) return;
     const kb = window.KEYBINDS || {};
     player.keys[e.code] = false;
+    if (e.code === (kb.backpack || 'Tab')) {
+      if (tabStowHoldStart > 0 && !tabStowTriggered && !isModalOpen) {
+        isModalOpen = true;
+        document.exitPointerLock();
+        ui.openLootModal(player, 'BACKPACK', null);
+      }
+      tabStowHoldStart = 0;
+      tabStowTriggered = false;
+      return;
+    }
     if (e.code === (kb.crouch || 'KeyC') || e.code === 'ControlLeft') {
       player.onCrouchKeyUp();
     } else if ((e.code === (kb.lethal || 'KeyF') || e.code === 'Digit5') && throwableSystem) {
@@ -713,6 +730,68 @@
     }
   });
 
+  function _getLookedAtGroundWeapon() {
+    if (!nearbyInteractable || nearbyInteractable.type !== 'ground' || !nearbyInteractable.groundItem) return null;
+    const gi = nearbyInteractable.groundItem;
+    const def = GAME_DATA.ITEMS[gi.id];
+    return (def && def.type === 'weapon') ? gi : null;
+  }
+
+  function _pickupGroundWeapon(gi, targetSlotKey) {
+    if (!gi || !player || !world) return false;
+    const def = GAME_DATA.ITEMS[gi.id];
+    if (!def || def.type !== 'weapon') return false;
+    const dropPos = gi.position.clone();
+    const res = player.equipWeaponInRaid(gi.id, targetSlotKey, {
+      mods: gi.mods || {},
+      mag: gi.mag,
+      rarityOverride: gi.rarityOverride || null
+    });
+    if (!res.equipped) return false;
+
+    const pickedUid = gi.uid;
+    world.removeGroundItem(gi);
+    if (mpSession && mpSession.active && pickedUid) {
+      mpSession.sendEvent({ type: 'ground_pickup', uid: pickedUid });
+    }
+    if (res.prevId) {
+      const sinY = Math.sin(player.yaw);
+      const cosY = Math.cos(player.yaw);
+      const ejectPos = new THREE.Vector3(
+        dropPos.x + (Math.random() - 0.5) * 0.18 - sinY * 0.12,
+        Math.max(0.02, dropPos.y),
+        dropPos.z + (Math.random() - 0.5) * 0.18 - cosY * 0.12
+      );
+      const swapped = world.spawnGroundItem(res.prevId, 1, ejectPos, {
+        mods: (res.prevSlotObj && res.prevSlotObj.mods) || null,
+        mag: res.prevSlotObj && res.prevSlotObj.mag,
+        rarityOverride: (res.prevSlotObj && res.prevSlotObj.rarityOverride) || null
+      });
+      if (mpSession && mpSession.active && swapped) {
+        mpSession.sendEvent({
+          type: 'ground_drop',
+          uid: swapped.uid,
+          id: swapped.id,
+          qty: 1,
+          x: Math.round(swapped.position.x * 100) / 100,
+          y: Math.round(swapped.position.y * 100) / 100,
+          z: Math.round(swapped.position.z * 100) / 100,
+          mods: swapped.mods || null,
+          mag: swapped.mag,
+          rarityOverride: swapped.rarityOverride || null
+        });
+      }
+    }
+    if (window.soundEngine && window.soundEngine.playMagIn) {
+      try { window.soundEngine.playMagIn(); } catch (e) {}
+    }
+    nearbyInteractable = null;
+    if (targetSlotKey === 'backpackWeapon') {
+      ui.addFeedMessage(`Stowed ${def.name} in Weapon Backpack`, '#69f0ae');
+    }
+    return true;
+  }
+
   function openNearbyInteractable() {
     if (!nearbyInteractable) return false;
     if (nearbyInteractable.type === 'ground') {
@@ -720,49 +799,15 @@
       if (!gi) return false;
       const def = GAME_DATA.ITEMS[gi.id];
       if (def && def.type === 'weapon') {
-        // Picking up a physical ground weapon opens the Weapon Slot Staging UI!
-        isModalOpen = true;
-        if (document.pointerLockElement === canvas) document.exitPointerLock();
-        const dropPos = gi.position.clone();
-        ui.openRaidWeaponStaging(player, { id: gi.id, mods: gi.mods || {}, mag: gi.mag, rarityOverride: gi.rarityOverride || null }, {
-          sourceLabel: 'GROUND WEAPON',
-          onComplete: (res) => {
-            const pickedUid = gi.uid;
-            world.removeGroundItem(gi);
-            if (mpSession && mpSession.active && pickedUid) {
-              mpSession.sendEvent({ type: 'ground_pickup', uid: pickedUid });
-            }
-            if (res.prevId) {
-              const swapped = world.spawnGroundItem(res.prevId, 1, dropPos, {
-                mods: (res.prevSlotObj && res.prevSlotObj.mods) || null,
-                mag: res.prevSlotObj && res.prevSlotObj.mag,
-                rarityOverride: (res.prevSlotObj && res.prevSlotObj.rarityOverride) || null
-              });
-              if (mpSession && mpSession.active && swapped) {
-                mpSession.sendEvent({
-                  type: 'ground_drop',
-                  uid: swapped.uid,
-                  id: swapped.id,
-                  qty: 1,
-                  x: Math.round(swapped.position.x * 100) / 100,
-                  y: Math.round(swapped.position.y * 100) / 100,
-                  z: Math.round(swapped.position.z * 100) / 100,
-                  mods: swapped.mods || null,
-                  mag: swapped.mag,
-                  rarityOverride: swapped.rarityOverride || null
-                });
-              }
-            }
-            nearbyInteractable = null;
-            isModalOpen = false;
-            if (inRaid) canvas.requestPointerLock();
-          },
-          onCancel: () => {
-            isModalOpen = false;
-            if (inRaid) canvas.requestPointerLock();
-          }
-        });
-        return true;
+        // Picking up a ground weapon immediately replaces the weapon in hand and ejects the previous one onto the ground!
+        let handSlot = (player.activeSlot === 'primary' || player.activeSlot === 'secondary')
+          ? player.activeSlot
+          : (!player.slots.primary ? 'primary' : (!player.slots.secondary ? 'secondary' : 'primary'));
+        // If active hand slot is full but the other weapon slot is empty, fill the empty slot only when holding melee
+        if (player.activeSlot === 'melee') {
+          handSlot = !player.slots.primary ? 'primary' : (!player.slots.secondary ? 'secondary' : 'primary');
+        }
+        return _pickupGroundWeapon(gi, handSlot);
       }
       if (player.addToBackpack(gi.id, gi.qty)) {
         const pickedUid = gi.uid;
@@ -1754,7 +1799,20 @@
 
     if (nearbyInteractable) {
       if (nearbyInteractable.type === 'ground') {
-        textEl.textContent = `Pick up ${nearbyInteractable.label}`;
+        const gw = _getLookedAtGroundWeapon();
+        if (gw) {
+          const canStow = !!(player && player.hasWeaponBackpack && player.hasWeaponBackpack());
+          if (tabStowHoldStart > 0 && canStow) {
+            const pct = Math.min(100, Math.round(((performance.now() - tabStowHoldStart) / 320) * 100));
+            textEl.textContent = `Stowing ${nearbyInteractable.label} in Pack (${pct}%)`;
+          } else {
+            textEl.textContent = canStow
+              ? `[E] Swap ${nearbyInteractable.label}  ·  Hold [TAB / ↓] Stow in Pack`
+              : `[E] Equip / Swap ${nearbyInteractable.label}`;
+          }
+        } else {
+          textEl.textContent = `Pick up ${nearbyInteractable.label}`;
+        }
       } else {
         const locked = nearbyInteractable.container && nearbyInteractable.container.requiresKey && !nearbyInteractable.container.unlocked;
         textEl.textContent = locked ? `Unlock ${nearbyInteractable.label} [BOSS KEY]` : `Search ${nearbyInteractable.label}`;
@@ -1833,6 +1891,11 @@
               if (document.pointerLockElement === canvas) document.exitPointerLock();
               ui.openLootModal(player, 'BACKPACK', null);
             }
+          },
+          canStowGroundWeapon: () => !!(_getLookedAtGroundWeapon() && player && player.hasWeaponBackpack && player.hasWeaponBackpack()),
+          stowGroundWeapon: () => {
+            const gw = _getLookedAtGroundWeapon();
+            if (gw) _pickupGroundWeapon(gw, 'backpackWeapon');
           },
           toggleTacMap: () => {
             if (!isModalOpen) toggleFullMapMode();
@@ -2051,6 +2114,16 @@
         updateKillstreaks(dt);
         updateRedZone(dt);
         updatePings(dt);
+        if (tabStowHoldStart > 0 && !tabStowTriggered && !isModalOpen) {
+          const gw = _getLookedAtGroundWeapon();
+          if (!gw || !(player && player.hasWeaponBackpack && player.hasWeaponBackpack())) {
+            tabStowHoldStart = 0;
+          } else if (performance.now() - tabStowHoldStart >= 320) {
+            tabStowTriggered = true;
+            tabStowHoldStart = 0;
+            _pickupGroundWeapon(gw, 'backpackWeapon');
+          }
+        }
         checkInteractions();
         checkExtraction(dt);
         ui.updateSearchReveal(dt);

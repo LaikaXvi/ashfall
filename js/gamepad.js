@@ -221,11 +221,33 @@ class GamepadController {
     if (this._justPressed(pad, 8) && actions.toggleTacMap) {
       actions.toggleTacMap();
     }
-    // D-Pad Down (13): Toggle Backpack Modal
-    if (this._justPressed(pad, 13) && actions.toggleBackpack) {
-      actions.toggleBackpack();
-      this._snapshot(pad);
-      return;
+    // D-Pad Down (13): Hold while looking at a ground weapon (with Weapon Backpack) to stow; tap to toggle Backpack Modal
+    const dpadDown = this._isDown(pad, 13);
+    const canStow = !ctx.isModalOpen && actions.canStowGroundWeapon && actions.canStowGroundWeapon();
+    if (dpadDown) {
+      if (canStow) {
+        this._dpadDownHoldTime = (this._dpadDownHoldTime || 0) + dt;
+        if (!this._dpadDownStowed && this._dpadDownHoldTime >= 0.32 && actions.stowGroundWeapon) {
+          actions.stowGroundWeapon();
+          this._dpadDownStowed = true;
+        }
+      } else if (this._justPressed(pad, 13) && actions.toggleBackpack) {
+        actions.toggleBackpack();
+        this._dpadDownHoldTime = 0;
+        this._dpadDownStowed = true;
+        this._snapshot(pad);
+        return;
+      }
+    } else if (this.prevButtons[13]) {
+      if (!this._dpadDownStowed && (this._dpadDownHoldTime || 0) > 0 && actions.toggleBackpack) {
+        actions.toggleBackpack();
+        this._dpadDownHoldTime = 0;
+        this._dpadDownStowed = false;
+        this._snapshot(pad);
+        return;
+      }
+      this._dpadDownHoldTime = 0;
+      this._dpadDownStowed = false;
     }
 
     const gpCursor = document.getElementById('gp-cursor');
