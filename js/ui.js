@@ -1015,6 +1015,26 @@ class GameUI {
     this.renderWorkbench();
   }
 
+  _getItemShortTag(id, def) {
+    const map = {
+      pm9: 'PM9', g17: 'G17', mp5k: 'MP5', ak74m: 'AK', m870: '870', m24: 'M24',
+      ammo_9x18: '918', ammo_9x19: '9MM', ammo_12g: '12G', ammo_545: '545', ammo_762: '762', ammo_rocket: 'RKT',
+      medkit: 'MED', bandage: 'BND', painkillers: 'PK', self_revive: 'SR',
+      armor_plate: 'PLT', vest_1plate: 'V1', vest_2plate: 'V2', vest_2plate_gel: 'V2G', vest_2plate_helmet: 'V2H', vest_3plate: 'V3',
+      bag_small: 'BG1', bag_medium: 'BG2', bag_large: 'BG3',
+      gas_mask: 'MSK', nvg_goggles: 'NVG',
+      fu_ammo_box: 'AMB', fu_dead_silence: 'DS', fu_trophy: 'TRP',
+      ks_uav: 'UAV', ks_airstrike: 'AIR',
+      melee_knife: 'KNF', melee_karambit: 'KRM', melee_axe: 'AXE',
+      frag_grenade: 'FRG', throwing_knife: 'TKN', smoke_grenade: 'SMK', concussion_grenade: 'STN',
+      scrap_metal: 'STL', cloth_roll: 'CLT', gunpowder: 'PWD', polymer_parts: 'PLY',
+      boss_key: 'KEY', dogtag: 'TAG', water_filter: 'FLT', fuel_can: 'FUL', intel_drive: 'INT', gold_watch: 'WTC'
+    };
+    if (map[id]) return map[id];
+    const name = (def && def.name) || id || '?';
+    return name.replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase();
+  }
+
   // ==================== PRE-MATCH LOADOUT SETUP (64-SLOT STASH + OPERATOR + BACKPACK) ====================
   renderPreMatchLoadout() {
     const stashGrid = document.getElementById('prematch-stash-grid');
@@ -1058,11 +1078,10 @@ class GameUI {
         const rar = def.rarity || 'common';
         cell.classList.add(`rarity-${rar}`);
         cell.innerHTML = `
-          <span class="slot-name">${def.name}</span>
-          <span class="slot-val">₽${(def.value * item.qty).toLocaleString()}</span>
-          ${item.qty > 1 ? `<span class="slot-qty">x${item.qty}</span>` : ''}
+          <span class="slot-name">${this._getItemShortTag(item.id, def)}</span>
+          ${item.qty > 1 ? `<span class="slot-qty">${item.qty}</span>` : ''}
         `;
-        cell.title = `${def.name} — Click to Equip or Pack into Backpack`;
+        cell.title = `${def.name}${item.qty > 1 ? ' x' + item.qty : ''} (₽${(def.value * item.qty).toLocaleString()}) — Click to Equip or Pack`;
         cell.addEventListener('click', () => {
           this._equipOrPackFromStash(i, maxBagSlots);
         });
@@ -1127,10 +1146,10 @@ class GameUI {
         const def = GAME_DATA.ITEMS[item.id];
         cell.classList.add(`rarity-${def.rarity || 'common'}`);
         cell.innerHTML = `
-          <span class="slot-name">${def.name}</span>
-          ${item.qty > 1 ? `<span class="slot-qty">x${item.qty}</span>` : ''}
+          <span class="slot-name">${this._getItemShortTag(item.id, def)}</span>
+          ${item.qty > 1 ? `<span class="slot-qty">${item.qty}</span>` : ''}
         `;
-        cell.title = 'Click to return to Stash';
+        cell.title = `${def.name}${item.qty > 1 ? ' x' + item.qty : ''} — Click to return to Stash`;
         cell.addEventListener('click', () => {
           this.addToStash(item.id, item.qty);
           L.backpackItems.splice(i, 1);
@@ -2873,11 +2892,10 @@ class GameUI {
               const effRar = item.rarityOverride || def.rarity || 'common';
               slot.classList.add(`rarity-${effRar}`);
               slot.innerHTML = `
-                <span class="slot-name">${def.name}</span>
-                <span class="slot-val">₽${(def.value * item.qty).toLocaleString()}</span>
-                ${item.qty > 1 ? `<span class="slot-qty">x${item.qty}</span>` : ''}
+                <span class="slot-name">${this._getItemShortTag(item.id, def)}</span>
+                ${item.qty > 1 ? `<span class="slot-qty">${item.qty}</span>` : ''}
               `;
-              slot.title = `${def.name} — Left-Click: Quick-Move to Pack · Right-Click: Options`;
+              slot.title = `${def.name}${item.qty > 1 ? ' x' + item.qty : ''} (₽${(def.value * item.qty).toLocaleString()}) — Left-Click: Quick-Move · Right-Click: Options`;
               slot.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this._hoveredSlot = { context: 'container', item, idx, el: slot };
@@ -2914,10 +2932,10 @@ class GameUI {
           const def = GAME_DATA.ITEMS[item.id];
           slot.classList.add(`rarity-${def.rarity || 'common'}`);
           slot.innerHTML = `
-            <span class="slot-name">${def.name}</span>
-            <span class="slot-val">₽${(def.value * item.qty).toLocaleString()}</span>
-            ${item.qty > 1 ? `<span class="slot-qty">x${item.qty}</span>` : ''}
+            <span class="slot-name">${this._getItemShortTag(item.id, def)}</span>
+            ${item.qty > 1 ? `<span class="slot-qty">${item.qty}</span>` : ''}
           `;
+          slot.title = `${def.name}${item.qty > 1 ? ' x' + item.qty : ''} (₽${(def.value * item.qty).toLocaleString()}) — Left-Click: Details/Equip · Right-Click: Split/Drop`;
           slot.addEventListener('click', (e) => {
             e.stopPropagation();
             if (this._hoveredSlot && this._hoveredSlot.el === slot && this._hoveredSlot.mode === 'details') {
