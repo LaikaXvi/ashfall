@@ -1480,9 +1480,10 @@ class WeaponSystem {
     const wallRotY = wp * 0.14 + smoothTuck * 0.26;
     const wallRotZ = -wp * 0.10 - smoothTuck * 0.16;
 
-    // When leaning around a corner with clearance, align gun smoothly toward the leaned camera eye line
-    const leanClear = 1 - Math.min(1, wp * 2);
-    const leanAlignX = (!customRot && !isAdsActive) ? (-player.lean * 0.055 * leanClear) : 0;
+    // When leaning around a corner with clearance, progressively cant & align gun around the edge
+    const leanClear = 1 - Math.min(1, wp * 1.8);
+    const leanAlignX = (!customRot && !isAdsActive) ? (-player.lean * 0.095 * leanClear) : 0;
+    const leanCantY = (!customRot && !isAdsActive) ? (-player.lean * 0.09 * leanClear) : 0;
 
     // MW2/DMZ One-Handed High-Port Tactical Sprint: weapon held UP in right hand, left fist pumping apart!
     const basePosX = isAdsActive ? 0.0 : (tacSprintingHip ? 0.24 : (sprintingHip ? 0.19 : 0.22));
@@ -1498,15 +1499,15 @@ class WeaponSystem {
     this.viewmodelGroup.position.y = THREE.MathUtils.lerp(this.viewmodelGroup.position.y, targetY - bobY, Math.min(1, dt * lerpRate));
     this.viewmodelGroup.position.z = THREE.MathUtils.lerp(this.viewmodelGroup.position.z, targetZ, Math.min(1, dt * (lerpRate + 2)));
 
-    // Sprint tilt, DMZ Tactical Sprint high-port skyward carry, tactical slide cant (subtle when ADS), wall tuck & lean alignment
+    // Sprint tilt, DMZ Tactical Sprint high-port skyward carry, tactical slide cant (subtle when ADS), wall tuck & progressive corner-lean cant
     const slideCantZ = (!customRot && player.isSliding) ? (isAdsActive ? -0.10 : -0.32) : 0;
     const slideCantY = (!customRot && player.isSliding) ? (isAdsActive ? 0.0 : 0.18) : 0;
     const sprintRotX = tacSprintingHip ? 0.86 : (sprintingHip ? -0.14 : 0);
     const sprintRotY = tacSprintingHip ? 0.16 : (sprintingHip ? 0.22 : 0);
     const sprintRotZ = tacSprintingHip ? -0.14 : (sprintingHip ? 0.08 : 0);
     const targetRotX = customRot ? activeRotOff.x : (sprintRotX + swayRotX + this.recoilOffset * 1.8 + wallRotX);
-    const targetRotY = customRot ? activeRotOff.y : (sprintRotY + slideCantY + wallRotY);
-    const targetRotZ = (customRot ? activeRotOff.z : (sprintRotZ + swayRotZ + slideCantZ + wallRotZ)) - player.lean * (isAdsActive ? 0.02 : 0.08);
+    const targetRotY = customRot ? activeRotOff.y : (sprintRotY + slideCantY + wallRotY + leanCantY);
+    const targetRotZ = (customRot ? activeRotOff.z : (sprintRotZ + swayRotZ + slideCantZ + wallRotZ)) - player.lean * (isAdsActive ? 0.075 : 0.21);
     const rotRate = this.isReloading ? 26 : ((this.isPlating || this.isHealing) ? 14 : (this.isInspecting ? 8 : 11));
     this.viewmodelGroup.rotation.x = THREE.MathUtils.lerp(this.viewmodelGroup.rotation.x, targetRotX, Math.min(1, dt * rotRate));
     this.viewmodelGroup.rotation.y = THREE.MathUtils.lerp(this.viewmodelGroup.rotation.y, targetRotY, Math.min(1, dt * rotRate));

@@ -513,6 +513,24 @@
   }
 
   function updatePlayerRevive(dt) {
+    // Self-Revive Kit: if player is downed and has a Self-Revive Kit equipped, hold [E] to revive yourself!
+    if (player && player.isDowned && !player.dead) {
+      if (player.selfRevive && !isModalOpen && player.keys['KeyE'] && !player.beingRevivedBy) {
+        player.beingRevivedBy = 'SELF-REVIVE';
+        player.reviveProgress = Math.min(1, (player.reviveProgress || 0) + dt / 4.5);
+        if (player.reviveProgress >= 1) {
+          player.selfRevive = null;
+          player.revive(45);
+          ui.showCenterToast('SELF-REVIVE COMPLETE', '#69f0ae');
+          ui.addFeedMessage('Used Self-Revive Kit', '#69f0ae');
+        }
+      } else if (player.beingRevivedBy === 'SELF-REVIVE') {
+        player.beingRevivedBy = null;
+      }
+      ui.updateReviveBanner(player, null, false);
+      return;
+    }
+
     const holdingRevive = !!(player && !player.isDowned && !player.dead && !isModalOpen && player.keys['KeyE']);
     const candidate = activeReviveAlly || findRevivableAlly();
 

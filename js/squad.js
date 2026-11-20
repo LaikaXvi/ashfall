@@ -208,6 +208,70 @@ class SquadMate {
     return hits.length === 0;
   }
 
+  _hasLineOfSightFrom(fromPos, targetPos) {
+    const eye = new THREE.Vector3(fromPos.x, 1.45, fromPos.z);
+    const tgt = new THREE.Vector3(targetPos.x, 1.35, targetPos.z);
+    const dir = tgt.clone().sub(eye);
+    const dist = dir.length();
+    if (dist < 0.3 || dist > 42) return false;
+    dir.normalize();
+    const ray = new THREE.Raycaster(eye, dir, 0.2, dist - 0.3);
+    const hits = ray.intersectObjects(this.world.shootableMeshes, false);
+    return hits.length === 0;
+  }
+
+  _findBestCoverSpot(threatPos, maxRadius = 18) {
+    if (!threatPos || !this.world || !this.world.colliders) return null;
+    let best = null;
+    let bestScore = Infinity;
+
+    for (const c of this.world.colliders) {
+      if (c.maxY < 1.0) continue;
+      const cx = (c.minX + c.maxX) * 0.5;
+      const cz = (c.minZ + c.maxZ) * 0.5;
+      const halfX = (c.maxX - c.minX) * 0.5;
+      const halfZ = (c.maxZ - c.minZ) * 0.5;
+      if (halfX > 14 || halfZ > 14) continue;
+
+      const dSelf = Math.hypot(cx - this.position.x, cz - this.position.z);
+      if (dSelf > maxRadius) continue;
+
+      const awayX = cx - threatPos.x;
+      const awayZ = cz - threatPos.z;
+      const awayLen = Math.hypot(awayX, awayZ) || 1;
+      const nx = awayX / awayLen;
+      const nz = awayZ / awayLen;
+
+      const pad = 0.85;
+      const coverX = cx + nx * (halfX + pad);
+      const coverZ = cz + nz * (halfZ + pad);
+      if (this._collides(coverX, coverZ, 0.45)) continue;
+
+      const coverPos = new THREE.Vector3(coverX, 0, coverZ);
+      if (this._hasLineOfSightFrom(coverPos, threatPos)) continue;
+
+      const perpX = -nz;
+      const perpZ = nx;
+      const side = Math.max(halfX, halfZ) + 1.15;
+      const peekA = new THREE.Vector3(coverX + perpX * side, 0, coverZ + perpZ * side);
+      const peekB = new THREE.Vector3(coverX - perpX * side, 0, coverZ - perpZ * side);
+      let peekPos = coverPos;
+      if (!this._collides(peekA.x, peekA.z, 0.45) && this._hasLineOfSightFrom(peekA, threatPos)) {
+        peekPos = peekA;
+      } else if (!this._collides(peekB.x, peekB.z, 0.45) && this._hasLineOfSightFrom(peekB, threatPos)) {
+        peekPos = peekB;
+      }
+
+      const dThreat = Math.hypot(coverX - threatPos.x, coverZ - threatPos.z);
+      const score = dSelf * 1.1 + Math.abs(dThreat - 16) * 0.4;
+      if (score < bestScore) {
+        bestScore = score;
+        best = { coverPos, peekPos };
+      }
+    }
+    return best;
+  }
+
   takeDamage(amount, attackerInfo = null, onAllyEvent = null) {
     if (this.dead || this.extracted) return null;
     if (this.isDowned) {
@@ -403,12 +467,12 @@ class SquadMate {
 
     this._evaluateObjective(raidTimeLeft, onComms);
 
-    // 1. Scan for nearest visible hostile
+    // 1. Scan for nearest visible standing hostile (ignore downed targets!)
     let targetEnemy = null;
     let bestEnemyDist = 35;
     if (enemyManager && enemyManager.enemies) {
       for (const e of enemyManager.enemies) {
-        if (e.dead) continue;
+        if (e.dead || e.isDowned) continue;
         const d = this.position.distanceTo(e.position);
         if (d < bestEnemyDist && this._hasLineOfSight(new THREE.Vector3(e.position.x, 1.3, e.position.z))) {
           bestEnemyDist = d;
@@ -457,19 +521,28 @@ class SquadMate {
       tRef.beingRevivedBy = this.name;
       tRef.reviveProgress = Math.min(1, (tRef.reviveProgress || 0) + dt / reviveDur);
 
-      // If teammate is DOWNED and exposed to a visible enemy, drag them away from fire into cover while reviving!
+      // If teammate is DOWNED and exposed to a visible enemy, drag them to the nearest cover obstacle while reviving!
       let dragging = false;
       if (tRef.isDowned && targetEnemy) {
-        const awayX = this.position.x - targetEnemy.position.x;
-        const awayZ = this.position.z - targetEnemy.position.z;
-        const awayLen = Math.hypot(awayX, awayZ) || 1;
-        const dragTargetX = this.position.x + (awayX / awayLen) * 3.0;
-        const dragTargetZ = this.position.z + (awayZ / awayLen) * 3.0;
-        dragging = this._moveToward(dragTargetX, dragTargetZ, 1.65, dt);
+        const cover = this._findBestCoverSpot(targetEnemy.position, 16);
+        let dragTargetX, dragTargetZ;
+        if (cover) {
+          dragTargetX = cover.coverPos.x;
+          dragTargetZ = cover.coverPos.z;
+        } else {
+          const awayX = this.position.x - targetEnemy.position.x;
+          const awayZ = this.position.z - targetEnemy.position.z;
+          const awayLen = Math.hypot(awayX, awayZ) || 1;
+          dragTargetX = this.position.x + (awayX / awayLen) * 3.0;
+          dragTargetZ = this.position.z + (awayZ / awayLen) * 3.0;
+        }
+        dragging = this._moveToward(dragTargetX, dragTargetZ, 1.75, dt);
         if (dragging) {
-          // Pull downed teammate behind/beside reviver
-          const pullX = this.position.x - (awayX / awayLen) * 0.95;
-          const pullZ = this.position.z - (awayZ / awayLen) * 0.95;
+          const dx = dragTargetX - this.position.x;
+          const dz = dragTargetZ - this.position.z;
+          const len = Math.hypot(dx, dz) || 1;
+          const pullX = this.position.x - (dx / len) * 0.95;
+          const pullZ = this.position.z - (dz / len) * 0.95;
           if (reviveCandidate.isPlayer) {
             tRef.beingDragged = true;
             tRef.dragToward(pullX, pullZ, 2.2, dt);
@@ -539,23 +612,31 @@ class SquadMate {
 
     let moving = false;
 
-    // 3. Priority A: Combat Engagement (strafe + accurate bursts + occasional chip damage)
+    // 3. Priority A: Combat Engagement (play cover -> peek to fire -> tuck back into cover!)
     if (targetEnemy) {
       this.state = 'COMBAT';
-      this._redrawTag('ENGAGING', '#ff6b6b');
+      this._redrawTag('HOLDING COVER', '#ff6b6b');
       this.group.rotation.y = Math.atan2(targetEnemy.position.x - this.position.x, targetEnemy.position.z - this.position.z);
 
-      this.strafeTimer -= dt;
-      if (this.strafeTimer <= 0) {
-        this.strafeDir *= -1;
-        this.strafeTimer = 1.2 + Math.random() * 1.4;
+      this.coverSearchTimer = (this.coverSearchTimer || 0) - dt;
+      if (!this.coverSpot || this.coverSearchTimer <= 0) {
+        const found = this._findBestCoverSpot(targetEnemy.position, 18);
+        if (found) this.coverSpot = found;
+        this.coverSearchTimer = 2.6;
       }
-      const toE = targetEnemy.position.clone().sub(this.position).normalize();
-      const perpX = -toE.z * this.strafeDir;
-      const perpZ = toE.x * this.strafeDir;
-      // Keep optimal engagement distance (10..20m)
-      const push = bestEnemyDist > 20 ? 0.6 : (bestEnemyDist < 9 ? -0.6 : 0);
-      moving = this._moveToward(this.position.x + perpX * 2 + toE.x * push * 2, this.position.z + perpZ * 2 + toE.z * push * 2, 3.6, dt);
+      if (this.coverSpot) {
+        this.coverPeekTimer = (this.coverPeekTimer || 1.3) - dt;
+        if (this.coverPeekTimer <= 0) {
+          this.isPeeking = !this.isPeeking;
+          this.coverPeekTimer = this.isPeeking ? (1.4 + Math.random() * 0.8) : (0.95 + Math.random() * 0.65);
+        }
+        const goal = this.isPeeking ? this.coverSpot.peekPos : this.coverSpot.coverPos;
+        if (Math.hypot(goal.x - this.position.x, goal.z - this.position.z) > 0.45) {
+          moving = this._moveToward(goal.x, goal.z, this.isPeeking ? 3.2 : 4.2, dt);
+        }
+      } else if (bestEnemyDist > 22) {
+        moving = this._moveToward(targetEnemy.position.x, targetEnemy.position.z, 3.6, dt);
+      }
 
       this.fireTimer -= dt;
       if (this.fireTimer <= 0 && this.mag > 0) {

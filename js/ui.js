@@ -39,6 +39,7 @@ class GameUI {
         backpack: 'bag_small',
         fieldUpgrade: 'fu_ammo_box',
         killstreak: 'ks_uav',
+        selfRevive: 'self_revive',
         plates: 3,
         lethal: 'frag_grenade',
         lethalQty: 2,
@@ -1068,10 +1069,11 @@ class GameUI {
       },
       {
         title: 'SUPPORT',
-        cols: 2,
+        cols: 3,
         slots: [
           { key: 'fieldUpgrade', label: 'FIELD UPGRADE', id: L.fieldUpgrade },
-          { key: 'killstreak', label: 'KILLSTREAK', id: L.killstreak }
+          { key: 'killstreak', label: 'KILLSTREAK', id: L.killstreak },
+          { key: 'selfRevive', label: 'SELF-REVIVE', id: L.selfRevive }
         ]
       }
     ];
@@ -1155,6 +1157,7 @@ class GameUI {
       backpack: 'backpack',
       field_upgrade: 'fieldUpgrade',
       killstreak: 'killstreak',
+      self_revive: 'selfRevive',
       melee: 'melee'
     };
     const targetSlot = slotMap[def.type];
@@ -1706,7 +1709,9 @@ class GameUI {
         titleEl.textContent = 'DOWNED — CRAWL TO COVER';
         timerEl.textContent = `${Math.max(0, player.downedBleedTimer).toFixed(1)}s`;
         fillEl.style.width = `${pct}%`;
-        subEl.textContent = 'Use WASD to crawl · Ally must revive before bleedout expires';
+        subEl.textContent = player.selfRevive
+          ? 'Hold [E] to Self-Revive · WASD to crawl to cover'
+          : 'Use WASD to crawl · Ally must revive before bleedout expires';
       }
       return;
     }
@@ -2147,7 +2152,7 @@ class GameUI {
       } else if (context === 'backpack') {
         if (hasContainer) {
           actionsHtml += `<button class="pop-act" data-act="quick">${badge('A')}Quick-Move to Container</button>`;
-        } else if (def.type === 'weapon' || def.type === 'armor' || def.type === 'backpack' || def.type === 'field_upgrade' || def.type === 'killstreak' || def.type === 'melee' || def.type === 'plate' || def.type === 'med') {
+        } else if (def.type === 'weapon' || def.type === 'armor' || def.type === 'backpack' || def.type === 'field_upgrade' || def.type === 'killstreak' || def.type === 'self_revive' || def.type === 'melee' || def.type === 'plate' || def.type === 'med') {
           actionsHtml += `<button class="pop-act" data-act="quick">${badge('A')}Equip / Use</button>`;
         }
       }
@@ -2262,6 +2267,11 @@ class GameUI {
           player.killstreak = item.id;
           player.backpack.splice(idx, 1);
           if (prev) player.backpack.push({ id: prev, qty: 1 });
+        } else if (def.type === 'self_revive') {
+          const prev = player.selfRevive;
+          player.selfRevive = item.id;
+          player.backpack.splice(idx, 1);
+          if (prev) player.backpack.push({ id: prev, qty: 1 });
         } else if (def.type === 'melee') {
           const prev = player.melee;
           player.melee = item.id;
@@ -2303,6 +2313,7 @@ class GameUI {
       const bDef = GAME_DATA.ITEMS[player.backpackId || 'bag_small'];
       const fDef = GAME_DATA.ITEMS[player.fieldUpgrade || 'fu_ammo_box'];
       const kDef = player.killstreak ? GAME_DATA.ITEMS[player.killstreak] : null;
+      const srDef = player.selfRevive ? GAME_DATA.ITEMS[player.selfRevive] : null;
 
       const opGroups = [
         {
@@ -2325,10 +2336,11 @@ class GameUI {
         },
         {
           title: 'SUPPORT',
-          cols: 2,
+          cols: 3,
           items: [
             { label: 'FIELD UPGRADE', name: fDef ? fDef.name : 'None', rarity: fDef ? fDef.rarity : 'rare' },
-            { label: 'KILLSTREAK', name: kDef ? kDef.name : 'None', rarity: kDef ? kDef.rarity : 'common' }
+            { label: 'KILLSTREAK', name: kDef ? kDef.name : 'None', rarity: kDef ? kDef.rarity : 'common' },
+            { label: 'SELF-REVIVE', name: srDef ? srDef.name : 'None', rarity: srDef ? srDef.rarity : 'common' }
           ]
         }
       ];

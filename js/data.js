@@ -1,7 +1,7 @@
 // Game Item Database, 5-Tier Loot Rarity, Logical POI Tables, Workbench & Attachments
 // IMPORTANT: Update GAME_DATA.VERSION (and ?v= cache-busters in index.html) with EVERY new commit!
 window.GAME_DATA = {
-  VERSION: 'v0.82',
+  VERSION: 'v0.83',
   SQUAD_COLORS: ['#69f0ae', '#42a5f5', '#ffeb3b', '#ff69b4'], // Green, Blue, Yellow, Pink
 
   RARITIES: {
@@ -434,7 +434,16 @@ window.GAME_DATA = {
       desc: 'Common tactical polymers for Workbench crafting. Stacks to 10.'
     },
 
-    // === KEYS & HIGH-VALUE BARTER ===
+    // === SELF-REVIVE & KEYS & HIGH-VALUE BARTER ===
+    self_revive: {
+      id: 'self_revive',
+      name: 'Self-Revive Kit',
+      type: 'self_revive',
+      rarity: 'epic',
+      value: 6500,
+      weight: 0.6,
+      desc: 'Dedicated emergency epinephrine auto-injector. Hold [E] while downed to revive yourself.'
+    },
     boss_key: {
       id: 'boss_key',
       name: 'Encampment Armory Key',
@@ -527,6 +536,14 @@ window.GAME_DATA = {
       ingredients: [{ id: 'cloth_roll', qty: 2 }, { id: 'polymer_parts', qty: 1 }]
     },
     {
+      id: 'craft_self_revive',
+      outputId: 'self_revive',
+      outputQty: 1,
+      name: 'Self-Revive Kit',
+      desc: 'Synthesize an Epic Self-Revive auto-injector for solo or last-stand recovery.',
+      ingredients: [{ id: 'cloth_roll', qty: 3 }, { id: 'polymer_parts', qty: 3 }, { id: 'scrap_metal', qty: 2 }]
+    },
+    {
       id: 'craft_frag',
       outputId: 'frag_grenade',
       outputQty: 2,
@@ -564,7 +581,7 @@ window.GAME_DATA = {
     weapons: ['pm9', 'g17', 'mp5k', 'm870', 'ak74m', 'm24'],
     ammo: ['ammo_9x18', 'ammo_9x19', 'ammo_12g', 'ammo_545', 'ammo_762', 'ammo_rocket'],
     gear: [
-      'bandage', 'painkillers', 'medkit', 'armor_plate',
+      'bandage', 'painkillers', 'medkit', 'self_revive', 'armor_plate',
       'vest_1plate', 'vest_2plate', 'vest_2plate_gel', 'vest_2plate_helmet', 'vest_3plate',
       'bag_small', 'bag_medium', 'bag_large',
       'fu_ammo_box', 'fu_dead_silence', 'fu_trophy',
@@ -603,10 +620,11 @@ window.GAME_DATA = {
   LOOT_TABLES: {
     // Location-based logical loot tables
     hospital: [
-      { id: 'medkit', min: 1, max: 2, w: 34 },
-      { id: 'bandage', min: 1, max: 3, w: 32 },
-      { id: 'painkillers', min: 1, max: 2, w: 24 },
-      { id: 'cloth_roll', min: 1, max: 3, w: 10 }
+      { id: 'medkit', min: 1, max: 2, w: 30 },
+      { id: 'bandage', min: 1, max: 3, w: 28 },
+      { id: 'painkillers', min: 1, max: 2, w: 22 },
+      { id: 'self_revive', min: 1, max: 1, w: 12 },
+      { id: 'cloth_roll', min: 1, max: 3, w: 8 }
     ],
     police_fire: [
       { id: 'vest_1plate', min: 1, max: 1, w: 18 },

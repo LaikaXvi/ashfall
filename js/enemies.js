@@ -170,6 +170,12 @@ class Enemy {
     this.fireTimer = 0.75;
     this.strafeDir = Math.random() > 0.5 ? 1 : -1;
     this.strafeTimer = 1.5;
+    this.beingRevivedBy = null;
+    this.reviveProgress = 0;
+    this.coverSpot = null; // { coverPos: Vector3, peekPos: Vector3 }
+    this.coverSearchTimer = 0;
+    this.coverPeekTimer = 1.4;
+    this.isPeeking = true;
 
     this.group = new THREE.Group();
     this.group.position.copy(this.position);
@@ -463,7 +469,110 @@ class Enemy {
     return false;
   }
 
-  update(dt, player, onEnemyFire, onEnemyBleedout) {
+  dragToward(tx, tz, speed, dt) {
+    if (this.dead) return;
+    const dx = tx - this.position.x;
+    const dz = tz - this.position.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 0.12) return;
+    const step = Math.min(dist, speed * dt);
+    const vx = (dx / dist) * step;
+    const vz = (dz / dist) * step;
+    if (!this._collides(this.position.x + vx, this.position.z, 0.42)) {
+      this.position.x += vx;
+      this.group.position.x = this.position.x;
+    }
+    if (!this._collides(this.position.x, this.position.z + vz, 0.42)) {
+      this.position.z += vz;
+      this.group.position.z = this.position.z;
+    }
+  }
+
+  revive(hpRestore = 65) {
+    if (this.dead) return;
+    this.isDowned = false;
+    this.hp = Math.min(this.maxHp, hpRestore);
+    this.downedHp = 55;
+    this.downedBleedTimer = this.downedBleedMax;
+    this.beingRevivedBy = null;
+    this.reviveProgress = 0;
+    this.group.position.y = 0;
+    this.group.rotation.x = 0;
+    if (this.bleedSprite) this.bleedSprite.visible = false;
+    this.state = 'ALERT';
+    this.alertTimer = 4.0;
+    this._showAlertIndicator('!', 1.5);
+  }
+
+  _hasLineOfSightFrom(fromPos, targetPos) {
+    const eye = new THREE.Vector3(fromPos.x, 1.45, fromPos.z);
+    const tgt = new THREE.Vector3(targetPos.x, 1.35, targetPos.z);
+    const dir = tgt.clone().sub(eye);
+    const dist = dir.length();
+    if (dist < 0.3 || dist > 48) return false;
+    dir.normalize();
+    const ray = new THREE.Raycaster(eye, dir, 0.2, dist - 0.3);
+    const hits = ray.intersectObjects(this.world.shootableMeshes, false);
+    return hits.length === 0;
+  }
+
+  _findBestCoverSpot(threatPos, maxRadius = 18) {
+    if (!threatPos || !this.world || !this.world.colliders) return null;
+    let best = null;
+    let bestScore = Infinity;
+
+    for (const c of this.world.colliders) {
+      if (c.maxY < 1.0) continue; // need waist/chest-high or taller cover
+      const cx = (c.minX + c.maxX) * 0.5;
+      const cz = (c.minZ + c.maxZ) * 0.5;
+      const halfX = (c.maxX - c.minX) * 0.5;
+      const halfZ = (c.maxZ - c.minZ) * 0.5;
+      if (halfX > 14 || halfZ > 14) continue; // skip huge outer perimeter walls
+
+      const dSelf = Math.hypot(cx - this.position.x, cz - this.position.z);
+      if (dSelf > maxRadius) continue;
+
+      // Direction from threat through obstacle center => opposite side of cover!
+      const awayX = cx - threatPos.x;
+      const awayZ = cz - threatPos.z;
+      const awayLen = Math.hypot(awayX, awayZ) || 1;
+      const nx = awayX / awayLen;
+      const nz = awayZ / awayLen;
+
+      const pad = 0.85;
+      const coverX = cx + nx * (halfX + pad);
+      const coverZ = cz + nz * (halfZ + pad);
+      if (this._collides(coverX, coverZ, 0.45)) continue;
+
+      const coverPos = new THREE.Vector3(coverX, 0, coverZ);
+      // Verify cover actually blocks LOS to threat
+      if (this._hasLineOfSightFrom(coverPos, threatPos)) continue;
+
+      // Compute a lateral peek point just past the edge of the cover
+      const perpX = -nz;
+      const perpZ = nx;
+      const side = Math.max(halfX, halfZ) + 1.15;
+      const peekA = new THREE.Vector3(coverX + perpX * side, 0, coverZ + perpZ * side);
+      const peekB = new THREE.Vector3(coverX - perpX * side, 0, coverZ - perpZ * side);
+      let peekPos = coverPos;
+      if (!this._collides(peekA.x, peekA.z, 0.45) && this._hasLineOfSightFrom(peekA, threatPos)) {
+        peekPos = peekA;
+      } else if (!this._collides(peekB.x, peekB.z, 0.45) && this._hasLineOfSightFrom(peekB, threatPos)) {
+        peekPos = peekB;
+      }
+
+      const dThreat = Math.hypot(coverX - threatPos.x, coverZ - threatPos.z);
+      const idealDist = this.playstyle === 'marksman' ? 24 : (this.playstyle === 'rusher' ? 11 : 16);
+      const score = dSelf * 1.1 + Math.abs(dThreat - idealDist) * 0.45;
+      if (score < bestScore) {
+        bestScore = score;
+        best = { coverPos, peekPos };
+      }
+    }
+    return best;
+  }
+
+  update(dt, player, onEnemyFire, onEnemyBleedout, allEnemies = []) {
     if (this.dead) return;
 
     if (this.muzzleTimer > 0) {
@@ -477,7 +586,6 @@ class Enemy {
     // Update floating alert indicator (?, !)
     if (this.indicatorTimer > 0) {
       this.indicatorTimer -= dt;
-      // Settle pop-in scale back to normal
       const s = THREE.MathUtils.lerp(this.alertSprite.scale.x, 0.58, dt * 10);
       this.alertSprite.scale.set(s, s, 1);
       if (this.indicatorTimer <= 0) {
@@ -485,35 +593,37 @@ class Enemy {
       }
     }
 
-    // Downed operator crawls away towards safety and bleeds out over 25s
+    // Downed operator: pauses bleedout while being revived/dragged by a squadmate; otherwise crawls toward safety
     if (this.isDowned) {
-      this.downedBleedTimer -= dt;
-      // Crawl slowly away from shooter
-      const threat = this.lastKnownPlayerPos || (player && player.position);
-      if (threat) {
-        const awayX = this.position.x - threat.x;
-        const awayZ = this.position.z - threat.z;
-        const dist = Math.hypot(awayX, awayZ) || 1;
-        const crawlSpd = 0.95;
-        const vx = (awayX / dist) * crawlSpd * dt;
-        const vz = (awayZ / dist) * crawlSpd * dt;
-        if (!this._collides(this.position.x + vx, this.position.z, 0.42)) {
-          this.position.x += vx;
-          this.group.position.x = this.position.x;
+      if (!this.beingRevivedBy) {
+        this.downedBleedTimer -= dt;
+        const threat = this.lastKnownPlayerPos || (player && player.position);
+        if (threat) {
+          const awayX = this.position.x - threat.x;
+          const awayZ = this.position.z - threat.z;
+          const dist = Math.hypot(awayX, awayZ) || 1;
+          const crawlSpd = 0.95;
+          const vx = (awayX / dist) * crawlSpd * dt;
+          const vz = (awayZ / dist) * crawlSpd * dt;
+          if (!this._collides(this.position.x + vx, this.position.z, 0.42)) {
+            this.position.x += vx;
+            this.group.position.x = this.position.x;
+          }
+          if (!this._collides(this.position.x, this.position.z + vz, 0.42)) {
+            this.position.z += vz;
+            this.group.position.z = this.position.z;
+          }
+          this.group.rotation.y = Math.atan2(awayX, awayZ);
         }
-        if (!this._collides(this.position.x, this.position.z + vz, 0.42)) {
-          this.position.z += vz;
-          this.group.position.z = this.position.z;
-        }
-        this.group.rotation.y = Math.atan2(awayX, awayZ);
       }
       this._bleedDrawAccum += dt;
       if (this.bleedSprite && this._bleedDrawAccum >= 0.06) {
         this._bleedDrawAccum = 0;
-        window.drawDownedBleedoutCanvas(this.bleedCanvas, this.downedBleedTimer / this.downedBleedMax, { isAlly: false });
+        const ratio = this.beingRevivedBy ? (this.reviveProgress || 0) : (this.downedBleedTimer / this.downedBleedMax);
+        window.drawDownedBleedoutCanvas(this.bleedCanvas, ratio, { isAlly: !!this.beingRevivedBy });
         this.bleedTex.needsUpdate = true;
       }
-      if (this.downedBleedTimer <= 0) {
+      if (!this.beingRevivedBy && this.downedBleedTimer <= 0) {
         this.die();
         if (onEnemyBleedout) onEnemyBleedout(this);
       }
@@ -527,6 +637,59 @@ class Enemy {
       return;
     }
 
+    // Priority 0 for AI Operators: Revive & Drag-to-Cover downed squadmates!
+    if (this.isOperator && this.squadName && allEnemies.length > 0) {
+      let downedMate = null;
+      let bestMateDist = 26;
+      for (const mate of allEnemies) {
+        if (!mate || mate === this || mate.dead || !mate.isDowned) continue;
+        if (mate.squadName !== this.squadName) continue;
+        if (mate.beingRevivedBy && mate.beingRevivedBy !== this.name) continue;
+        const d = this.position.distanceTo(mate.position);
+        if (d < bestMateDist) {
+          bestMateDist = d;
+          downedMate = mate;
+        }
+      }
+
+      if (downedMate) {
+        const dMate = Math.hypot(downedMate.position.x - this.position.x, downedMate.position.z - this.position.z);
+        if (dMate > 2.0) {
+          this._moveToward(downedMate.position, this.speed * 1.15, dt);
+          return;
+        }
+        // Reached downed squadmate: channel revive AND drag them to nearest cover if exposed!
+        downedMate.beingRevivedBy = this.name;
+        downedMate.reviveProgress = Math.min(1, (downedMate.reviveProgress || 0) + dt / 4.0);
+
+        const threatPos = (player && !player.dead && !player.isDowned) ? player.position : this.lastKnownPlayerPos;
+        if (threatPos && this._hasLineOfSightFrom(this.position, threatPos)) {
+          const cover = this._findBestCoverSpot(threatPos, 15);
+          let dragDest = cover ? cover.coverPos : null;
+          if (!dragDest) {
+            const awayX = this.position.x - threatPos.x;
+            const awayZ = this.position.z - threatPos.z;
+            const len = Math.hypot(awayX, awayZ) || 1;
+            dragDest = new THREE.Vector3(this.position.x + (awayX / len) * 3.5, 0, this.position.z + (awayZ / len) * 3.5);
+          }
+          const moved = this._moveToward(dragDest, 1.75, dt);
+          if (moved) {
+            const dx = dragDest.x - this.position.x;
+            const dz = dragDest.z - this.position.z;
+            const dLen = Math.hypot(dx, dz) || 1;
+            downedMate.dragToward(this.position.x - (dx / dLen) * 0.95, this.position.z - (dz / dLen) * 0.95, 2.2, dt);
+          }
+        }
+
+        if (downedMate.reviveProgress >= 1) {
+          downedMate.revive(65);
+        }
+        return;
+      }
+    }
+
+    // Ignore downed or dead players!
+    const playerTargetable = !!(player && !player.dead && !player.isDowned);
     const playerPos = player.position;
     const distToPlayer = this.position.distanceTo(playerPos);
     const detectRange = player.isProne ? 12 : (player.isCrouching ? 18 : 28);
@@ -542,33 +705,43 @@ class Enemy {
       inVision = dot > 0.35; // ~140 deg forward cone
     }
 
-    const canSee = distToPlayer < detectRange && inVision && this._hasLineOfSight(playerPos, detectRange + 4);
+    const canSee = playerTargetable && distToPlayer < detectRange && inVision && this._hasLineOfSight(playerPos, detectRange + 4);
 
-    if (canSee) {
+    if (!playerTargetable && this.state === 'COMBAT') {
+      // Player is downed/eliminated: disengage immediately instead of shooting downed players!
+      this.state = 'PATROL';
+      this.lastKnownPlayerPos = null;
+      this.coverSpot = null;
+      this.patrolTarget = this._pickPatrolPoint();
+    } else if (canSee) {
       if (this.state !== 'COMBAT') {
         this.state = 'COMBAT';
         this.fireTimer = 0.75; // Reaction window before first shot
+        this.coverSpot = this._findBestCoverSpot(playerPos, 18);
+        this.coverSearchTimer = 2.5;
+        this.isPeeking = false;
+        this.coverPeekTimer = 0.9;
         this._showAlertIndicator('!', 2.2);
         window.soundEngine.playAlert(true);
       }
       this.lastKnownPlayerPos = playerPos.clone();
-      this.loseSightTimer = 4.5; // Time before losing track in combat
-      this.alertTimer = 4.5;     // Cooldown in ALERT before returning to patrol
+      this.loseSightTimer = 4.5;
+      this.alertTimer = 4.5;
     } else if (this.state === 'COMBAT') {
       this.loseSightTimer -= dt;
       if (this.loseSightTimer <= 0) {
-        // Lost track of player: drop to ALERT/search with '?' indicator
         this.state = 'ALERT';
         this.alertTimer = 4.5;
+        this.coverSpot = null;
         this._showAlertIndicator('?', 2.5);
         window.soundEngine.playAlert(false);
       }
     } else if (this.state === 'ALERT') {
       this.alertTimer -= dt;
       if (this.alertTimer <= 0) {
-        // Cooldown complete: disengage and return to original patrol area
         this.state = 'PATROL';
         this.lastKnownPlayerPos = null;
+        this.coverSpot = null;
         this.patrolTarget = this._pickPatrolPoint();
       }
     }
@@ -580,30 +753,43 @@ class Enemy {
       }
     } else if (this.state === 'ALERT' && this.lastKnownPlayerPos) {
       this._moveToward(this.lastKnownPlayerPos, this.speed * 0.85, dt);
-    } else if (this.state === 'COMBAT') {
-      // Face player
+    } else if (this.state === 'COMBAT' && playerTargetable) {
+      // Face threat
       const dx = playerPos.x - this.position.x;
       const dz = playerPos.z - this.position.z;
       this.group.rotation.y = Math.atan2(dx, dz);
 
-      if (canSee) {
-        // Strafe or close distance while keeping eyes on the player
-        if (distToPlayer > 22) {
-          this._moveToward(playerPos, this.speed, dt, playerPos);
-        } else {
-          this.strafeTimer -= dt;
-          if (this.strafeTimer <= 0) {
-            this.strafeDir *= -1;
-            this.strafeTimer = 1.2 + Math.random() * 1.4;
-          }
-          const perp = new THREE.Vector3(-dz, 0, dx).normalize().multiplyScalar(this.strafeDir * 3);
-          this._moveToward(this.position.clone().add(perp), this.speed * 0.65, dt, playerPos);
-        }
+      // Prioritize playing cover (find cover behind nearby colliders -> peek to fire -> tuck back into cover!)
+      this.coverSearchTimer -= dt;
+      if (!this.coverSpot || this.coverSearchTimer <= 0) {
+        const refreshed = this._findBestCoverSpot(playerPos, 18);
+        if (refreshed) this.coverSpot = refreshed;
+        this.coverSearchTimer = 2.8;
+      }
 
-        // Fire at player
+      if (this.coverSpot) {
+        this.coverPeekTimer -= dt;
+        if (this.coverPeekTimer <= 0) {
+          this.isPeeking = !this.isPeeking;
+          this.coverPeekTimer = this.isPeeking
+            ? (1.35 + Math.random() * 0.85) // peek window to fire
+            : (1.05 + Math.random() * 0.75); // tuck behind cover
+        }
+        const goal = this.isPeeking ? this.coverSpot.peekPos : this.coverSpot.coverPos;
+        const dGoal = Math.hypot(goal.x - this.position.x, goal.z - this.position.z);
+        if (dGoal > 0.45) {
+          this._moveToward(goal, this.speed * (this.isPeeking ? 0.78 : 1.05), dt, playerPos);
+        }
+      } else if (distToPlayer > 22) {
+        // Only close distance if no cover is available nearby
+        this._moveToward(playerPos, this.speed * 0.85, dt, playerPos);
+      }
+
+      if (canSee) {
+        // Fire bursts when peeking or holding line of sight
         this.fireTimer -= dt;
         if (this.fireTimer <= 0) {
-          this.fireTimer = this.fireInterval + Math.random() * 0.2;
+          this.fireTimer = this.fireInterval + Math.random() * 0.22;
           window.soundEngine.playGunshot(this.weaponId, distToPlayer);
 
           this.muzzleMesh.material.opacity = 0.95;
@@ -613,13 +799,12 @@ class Enemy {
           const muzzleWorld = new THREE.Vector3();
           this.muzzleMesh.getWorldPosition(muzzleWorld);
 
-          // Accuracy check (crouching makes player slightly harder to hit)
           const hitChance = Math.max(0.15, (1 - distToPlayer / 75) * (1 - this.accuracy * 2.5));
           const hit = Math.random() < hitChance;
           onEnemyFire(this, hit, this.damage, muzzleWorld);
         }
-      } else if (this.lastKnownPlayerPos) {
-        this._moveToward(this.lastKnownPlayerPos, this.speed, dt);
+      } else if (!this.coverSpot && this.lastKnownPlayerPos) {
+        this._moveToward(this.lastKnownPlayerPos, this.speed * 0.85, dt);
       }
     }
   }
@@ -685,7 +870,7 @@ class EnemyManager {
 
   update(dt, player, onEnemyFire, onEnemyBleedout) {
     for (const e of this.enemies) {
-      e.update(dt, player, onEnemyFire, onEnemyBleedout);
+      e.update(dt, player, onEnemyFire, onEnemyBleedout, this.enemies);
     }
   }
 }

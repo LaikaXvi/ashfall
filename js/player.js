@@ -77,6 +77,8 @@ class Player {
     this.fieldUpgrade = loadoutState.fieldUpgrade || 'fu_ammo_box';
     this.fieldUpgradeCharge = 100; // starts ready (0..100%)
     this.killstreak = loadoutState.killstreak || null;
+    this.selfRevive = loadoutState.selfRevive || null;
+    this.selfReviveProgress = 0;
     this.melee = loadoutState.melee || 'melee_knife';
     this.uavTimer = 0;
     this.deadSilenceTimer = 0;
@@ -1323,11 +1325,11 @@ class Player {
       this.headRoll = THREE.MathUtils.lerp(this.headRoll, 0, Math.min(1, dt * 8));
     }
 
-    // Automatic Dynamic Corner-Peeking Lean (gradually leans around cover as you approach & round corners)
+    // Automatic Progressive Corner-Peeking Lean (wider radius; leans & angles further as you reach the corner edge)
     let targetLean = 0;
-    if (!this.isSprinting && !this.isTacSprinting && !this.isSliding) {
+    if (!this.isSprinting && !this.isTacSprinting && !this.isSliding && !this.isDowned && !this.dead) {
       const rayBlockedAt = (ox, oy, oz, dx, dz, maxDist) => {
-        for (let d = 0.25; d <= maxDist; d += 0.16) {
+        for (let d = 0.22; d <= maxDist; d += 0.14) {
           if (this._collidesAt(ox + dx * d, oy, oz + dz * d)) return d;
         }
         return maxDist;
@@ -1337,34 +1339,64 @@ class Player {
       const fwdX = forwardVec.x, fwdZ = forwardVec.z;
       const rX = rightVec.x, rZ = rightVec.z;
 
-      const centerDist = rayBlockedAt(this.position.x, eyeY, this.position.z, fwdX, fwdZ, 1.35);
-      const leftDist = rayBlockedAt(this.position.x - rX * 0.56, eyeY, this.position.z - rZ * 0.56, fwdX, fwdZ, 1.65);
-      const rightDist = rayBlockedAt(this.position.x + rX * 0.56, eyeY, this.position.z + rZ * 0.56, fwdX, fwdZ, 1.65);
+      const detectRange = 2.25; // wider approach radius around corners
+      const centerDist = rayBlockedAt(this.position.x, eyeY, this.position.z, fwdX, fwdZ, detectRange);
 
-      const frontBlocked = centerDist < 1.20;
-      const leftOpen = leftDist > 1.45 && !this._collidesAt(this.position.x - rX * 0.50, eyeY, this.position.z - rZ * 0.50);
-      const rightOpen = rightDist > 1.45 && !this._collidesAt(this.position.x + rX * 0.50, eyeY, this.position.z + rZ * 0.50);
+      // Probe multiple lateral offsets (0.36m .. 1.18m) to find the exact distance to the corner edge
+      const offsets = [0.36, 0.58, 0.84, 1.15];
+      let leftClearOffset = null;
+      let rightClearOffset = null;
+      for (const off of offsets) {
+        if (leftClearOffset === null) {
+          const lx = this.position.x - rX * off, lz = this.position.z - rZ * off;
+          if (!this._collidesAt(lx, eyeY, lz) && rayBlockedAt(lx, eyeY, lz, fwdX, fwdZ, detectRange + 0.45) > detectRange + 0.15) {
+            leftClearOffset = off;
+          }
+        }
+        if (rightClearOffset === null) {
+          const rx = this.position.x + rX * off, rz = this.position.z + rZ * off;
+          if (!this._collidesAt(rx, eyeY, rz) && rayBlockedAt(rx, eyeY, rz, fwdX, fwdZ, detectRange + 0.45) > detectRange + 0.15) {
+            rightClearOffset = off;
+          }
+        }
+      }
+
+      const frontBlocked = centerDist < 2.05;
+      const leftOpen = leftClearOffset !== null;
+      const rightOpen = rightClearOffset !== null;
 
       if (frontBlocked && (leftOpen !== rightOpen)) {
-        // Subtle gradual lean as player closes in on the corner edge
-        const prox = THREE.MathUtils.clamp((1.20 - centerDist) / 0.65, 0.15, 1.0);
-        const adsBoost = this.isADS ? 0.68 : 0.44;
-        targetLean = (rightOpen ? 1 : -1) * prox * adsBoost;
+        // Closer to the wall AND closer laterally to the corner edge => progressively deeper lean!
+        const forwardProx = THREE.MathUtils.clamp((2.05 - centerDist) / 1.35, 0.18, 1.0);
+        const edgeOff = rightOpen ? rightClearOffset : leftClearOffset;
+        const edgeFactor = THREE.MathUtils.clamp(1.25 - (edgeOff - 0.36) / 1.05, 0.38, 1.0);
+        const adsBoost = this.isADS ? 1.0 : 0.78;
+        targetLean = (rightOpen ? 1 : -1) * Math.min(1.0, forwardProx * 0.55 + edgeFactor * 0.55) * adsBoost;
       } else if (!frontBlocked) {
-        // Very subtle gradual lean away from a close side wall while rounding a corner
-        const wallLeft = this._collidesAt(this.position.x - rX * 0.58, eyeY, this.position.z - rZ * 0.58);
-        const wallRight = this._collidesAt(this.position.x + rX * 0.58, eyeY, this.position.z + rZ * 0.58);
-        if (wallLeft && !wallRight && rightOpen) {
-          targetLean = this.isADS ? 0.28 : 0.16;
-        } else if (wallRight && !wallLeft && leftOpen) {
-          targetLean = this.isADS ? -0.28 : -0.16;
+        // Rounding a corner: detect nearby side wall within a 1.25m radius and lean further right at the wall's edge!
+        const wallDistL = rayBlockedAt(this.position.x, eyeY, this.position.z, -rX, -rZ, 1.25);
+        const wallDistR = rayBlockedAt(this.position.x, eyeY, this.position.z, rX, rZ, 1.25);
+        const wallLeft = wallDistL < 1.18;
+        const wallRight = wallDistR < 1.18;
+
+        if (wallLeft && !wallRight) {
+          // Check how close the wall is to ending ahead (true corner edge vs long corridor)
+          const aheadWallL = this._collidesAt(this.position.x - rX * (wallDistL + 0.20) + fwdX * 0.85, eyeY, this.position.z - rZ * (wallDistL + 0.20) + fwdZ * 0.85);
+          const proxL = THREE.MathUtils.clamp((1.18 - wallDistL) / 0.75, 0.20, 1.0);
+          const edgeBoost = aheadWallL ? 0.52 : 1.0; // full deep lean right at the corner edge!
+          targetLean = proxL * edgeBoost * (this.isADS ? 0.88 : 0.64);
+        } else if (wallRight && !wallLeft) {
+          const aheadWallR = this._collidesAt(this.position.x + rX * (wallDistR + 0.20) + fwdX * 0.85, eyeY, this.position.z + rZ * (wallDistR + 0.20) + fwdZ * 0.85);
+          const proxR = THREE.MathUtils.clamp((1.18 - wallDistR) / 0.75, 0.20, 1.0);
+          const edgeBoost = aheadWallR ? 0.52 : 1.0;
+          targetLean = -proxR * edgeBoost * (this.isADS ? 0.88 : 0.64);
         }
       }
     }
-    this.lean = THREE.MathUtils.lerp(this.lean, targetLean, Math.min(1, dt * 5.5));
+    this.lean = THREE.MathUtils.lerp(this.lean, targetLean, Math.min(1, dt * 6.5));
 
-    const leanLateral = this.lean * 0.26;
-    const leanDip = Math.abs(this.lean) * 0.025;
+    const leanLateral = this.lean * 0.42;
+    const leanDip = Math.abs(this.lean) * 0.042;
     const camPos = this.position.clone();
     if (Math.abs(leanLateral) > 0.01) {
       const testX = camPos.x + rightVec.x * leanLateral;
@@ -1380,7 +1412,7 @@ class Player {
     this._updateThirdPersonModel(dt);
 
     // Apply to camera (1st-person or 3rd-person over-the-shoulder debug camera)
-    const euler = new THREE.Euler(this.pitch, this.yaw, -this.lean * 0.085 + this.headRoll + this.slideRoll, 'YXZ');
+    const euler = new THREE.Euler(this.pitch, this.yaw, -this.lean * 0.165 + this.headRoll + this.slideRoll, 'YXZ');
     if (this.isThirdPerson) {
       const lookBack = new THREE.Vector3(0, 0, 1).applyEuler(new THREE.Euler(this.pitch * 0.65, this.yaw, 0, 'YXZ'));
       const shoulderOff = rightVec.clone().multiplyScalar(0.55);
