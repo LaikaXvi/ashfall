@@ -1000,10 +1000,20 @@ class GameUI {
   }
 
   _initLiveUpdateTracker() {
-    const badge = document.getElementById('menu-update-badge');
+    let badge = document.getElementById('menu-update-badge');
+    const verBadge = document.getElementById('menu-version-badge');
+    if (!badge && verBadge && verBadge.parentElement) {
+      badge = document.createElement('button');
+      badge.id = 'menu-update-badge';
+      badge.className = 'menu-update-badge hidden';
+      badge.title = 'Click to reload into the latest version';
+      badge.textContent = 'NEW VERSION AVAILABLE';
+      verBadge.parentElement.insertBefore(badge, verBadge);
+    }
     if (!badge) return;
 
-    let latestAvailable = null;
+    let pagesReadyVer = null;
+    let githubPendingVer = null;
     const parseVer = (v) => String(v || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0);
     const isNewer = (remote, local) => {
       if (!remote || !local || remote === local) return false;
@@ -1018,48 +1028,66 @@ class GameUI {
       return remote !== local;
     };
 
+    const renderBadge = () => {
+      if (pagesReadyVer) {
+        badge.textContent = `NEW VERSION AVAILABLE (${pagesReadyVer}) · CLICK TO UPDATE`;
+        badge.style.opacity = '1';
+        badge.classList.remove('hidden');
+      } else if (githubPendingVer) {
+        badge.textContent = `NEW VERSION AVAILABLE (${githubPendingVer}) · PUBLISHING...`;
+        badge.style.opacity = '0.9';
+        badge.classList.remove('hidden');
+      }
+    };
+
     badge.addEventListener('click', () => {
-      const bust = latestAvailable ? encodeURIComponent(latestAvailable) : Date.now();
+      const bust = encodeURIComponent(pagesReadyVer || githubPendingVer || Date.now());
       const base = window.location.origin + window.location.pathname;
       window.location.replace(`${base}?v=${bust}&t=${Date.now()}`);
     });
 
-    const handleVersionText = (txt, localVer) => {
-      if (!txt) return false;
-      const m = txt.match(/VERSION\s*:\s*['"]([^'"]+)['"]/);
-      const remoteVer = m && m[1];
-      if (remoteVer && isNewer(remoteVer, localVer)) {
-        if (!latestAvailable || isNewer(remoteVer, latestAvailable)) {
-          latestAvailable = remoteVer;
-        }
-        badge.textContent = `NEW VERSION AVAILABLE (${latestAvailable})`;
-        badge.classList.remove('hidden');
-        return true;
-      }
-      return false;
+    const extractVer = (txt) => {
+      if (!txt) return null;
+      const m1 = txt.match(/VERSION\s*:\s*['"]([^'"]+)['"]/);
+      if (m1 && m1[1]) return m1[1];
+      const m2 = txt.match(/menu-version-badge[^>]*>\s*(v[0-9.]+)\s*</i);
+      return (m2 && m2[1]) || null;
     };
 
     const checkForUpdate = () => {
-      const localVer = (window.GAME_DATA && GAME_DATA.VERSION) || '';
+      const localVer = (window.GAME_DATA && GAME_DATA.VERSION) || (verBadge && verBadge.textContent.trim()) || '';
       if (!localVer) return;
       const ts = Date.now();
-      // Check both live GitHub Pages and raw GitHub main so updates are detected immediately!
-      const urls = [
-        `https://raw.githubusercontent.com/LaikaXvi/ashfall/main/js/data.js?t=${ts}`
-      ];
+
+      // 1. Check live GitHub Pages index.html + data.js (confirms CDN has actually published the new version!)
       if (window.location.protocol !== 'file:') {
-        urls.unshift(`./js/data.js?nocache=${ts}`);
-      }
-      for (const u of urls) {
-        fetch(u, { cache: 'no-store' })
+        fetch(`./index.html?nocache=${ts}`, { cache: 'no-store' })
           .then(r => (r.ok ? r.text() : ''))
-          .then(txt => handleVersionText(txt, localVer))
+          .then((txt) => {
+            const v = extractVer(txt);
+            if (v && isNewer(v, localVer)) {
+              if (!pagesReadyVer || isNewer(v, pagesReadyVer)) pagesReadyVer = v;
+              renderBadge();
+            }
+          })
           .catch(() => {});
       }
+
+      // 2. Check raw GitHub main branch (instant detection within seconds of a git push!)
+      fetch(`https://raw.githubusercontent.com/LaikaXvi/ashfall/main/js/data.js?t=${ts}`, { cache: 'no-store' })
+        .then(r => (r.ok ? r.text() : ''))
+        .then((txt) => {
+          const v = extractVer(txt);
+          if (v && isNewer(v, localVer)) {
+            if (!githubPendingVer || isNewer(v, githubPendingVer)) githubPendingVer = v;
+            renderBadge();
+          }
+        })
+        .catch(() => {});
     };
 
-    setTimeout(checkForUpdate, 1500);
-    this._updateCheckInterval = setInterval(checkForUpdate, 15000);
+    setTimeout(checkForUpdate, 1200);
+    this._updateCheckInterval = setInterval(checkForUpdate, 10000);
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') checkForUpdate();
     });
