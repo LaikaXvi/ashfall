@@ -3092,6 +3092,11 @@ class WeaponSystem {
     if (this.fireTimer > 0 || this.wallBlocked) return false;
 
     if (weaponSlotState.mag <= 0) {
+      const reserve = player.getReserveAmmo ? player.getReserveAmmo(def.ammoType) : 0;
+      if (reserve > 0 && player.startReload) {
+        player.startReload();
+        return false;
+      }
       this.fireTimer = 0.25;
       window.soundEngine.playEmptyClick();
       return false;

@@ -2120,7 +2120,6 @@ class GameUI {
     document.getElementById('hud-bag-value').textContent = `₽ ${player.getBackpackValue().toLocaleString()}`;
     const xpEl = document.getElementById('hud-xp-val');
     if (xpEl) xpEl.textContent = `${raidXp || 0} XP`;
-    document.getElementById('reload-indicator').classList.toggle('hidden', !weaponSystem.isReloading);
 
     // Dynamic Crosshair (size matches exact live bullet spread cone; pulses when cooking a frag grenade!) & ADS vignette
     const chEl = document.getElementById('crosshair');
