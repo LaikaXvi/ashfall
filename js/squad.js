@@ -640,7 +640,7 @@ class SquadMate {
       if (distToMate > 2.0) {
         this._redrawTag('MOVING TO REVIVE', '#69f0ae');
         this.group.rotation.y = Math.atan2(tRef.position.x - this.position.x, tRef.position.z - this.position.z);
-        const moved = this._moveToward(tRef.position.x, tRef.position.z, 5.2, dt);
+        const moved = this._moveToward(tRef.position.x, tRef.position.z, 6.6, dt);
         if (moved) {
           this.animCycle += dt * 9.5;
           this.leftHip.rotation.x = Math.sin(this.animCycle) * 0.52;
@@ -765,10 +765,10 @@ class SquadMate {
         }
         const goal = this.isPeeking ? this.coverSpot.peekPos : this.coverSpot.coverPos;
         if (Math.hypot(goal.x - this.position.x, goal.z - this.position.z) > 0.45) {
-          moving = this._moveToward(goal.x, goal.z, this.isPeeking ? 3.2 : 4.2, dt);
+          moving = this._moveToward(goal.x, goal.z, this.isPeeking ? 4.2 : 5.4, dt);
         }
       } else if (bestEnemyDist > 22) {
-        moving = this._moveToward(targetEnemy.position.x, targetEnemy.position.z, 3.6, dt);
+        moving = this._moveToward(targetEnemy.position.x, targetEnemy.position.z, 4.8, dt);
       }
 
       this.fireTimer -= dt;
@@ -827,7 +827,7 @@ class SquadMate {
         const dPlayer = this.position.distanceTo(player.position);
         // If player is nearby and not far behind, lead toward beacon; always push in if time < 65s or inside 18m of beacon
         if (dZone > zone.radius * 0.65) {
-          const spd = (raidTimeLeft < 65 || dPlayer < 16) ? 6.8 : 4.2;
+          const spd = (raidTimeLeft < 65 || dPlayer < 16) ? 8.6 : 5.4;
           moving = this._moveToward(zone.position.x, zone.position.z, spd, dt);
           this.group.rotation.y = Math.atan2(zone.position.x - this.position.x, zone.position.z - this.position.z);
         } else {
@@ -863,7 +863,7 @@ class SquadMate {
           this._redrawTag('LOOTING', '#64b5f6');
           const d = Math.hypot(this.targetContainer.pos.x - this.position.x, this.targetContainer.pos.z - this.position.z);
           if (d > 1.7) {
-            moving = this._moveToward(this.targetContainer.pos.x, this.targetContainer.pos.z, 5.2, dt);
+            moving = this._moveToward(this.targetContainer.pos.x, this.targetContainer.pos.z, 6.5, dt);
             this.group.rotation.y = Math.atan2(this.targetContainer.pos.x - this.position.x, this.targetContainer.pos.z - this.position.z);
           } else {
             // Take 1 needed item (medkit, plate, or highest-value item)

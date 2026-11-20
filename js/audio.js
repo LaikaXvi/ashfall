@@ -889,6 +889,90 @@ class SoundEngine {
     lfo.start(now);
     lfo.stop(now + dur);
   }
+
+  playSelectorMove() {
+    if (this.muted || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(1850, now);
+    osc.frequency.exponentialRampToValueAtTime(1250, now + 0.018);
+    g.gain.setValueAtTime(0.045, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.02);
+    osc.connect(g);
+    g.connect(this._bus('sfx'));
+    osc.start(now);
+    osc.stop(now + 0.024);
+  }
+
+  playInvPickup() {
+    if (this.muted || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(520, now);
+    osc.frequency.exponentialRampToValueAtTime(860, now + 0.035);
+    g.gain.setValueAtTime(0.065, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+    osc.connect(g);
+    g.connect(this._bus('sfx'));
+    osc.start(now);
+    osc.stop(now + 0.045);
+  }
+
+  playInvDrop() {
+    if (this.muted || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    const g = this.ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(640, now);
+    osc.frequency.exponentialRampToValueAtTime(260, now + 0.045);
+    g.gain.setValueAtTime(0.08, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+    osc.connect(g);
+    g.connect(this._bus('sfx'));
+    osc.start(now);
+    osc.stop(now + 0.055);
+  }
+
+  playUavPhoneTap() {
+    if (this.muted || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    [1180, 1680].forEach((freq, i) => {
+      const t = now + i * 0.07;
+      const osc = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.09, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.065);
+      osc.connect(g);
+      g.connect(this._bus('sfx'));
+      osc.start(t);
+      osc.stop(t + 0.07);
+    });
+  }
+
+  playDesignatorLock() {
+    if (this.muted || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    [880, 1320, 1760].forEach((freq, i) => {
+      const t = now + i * 0.055;
+      const osc = this.ctx.createOscillator();
+      const g = this.ctx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(freq, t);
+      g.gain.setValueAtTime(0.09, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
+      osc.connect(g);
+      g.connect(this._bus('sfx'));
+      osc.start(t);
+      osc.stop(t + 0.055);
+    });
+  }
 }
 
 window.soundEngine = new SoundEngine();

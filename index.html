@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ASHFALL // 3D Extraction Looter-Shooter</title>
-  <link rel="stylesheet" href="css/style.css?v=116" />
+  <link rel="stylesheet" href="css/style.css?v=144" />
   <!-- Three.js r128 UMD for zero-build compatibility (works on both http:// and file://) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
@@ -25,6 +25,7 @@
         <button id="btn-menu-home" class="btn-small">← MAIN MENU</button>
         <nav class="menu-subnav">
           <button class="subnav-btn" data-tab="deploy">DEPLOY</button>
+          <button class="subnav-btn" data-tab="traders">TRADERS</button>
           <button class="subnav-btn" data-tab="workbench">WORKBENCH</button>
           <button class="subnav-btn" data-tab="stash">STASH</button>
           <button class="subnav-btn" data-tab="gunsmith">GUNSMITH</button>
@@ -51,7 +52,7 @@
     <!-- VIEW 0: CLEAN MAIN MENU TITLE CARD & OPTIONS -->
     <section id="menu-view-home" class="menu-home-stage">
       <!-- IMPORTANT: Update version in GAME_DATA.VERSION (js/data.js) and here with EVERY new commit -->
-      <div id="menu-version-badge" class="menu-version-badge">v1.28</div>
+      <div id="menu-version-badge" class="menu-version-badge">v1.45</div>
       <div class="menu-home-card">
         <div class="title-card">
           <span class="brand-tag">SECTOR 7 // TACTICAL EXTRACTION</span>
@@ -137,16 +138,13 @@
     <main id="menu-view-deploy" class="menu-tab-view edge-compact-layout hidden">
       <section class="panel edge-panel-left deploy-stash-panel">
         <div class="panel-header">
-          <h2>WEAPON RACK (15 WEAPON SLOTS)</h2>
-          <span class="sub">CLICK WEAPON TO SELECT SLOT</span>
+          <h2>STASH</h2>
+          <span class="sub">CLICK OR DRAG TO EQUIP / PACK</span>
         </div>
-        <div id="prematch-weapon-stash-grid" class="stash-weapon-grid-15"></div>
-
-        <div class="panel-header" style="margin-top:6px;">
-          <h2>STASH GRID (64 ITEM SLOTS)</h2>
-          <span class="sub">CLICK TO EQUIP / PACK</span>
+        <div class="stash-unified-scroll">
+          <div id="prematch-weapon-stash-grid" class="stash-weapon-grid-15"></div>
+          <div id="prematch-stash-grid" class="stash-grid-64"></div>
         </div>
-        <div id="prematch-stash-grid" class="stash-grid-64"></div>
       </section>
 
       <section class="panel edge-panel-right deploy-loadout-panel">
@@ -241,19 +239,24 @@
       </section>
     </main>
 
-    <!-- VIEW 2: STASH & TRADER TAB -->
-    <main id="menu-view-stash" class="menu-tab-view edge-compact-layout hidden">
-      <section class="panel stash-panel edge-panel-left">
-        <div class="panel-header">
-          <h2>HIDEOUT STASH</h2>
-          <div class="panel-actions">
-            <button id="btn-sell-valuables" class="btn-small">SELL ALL VALUABLES</button>
+    <!-- VIEW 2: HIDEOUT STASH TAB -->
+    <main id="menu-view-stash" class="menu-tab-view hidden">
+      <div class="single-panel-wrap" style="max-width:760px;">
+        <section class="panel stash-panel">
+          <div class="panel-header">
+            <h2>HIDEOUT STASH</h2>
+            <div class="panel-actions">
+              <button id="btn-sell-valuables" class="btn-small">SELL ALL VALUABLES</button>
+            </div>
           </div>
-        </div>
-        <div id="stash-list" class="item-list"></div>
-      </section>
+          <div id="stash-list" class="item-list"></div>
+        </section>
+      </div>
+    </main>
 
-      <section class="panel trader-panel edge-panel-right">
+    <!-- VIEW 2B: TRADERS TAB (RUSTY + DEV TRADER WHEN DEV MODE IS ON) -->
+    <main id="menu-view-traders" class="menu-tab-view two-col-grid hidden">
+      <section class="panel trader-panel">
         <div class="panel-header">
           <h2>TRADER // "RUSTY"</h2>
           <span class="sub">BLACK MARKET</span>
@@ -264,6 +267,21 @@
           <button class="tab-btn" data-cat="gear">GEAR &amp; MEDS</button>
         </div>
         <div id="trader-list" class="item-list"></div>
+      </section>
+
+      <section id="dev-trader-panel" class="panel trader-panel hidden" style="border-color:rgba(105,240,174,0.45);">
+        <div class="panel-header">
+          <h2 style="color:#69f0ae;">DEV TRADER</h2>
+          <span class="sub" style="color:#69f0ae;">ALL ITEMS · FREE · DEV MODE</span>
+        </div>
+        <div id="dev-trader-tabs" class="trader-tabs">
+          <button class="tab-btn active" data-dev-cat="all">ALL</button>
+          <button class="tab-btn" data-dev-cat="weapons">WEAPONS</button>
+          <button class="tab-btn" data-dev-cat="gear">GEAR</button>
+          <button class="tab-btn" data-dev-cat="consumables">MEDS &amp; AMMO</button>
+          <button class="tab-btn" data-dev-cat="other">LOOT &amp; OTHER</button>
+        </div>
+        <div id="dev-trader-list" class="item-list"></div>
       </section>
     </main>
 
@@ -309,14 +327,15 @@
       </div>
     </main>
 
-    <!-- VIEW 4: SETTINGS & CONTROLS TAB -->
-    <main id="menu-view-settings" class="menu-tab-view two-col-grid hidden">
-      <section class="panel">
-        <div class="panel-header">
-          <h2>GAME SETTINGS</h2>
-          <span class="sub">PREFERENCES &amp; TOOLS</span>
-        </div>
-        <div class="settings-list">
+    <!-- VIEW 4: SETTINGS MENU -->
+    <main id="menu-view-settings" class="menu-tab-view hidden">
+      <div class="single-panel-wrap">
+        <section class="panel">
+          <div class="panel-header">
+            <h2>GAME SETTINGS</h2>
+            <span class="sub">PREFERENCES &amp; TOOLS</span>
+          </div>
+          <div class="settings-list">
           <div class="setting-row">
             <div>
               <div class="setting-title">OPERATOR USERNAME</div>
@@ -439,40 +458,39 @@
             </div>
             <button id="btn-reset-save" class="btn-small btn-danger">RESET SAVE</button>
           </div>
-        </div>
-      </section>
 
-      <section class="panel">
-        <div class="panel-header">
-          <h2>KEYBINDINGS &amp; CONTROLS</h2>
-          <span class="sub">REFERENCE</span>
-        </div>
-        <div class="controls-grid">
-          <div class="ctrl-row"><b>WASD</b><span>Move</span></div>
-          <div class="ctrl-row"><b>SHIFT / 2x SHIFT</b><span>Sprint (Infinite) / Tactical Sprint</span></div>
-          <div class="ctrl-row"><b>C / CTRL (Tap)</b><span>Toggle Crouch / Slide (while sprinting)</span></div>
-          <div class="ctrl-row"><b>C / CTRL (Hold)</b><span>Go Prone</span></div>
-          <div class="ctrl-row"><b>SPACE</b><span>Jump / Stand Up / Slide Cancel</span></div>
-          <div class="ctrl-row"><b>LMB / RMB</b><span>Fire / Aim Down Sights (Auto Corner-Lean)</span></div>
-          <div class="ctrl-row"><b>R / I</b><span>Reload / Inspect Weapon</span></div>
-          <div class="ctrl-row"><b>G / 4</b><span>Insert Armor Plates</span></div>
-          <div class="ctrl-row"><b>H</b><span>Use Field Medkit</span></div>
-          <div class="ctrl-row"><b>F (Tap / Hold)</b><span>Lethal: Quick Throw / Cook Frag or Aim Knife</span></div>
-          <div class="ctrl-row"><b>Q (Tap / Hold)</b><span>Tactical: Quick Throw / Aim Smoke or Concussion</span></div>
-          <div class="ctrl-row"><b>1 / 2</b><span>Primary / Sidearm</span></div>
-          <div class="ctrl-row"><b>E / TAB</b><span>Use-Loot / Backpack</span></div>
-          <div class="ctrl-row"><b>V</b><span>Toggle 3rd-Person Camera</span></div>
-          <div class="ctrl-row"><b>F9</b><span>Toggle Dev Mode</span></div>
-          <div class="ctrl-row" style="border-color:rgba(105,240,174,0.35);margin-top:6px;"><b>GAMEPAD (Xbox / PS)</b><span>Full Controller Support</span></div>
-          <div class="ctrl-row"><b>LS / RS</b><span>Move / Look (Rotational Aim Assist)</span></div>
-          <div class="ctrl-row"><b>RT / LT</b><span>Fire / ADS</span></div>
-          <div class="ctrl-row"><b>L3 (Tap / 2x)</b><span>Sprint / Tactical Sprint</span></div>
-          <div class="ctrl-row"><b>A / B (Tap / Hold)</b><span>Jump / Crouch-Slide / Prone</span></div>
-          <div class="ctrl-row"><b>X / Y (Tap / Hold)</b><span>Loot-Reload / Swap-Armor Plates</span></div>
-          <div class="ctrl-row"><b>RB / LB</b><span>Lethal / Tactical Throwable</span></div>
-          <div class="ctrl-row"><b>D-Pad ↑ / ← / →</b><span>Medkit / Inspect / 3rd-Person</span></div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-title">KEYBINDS</div>
+              <div class="setting-desc">Configure Keyboard &amp; Mouse controls and Controller button bindings</div>
+            </div>
+            <button id="btn-open-keybinds" class="btn-small" style="border-color:var(--accent-bright);color:var(--accent-bright);">OPEN KEYBINDS →</button>
+          </div>
         </div>
       </section>
+      </div>
+    </main>
+
+    <!-- VIEW 4B: DEDICATED KEYBINDS MENU (KEYBOARD & MOUSE / CONTROLLER TABS) -->
+    <main id="menu-view-keybinds" class="menu-tab-view hidden">
+      <div class="single-panel-wrap">
+        <section class="panel">
+          <div class="panel-header">
+            <h2>KEYBINDS</h2>
+            <div class="panel-actions">
+              <button id="btn-keybinds-back" class="btn-small">← BACK TO SETTINGS</button>
+            </div>
+          </div>
+
+          <div id="keybinds-tabs" class="trader-tabs" style="margin-bottom:10px;">
+            <button class="tab-btn active" data-kb-tab="kbm">KEYBOARD &amp; MOUSE</button>
+            <button class="tab-btn" data-kb-tab="controller">CONTROLLER</button>
+          </div>
+
+          <div id="keybinds-kbm-pane" class="controls-grid"></div>
+          <div id="keybinds-controller-pane" class="controls-grid hidden"></div>
+        </section>
+      </div>
     </main>
   </div>
 
@@ -513,6 +531,16 @@
     </div>
     <div id="hitmarker" class="hitmarker"></div>
     <div id="hud-center-toast" class="hud-center-toast hidden"></div>
+
+    <!-- 4x Binocular Laser Designator Overlay (Precision Airstrike) -->
+    <div id="designator-overlay" class="designator-overlay hidden">
+      <div class="desig-hud-top">
+        <span>LASER DESIGNATOR // 4.0X</span>
+        <span id="desig-range">RANGE: --m</span>
+      </div>
+      <div class="desig-reticle"><div class="desig-dot"></div></div>
+      <div class="desig-hud-bottom">HOLD [LMB / RT] AIM &amp; RELEASE TO CALL AIRSTRIKE · [K / 1-3 / ESC] STOW</div>
+    </div>
 
     <!-- Right-of-Crosshair Stacking XP Feedback -->
     <div id="hud-xp-feedback" class="hud-xp-feedback">
@@ -744,7 +772,7 @@
       <div id="inv-container-panel" class="inv-panel inv-container-panel hidden">
         <div class="panel-header" style="margin-bottom:4px;">
           <h3 id="loot-container-title">CONTAINER</h3>
-          <button id="btn-take-all" class="btn-small">TAKE ALL</button>
+          <button id="btn-close-container" class="btn-small" title="Close Looting UI" style="padding:2px 7px;line-height:1;">✕</button>
         </div>
         <div id="loot-container-items" class="inv-grid"></div>
       </div>
@@ -872,23 +900,23 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION with every new commit) -->
-  <script src="js/data.js?v=128"></script>
+  <script src="js/data.js?v=145"></script>
   <script src="js/net.js?v=123"></script>
   <script src="js/sfx_samples.js?v=21"></script>
-  <script src="js/audio.js?v=78"></script>
+  <script src="js/audio.js?v=139"></script>
   <script src="js/world.js?v=125"></script>
   <script src="js/weapons.js?v=127"></script>
   <script src="js/icons.js?v=112"></script>
   <script src="js/throwables.js?v=122"></script>
-  <script src="js/enemies.js?v=122"></script>
-  <script src="js/squad.js?v=124"></script>
+  <script src="js/enemies.js?v=138"></script>
+  <script src="js/squad.js?v=137"></script>
   <script src="js/multiplayer.js?v=123"></script>
-  <script src="js/player.js?v=127"></script>
-  <script src="js/gamepad.js?v=126"></script>
+  <script src="js/player.js?v=137"></script>
+  <script src="js/gamepad.js?v=136"></script>
   <script src="js/gunsmith.js?v=41"></script>
   <script src="js/matchmaking.js?v=114"></script>
-  <script src="js/ui.js?v=128"></script>
+  <script src="js/ui.js?v=145"></script>
   <script src="js/console.js?v=117"></script>
-  <script src="js/main.js?v=127"></script>
+  <script src="js/main.js?v=142"></script>
 </body>
 </html>

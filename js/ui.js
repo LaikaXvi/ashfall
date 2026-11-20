@@ -29,12 +29,32 @@ window.DEFAULT_KEYBINDS = {
   thirdPerson: 'KeyV'
 };
 window.KEYBINDS = { ...window.DEFAULT_KEYBINDS };
+window.DEFAULT_GAMEPAD_BINDS = {
+  fire: 7,
+  ads: 6,
+  sprint: 10,
+  jump: 0,
+  crouch: 1,
+  interactReload: 2,
+  swapPlates: 3,
+  tactical: 4,
+  lethal: 5,
+  melee: 11,
+  medkit: 12,
+  backpack: 13,
+  inspect: 14,
+  killstreak: 15,
+  map: 8,
+  pause: 9
+};
+window.GAMEPAD_BINDS = { ...window.DEFAULT_GAMEPAD_BINDS };
 
 class GameUI {
   constructor(onDeployCallback) {
     this.onDeploy = onDeployCallback;
     this.storageKey = 'ashfall_extraction_save_v1';
     this.traderCategory = 'weapons';
+    this.devTraderCategory = 'all';
     this.activeMenuTab = 'home';
     this.socialTab = 'friends';
     this.activeLootSource = null; // { title, items } or null for backpack-only
@@ -47,15 +67,715 @@ class GameUI {
     this.profile = this._loadProfile();
     this._normalizeStash();
     window.KEYBINDS = { ...window.DEFAULT_KEYBINDS, ...(this.profile.keybinds || {}) };
+    window.GAMEPAD_BINDS = { ...window.DEFAULT_GAMEPAD_BINDS, ...(this.profile.gamepadBinds || {}) };
+    this.keybindsTab = 'kbm';
     this._initSocial();
     this._bindHideoutEvents();
     this._bindWeaponStagingModal();
+    this._bindSpatialKeyboardNav();
+    this._bindDragAndDrop();
     window.addEventListener('resize', () => this._updateDeployResponsiveScale());
     window.addEventListener('beforeunload', () => this.saveProfile());
     this.renderKeybindSettings();
     window.showCenterToast = (msg, color) => this.showCenterToast(msg, color);
     this.openMenuTab('home');
     this.renderHideout();
+    requestAnimationFrame(() => this.ensureInitialSelection());
+  }
+
+  // ==================== UNIFIED AMBER SPATIAL SELECTOR (WASD / ARROWS / CONTROLLER D-PAD) ====================
+  _getNavScope() {
+    const wpnModal = document.getElementById('weapon-staging-modal');
+    if (wpnModal && !wpnModal.classList.contains('hidden')) return wpnModal;
+    const pauseOv = document.getElementById('pointer-lock-overlay');
+    if (pauseOv && !pauseOv.classList.contains('hidden')) return pauseOv;
+    const lootMod = document.getElementById('loot-modal');
+    if (lootMod && !lootMod.classList.contains('hidden')) return lootMod;
+    const gs = document.getElementById('gunsmith-screen');
+    if (gs && gs.classList.contains('active')) return gs;
+    const sum = document.getElementById('summary-screen');
+    if (sum && sum.classList.contains('active')) return sum;
+    const hideout = document.getElementById('hideout-screen');
+    if (hideout && hideout.classList.contains('active')) return hideout;
+    return null;
+  }
+
+  _getSpatialFocusables(scope) {
+    if (!scope) return [];
+    const slotSel = this._dragState
+      ? '.inv-slot:not(.searching)'
+      : '.inv-slot:not(.empty-slot):not(.searching)';
+    const selector = [
+      'button:not(:disabled)',
+      'input[type="range"]',
+      slotSel,
+      '.op-slot-card',
+      '.map-node',
+      '.zone-card'
+    ].join(', ');
+    const all = Array.from(scope.querySelectorAll(selector));
+    return all.filter((el) => {
+      if (el.offsetParent === null) return false;
+      if (el.closest('.hidden')) return false;
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    });
+  }
+
+  setSelectedElement(el, opts = {}) {
+    const changed = this._selectedEl !== el;
+    if (this._selectedEl && this._selectedEl !== el) {
+      this._selectedEl.classList.remove('ui-selected', 'gp-focus');
+    }
+    this._selectedEl = el || null;
+    if (this._selectedEl) {
+      this._selectedEl.classList.add('ui-selected', 'gp-focus');
+      if (changed && window.soundEngine && window.soundEngine.playSelectorMove) {
+        const now = performance.now();
+        if (!this._lastSelSfx || now - this._lastSelSfx > 42) {
+          this._lastSelSfx = now;
+          try { window.soundEngine.playSelectorMove(); } catch (e) {}
+        }
+      }
+      try {
+        this._selectedEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      } catch (e) {}
+
+      // If currently dragging with controller RT, update drag ghost & drop highlight to the selected slot
+      if (this._dragState && this._dragState.mode === 'gamepad') {
+        this._updateDragVisualTarget(this._selectedEl);
+      }
+
+      // If inside in-raid loot/inventory modal and selecting an item slot, sync hoveredSlot
+      const lootMod = document.getElementById('loot-modal');
+      if (lootMod && !lootMod.classList.contains('hidden') && this._selectedEl.classList.contains('inv-slot')) {
+        const ctxName = this._selectedEl.dataset.context;
+        const idx = parseInt(this._selectedEl.dataset.idx, 10);
+        const item = ctxName === 'container'
+          ? (this.activeLootSource && this.activeLootSource.items[idx])
+          : (this._lootPlayer && this._lootPlayer.backpack && this._lootPlayer.backpack[idx]);
+        if (item) {
+          this._hoveredSlot = { context: ctxName, item, idx, el: this._selectedEl, inputMode: opts.inputMode || 'keyboard', mode: 'all' };
+          if (opts.inputMode === 'gamepad') {
+            this.showItemPopout(this._selectedEl, ctxName, item, idx, { inputMode: 'gamepad', mode: 'all' });
+          }
+        }
+      } else if (opts.inputMode === 'gamepad' && lootMod && !lootMod.classList.contains('hidden')) {
+        this.hideItemPopout();
+      }
+    }
+  }
+
+  clearSelection() {
+    this.setSelectedElement(null);
+  }
+
+  ensureInitialSelection(opts = {}) {
+    const scope = this._getNavScope();
+    if (!scope) return null;
+    const items = this._getSpatialFocusables(scope);
+    if (items.length === 0) return null;
+    if (this._selectedEl && items.includes(this._selectedEl)) return this._selectedEl;
+    const first = items[0];
+    this.setSelectedElement(first, opts);
+    return first;
+  }
+
+  moveSpatialSelection(dir, opts = {}) {
+    const scope = this._getNavScope();
+    if (!scope) return false;
+    const items = this._getSpatialFocusables(scope);
+    if (items.length === 0) return false;
+
+    if (!this._selectedEl || !items.includes(this._selectedEl)) {
+      this.setSelectedElement(items[0], opts);
+      return true;
+    }
+
+    // Range slider adjustment with Left / Right
+    if (this._selectedEl.tagName === 'INPUT' && this._selectedEl.type === 'range' && (dir === 'left' || dir === 'right')) {
+      const step = parseFloat(this._selectedEl.step) || 1;
+      const min = parseFloat(this._selectedEl.min);
+      const max = parseFloat(this._selectedEl.max);
+      const cur = parseFloat(this._selectedEl.value);
+      const next = Math.max(min, Math.min(max, cur + (dir === 'right' ? step : -step)));
+      this._selectedEl.value = next;
+      this._selectedEl.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    }
+
+    const curRect = this._selectedEl.getBoundingClientRect();
+    const cx = curRect.left + curRect.width / 2;
+    const cy = curRect.top + curRect.height / 2;
+
+    let bestEl = null;
+    let bestScore = Infinity;
+
+    for (const cand of items) {
+      if (cand === this._selectedEl) continue;
+      const r = cand.getBoundingClientRect();
+      const tx = r.left + r.width / 2;
+      const ty = r.top + r.height / 2;
+      const dx = tx - cx;
+      const dy = ty - cy;
+
+      let primary = 0;
+      let perp = 0;
+      if (dir === 'right') { if (dx <= 6) continue; primary = dx; perp = Math.abs(dy); }
+      else if (dir === 'left') { if (dx >= -6) continue; primary = -dx; perp = Math.abs(dy); }
+      else if (dir === 'down') { if (dy <= 6) continue; primary = dy; perp = Math.abs(dx); }
+      else if (dir === 'up') { if (dy >= -6) continue; primary = -dy; perp = Math.abs(dx); }
+
+      const score = primary + perp * 2.4;
+      if (score < bestScore) {
+        bestScore = score;
+        bestEl = cand;
+      }
+    }
+
+    // Fallback wrap-around if at edge of a linear list
+    if (!bestEl && items.length > 1) {
+      const idx = items.indexOf(this._selectedEl);
+      const delta = (dir === 'down' || dir === 'right') ? 1 : -1;
+      bestEl = items[(idx + delta + items.length) % items.length];
+    }
+
+    if (bestEl) {
+      this.setSelectedElement(bestEl, opts);
+      return true;
+    }
+    return false;
+  }
+
+  activateSelectedElement(opts = {}) {
+    const scope = this._getNavScope();
+    if (!scope) return false;
+    const items = this._getSpatialFocusables(scope);
+    if (!this._selectedEl || !items.includes(this._selectedEl)) {
+      if (items.length > 0) this.setSelectedElement(items[0], opts);
+      return false;
+    }
+    const el = this._selectedEl;
+    const lootMod = document.getElementById('loot-modal');
+    if (lootMod && !lootMod.classList.contains('hidden') && el.classList.contains('inv-slot')) {
+      if (opts.inputMode === 'gamepad' && this._hoveredSlot) {
+        this.handleSlotAction('quick');
+        return true;
+      }
+    }
+    el.click();
+    return true;
+  }
+
+  _bindSpatialKeyboardNav() {
+    window.addEventListener('keydown', (e) => {
+      if (this._rebindCleanup) return;
+      if (window.devConsole && window.devConsole.isOpen) return;
+      const tag = (document.activeElement && document.activeElement.tagName) || '';
+      if (tag === 'INPUT' && document.activeElement.type !== 'range') return;
+      if (tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      const scope = this._getNavScope();
+      if (!scope) return;
+
+      const dirMap = {
+        KeyW: 'up', ArrowUp: 'up',
+        KeyS: 'down', ArrowDown: 'down',
+        KeyA: 'left', ArrowLeft: 'left',
+        KeyD: 'right', ArrowRight: 'right'
+      };
+      const dir = dirMap[e.code];
+      if (dir) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.moveSpatialSelection(dir, { inputMode: 'keyboard' });
+        return;
+      }
+      if (e.code === 'Enter' || e.code === 'Space') {
+        if (this._selectedEl && scope.contains(this._selectedEl)) {
+          e.preventDefault();
+          e.stopPropagation();
+          this.activateSelectedElement({ inputMode: 'keyboard' });
+        }
+      }
+    }, true);
+
+    // Sync amber selector cleanly on mouse hover over buttons & inventory slots
+    document.addEventListener('mouseover', (e) => {
+      if (this._dragState) return;
+      const scope = this._getNavScope();
+      if (!scope) return;
+      const target = e.target && e.target.closest
+        ? e.target.closest('button:not(:disabled), .inv-slot:not(.empty-slot):not(.searching), .op-slot-card, .map-node, .zone-card')
+        : null;
+      if (target && scope.contains(target) && target !== this._selectedEl) {
+        this.setSelectedElement(target, { inputMode: 'mouse' });
+      }
+    });
+  }
+
+  // ==================== UNIVERSAL DRAG-AND-DROP (LMB HOLD & CONTROLLER RT HOLD) ====================
+  _describeSlotElement(el) {
+    if (!el) return null;
+    const slotEl = el.closest ? el.closest('.inv-slot, .op-slot-card[data-op-key]') : null;
+    if (!slotEl) return null;
+    if (slotEl.dataset.unrevealed === '1' || slotEl.classList.contains('searching')) return null;
+
+    if (slotEl.classList.contains('op-slot-card') && slotEl.dataset.opKey) {
+      const opKey = slotEl.dataset.opKey;
+      if (slotEl.closest('#prematch-op-slots')) return { zone: 'pm_op', opKey, el: slotEl };
+      if (slotEl.closest('#inv-op-slots')) return { zone: 'raid_op', opKey, el: slotEl };
+      if (slotEl.closest('#loot-enemy-op-slots')) return { zone: 'raid_enemy_op', opKey, el: slotEl };
+      return null;
+    }
+
+    if (slotEl.classList.contains('backpack-weapon-slot')) {
+      if (slotEl.closest('#prematch-bag-grid')) return { zone: 'pm_op', opKey: 'backpackWeapon', el: slotEl };
+      if (slotEl.closest('#loot-backpack-items')) return { zone: 'raid_op', opKey: 'backpackWeapon', el: slotEl };
+    }
+
+    if (slotEl.closest('#prematch-weapon-stash-grid')) {
+      const idx = Array.from(slotEl.parentElement.children).indexOf(slotEl);
+      return { zone: 'pm_wpn_stash', idx, el: slotEl };
+    }
+    if (slotEl.closest('#prematch-stash-grid')) {
+      const idx = Array.from(slotEl.parentElement.children).indexOf(slotEl);
+      return { zone: 'pm_stash', idx, el: slotEl };
+    }
+    if (slotEl.closest('#prematch-bag-grid')) {
+      const nonWpn = Array.from(slotEl.parentElement.querySelectorAll('.inv-slot:not(.backpack-weapon-slot)'));
+      const idx = nonWpn.indexOf(slotEl);
+      return idx >= 0 ? { zone: 'pm_bag', idx, el: slotEl } : null;
+    }
+    if (slotEl.closest('#loot-container-items')) {
+      const idx = parseInt(slotEl.dataset.idx, 10);
+      return Number.isFinite(idx) ? { zone: 'raid_container', idx, el: slotEl } : null;
+    }
+    if (slotEl.closest('#loot-backpack-items')) {
+      const idx = parseInt(slotEl.dataset.idx, 10);
+      return Number.isFinite(idx) ? { zone: 'raid_bag', idx, el: slotEl } : null;
+    }
+    return null;
+  }
+
+  _readSlotItem(desc) {
+    if (!desc) return null;
+    const L = this.profile && this.profile.loadout;
+    const p = this._lootPlayer;
+
+    switch (desc.zone) {
+      case 'pm_wpn_stash': {
+        const it = (this.profile.weaponStash || [])[desc.idx];
+        return it ? { ...it, qty: it.qty || 1 } : null;
+      }
+      case 'pm_stash': {
+        const it = (this.profile.stash || [])[desc.idx];
+        return it ? { ...it } : null;
+      }
+      case 'pm_bag': {
+        const it = (L && L.backpackItems || [])[desc.idx];
+        return it ? { ...it } : null;
+      }
+      case 'pm_op': {
+        if (!L) return null;
+        const k = desc.opKey;
+        if (k === 'plates') return (L.plates || 0) > 0 ? { id: 'armor_plate', qty: L.plates } : null;
+        if (k === 'lethal') return (L.lethal && (L.lethalQty || 0) > 0) ? { id: L.lethal, qty: L.lethalQty } : null;
+        if (k === 'tactical') return (L.tactical && (L.tacticalQty || 0) > 0) ? { id: L.tactical, qty: L.tacticalQty } : null;
+        if (k === 'cash' || k === 'dogtag') return null;
+        return L[k] ? { id: L[k], qty: 1 } : null;
+      }
+      case 'raid_container': {
+        const it = this.activeLootSource && this.activeLootSource.items[desc.idx];
+        return (it && it.revealed !== false) ? { ...it } : null;
+      }
+      case 'raid_bag': {
+        const it = p && p.backpack && p.backpack[desc.idx];
+        return it ? { ...it } : null;
+      }
+      case 'raid_op': {
+        if (!p) return null;
+        const k = desc.opKey;
+        if (k === 'primary' || k === 'secondary') {
+          const sl = p.slots && p.slots[k];
+          return sl ? { id: sl.id, qty: 1, mods: sl.mods || null, mag: sl.mag, rarityOverride: sl.rarityOverride || null } : null;
+        }
+        if (k === 'backpackWeapon') {
+          const bw = p.backpackWeapon;
+          return bw ? { id: bw.id, qty: 1, mods: bw.mods || null, mag: bw.mag, rarityOverride: bw.rarityOverride || null } : null;
+        }
+        if (k === 'plates') return (p.plates || 0) > 0 ? { id: 'armor_plate', qty: p.plates } : null;
+        if (k === 'lethal') return (p.lethal && (p.lethalQty || 0) > 0) ? { id: p.lethal, qty: p.lethalQty } : null;
+        if (k === 'tactical') return (p.tactical && (p.tacticalQty || 0) > 0) ? { id: p.tactical, qty: p.tacticalQty } : null;
+        if (k === 'armor') return p.armorId ? { id: p.armorId, qty: 1 } : null;
+        if (k === 'backpack') return p.backpackId ? { id: p.backpackId, qty: 1 } : null;
+        if (k === 'cash' || k === 'dogtag') return null;
+        return p[k] ? { id: p[k], qty: 1 } : null;
+      }
+      case 'raid_enemy_op': {
+        const eq = this.activeLootSource && this.activeLootSource.operatorEquipment;
+        if (!eq) return null;
+        const k = desc.opKey;
+        if (eq.revealedSlots && !eq.revealedSlots[k]) return null;
+        if (k === 'plates') return (eq.plates || 0) > 0 ? { id: 'armor_plate', qty: eq.plates } : null;
+        if (k === 'cash' || k === 'dogtag') return null;
+        return eq[k] ? { id: eq[k], qty: 1, rarityOverride: (k === 'primary' ? eq.primaryRarity : (k === 'secondary' ? eq.secondaryRarity : null)) } : null;
+      }
+    }
+    return null;
+  }
+
+  _canAcceptItem(desc, item) {
+    if (!desc) return false;
+    if (!item) return true; // clearing a slot is always valid
+    const def = GAME_DATA.ITEMS[item.id];
+    if (!def) return false;
+
+    if (desc.zone === 'pm_wpn_stash') return def.type === 'weapon';
+    if (desc.zone === 'pm_stash' || desc.zone === 'pm_bag' || desc.zone === 'raid_bag' || desc.zone === 'raid_container') {
+      return true;
+    }
+    if (desc.zone === 'pm_op' || desc.zone === 'raid_op' || desc.zone === 'raid_enemy_op') {
+      const k = desc.opKey;
+      if (k === 'primary' || k === 'secondary' || k === 'backpackWeapon') return def.type === 'weapon';
+      if (k === 'melee') return def.type === 'melee';
+      if (k === 'armor') return def.type === 'armor';
+      if (k === 'backpack') return def.type === 'backpack';
+      if (k === 'headgear') return def.type === 'headgear';
+      if (k === 'selfRevive') return def.type === 'self_revive';
+      if (k === 'fieldUpgrade') return def.type === 'field_upgrade';
+      if (k === 'killstreak') return def.type === 'killstreak';
+      if (k === 'lethal') return def.type === 'lethal';
+      if (k === 'tactical') return def.type === 'tactical';
+      if (k === 'plates') return def.type === 'plate' || item.id === 'armor_plate';
+      return false;
+    }
+    return false;
+  }
+
+  _writeSlotItem(desc, item) {
+    if (!desc) return;
+    const L = this.profile && this.profile.loadout;
+    const p = this._lootPlayer;
+
+    switch (desc.zone) {
+      case 'pm_wpn_stash': {
+        if (!Array.isArray(this.profile.weaponStash)) this.profile.weaponStash = [];
+        this.profile.weaponStash[desc.idx] = item ? { id: item.id, qty: 1, mods: item.mods || undefined, rarityOverride: item.rarityOverride || undefined } : null;
+        return;
+      }
+      case 'pm_stash': {
+        if (!Array.isArray(this.profile.stash)) this.profile.stash = [];
+        this.profile.stash[desc.idx] = item ? { ...item } : null;
+        return;
+      }
+      case 'pm_bag': {
+        if (!Array.isArray(L.backpackItems)) L.backpackItems = [];
+        L.backpackItems[desc.idx] = item ? { ...item } : null;
+        return;
+      }
+      case 'pm_op': {
+        const k = desc.opKey;
+        if (k === 'plates') { L.plates = item ? Math.min(6, item.qty || 1) : 0; return; }
+        if (k === 'lethal') { L.lethal = item ? item.id : null; L.lethalQty = item ? (item.qty || 1) : 0; return; }
+        if (k === 'tactical') { L.tactical = item ? item.id : null; L.tacticalQty = item ? (item.qty || 1) : 0; return; }
+        L[k] = item ? item.id : null;
+        return;
+      }
+      case 'raid_container': {
+        if (!this.activeLootSource) return;
+        this.activeLootSource.items[desc.idx] = item ? { ...item, revealed: true } : null;
+        return;
+      }
+      case 'raid_bag': {
+        if (!p) return;
+        p.backpack[desc.idx] = item ? { ...item } : null;
+        return;
+      }
+      case 'raid_op': {
+        if (!p) return;
+        const k = desc.opKey;
+        if (k === 'primary' || k === 'secondary') {
+          if (item) {
+            const def = GAME_DATA.ITEMS[item.id];
+            const mods = item.mods || (this.profile.weaponMods && this.profile.weaponMods[item.id]) || {};
+            const eff = GAME_DATA.getEffectiveWeaponStats(item.id, mods);
+            p.slots[k] = {
+              id: item.id,
+              mods,
+              mag: item.mag !== undefined ? item.mag : (eff ? eff.magSize : (def ? def.magSize : 30)),
+              rarityOverride: item.rarityOverride || null
+            };
+          } else {
+            p.slots[k] = null;
+          }
+          if (p.activeSlot === k && p.weaponSystem && p.switchSlot) {
+            p.switchSlot(k);
+          }
+          return;
+        }
+        if (k === 'backpackWeapon') {
+          if (item) {
+            const def = GAME_DATA.ITEMS[item.id];
+            const mods = item.mods || (this.profile.weaponMods && this.profile.weaponMods[item.id]) || {};
+            const eff = GAME_DATA.getEffectiveWeaponStats(item.id, mods);
+            p.backpackWeapon = {
+              id: item.id,
+              mods,
+              mag: item.mag !== undefined ? item.mag : (eff ? eff.magSize : (def ? def.magSize : 30)),
+              rarityOverride: item.rarityOverride || null
+            };
+          } else {
+            p.backpackWeapon = null;
+          }
+          return;
+        }
+        if (k === 'plates') { p.plates = item ? Math.min(6, item.qty || 1) : 0; return; }
+        if (k === 'lethal') { p.lethal = item ? item.id : null; p.lethalQty = item ? (item.qty || 1) : 0; return; }
+        if (k === 'tactical') { p.tactical = item ? item.id : null; p.tacticalQty = item ? (item.qty || 1) : 0; return; }
+        if (k === 'armor') {
+          p.armorId = item ? item.id : null;
+          const def = item ? GAME_DATA.ITEMS[item.id] : null;
+          p.plateSlots = def ? (def.plateSlots || Math.ceil((def.maxArmor || 100) / 50)) : 0;
+          p.maxArmor = p.plateSlots * 50;
+          p.armor = Math.min(p.armor, p.maxArmor);
+          return;
+        }
+        if (k === 'backpack') {
+          p.backpackId = item ? item.id : null;
+          const def = item ? GAME_DATA.ITEMS[item.id] : null;
+          p.backpackMaxSlots = def ? (def.bagSlots || def.slots || 8) : 6;
+          return;
+        }
+        p[k] = item ? item.id : null;
+        return;
+      }
+      case 'raid_enemy_op': {
+        const eq = this.activeLootSource && this.activeLootSource.operatorEquipment;
+        if (!eq) return;
+        const k = desc.opKey;
+        if (k === 'plates') { eq.plates = item ? Math.min(6, item.qty || 1) : 0; return; }
+        eq[k] = item ? item.id : null;
+        return;
+      }
+    }
+  }
+
+  _cleanSparseArray(arr) {
+    if (!Array.isArray(arr)) return;
+    while (arr.length > 0 && !arr[arr.length - 1]) arr.pop();
+    for (let i = arr.length - 1; i >= 0; i--) {
+      if (!arr[i]) arr.splice(i, 1);
+    }
+  }
+
+  performSlotDrop(srcDesc, dstDesc) {
+    if (!srcDesc || !dstDesc) return false;
+    if (srcDesc.zone === dstDesc.zone && srcDesc.idx === dstDesc.idx && srcDesc.opKey === dstDesc.opKey) return false;
+
+    const srcItem = this._readSlotItem(srcDesc);
+    if (!srcItem) return false;
+    const dstItem = this._readSlotItem(dstDesc);
+
+    if (!this._canAcceptItem(dstDesc, srcItem)) {
+      if (window.showCenterToast) window.showCenterToast('INCOMPATIBLE SLOT', '#ff5252');
+      return false;
+    }
+    if (dstItem && !this._canAcceptItem(srcDesc, dstItem)) {
+      if (window.showCenterToast) window.showCenterToast('CANNOT SWAP INTO SOURCE SLOT', '#ff5252');
+      return false;
+    }
+
+    // Merge if same stackable item with room under maxStack
+    const def = GAME_DATA.ITEMS[srcItem.id];
+    if (dstItem && dstItem.id === srcItem.id && def && def.stackable) {
+      const maxS = (dstDesc.opKey === 'plates') ? 6 : (def.maxStack || Infinity);
+      const room = maxS === Infinity ? srcItem.qty : Math.max(0, maxS - dstItem.qty);
+      if (room > 0) {
+        const move = Math.min(room, srcItem.qty);
+        dstItem.qty += move;
+        srcItem.qty -= move;
+        this._writeSlotItem(dstDesc, dstItem);
+        this._writeSlotItem(srcDesc, srcItem.qty > 0 ? srcItem : null);
+      } else {
+        // Stack full -> swap!
+        this._writeSlotItem(dstDesc, srcItem);
+        this._writeSlotItem(srcDesc, dstItem);
+      }
+    } else {
+      // Direct move or swap places!
+      this._writeSlotItem(dstDesc, srcItem);
+      this._writeSlotItem(srcDesc, dstItem);
+    }
+
+    // Clean up nulls in dynamic lists (only if we didn't swap into a sparse stash grid)
+    if (srcDesc.zone === 'pm_bag' || dstDesc.zone === 'pm_bag') this._cleanSparseArray(this.profile.loadout.backpackItems);
+    if (srcDesc.zone === 'pm_stash' || dstDesc.zone === 'pm_stash') this._cleanSparseArray(this.profile.stash);
+    if (srcDesc.zone === 'pm_wpn_stash' || dstDesc.zone === 'pm_wpn_stash') this._cleanSparseArray(this.profile.weaponStash);
+    if (this._lootPlayer && (srcDesc.zone === 'raid_bag' || dstDesc.zone === 'raid_bag')) this._cleanSparseArray(this._lootPlayer.backpack);
+    if (this.activeLootSource && (srcDesc.zone === 'raid_container' || dstDesc.zone === 'raid_container')) this._cleanSparseArray(this.activeLootSource.items);
+
+    if (window.soundEngine) {
+      try {
+        if (window.soundEngine.playInvDrop) window.soundEngine.playInvDrop();
+        else if (window.soundEngine.playClick) window.soundEngine.playClick();
+      } catch (e) {}
+    }
+
+    this.hideItemPopout();
+    if (srcDesc.zone.startsWith('pm_') || dstDesc.zone.startsWith('pm_')) {
+      this.saveProfile();
+      this.renderHideout();
+    } else if (this._lootPlayer) {
+      this.renderLootModal(this._lootPlayer);
+    }
+    return true;
+  }
+
+  _showDragGhost(item, x, y) {
+    let ghost = document.getElementById('inv-drag-ghost');
+    if (!ghost) {
+      ghost = document.createElement('div');
+      ghost.id = 'inv-drag-ghost';
+      ghost.className = 'inv-drag-ghost';
+      document.body.appendChild(ghost);
+    }
+    const def = GAME_DATA.ITEMS[item.id];
+    const name = def ? def.name : item.id;
+    const qtyTxt = item.qty > 1 ? ` x${item.qty}` : '';
+    ghost.innerHTML = `${name}${qtyTxt}<span class="dg-sub">DROP ON SLOT TO MOVE / SWAP</span>`;
+    ghost.style.left = `${x}px`;
+    ghost.style.top = `${y}px`;
+    ghost.classList.remove('hidden');
+  }
+
+  _hideDragGhost() {
+    const ghost = document.getElementById('inv-drag-ghost');
+    if (ghost) ghost.classList.add('hidden');
+  }
+
+  _clearDragHighlights() {
+    document.querySelectorAll('.drag-source, .drag-target, .drag-target-invalid').forEach((el) => {
+      el.classList.remove('drag-source', 'drag-target', 'drag-target-invalid');
+    });
+  }
+
+  _updateDragVisualTarget(targetEl) {
+    if (!this._dragState) return;
+    document.querySelectorAll('.drag-target, .drag-target-invalid').forEach((el) => {
+      el.classList.remove('drag-target', 'drag-target-invalid');
+    });
+    const dstDesc = this._describeSlotElement(targetEl);
+    this._dragState.dstDesc = dstDesc;
+    if (dstDesc && dstDesc.el) {
+      const dstItem = this._readSlotItem(dstDesc);
+      const ok = this._canAcceptItem(dstDesc, this._dragState.srcItem) &&
+        (!dstItem || this._canAcceptItem(this._dragState.srcDesc, dstItem));
+      dstDesc.el.classList.add(ok ? 'drag-target' : 'drag-target-invalid');
+      if (this._dragState.mode === 'gamepad') {
+        const r = dstDesc.el.getBoundingClientRect();
+        this._showDragGhost(this._dragState.srcItem, r.left + r.width / 2, r.top - 16);
+      }
+    }
+  }
+
+  startDragFromSelected() {
+    if (this._dragState) return true;
+    const el = this._selectedEl;
+    const srcDesc = this._describeSlotElement(el);
+    const srcItem = this._readSlotItem(srcDesc);
+    if (!srcDesc || !srcItem) return false;
+
+    this._dragState = { mode: 'gamepad', srcDesc, srcItem, dstDesc: srcDesc };
+    if (window.soundEngine && window.soundEngine.playInvPickup) {
+      try { window.soundEngine.playInvPickup(); } catch (e) {}
+    }
+    if (srcDesc.el) srcDesc.el.classList.add('drag-source');
+    const r = srcDesc.el.getBoundingClientRect();
+    this._showDragGhost(srcItem, r.left + r.width / 2, r.top - 16);
+    return true;
+  }
+
+  finishDragToSelected() {
+    if (!this._dragState) return false;
+    const { srcDesc, dstDesc } = this._dragState;
+    const finalDst = dstDesc || this._describeSlotElement(this._selectedEl);
+    this.cancelDrag();
+    if (srcDesc && finalDst) {
+      return this.performSlotDrop(srcDesc, finalDst);
+    }
+    return false;
+  }
+
+  cancelDrag() {
+    this._dragState = null;
+    this._pendingMouseDrag = null;
+    this._hideDragGhost();
+    this._clearDragHighlights();
+  }
+
+  _bindDragAndDrop() {
+    document.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      const srcDesc = this._describeSlotElement(e.target);
+      if (!srcDesc) return;
+      const srcItem = this._readSlotItem(srcDesc);
+      if (!srcItem) return;
+      this._pendingMouseDrag = {
+        startX: e.clientX,
+        startY: e.clientY,
+        srcDesc,
+        srcItem
+      };
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (this._pendingMouseDrag && !this._dragState) {
+        const dist = Math.hypot(e.clientX - this._pendingMouseDrag.startX, e.clientY - this._pendingMouseDrag.startY);
+        if (dist >= 6) {
+          this._dragState = {
+            mode: 'mouse',
+            srcDesc: this._pendingMouseDrag.srcDesc,
+            srcItem: this._pendingMouseDrag.srcItem,
+            dstDesc: null
+          };
+          if (window.soundEngine && window.soundEngine.playInvPickup) {
+            try { window.soundEngine.playInvPickup(); } catch (e) {}
+          }
+          if (this._dragState.srcDesc.el) this._dragState.srcDesc.el.classList.add('drag-source');
+          this.hideItemPopout();
+        }
+      }
+      if (this._dragState && this._dragState.mode === 'mouse') {
+        this._showDragGhost(this._dragState.srcItem, e.clientX, e.clientY);
+        const under = document.elementFromPoint(e.clientX, e.clientY);
+        this._updateDragVisualTarget(under);
+      }
+    });
+
+    document.addEventListener('mouseup', (e) => {
+      if (e.button !== 0) return;
+      if (this._dragState && this._dragState.mode === 'mouse') {
+        const under = document.elementFromPoint(e.clientX, e.clientY);
+        const dstDesc = this._describeSlotElement(under);
+        const srcDesc = this._dragState.srcDesc;
+        this._suppressNextClickUntil = performance.now() + 140;
+        this.cancelDrag();
+        if (srcDesc && dstDesc) {
+          this.performSlotDrop(srcDesc, dstDesc);
+        }
+      } else {
+        this._pendingMouseDrag = null;
+      }
+    });
+
+    // Suppress synthetic click right after completing a drag-and-drop so popups don't flash open
+    document.addEventListener('click', (e) => {
+      if (this._suppressNextClickUntil && performance.now() < this._suppressNextClickUntil) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }, true);
   }
 
   _defaultProfile() {
@@ -133,7 +853,7 @@ class GameUI {
       if (def.type === 'weapon') {
         const count = Math.max(1, item.qty || 1);
         for (let c = 0; c < count; c++) {
-          if (this.profile.weaponStash.length < 15) {
+          if (this.profile.weaponStash.length < 16) {
             this.profile.weaponStash.push({ id: item.id, qty: 1, ...(item.mods ? { mods: item.mods } : {}) });
           }
         }
@@ -147,7 +867,7 @@ class GameUI {
     const bagDef = GAME_DATA.ITEMS[L.backpack || 'bag_small'];
     const hasWpnSlot = !!(bagDef && bagDef.weaponSlot);
     if (!hasWpnSlot && L.backpackWeapon) {
-      if (this.profile.weaponStash.length < 15) {
+      if (this.profile.weaponStash.length < 16) {
         this.profile.weaponStash.push({ id: L.backpackWeapon, qty: 1 });
       }
       L.backpackWeapon = null;
@@ -158,7 +878,7 @@ class GameUI {
       if (def.type === 'weapon') {
         if (hasWpnSlot && !L.backpackWeapon) {
           L.backpackWeapon = item.id;
-        } else if (this.profile.weaponStash.length < 15) {
+        } else if (this.profile.weaponStash.length < 16) {
           this.profile.weaponStash.push({ id: item.id, qty: 1 });
         }
         return false;
@@ -808,7 +1528,6 @@ class GameUI {
       return;
     }
 
-    // If this player already sent us a friend request, accept it immediately so both sides become friends!
     if (incoming.some(r => r.from.toUpperCase() === verifiedTag)) {
       this.acceptFriendRequest(verifiedTag);
       return;
@@ -1180,7 +1899,6 @@ class GameUI {
         invRow.querySelector('#btn-accept-inv').addEventListener('click', () => this.acceptPendingPartyInvite());
         invRow.querySelector('#btn-decline-inv').addEventListener('click', () => this.declinePendingPartyInvite());
       }
-      // Show incoming Friend Requests prominently in the COMMS dialogue with ACCEPT / DECLINE!
       for (const req of incomingReqs) {
         const reqRow = document.createElement('div');
         reqRow.className = 'party-member';
@@ -1213,7 +1931,6 @@ class GameUI {
     listEl.innerHTML = '';
 
     if (this.socialTab === 'friends') {
-      // Show pending outgoing friend requests at the top of the Friends list (dismissable / cancelable)
       for (const req of outgoingReqs) {
         const row = document.createElement('div');
         row.className = 'social-row';
@@ -1415,15 +2132,23 @@ class GameUI {
     if (topbar) topbar.classList.toggle('hidden', isHome);
     if (homeView) homeView.classList.toggle('hidden', !isHome);
 
-    ['deploy', 'map', 'matchmaking', 'workbench', 'stash', 'operator', 'settings'].forEach((t) => {
+    ['deploy', 'traders', 'map', 'matchmaking', 'workbench', 'stash', 'operator', 'settings', 'keybinds'].forEach((t) => {
       const el = document.getElementById(`menu-view-${t}`);
       if (el) el.classList.toggle('hidden', tabName !== t);
     });
     document.querySelectorAll('.subnav-btn').forEach((btn) => {
       const activeMatch = btn.dataset.tab === tabName ||
-        (btn.dataset.tab === 'deploy' && (tabName === 'map' || tabName === 'matchmaking'));
+        (btn.dataset.tab === 'deploy' && (tabName === 'map' || tabName === 'matchmaking')) ||
+        (btn.dataset.tab === 'settings' && tabName === 'keybinds');
       btn.classList.toggle('active', activeMatch);
     });
+    if (tabName === 'traders') {
+      this.renderTrader();
+    }
+    if (tabName === 'keybinds') {
+      this.renderKeybindSettings();
+    }
+    requestAnimationFrame(() => this.ensureInitialSelection());
     if (tabName === 'deploy') {
       this._updateDeployResponsiveScale();
       this.renderPreMatchLoadout();
@@ -1559,6 +2284,26 @@ class GameUI {
     if (opGs) opGs.addEventListener('click', () => this.openMenuTab('gunsmith'));
     const opSt = document.getElementById('btn-op-stash');
     if (opSt) opSt.addEventListener('click', () => this.openMenuTab('stash'));
+
+    // Dedicated Keybinds entry inside Settings + KB/M & Controller tabs
+    const openKbBtn = document.getElementById('btn-open-keybinds');
+    if (openKbBtn) openKbBtn.addEventListener('click', () => this.openMenuTab('keybinds'));
+    const backKbBtn = document.getElementById('btn-keybinds-back');
+    if (backKbBtn) backKbBtn.addEventListener('click', () => this.openMenuTab('settings'));
+    document.querySelectorAll('#keybinds-tabs .tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        if (this._rebindCleanup) this._rebindCleanup();
+        this.keybindsTab = btn.dataset.kbTab || 'kbm';
+        document.querySelectorAll('#keybinds-tabs .tab-btn').forEach((b) => {
+          b.classList.toggle('active', b === btn);
+        });
+        const kbmPane = document.getElementById('keybinds-kbm-pane');
+        const ctrlPane = document.getElementById('keybinds-controller-pane');
+        if (kbmPane) kbmPane.classList.toggle('hidden', this.keybindsTab !== 'kbm');
+        if (ctrlPane) ctrlPane.classList.toggle('hidden', this.keybindsTab !== 'controller');
+        this.renderKeybindSettings();
+      });
+    });
 
     // Pre-Match Step 1 -> Step 2 (Map for Solo / Party Leader, or Ready Up for Party Member)
     const btnNext = document.getElementById('btn-prematch-next');
@@ -1866,6 +2611,15 @@ class GameUI {
       });
     });
 
+    document.querySelectorAll('#dev-trader-tabs .tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#dev-trader-tabs .tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.devTraderCategory = btn.dataset.devCat || 'all';
+        this.renderTrader();
+      });
+    });
+
     document.getElementById('btn-sell-valuables').addEventListener('click', () => {
       let earned = 0;
       this.profile.stash = this.profile.stash.filter(item => {
@@ -1968,7 +2722,7 @@ class GameUI {
     // Weapons always go into the 15 dedicated double-wide weapon stash slots!
     if (def.type === 'weapon') {
       let added = 0;
-      for (let i = 0; i < qty && this.profile.weaponStash.length < 15; i++) {
+      for (let i = 0; i < qty && this.profile.weaponStash.length < 16; i++) {
         this.profile.weaponStash.push({ id, qty: 1, ...(mods ? { mods } : {}) });
         added++;
       }
@@ -2181,10 +2935,10 @@ class GameUI {
       }
     }
 
-    // 1A. 15 Dedicated Double-Wide Weapon Slots at the Top of the Stash (Left Top)
+    // 1A. 16 Uniform Double-Wide Weapon Slots (4x4, aligned 8-col flush with 64-slot Stash below)
     if (weaponStashGrid) {
       weaponStashGrid.innerHTML = '';
-      for (let i = 0; i < 15; i++) {
+      for (let i = 0; i < 16; i++) {
         const wItem = this.profile.weaponStash[i];
         const cell = document.createElement('div');
         cell.className = 'inv-slot weapon-slot-wide';
@@ -2365,10 +3119,35 @@ class GameUI {
     return map[code] || code.toUpperCase();
   }
 
+  _formatGamepadButton(idx) {
+    const names = {
+      0: 'A / Cross',
+      1: 'B / Circle',
+      2: 'X / Square',
+      3: 'Y / Triangle',
+      4: 'LB / L1',
+      5: 'RB / R1',
+      6: 'LT / L2',
+      7: 'RT / R2',
+      8: 'Back / Select',
+      9: 'Start / Menu',
+      10: 'L3 (Left Stick)',
+      11: 'R3 (Right Stick)',
+      12: 'D-Pad Up',
+      13: 'D-Pad Down',
+      14: 'D-Pad Left',
+      15: 'D-Pad Right'
+    };
+    return names[idx] !== undefined ? names[idx] : `BTN ${idx}`;
+  }
+
   renderKeybindSettings() {
-    const grid = document.querySelector('#menu-view-settings .controls-grid');
-    if (!grid) return;
-    const labels = [
+    const kbmPane = document.getElementById('keybinds-kbm-pane');
+    const ctrlPane = document.getElementById('keybinds-controller-pane');
+    if (!kbmPane || !ctrlPane) return;
+
+    // 1. Keyboard & Mouse Controls Tab
+    const kbmLabels = [
       ['moveForward', 'Move Forward'],
       ['moveBack', 'Move Backward'],
       ['moveLeft', 'Move Left'],
@@ -2389,17 +3168,31 @@ class GameUI {
       ['slotMelee', 'Dedicated Melee Weapon'],
       ['quickMelee', 'Quick Melee Strike'],
       ['interact', 'Loot / Interact / Revive'],
-      ['backpack', 'Open Backpack'],
-      ['map', 'Toggle Full-Size Map'],
+      ['backpack', 'Open Backpack (Hold: Stow Ground Weapon)'],
+      ['map', 'Toggle Full-Size Tactical Map'],
       ['thirdPerson', 'Toggle 3rd-Person Camera']
     ];
-    grid.innerHTML = '';
-    for (const [action, label] of labels) {
+    kbmPane.innerHTML = '';
+
+    // Mouse Controls (reference rows)
+    const mouseRows = [
+      ['LMB / RMB', 'Fire / Aim Down Sights'],
+      ['MMB (Tap / 2x / Hold)', 'Ping Location / Enemy Ping / Ping Wheel'],
+      ['SCROLL', 'Switch Weapon Slot']
+    ];
+    for (const [keyTxt, desc] of mouseRows) {
+      const row = document.createElement('div');
+      row.className = 'ctrl-row';
+      row.innerHTML = `<b style="min-width:110px;">${keyTxt}</b><span>${desc}</span>`;
+      kbmPane.appendChild(row);
+    }
+
+    for (const [action, label] of kbmLabels) {
       const row = document.createElement('div');
       row.className = 'ctrl-row';
       const btn = document.createElement('button');
       btn.className = 'btn-small';
-      btn.style.minWidth = '78px';
+      btn.style.minWidth = '88px';
       btn.textContent = this._formatKeyCode(window.KEYBINDS[action]);
       btn.addEventListener('click', () => {
         if (this._rebindCleanup) this._rebindCleanup();
@@ -2427,26 +3220,133 @@ class GameUI {
       const lbl = document.createElement('span');
       lbl.textContent = label;
       row.append(btn, lbl);
-      grid.appendChild(row);
+      kbmPane.appendChild(row);
     }
 
-    const resetRow = document.createElement('div');
-    resetRow.className = 'ctrl-row';
-    resetRow.style.marginTop = '6px';
-    const resetBtn = document.createElement('button');
-    resetBtn.className = 'btn-small btn-danger';
-    resetBtn.textContent = 'RESET KEYBINDS';
-    resetBtn.addEventListener('click', () => {
+    const kbmResetRow = document.createElement('div');
+    kbmResetRow.className = 'ctrl-row';
+    kbmResetRow.style.marginTop = '6px';
+    const kbmResetBtn = document.createElement('button');
+    kbmResetBtn.className = 'btn-small btn-danger';
+    kbmResetBtn.textContent = 'RESET KB/M DEFAULTS';
+    kbmResetBtn.addEventListener('click', () => {
       window.KEYBINDS = { ...window.DEFAULT_KEYBINDS };
       this.profile.keybinds = { ...window.KEYBINDS };
       this.saveProfile();
       this.renderKeybindSettings();
     });
-    const gpNote = document.createElement('span');
-    gpNote.style.color = '#69f0ae';
-    gpNote.textContent = 'Controller: LB+RB Field Upgrade · R3 Tap Quick Melee / Hold Equip Melee';
-    resetRow.append(resetBtn, gpNote);
-    grid.appendChild(resetRow);
+    kbmResetRow.appendChild(kbmResetBtn);
+    kbmPane.appendChild(kbmResetRow);
+
+    // 2. Controller Button Bindings Tab
+    const gpLabels = [
+      ['fire', 'Fire Weapon'],
+      ['ads', 'Aim Down Sights / Cancel Throw'],
+      ['sprint', 'Sprint / 2x Tactical Sprint'],
+      ['jump', 'Jump / Stand / Slide-Cancel'],
+      ['crouch', 'Crouch / Slide / Hold Prone'],
+      ['interactReload', 'Loot / Interact / Reload'],
+      ['swapPlates', 'Tap: Swap Weapon · Hold: Armor Plates'],
+      ['lethal', 'Lethal Throwable (LB+RB: Field Upgrade)'],
+      ['tactical', 'Tactical Throwable (LB+RB: Field Upgrade)'],
+      ['melee', 'Tap: Quick Melee · Hold: Equip Melee'],
+      ['medkit', 'Use Field Medkit'],
+      ['backpack', 'Open Backpack (Hold: Stow Ground Weapon)'],
+      ['inspect', 'Inspect Weapon'],
+      ['killstreak', 'Activate Killstreak'],
+      ['map', 'Toggle Full-Size Tactical Map'],
+      ['pause', 'Pause Menu']
+    ];
+    ctrlPane.innerHTML = '';
+
+    const stickRows = [
+      ['LEFT STICK', 'Move / Inventory Cursor'],
+      ['RIGHT STICK', 'Aim / Look (Rotational Aim Assist)']
+    ];
+    for (const [keyTxt, desc] of stickRows) {
+      const row = document.createElement('div');
+      row.className = 'ctrl-row';
+      row.innerHTML = `<b style="min-width:110px;">${keyTxt}</b><span>${desc}</span>`;
+      ctrlPane.appendChild(row);
+    }
+
+    for (const [action, label] of gpLabels) {
+      const row = document.createElement('div');
+      row.className = 'ctrl-row';
+      const btn = document.createElement('button');
+      btn.className = 'btn-small';
+      btn.style.minWidth = '112px';
+      btn.textContent = this._formatGamepadButton(window.GAMEPAD_BINDS[action]);
+      btn.addEventListener('click', () => {
+        if (this._rebindCleanup) this._rebindCleanup();
+        btn.textContent = 'PRESS BUTTON...';
+        btn.style.borderColor = '#69f0ae';
+        btn.style.color = '#69f0ae';
+        let rafId = null;
+        let armed = false;
+        const pollPad = () => {
+          const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+          let activePad = null;
+          for (const p of pads) { if (p && p.connected) { activePad = p; break; } }
+          if (activePad) {
+            const anyDown = activePad.buttons.some(b => b && (b.pressed || b.value > 0.55));
+            if (!armed) {
+              if (!anyDown) armed = true;
+            } else {
+              for (let i = 0; i < activePad.buttons.length; i++) {
+                const b = activePad.buttons[i];
+                if (b && (b.pressed || b.value > 0.55)) {
+                  window.GAMEPAD_BINDS[action] = i;
+                  this.profile.gamepadBinds = { ...window.GAMEPAD_BINDS };
+                  this.saveProfile();
+                  cleanup();
+                  this.renderKeybindSettings();
+                  return;
+                }
+              }
+            }
+          }
+          rafId = requestAnimationFrame(pollPad);
+        };
+        const onEsc = (ev) => {
+          if (ev.code === 'Escape') {
+            ev.preventDefault();
+            cleanup();
+            this.renderKeybindSettings();
+          }
+        };
+        const cleanup = () => {
+          if (rafId) cancelAnimationFrame(rafId);
+          window.removeEventListener('keydown', onEsc, true);
+          this._rebindCleanup = null;
+        };
+        this._rebindCleanup = cleanup;
+        window.addEventListener('keydown', onEsc, true);
+        rafId = requestAnimationFrame(pollPad);
+      });
+      const lbl = document.createElement('span');
+      lbl.textContent = label;
+      row.append(btn, lbl);
+      ctrlPane.appendChild(row);
+    }
+
+    const gpResetRow = document.createElement('div');
+    gpResetRow.className = 'ctrl-row';
+    gpResetRow.style.marginTop = '6px';
+    const gpResetBtn = document.createElement('button');
+    gpResetBtn.className = 'btn-small btn-danger';
+    gpResetBtn.textContent = 'RESET CONTROLLER DEFAULTS';
+    gpResetBtn.addEventListener('click', () => {
+      window.GAMEPAD_BINDS = { ...window.DEFAULT_GAMEPAD_BINDS };
+      this.profile.gamepadBinds = { ...window.GAMEPAD_BINDS };
+      this.saveProfile();
+      this.renderKeybindSettings();
+    });
+    const gpTip = document.createElement('span');
+    gpTip.style.color = '#69f0ae';
+    gpTip.textContent = 'Click any button and press a controller input (ESC to cancel)';
+    gpResetRow.append(gpResetBtn, gpTip);
+    ctrlPane.appendChild(gpResetRow);
   }
 
   _equipOrPackFromStash(stashIdx, maxBagSlots) {
@@ -2877,6 +3777,54 @@ class GameUI {
       });
 
       list.appendChild(row);
+    }
+
+    // DEV TRADER — only visible when window.DEV_MODE is ON, sells EVERY item in the game for FREE!
+    const devPanel = document.getElementById('dev-trader-panel');
+    const devList = document.getElementById('dev-trader-list');
+    if (devPanel) {
+      devPanel.classList.toggle('hidden', !window.DEV_MODE);
+    }
+    if (devPanel && devList && window.DEV_MODE) {
+      devList.innerHTML = '';
+      const cat = this.devTraderCategory || 'all';
+      const allDefs = Object.values(GAME_DATA.ITEMS || {});
+      const filtered = allDefs.filter((def) => {
+        if (!def || !def.id) return false;
+        if (cat === 'all') return true;
+        if (cat === 'weapons') return def.type === 'weapon' || def.type === 'melee';
+        if (cat === 'gear') return ['armor', 'backpack', 'headgear', 'field_upgrade', 'killstreak', 'self_revive'].includes(def.type);
+        if (cat === 'consumables') return ['med', 'ammo', 'plate', 'lethal', 'tactical'].includes(def.type);
+        return !['weapon', 'melee', 'armor', 'backpack', 'headgear', 'field_upgrade', 'killstreak', 'self_revive', 'med', 'ammo', 'plate', 'lethal', 'tactical'].includes(def.type);
+      });
+
+      for (const def of filtered) {
+        const qty = def.buyQty || (def.type === 'ammo' ? 30 : 1);
+        const row = document.createElement('div');
+        row.className = `item-row rarity-${def.rarity || 'common'}`;
+        row.innerHTML = `
+          <div class="item-info">
+            <div class="item-name">${def.name}${qty > 1 ? ' x' + qty : ''}</div>
+            <div class="item-meta">${(def.type || 'ITEM').toUpperCase()} · ${def.desc || ''}</div>
+          </div>
+          <div class="item-actions">
+            <button class="btn-small" style="border-color:#69f0ae;color:#69f0ae;">FREE (₽0)</button>
+          </div>
+        `;
+        row.querySelector('button').addEventListener('click', () => {
+          if (def.type === 'ammo') {
+            this.profile.loadout.ammo[def.id] = (this.profile.loadout.ammo[def.id] || 0) + qty;
+          } else {
+            this.addToStash(def.id, qty);
+          }
+          if (window.soundEngine && window.soundEngine.playInvDrop) {
+            try { window.soundEngine.playInvDrop(); } catch (e) {}
+          }
+          this.saveProfile();
+          this.renderHideout();
+        });
+        devList.appendChild(row);
+      }
     }
   }
 
@@ -3462,36 +4410,35 @@ class GameUI {
       }
     }
 
-    // Hostile Operators (shown when UAV active, or in combat / close)
+    // Hostile Operators & NPCs (2D pulsing translucent UAV radar circle radiating outward up to 150m!)
     const uavActive = (player.uavTimer || 0) > 0;
+    const UAV_RADIUS = 150;
     if (uavActive) {
-      // Animated rotating green UAV radar sweep wedge
-      const sweepAng = (performance.now() * 0.0024) % (Math.PI * 2);
+      const pulsePhase = (performance.now() % 2400) / 2400; // 0..1 radiating outward & dissipating
+      const maxMinimapR = Math.min(70, UAV_RADIUS * scale);
+      const curR = Math.max(2, pulsePhase * maxMinimapR);
+      const alpha = Math.max(0, 1 - pulsePhase);
       ctx.save();
       ctx.translate(cx, cy);
-      ctx.fillStyle = 'rgba(105, 240, 174, 0.14)';
+      ctx.fillStyle = `rgba(105, 240, 174, ${(0.14 * alpha).toFixed(3)})`;
       ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.arc(0, 0, 70, sweepAng - 0.55, sweepAng);
-      ctx.closePath();
+      ctx.arc(0, 0, curR, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = 'rgba(105, 240, 174, 0.65)';
-      ctx.lineWidth = 1.4;
+      ctx.strokeStyle = `rgba(105, 240, 174, ${(0.68 * alpha).toFixed(3)})`;
+      ctx.lineWidth = 1.8;
       ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(Math.cos(sweepAng) * 70, Math.sin(sweepAng) * 70);
+      ctx.arc(0, 0, curR, 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
     }
 
     if (enemyManager && enemyManager.enemies) {
       for (const e of enemyManager.enemies) {
-        if (e.dead) continue;
+        if (e.dead || e.extracted) continue;
         const dist = e.position.distanceTo(player.position);
-        const visible = uavActive || e.state === 'COMBAT' || dist < 24;
+        const visible = (uavActive && dist <= UAV_RADIUS) || e.state === 'COMBAT' || dist < 24;
         if (!visible) continue;
         const p = toMap(e.position.x, e.position.z);
-        // When UAV is active, clamp distant hostiles onto radar perimeter so player sees bearing to every squad!
         let px = p.x, py = p.y;
         const dxM = px - cx, dyM = py - cy;
         const rM = Math.hypot(dxM, dyM);
@@ -3675,24 +4622,34 @@ class GameUI {
       ctx.restore();
     }
 
-    // 7. UAV Radar Sweep & Hostiles
+    // 7. 2D Pulsing UAV Radar Ring (150m radius radiating outward & dissipating) & Hostiles
     const uavActive = (player.uavTimer || 0) > 0;
+    const UAV_RADIUS = 150;
     const pPos = toMap(player.position.x, player.position.z);
     if (uavActive) {
-      const sweepAng = (performance.now() * 0.0024) % (Math.PI * 2);
+      const pulsePhase = (performance.now() % 2400) / 2400;
+      const maxMapR = UAV_RADIUS * scale;
+      const curR = Math.max(3, pulsePhase * maxMapR);
+      const alpha = Math.max(0, 1 - pulsePhase);
       ctx.save();
       ctx.translate(pPos.x, pPos.y);
-      ctx.fillStyle = 'rgba(105, 240, 174, 0.12)';
+      // Faint 150m outer coverage boundary
+      ctx.strokeStyle = 'rgba(105, 240, 174, 0.16)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
       ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.arc(0, 0, 220, sweepAng - 0.5, sweepAng);
-      ctx.closePath();
+      ctx.arc(0, 0, maxMapR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // Pulsing translucent circle radiating outwards & dissipating
+      ctx.fillStyle = `rgba(105, 240, 174, ${(0.13 * alpha).toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(0, 0, curR, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = 'rgba(105, 240, 174, 0.55)';
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = `rgba(105, 240, 174, ${(0.72 * alpha).toFixed(3)})`;
+      ctx.lineWidth = 2.0;
       ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(Math.cos(sweepAng) * 220, Math.sin(sweepAng) * 220);
+      ctx.arc(0, 0, curR, 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
     }
@@ -3701,7 +4658,8 @@ class GameUI {
       for (const e of enemyManager.enemies) {
         if (e.dead || e.extracted) continue;
         const dist = e.position.distanceTo(player.position);
-        if (!uavActive && e.state !== 'COMBAT' && dist > 30) continue;
+        const visible = (uavActive && dist <= UAV_RADIUS) || e.state === 'COMBAT' || dist <= 30;
+        if (!visible) continue;
         const ep = toMap(e.position.x, e.position.z);
         ctx.fillStyle = e.isDowned ? '#ffca28' : (e.isOperator ? '#ff3d3d' : '#ff7043');
         ctx.beginPath();
@@ -3810,9 +4768,11 @@ class GameUI {
   }
 
   // ==================== NON-BLOCKING LOOT & BACKPACK UI ====================
-  openLootModal(player, title, containerItems, operatorEquipment = null) {
+  openLootModal(player, title, containerItems, operatorEquipment = null, worldPos = null, camera = null) {
     this._lootPlayer = player;
-    this.activeLootSource = containerItems ? { title, items: containerItems, operatorEquipment } : null;
+    this.activeLootSource = containerItems
+      ? { title, items: containerItems, operatorEquipment, worldPos: worldPos ? worldPos.clone() : null }
+      : null;
     this._searchRevealProgress = 0;
     this.hideItemPopout();
 
@@ -3822,7 +4782,191 @@ class GameUI {
     if (cPanel) {
       cPanel.classList.toggle('hidden', !this.activeLootSource);
     }
+    if (this.activeLootSource) {
+      this.autoLootExistingStacks(player);
+    }
     this.renderLootModal(player);
+    if (this.activeLootSource && camera) {
+      this.positionContainerPanel(camera);
+    }
+    requestAnimationFrame(() => this.ensureInitialSelection());
+  }
+
+  autoLootExistingStacks(player) {
+    if (!this.activeLootSource || !player || !Array.isArray(player.backpack)) return false;
+    const items = this.activeLootSource.items;
+    let movedAny = false;
+
+    // 1. Auto-stack revealed armor plates from enemy operator equipment plate slot into player's plate slot (max 6)
+    const eq = this.activeLootSource.operatorEquipment;
+    if (eq && eq.plates > 0 && eq.revealedSlots && eq.revealedSlots.plates) {
+      const curPlates = player.plates || 0;
+      const room = Math.max(0, 6 - curPlates);
+      if (room > 0) {
+        const move = Math.min(room, eq.plates);
+        player.plates = curPlates + move;
+        eq.plates -= move;
+        movedAny = true;
+      }
+    }
+
+    // 2. Auto-stack revealed container items: plates into operator plate slot (max 6) + stackables into existing backpack stacks
+    if (Array.isArray(items) && items.length > 0) {
+      for (let i = items.length - 1; i >= 0; i--) {
+        const src = items[i];
+        if (!src || src.revealed === false || src.qty <= 0) continue;
+        const def = GAME_DATA.ITEMS[src.id];
+        if (!def) continue;
+
+        // Armor plates fill the operator's plate slot first (up to 6)
+        if (src.id === 'armor_plate' || def.type === 'plate') {
+          const curPlates = player.plates || 0;
+          const plateRoom = Math.max(0, 6 - curPlates);
+          if (plateRoom > 0) {
+            const move = Math.min(plateRoom, src.qty);
+            player.plates = curPlates + move;
+            src.qty -= move;
+            movedAny = true;
+          }
+        }
+
+        if (src.qty > 0 && def.stackable) {
+          const maxStack = def.maxStack || Infinity;
+          for (const bagItem of player.backpack) {
+            if (!bagItem || bagItem.id !== src.id) continue;
+            const room = maxStack === Infinity ? src.qty : Math.max(0, maxStack - bagItem.qty);
+            if (room <= 0) continue;
+            const move = Math.min(room, src.qty);
+            bagItem.qty += move;
+            src.qty -= move;
+            movedAny = true;
+            if (src.qty <= 0) break;
+          }
+        }
+
+        if (src.qty <= 0) {
+          items.splice(i, 1);
+        }
+      }
+    }
+
+    if (movedAny && window.soundEngine && window.soundEngine.playClick) {
+      try { window.soundEngine.playClick(); } catch (e) {}
+    }
+    return movedAny;
+  }
+
+  positionContainerPanel(camera) {
+    const cPanel = document.getElementById('inv-container-panel');
+    if (!cPanel || cPanel.classList.contains('hidden') || !this.activeLootSource) return;
+
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    const pw = cPanel.offsetWidth || 358;
+    const ph = cPanel.offsetHeight || 220;
+    const margin = 10;
+
+    // 1. Project active container's 3D world position onto screen
+    let targetCx = W * 0.36;
+    let targetCy = H * 0.48;
+    if (camera && this.activeLootSource.worldPos && typeof THREE !== 'undefined') {
+      const p3 = this.activeLootSource.worldPos.clone();
+      p3.y += 0.32;
+      p3.project(camera);
+      if (p3.z < 1) {
+        targetCx = (p3.x * 0.5 + 0.5) * W;
+        targetCy = (-p3.y * 0.5 + 0.5) * H;
+      }
+    }
+
+    const clampX = (x) => Math.max(margin, Math.min(W - pw - margin, x));
+    const clampY = (y) => Math.max(margin, Math.min(H - ph - margin, y));
+    const idealX = clampX(targetCx - pw / 2);
+    const idealY = clampY(targetCy - ph / 2);
+
+    // 2. Gather bounding rects of all visible HUD / UI elements to avoid overlapping
+    const pad = 10;
+    const obstacleSelectors = [
+      '#inv-operator-panel',
+      '.hud-top-left',
+      '.hud-top-center',
+      '.hud-bottom-left',
+      '.hud-bottom-right-cluster',
+      '#hud-kill-feed',
+      '#hud-feed',
+      '#extract-banner',
+      '#revive-banner',
+      '#redzone-banner'
+    ];
+    const obstacles = [];
+    for (const sel of obstacleSelectors) {
+      const el = document.querySelector(sel);
+      if (!el || el.classList.contains('hidden')) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width <= 2 || r.height <= 2) continue;
+      obstacles.push({
+        left: r.left - pad,
+        right: r.right + pad,
+        top: r.top - pad,
+        bottom: r.bottom + pad
+      });
+    }
+
+    const overlapArea = (x, y) => {
+      let area = 0;
+      const r2 = x + pw;
+      const b2 = y + ph;
+      for (const o of obstacles) {
+        const ox = Math.max(0, Math.min(r2, o.right) - Math.max(x, o.left));
+        const oy = Math.max(0, Math.min(b2, o.bottom) - Math.max(y, o.top));
+        area += ox * oy;
+      }
+      return area;
+    };
+
+    // 3. If ideal position is already clear, use it directly
+    let bestX = idealX;
+    let bestY = idealY;
+    let bestOverlap = overlapArea(idealX, idealY);
+
+    if (bestOverlap > 0) {
+      // Build candidate positions pushed cleanly outside each obstacle + local grid around ideal point
+      const candidates = [[idealX, idealY]];
+      for (const o of obstacles) {
+        candidates.push(
+          [clampX(o.left - pw), idealY],
+          [clampX(o.right), idealY],
+          [idealX, clampY(o.top - ph)],
+          [idealX, clampY(o.bottom)]
+        );
+      }
+      for (let gx = 0; gx <= 6; gx++) {
+        for (let gy = 0; gy <= 5; gy++) {
+          const cx = margin + ((W - pw - margin * 2) * gx) / 6;
+          const cy = margin + ((H - ph - margin * 2) * gy) / 5;
+          candidates.push([clampX(cx), clampY(cy)]);
+        }
+      }
+
+      let bestDistSq = Infinity;
+      for (const [cx, cy] of candidates) {
+        const ov = overlapArea(cx, cy);
+        const dx = (cx + pw / 2) - targetCx;
+        const dy = (cy + ph / 2) - targetCy;
+        const dSq = dx * dx + dy * dy;
+        if (ov < bestOverlap - 1 || (Math.abs(ov - bestOverlap) <= 1 && dSq < bestDistSq)) {
+          bestOverlap = ov;
+          bestDistSq = dSq;
+          bestX = cx;
+          bestY = cy;
+        }
+      }
+    }
+
+    cPanel.style.left = `${Math.round(bestX)}px`;
+    cPanel.style.top = `${Math.round(bestY)}px`;
+    cPanel.style.bottom = 'auto';
+    cPanel.style.transform = 'none';
   }
 
   closeLootModal() {
@@ -3950,6 +5094,7 @@ class GameUI {
       if (this._searchRevealProgress >= 1) {
         item.revealed = true;
         this._searchRevealProgress = 0;
+        this.autoLootExistingStacks(this._lootPlayer);
         if (window.soundEngine && window.soundEngine.playClick) {
           try { window.soundEngine.playClick(); } catch (e) {}
         }
@@ -3978,6 +5123,7 @@ class GameUI {
     if (this._searchRevealProgress >= 1) {
       eq.revealedSlots[nextKey] = true;
       this._searchRevealProgress = 0;
+      this.autoLootExistingStacks(this._lootPlayer);
       if (window.soundEngine && window.soundEngine.playClick) {
         try { window.soundEngine.playClick(); } catch (e) {}
       }
@@ -4586,7 +5732,6 @@ class GameUI {
     const cList = document.getElementById('loot-container-items');
     const bList = document.getElementById('loot-backpack-items');
     const cTitle = document.getElementById('loot-container-title');
-    const btnTakeAll = document.getElementById('btn-take-all');
     const opSlotsEl = document.getElementById('inv-op-slots');
 
     // 1. Player Operator Equipment — Exact 5-Column Tactical Grid
@@ -4823,21 +5968,36 @@ class GameUI {
       cList.innerHTML = '';
       if (this.activeLootSource) {
         if (cTitle) cTitle.textContent = this.activeLootSource.title.toUpperCase();
-        if (btnTakeAll) btnTakeAll.style.display = 'inline-block';
         const items = this.activeLootSource.items;
+        const eq = this.activeLootSource.operatorEquipment;
         const firstUnrevealed = items.findIndex(it => it && it.revealed === false);
 
-        if (items.length === 0) {
+        // When looting an eliminated operator, accurately match the slot count of their equipped backpack!
+        let totalSlots = items.length;
+        if (eq) {
+          const eBagDef = eq.backpack ? GAME_DATA.ITEMS[eq.backpack] : null;
+          const bagSlots = (eBagDef && (eBagDef.bagSlots || eBagDef.slots)) || 8;
+          totalSlots = Math.max(bagSlots, items.length);
+        }
+
+        if (totalSlots === 0) {
           cList.innerHTML = '<p class="hint" style="padding:10px;grid-column:1/-1;">Backpack / Container is empty.</p>';
         } else {
-          items.forEach((item, idx) => {
-            const def = GAME_DATA.ITEMS[item.id];
-            if (!def) return;
+          for (let idx = 0; idx < totalSlots; idx++) {
+            const item = items[idx];
             const slot = document.createElement('div');
-            const isWpn = def.type === 'weapon';
-            slot.className = isWpn ? 'inv-slot weapon-slot-wide' : 'inv-slot';
             slot.dataset.context = 'container';
             slot.dataset.idx = idx;
+
+            if (!item || !GAME_DATA.ITEMS[item.id]) {
+              slot.className = 'inv-slot empty-slot';
+              cList.appendChild(slot);
+              continue;
+            }
+
+            const def = GAME_DATA.ITEMS[item.id];
+            const isWpn = def.type === 'weapon';
+            slot.className = isWpn ? 'inv-slot weapon-slot-wide' : 'inv-slot';
 
             if (item.revealed === false) {
               slot.classList.add('searching');
@@ -4868,7 +6028,7 @@ class GameUI {
               });
             }
             cList.appendChild(slot);
-          });
+          }
         }
       }
     }
