@@ -511,7 +511,7 @@ class SquadMate {
         const moving = moveDist > 0.35;
 
         if (this.dead) {
-          this.group.position.y = 0.16;
+          this.group.position.y = this.position.y + 0.16;
           this.group.rotation.x = -Math.PI / 2;
           if (this.leftHip) this.leftHip.rotation.set(0, 0, -0.06);
           if (this.rightHip) this.rightHip.rotation.set(0, 0, 0.06);
@@ -522,7 +522,7 @@ class SquadMate {
         } else if (this.isDowned) {
           const phase = moving ? Math.sin(performance.now() * 0.006) : 0;
           const heave = Math.max(0, phase);
-          this.group.position.y = -0.56 + heave * 0.035;
+          this.group.position.y = this.position.y - 0.56 + heave * 0.035;
           this.group.rotation.x = -0.22 - heave * 0.04;
           if (this.leftHip) this.leftHip.rotation.x = -1.38 - heave * 0.14;
           if (this.rightHip) this.rightHip.rotation.x = -1.38 - Math.max(0, -phase) * 0.10;
@@ -530,19 +530,23 @@ class SquadMate {
           this._updateBleedSprite(dt);
         } else {
           if (this.bleedSprite) this.bleedSprite.visible = false;
-          const stanceY = this._remoteStance === 'prone' ? -0.68 : (this._remoteStance === 'crouch' || this._remoteStance === 'slide' ? -0.32 : 0);
-          const stancePitch = this._remoteStance === 'prone' ? 1.35 : 0;
+          // Prone rotates the standing rig (feet at y=0) forward ~86° onto belly -> pivot must sit at +0.20 ABOVE floor, never negative!
+          const isProne = this._remoteStance === 'prone';
+          const isCrouch = this._remoteStance === 'crouch' || this._remoteStance === 'slide';
+          const stanceY = isProne ? 0.20 : (isCrouch ? -0.24 : 0);
+          const stancePitch = isProne ? 1.48 : 0;
           this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, this.position.y + stanceY, lerpRate);
           this.group.rotation.x = THREE.MathUtils.lerp(this.group.rotation.x, stancePitch, lerpRate);
           if (moving) {
             this.animCycle += dt * Math.min(12, moveDist * 1.4);
-            if (this.leftHip) this.leftHip.rotation.x = Math.sin(this.animCycle) * 0.48;
-            if (this.rightHip) this.rightHip.rotation.x = -Math.sin(this.animCycle) * 0.48;
+            const legAmp = isProne ? 0.14 : 0.48;
+            if (this.leftHip) this.leftHip.rotation.x = Math.sin(this.animCycle) * legAmp;
+            if (this.rightHip) this.rightHip.rotation.x = -Math.sin(this.animCycle) * legAmp;
           } else {
             if (this.leftHip) this.leftHip.rotation.x = THREE.MathUtils.lerp(this.leftHip.rotation.x, 0, dt * 10);
             if (this.rightHip) this.rightHip.rotation.x = THREE.MathUtils.lerp(this.rightHip.rotation.x, 0, dt * 10);
           }
-          this._redrawTag(this._remoteStance === 'crouch' ? 'CROUCH' : (this._remoteStance === 'prone' ? 'PRONE' : 'SQUAD'), this.squadColor);
+          this._redrawTag(this._remoteStance === 'crouch' ? 'CROUCH' : (isProne ? 'PRONE' : 'SQUAD'), this.squadColor);
         }
       } else {
         this._redrawTag('SYNCING...', '#ffca28');
