@@ -1015,6 +1015,23 @@ class GameUI {
     this.renderWorkbench();
   }
 
+  _renderItemIconHTML(id, def = null, opts = {}) {
+    const cls = opts.cls || 'slot-icon-img';
+    const wide = !!opts.wide;
+    let mods = opts.mods || null;
+    if (!mods && def && def.type === 'weapon' && this.profile && this.profile.weaponMods && this.profile.weaponMods[id]) {
+      mods = this.profile.weaponMods[id];
+    }
+    if (window.itemIcons && typeof window.itemIcons.getIcon === 'function' && id) {
+      const url = window.itemIcons.getIcon(id, { wide, mods });
+      if (url) {
+        const alt = (def && def.name) ? def.name.replace(/"/g, '&quot;') : id;
+        return `<img class="${cls}" src="${url}" alt="${alt}" draggable="false" />`;
+      }
+    }
+    return `<span class="slot-name">${this._getItemShortTag(id, def)}</span>`;
+  }
+
   _getItemShortTag(id, def) {
     const map = {
       pm9: 'PM9', g17: 'G17', mp5k: 'MP5', ak74m: 'AK', m870: '870', m24: 'M24',
@@ -1078,7 +1095,7 @@ class GameUI {
         const rar = def.rarity || 'common';
         cell.classList.add(`rarity-${rar}`);
         cell.innerHTML = `
-          <span class="slot-name">${this._getItemShortTag(item.id, def)}</span>
+          ${this._renderItemIconHTML(item.id, def)}
           ${item.qty > 1 ? `<span class="slot-qty">${item.qty}</span>` : ''}
         `;
         cell.title = `${def.name}${item.qty > 1 ? ' x' + item.qty : ''} (₽${(def.value * item.qty).toLocaleString()}) — Click to Equip or Pack`;
@@ -1146,7 +1163,7 @@ class GameUI {
         const def = GAME_DATA.ITEMS[item.id];
         cell.classList.add(`rarity-${def.rarity || 'common'}`);
         cell.innerHTML = `
-          <span class="slot-name">${this._getItemShortTag(item.id, def)}</span>
+          ${this._renderItemIconHTML(item.id, def)}
           ${item.qty > 1 ? `<span class="slot-qty">${item.qty}</span>` : ''}
         `;
         cell.title = `${def.name}${item.qty > 1 ? ' x' + item.qty : ''} — Click to return to Stash`;
@@ -2630,17 +2647,28 @@ class GameUI {
 
       const rar = opts.rarity || (def ? (def.rarity || 'common') : 'common');
       const val = opts.text !== undefined ? opts.text : (def ? def.name : 'EMPTY');
-      const sub = opts.sub ? `<span class="op-slot-sub">${opts.sub}</span>` : '';
+      const iconId = opts.iconId !== undefined ? opts.iconId : opts.id;
+      const showIcon = !!(hasVal && iconId && window.itemIcons && typeof window.itemIcons.getIcon === 'function');
+      const iconHtml = showIcon
+        ? this._renderItemIconHTML(iconId, def, { wide: opts.span === 2, cls: 'op-slot-icon' })
+        : '';
+      const badgeText = opts.sub || (showIcon && opts.badge ? opts.badge : '');
+      const sub = badgeText ? `<span class="op-slot-sub">${badgeText}</span>` : '';
+      const valHtml = showIcon ? '' : `<span class="op-slot-val">${val}</span>`;
       const cls = [
         'op-slot-card',
         hasVal ? `rarity-${rar}` : 'empty-slot-card',
+        showIcon ? 'has-icon' : '',
         opts.span ? `span-${opts.span}` : '',
         opts.spine ? 'spine-slot' : ''
       ].filter(Boolean).join(' ');
       const clickable = !!(onSlotClick && hasVal && opts.clickable !== false);
-      return `<div class="${cls}" data-op-key="${opts.key}" title="${clickable ? tooltipText : (val || 'Empty')}" style="cursor:${clickable ? 'pointer' : 'default'};">
+      const tipName = (def ? def.name : val) || 'Empty';
+      const tip = clickable ? `${tipName} — ${tooltipText}` : tipName;
+      return `<div class="${cls}" data-op-key="${opts.key}" title="${tip.replace(/"/g, '&quot;')}" style="cursor:${clickable ? 'pointer' : 'default'};">
         <span class="op-slot-label">${opts.label}</span>
-        <span class="op-slot-val">${val}</span>
+        ${iconHtml}
+        ${valHtml}
         ${sub}
       </div>`;
     };
@@ -2653,8 +2681,8 @@ class GameUI {
     containerEl.innerHTML = `
       <div class="op-tactical-grid">
         <!-- Row 1: Cash | Plates | DOGTAG (Center) | Headgear | Self-Revive -->
-        ${card({ key: 'cash', label: data.cashLabel || 'CASH', text: `₽${(data.cash || 0).toLocaleString()}`, hasValue: (data.cash || 0) > 0, rarity: 'legendary' })}
-        ${card({ key: 'plates', label: 'PLATES', text: `${data.plates || 0} / 6`, hasValue: (data.plates || 0) > 0, rarity: 'rare' })}
+        ${card({ key: 'cash', label: data.cashLabel || 'CASH', iconId: 'cash', text: `₽${(data.cash || 0).toLocaleString()}`, badge: `₽${(data.cash || 0).toLocaleString()}`, hasValue: (data.cash || 0) > 0, rarity: 'legendary' })}
+        ${card({ key: 'plates', label: 'PLATES', iconId: 'armor_plate', text: `${data.plates || 0} / 6`, badge: `${data.plates || 0}/6`, hasValue: (data.plates || 0) > 0, rarity: 'rare' })}
         ${card({ key: 'dogtag', label: 'DOGTAG', id: data.dogtag, text: data.dogtag ? (data.dogtagText || 'Operator Tag') : 'LOOTED', hasValue: !!data.dogtag, rarity: 'rare', spine: true })}
         ${card({ key: 'headgear', label: 'HEADGEAR', id: data.headgear, text: itemDef(data.headgear) ? itemDef(data.headgear).name : 'MASK / NVG' })}
         ${card({ key: 'selfRevive', label: 'SELF-REVIVE', id: data.selfRevive })}
@@ -2665,8 +2693,8 @@ class GameUI {
         ${card({ key: 'secondary', label: 'SECONDARY', id: data.secondary, sub: sDef && data.secondaryMag !== undefined ? `${data.secondaryMag} RDS` : '', span: 2 })}
 
         <!-- Row 3: Tactical | Lethal | BACKPACK (Center) | Field Upgrade | Killstreak -->
-        ${card({ key: 'tactical', label: 'TACTICAL', id: data.tactical, text: tacDef ? `${tacDef.name.split(' ')[0]}${data.tacticalQty ? ' x' + data.tacticalQty : ''}` : 'EMPTY' })}
-        ${card({ key: 'lethal', label: 'LETHAL', id: data.lethal, text: lethDef ? `${lethDef.name.split(' ')[0]}${data.lethalQty ? ' x' + data.lethalQty : ''}` : 'EMPTY' })}
+        ${card({ key: 'tactical', label: 'TACTICAL', id: data.tactical, text: tacDef ? `${tacDef.name.split(' ')[0]}${data.tacticalQty ? ' x' + data.tacticalQty : ''}` : 'EMPTY', badge: tacDef && data.tacticalQty ? `x${data.tacticalQty}` : '' })}
+        ${card({ key: 'lethal', label: 'LETHAL', id: data.lethal, text: lethDef ? `${lethDef.name.split(' ')[0]}${data.lethalQty ? ' x' + data.lethalQty : ''}` : 'EMPTY', badge: lethDef && data.lethalQty ? `x${data.lethalQty}` : '' })}
         ${card({ key: 'backpack', label: 'BACKPACK', id: data.backpack, spine: true })}
         ${card({ key: 'fieldUpgrade', label: 'FIELD UPG', id: data.fieldUpgrade })}
         ${card({ key: 'killstreak', label: 'KILLSTREAK', id: data.killstreak })}
@@ -2892,7 +2920,7 @@ class GameUI {
               const effRar = item.rarityOverride || def.rarity || 'common';
               slot.classList.add(`rarity-${effRar}`);
               slot.innerHTML = `
-                <span class="slot-name">${this._getItemShortTag(item.id, def)}</span>
+                ${this._renderItemIconHTML(item.id, def)}
                 ${item.qty > 1 ? `<span class="slot-qty">${item.qty}</span>` : ''}
               `;
               slot.title = `${def.name}${item.qty > 1 ? ' x' + item.qty : ''} (₽${(def.value * item.qty).toLocaleString()}) — Left-Click: Quick-Move · Right-Click: Options`;
@@ -2932,7 +2960,7 @@ class GameUI {
           const def = GAME_DATA.ITEMS[item.id];
           slot.classList.add(`rarity-${def.rarity || 'common'}`);
           slot.innerHTML = `
-            <span class="slot-name">${this._getItemShortTag(item.id, def)}</span>
+            ${this._renderItemIconHTML(item.id, def)}
             ${item.qty > 1 ? `<span class="slot-qty">${item.qty}</span>` : ''}
           `;
           slot.title = `${def.name}${item.qty > 1 ? ' x' + item.qty : ''} (₽${(def.value * item.qty).toLocaleString()}) — Left-Click: Details/Equip · Right-Click: Split/Drop`;
