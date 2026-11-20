@@ -61,6 +61,7 @@ class SquadMate {
 
   _buildMesh() {
     const g = new THREE.Group();
+    g.rotation.order = 'YXZ';
     const uniformMat = new THREE.MeshLambertMaterial({ color: 0x2f434a });
     const vestMat = new THREE.MeshLambertMaterial({ color: 0x3b4d3e });
     const gearMat = new THREE.MeshLambertMaterial({ color: 0x1a1d20 });
@@ -299,12 +300,13 @@ class SquadMate {
       this.downedBy = attackerInfo || { name: 'HOSTILE', weaponId: 'ak74m', weaponName: 'AK-74M' };
       this.reviveProgress = 0;
       this.state = 'DOWNED';
-      // Grounded seated downed posture: hide weapon, reclined back with legs flat on top of ground
+      // Grounded seated downed posture: hide weapon, reclined back with legs flat on top of ground (Y_foot >= +0.16m)
       if (this.rifleMesh) this.rifleMesh.visible = false;
-      this.group.position.y = -0.62;
-      this.group.rotation.x = -0.32;
-      if (this.leftHip) this.leftHip.rotation.x = -1.24;
-      if (this.rightHip) this.rightHip.rotation.x = -1.26;
+      this.group.position.y = -0.56;
+      this.group.rotation.x = -0.22;
+      this.group.rotation.z = 0;
+      if (this.leftHip) this.leftHip.rotation.x = -1.38;
+      if (this.rightHip) this.rightHip.rotation.x = -1.38;
       if (this.leftArm) { this.leftArm.rotation.x = 0.55; this.leftArm.rotation.z = 0.24; }
       if (this.rightArm) { this.rightArm.rotation.x = -0.78; this.rightArm.rotation.z = -0.48; }
       this._redrawTag('DOWNED', '#ff5252');
@@ -448,10 +450,17 @@ class SquadMate {
     if (this.isDowned) {
       if (!this.beingRevivedBy) {
         this.downedBleedTimer -= dt;
-        // Crawl slowly toward player for safety
+        // Scoot slowly toward player for safety (legs in front, supporting arm heaving body)
         if (player && !player.dead && !player.isDowned) {
           this._moveToward(player.position.x, player.position.z, 1.1, dt);
           this.group.rotation.y = Math.atan2(player.position.x - this.position.x, player.position.z - this.position.z);
+          this._scootCycle = (this._scootCycle || 0) + dt * 4.4;
+          const phase = Math.sin(this._scootCycle);
+          const heave = Math.max(0, phase);
+          this.group.position.y = -0.56 + heave * 0.035;
+          this.group.rotation.x = -0.22 - heave * 0.04;
+          if (this.leftHip) this.leftHip.rotation.x = -1.38 - heave * 0.14;
+          if (this.rightHip) this.rightHip.rotation.x = -1.38 - Math.max(0, -phase) * 0.10;
         }
         this._redrawTag(`DOWNED ${Math.ceil(Math.max(0, this.downedBleedTimer))}s`, '#ff5252');
         if (this.downedBleedTimer <= 0) {

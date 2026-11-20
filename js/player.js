@@ -322,33 +322,34 @@ class Player {
     if (p.weaponMount) p.weaponMount.visible = !this.isDowned && !this.dead;
 
     if (this.isDowned) {
-      // === DOWNED SEATED POSTURE: RECLINED BACK (+torsoPitch) ON SUPPORTING LEFT ARM, RIGHT HAND CLUTCHING CHEST, BOOTS ABOVE GROUND ===
+      // === DOWNED SEATED POSTURE: RECLINED BACK (+torsoPitch) ON SUPPORTING LEFT ARM, LEGS EXTENDED IN FRONT ABOVE GROUND ===
       autoClampFeet = false;
       const isScooting = !this.beingDragged && horizSpeed > 0.15;
-      const cycle = isScooting ? (this.animCycle * 0.50) : 0;
+      const cycle = isScooting ? (this.animCycle * 0.52) : 0;
       const phase = isScooting ? Math.sin(cycle) : 0;
       const heave = isScooting ? Math.pow(Math.max(0, phase), 1.35) : 0;
 
       if (this.beingDragged) {
-        pelvisY = 0.16;
-        torsoPitch = 0.72 + breathe * 0.02; // reclined back cleanly while dragged
+        pelvisY = 0.25;
+        torsoPitch = 0.58 + breathe * 0.02; // reclined back cleanly while dragged
         rigRoll = Math.sin(this.idleTime * 4.0) * 0.025;
-        // Legs relaxed & flat along ground (zero floor clipping!)
-        lHipX = 1.62; lHipZ = -0.07; lKneeX = -0.08; lAnkX = 0.28;
-        rHipX = 1.62; rHipZ = 0.07;  rKneeX = -0.08; rAnkX = 0.28;
-        lShX = -0.55; lElbX = 0.16; lShZ = -0.22;
-        rShX = -0.55; rElbX = 0.16; rShZ = 0.22;
+        // Legs extended flat in front above ground (shin angle = 1.56 rad -> horizontal, zero ground clipping!)
+        lHipX = 1.64; lHipZ = -0.07; lKneeX = -0.08; lAnkX = 0.20;
+        rHipX = 1.64; rHipZ = 0.07;  rKneeX = -0.08; rAnkX = 0.20;
+        lShX = -0.52; lElbX = 0.16; lShZ = -0.22;
+        rShX = -0.52; rElbX = 0.16; rShZ = 0.22;
       } else {
-        pelvisY = 0.16 + heave * 0.045;
-        rigRoll = phase * 0.065;
-        torsoPitch = 0.44 + heave * 0.08 + breathe * 0.025; // reclined back ~25-30 deg on supporting arm!
-        // Left knee raised with boot planted on top of ground; right leg extended slightly bent along ground (zero clipping!)
-        lHipX = 1.88 + heave * 0.14; lHipZ = -0.10; lKneeX = -0.68 - heave * 0.16; lAnkX = 0.36;
-        rHipX = 1.66 + heave * 0.08; rHipZ = 0.10;  rKneeX = -0.24 - heave * 0.10; rAnkX = 0.22;
+        pelvisY = 0.26 + heave * 0.04;
+        rigRoll = phase * 0.055;
+        torsoPitch = 0.36 + heave * 0.07 + breathe * 0.025; // reclined back ~22 deg on supporting arm
+        // Left knee bent slightly planting heel (lHipX + lKneeX = 1.54 rad -> horizontal shin, boots cleanly above y=0!)
+        // Right leg extended out in front (rHipX + rKneeX = 1.56 rad -> horizontal shin, boots cleanly above y=0!)
+        lHipX = 1.88 + heave * 0.14; lHipZ = -0.10; lKneeX = -0.34 - heave * 0.14; lAnkX = 0.22;
+        rHipX = 1.70 + heave * 0.08; rHipZ = 0.10;  rKneeX = -0.14 - heave * 0.08; rAnkX = 0.18;
         // Supporting left arm planted behind/beside hip pushing torso along the ground
-        lShX = -0.78 - phase * 0.26; lElbX = 0.12 + heave * 0.20; lShZ = -0.28;
+        lShX = -0.74 - phase * 0.26; lElbX = 0.14 + heave * 0.20; lShZ = -0.28;
         // Right arm bent cleanly across injured chest/abdomen (empty hand, weapon hidden)
-        rShX = 0.52; rElbX = 1.45; rShZ = -0.45;
+        rShX = 0.50; rElbX = 1.42; rShZ = -0.45;
       }
     } else if (this.isSliding) {
       // === LOW, FOCUSED COMBAT SLIDE: SKIMMING GROUND, LEAD LEG FLAT OUT, TRAILING KNEE TUCKED HORIZONTALLY, ARMS LOW STABILIZING GUN ===
@@ -383,14 +384,14 @@ class Player {
       wpnRotY = 0.10 * entry;
       wpnRotZ = -0.12 * entry;
     } else if (this.isProne) {
-      // === PRONE & CRAWL ===
+      // === PRONE & CRAWL (Boots pointed back along ground -> zero toe clipping!) ===
       autoClampFeet = false;
-      rigPitch = -1.46;
-      rigY = 0.21;
+      rigPitch = -1.44;
+      rigY = 0.28;
       pelvisY = 0.90;
       torsoPitch = 0.16 + breathe * 0.015;
-      lHipX = stride * 0.24;  lKneeX = -0.12 - Math.max(0, stride) * 0.38; lAnkX = -0.35;
-      rHipX = -stride * 0.24; rKneeX = -0.12 - Math.max(0, -stride) * 0.38; rAnkX = -0.35;
+      lHipX = -0.06 - Math.max(0, stride) * 0.18;  lKneeX = -0.10 - Math.max(0, -stride) * 0.22; lAnkX = 0.65;
+      rHipX = -0.06 - Math.max(0, -stride) * 0.18; rKneeX = -0.10 - Math.max(0, stride) * 0.22;  rAnkX = 0.65;
       lShX = 1.38 + stride * 0.28; lElbX = 0.75; lShZ = -0.24;
       rShX = 1.48 - stride * 0.28; rElbX = 0.62; rShZ = 0.12;
     } else if (!this.onGround) {

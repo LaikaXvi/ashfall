@@ -676,7 +676,8 @@ class WeaponSystem {
   }
 
   _ensureDownedLegs() {
-    if (this.downedLegsGroup || !this.viewmodelCamera) return;
+    const cam = this.vmCamera || this.viewmodelCamera || this.camera;
+    if (this.downedLegsGroup || !cam) return;
     const root = new THREE.Group();
     const pantsMat = new THREE.MeshLambertMaterial({ color: 0x2f342d });
     const kneePadMat = new THREE.MeshLambertMaterial({ color: 0x1a1d1f });
@@ -685,7 +686,7 @@ class WeaponSystem {
 
     const makeLeg = (xOff) => {
       const hip = new THREE.Group();
-      hip.position.set(xOff, -0.36, -0.06);
+      hip.position.set(xOff, -0.28, -0.12);
       const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.145, 0.14, 0.42), pantsMat);
       thigh.position.set(0, -0.02, -0.21);
       const knee = new THREE.Group();
@@ -693,26 +694,26 @@ class WeaponSystem {
       const pad = new THREE.Mesh(new THREE.BoxGeometry(0.135, 0.06, 0.11), kneePadMat);
       pad.position.set(0, 0.065, -0.02);
       const shin = new THREE.Mesh(new THREE.BoxGeometry(0.125, 0.125, 0.38), pantsMat);
-      shin.position.set(0, -0.04, -0.19);
-      shin.rotation.x = -0.16;
+      shin.position.set(0, -0.03, -0.19);
+      shin.rotation.x = -0.10;
       const boot = new THREE.Mesh(new THREE.BoxGeometry(0.125, 0.19, 0.14), bootMat);
-      boot.position.set(0, -0.02, -0.41);
-      boot.rotation.x = 0.25;
+      boot.position.set(0, 0.0, -0.40);
+      boot.rotation.x = 0.22;
       const sole = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.19, 0.03), soleMat);
-      sole.position.set(0, -0.02, -0.485);
-      sole.rotation.x = 0.25;
+      sole.position.set(0, 0.0, -0.475);
+      sole.rotation.x = 0.22;
       knee.add(pad, shin, boot, sole);
       hip.add(thigh, knee);
       root.add(hip);
       return { hip, knee };
     };
 
-    const leftLeg = makeLeg(-0.15);
-    const rightLeg = makeLeg(0.15);
+    const leftLeg = makeLeg(-0.14);
+    const rightLeg = makeLeg(0.14);
 
     // Supporting left arm & gloved hand visible bracing on the ground to push/scoot the body
     const supportArm = new THREE.Group();
-    supportArm.position.set(-0.32, -0.22, -0.18);
+    supportArm.position.set(-0.30, -0.20, -0.18);
     const sleeveMat = new THREE.MeshLambertMaterial({ color: 0x2f332c });
     const forearm = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.042, 0.34, 8), sleeveMat);
     forearm.rotation.x = Math.PI / 2 - 0.55;
@@ -724,7 +725,7 @@ class WeaponSystem {
     root.add(supportArm);
 
     root.visible = false;
-    this.viewmodelCamera.add(root);
+    cam.add(root);
     this.downedLegsGroup = root;
     this.downedLegsParts = { leftLeg, rightLeg, supportArm };
   }
