@@ -19,6 +19,9 @@ class Player {
     this.onGround = true;
     this.noclip = false;
     this.godMode = false;
+    this.mantleState = null;
+    this.ledgeState = null;
+    this.ledgeCooldown = 0;
 
     // Stance & tactical slide state
     this.stance = 'stand'; // 'stand' | 'crouch' | 'prone'
@@ -1139,19 +1142,166 @@ class Player {
     return added > 0;
   }
 
-  _collidesAt(x, eyeY, z) {
-    const feetY = eyeY - this.currentEyeHeight;
+  _collidesAt(x, eyeY, z, eyeHOverride = null) {
+    const eh = eyeHOverride != null ? eyeHOverride : this.currentEyeHeight;
+    const feetY = eyeY - eh;
     const headY = eyeY + 0.18;
     const r = this.radius;
 
     for (const c of this.world.colliders) {
-      if (headY > c.minY && feetY < c.maxY) {
+      if (headY > c.minY + 0.02 && feetY < c.maxY - 0.05) {
         if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) {
           return true;
         }
       }
     }
     return false;
+  }
+
+  _getSupportHeightAt(x, z, feetY) {
+    const r = this.radius * 0.92;
+    let bestY = 0;
+    for (const c of this.world.colliders) {
+      if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) {
+        if (c.maxY <= feetY + 0.36 && c.maxY > bestY) {
+          bestY = c.maxY;
+        }
+      }
+    }
+    return bestY;
+  }
+
+  _getCeilingHeightAt(x, z, feetY) {
+    const r = this.radius * 0.85;
+    let ceilY = Infinity;
+    for (const c of this.world.colliders) {
+      if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) {
+        if (c.minY >= feetY + 0.45 && c.minY < ceilY) {
+          ceilY = c.minY;
+        }
+      }
+    }
+    return ceilY;
+  }
+
+  _findClimbableObstacle(airborneOnlyLedge = false) {
+    if (!this.world || !this.world.colliders) return null;
+    const feetY = this.position.y - this.currentEyeHeight;
+    const fwdX = -Math.sin(this.yaw);
+    const fwdZ = -Math.cos(this.yaw);
+    const probeR = this.radius * 0.7;
+
+    let best = null;
+    for (const d of [0.48, 0.78, 1.12]) {
+      const px = this.position.x + fwdX * d;
+      const pz = this.position.z + fwdZ * d;
+      for (const c of this.world.colliders) {
+        if (px + probeR <= c.minX || px - probeR >= c.maxX || pz + probeR <= c.minZ || pz - probeR >= c.maxZ) {
+          continue;
+        }
+        const relH = c.maxY - feetY;
+        if (relH < 0.42 || relH > 2.95) continue;
+        if (airborneOnlyLedge && relH <= 1.48) continue;
+
+        // Determine nearest outer face of this collider relative to player
+        const dxMin = Math.abs(this.position.x - c.minX);
+        const dxMax = Math.abs(this.position.x - c.maxX);
+        const dzMin = Math.abs(this.position.z - c.minZ);
+        const dzMax = Math.abs(this.position.z - c.maxZ);
+        const minD = Math.min(dxMin, dxMax, dzMin, dzMax);
+
+        let inwardX = 0, inwardZ = 0;
+        let edgeX = THREE.MathUtils.clamp(this.position.x, c.minX + 0.25, c.maxX - 0.25);
+        let edgeZ = THREE.MathUtils.clamp(this.position.z, c.minZ + 0.25, c.maxZ - 0.25);
+        if (c.maxX - c.minX < 0.5) edgeX = (c.minX + c.maxX) * 0.5;
+        if (c.maxZ - c.minZ < 0.5) edgeZ = (c.minZ + c.maxZ) * 0.5;
+
+        if (minD === dxMin) { inwardX = 1; edgeX = c.minX; }
+        else if (minD === dxMax) { inwardX = -1; edgeX = c.maxX; }
+        else if (minD === dzMin) { inwardZ = 1; edgeZ = c.minZ; }
+        else { inwardZ = -1; edgeZ = c.maxZ; }
+
+        // Ensure player is roughly facing the obstacle face
+        if (fwdX * inwardX + fwdZ * inwardZ < 0.25) continue;
+
+        const hangX = edgeX - inwardX * (this.radius + 0.08);
+        const hangZ = edgeZ - inwardZ * (this.radius + 0.08);
+
+        // Compute top landing point (step 0.56m inward onto the top surface)
+        const boxDepth = inwardX !== 0 ? (c.maxX - c.minX) : (c.maxZ - c.minZ);
+        const stepIn = Math.min(0.58, Math.max(0.28, boxDepth * 0.5));
+        const landX = edgeX + inwardX * stepIn;
+        const landZ = edgeZ + inwardZ * stepIn;
+        const standEye = c.maxY + this.standEyeHeight;
+
+        // Check headroom on top of the obstacle
+        if (this._collidesAt(landX, standEye + 0.04, landZ, this.standEyeHeight)) continue;
+
+        const kind = relH <= 1.48 ? 'mantle' : 'ledge';
+        best = {
+          kind,
+          collider: c,
+          relH,
+          ledgeY: c.maxY,
+          hangPos: new THREE.Vector3(hangX, c.maxY - 0.16, hangZ),
+          endPos: new THREE.Vector3(landX, standEye, landZ),
+          inwardX,
+          inwardZ,
+          ledgeYaw: Math.atan2(-inwardX, -inwardZ)
+        };
+        break;
+      }
+      if (best) break;
+    }
+    return best;
+  }
+
+  _startClimb(info) {
+    if (!info) return false;
+    this.isSliding = false;
+    this.isADS = false;
+    this.isFiring = false;
+    this.isSprinting = false;
+    this.isTacSprinting = false;
+    this.stance = 'stand';
+    this.velocity.set(0, 0, 0);
+
+    if (info.kind === 'mantle') {
+      const midPos = new THREE.Vector3(
+        THREE.MathUtils.lerp(this.position.x, info.endPos.x, 0.45),
+        info.ledgeY + this.standEyeHeight + 0.12,
+        THREE.MathUtils.lerp(this.position.z, info.endPos.z, 0.45)
+      );
+      this.mantleState = {
+        startPos: this.position.clone(),
+        midPos,
+        endPos: info.endPos.clone(),
+        t: 0,
+        duration: 0.34
+      };
+      if (window.soundEngine && window.soundEngine.playFootstep) {
+        try { window.soundEngine.playFootstep(true); } catch (e) {}
+      }
+      return true;
+    }
+
+    // Head-height progressive ledge-grab!
+    this.ledgeState = {
+      phase: 'grabbing', // 'grabbing' | 'hanging' | 'pulling'
+      grabT: 0,
+      pullProgress: 0,
+      startPos: this.position.clone(),
+      hangPos: info.hangPos.clone(),
+      endPos: info.endPos.clone(),
+      ledgeY: info.ledgeY,
+      inwardX: info.inwardX,
+      inwardZ: info.inwardZ,
+      ledgeYaw: info.ledgeYaw
+    };
+    if (window.soundEngine && window.soundEngine.playFootstep) {
+      try { window.soundEngine.playFootstep(false); } catch (e) {}
+    }
+    return true;
   }
 
   activateFieldUpgrade() {
@@ -1230,7 +1380,13 @@ class Player {
   }
 
   onJumpKeyDown() {
-    if (this.isDowned || this.dead) return;
+    if (this.isDowned || this.dead || this.noclip) return;
+    if (this.mantleState) return;
+    if (this.ledgeState) {
+      // Pressing Jump while hanging also initiates pulling up onto the ledge
+      this.ledgeState.phase = 'pulling';
+      return;
+    }
     if (this.isSliding) {
       // Smooth slide-cancel back to standing / sprinting
       if (this.slideTimer < this.slideDuration - 0.14) {
@@ -1247,6 +1403,13 @@ class Player {
     if (this.stance === 'crouch') {
       this.stance = 'stand';
     }
+    // Check for hip-height mantle or head-height ledge-grab right in front of the player
+    if (this.ledgeCooldown <= 0) {
+      const climb = this._findClimbableObstacle(false);
+      if (climb && this._startClimb(climb)) {
+        return;
+      }
+    }
     if (this.onGround) {
       this.velocity.y = 6.2;
       this.onGround = false;
@@ -1255,6 +1418,7 @@ class Player {
 
   update(dt) {
     if (this.slideCooldown > 0) this.slideCooldown = Math.max(0, this.slideCooldown - dt);
+    if (this.ledgeCooldown > 0) this.ledgeCooldown = Math.max(0, this.ledgeCooldown - dt);
     if (this.uavTimer > 0) this.uavTimer = Math.max(0, this.uavTimer - dt);
     if (this.deadSilenceTimer > 0) this.deadSilenceTimer = Math.max(0, this.deadSilenceTimer - dt);
     if (this.fieldUpgrade && this.fieldUpgradeCharge < 100) {
@@ -1322,6 +1486,127 @@ class Player {
       this.camera.rotation.y = this.yaw;
       this.camera.rotation.x = this.pitch;
       this.camera.rotation.z = 0;
+      return;
+    }
+
+    // Active Hip-Height Mantle (smooth quick vault/step-up onto hip-height obstacle)
+    if (this.mantleState && !this.dead && !this.isDowned) {
+      const ms = this.mantleState;
+      ms.t = Math.min(1, ms.t + dt / ms.duration);
+      const u = 1 - Math.pow(1 - ms.t, 2.2); // crisp ease-out
+      const inv = 1 - u;
+      // Quadratic Bezier arc from startPos -> midPos -> endPos
+      this.position.set(
+        inv * inv * ms.startPos.x + 2 * inv * u * ms.midPos.x + u * u * ms.endPos.x,
+        inv * inv * ms.startPos.y + 2 * inv * u * ms.midPos.y + u * u * ms.endPos.y,
+        inv * inv * ms.startPos.z + 2 * inv * u * ms.midPos.z + u * u * ms.endPos.z
+      );
+      this.currentEyeHeight = this.standEyeHeight;
+      this.velocity.set(0, 0, 0);
+      this.onGround = false;
+      const vaultRoll = Math.sin(ms.t * Math.PI) * 0.048;
+      const vaultPitch = -Math.sin(ms.t * Math.PI) * 0.055;
+      if (ms.t >= 1) {
+        this.position.copy(ms.endPos);
+        this.mantleState = null;
+        this.onGround = true;
+        this.stance = 'stand';
+      }
+      this._updateThirdPersonModel(dt);
+      if (!this.isThirdPerson) {
+        this.camera.position.copy(this.position);
+        this.camera.rotation.order = 'YXZ';
+        this.camera.rotation.y = this.yaw;
+        this.camera.rotation.x = THREE.MathUtils.clamp(this.pitch + vaultPitch, -Math.PI / 2 + 0.08, Math.PI / 2 - 0.08);
+        this.camera.rotation.z = vaultRoll;
+      }
+      return;
+    }
+
+    // Active Head-Height Progressive Ledge-Grab (both hands on ledge; W pulls up progressively, other movement lets go!)
+    if (this.ledgeState && !this.dead && !this.isDowned) {
+      const ls = this.ledgeState;
+      this.isFiring = false;
+      this.isADS = false;
+      this.isSprinting = false;
+      this.isTacSprinting = false;
+      this.velocity.set(0, 0, 0);
+      this.onGround = false;
+      this.currentEyeHeight = this.standEyeHeight;
+
+      // Gently clamp yaw within ±62° of the ledge normal while hanging
+      let yawDiff = this.yaw - ls.ledgeYaw;
+      while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
+      while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
+      if (Math.abs(yawDiff) > 1.08) {
+        this.yaw = ls.ledgeYaw + Math.sign(yawDiff) * 1.08;
+      }
+
+      const pressingForward = moveForward > 0.25 || !!this.keys[kb.jump || 'Space'];
+      const pressingCancel = (moveForward < -0.25) || (Math.abs(moveRight) > 0.25) || !!this.keys[kb.crouch || 'KeyC'] || !!this.keys['ControlLeft'];
+
+      if (ls.phase === 'grabbing') {
+        ls.grabT = Math.min(1, ls.grabT + dt / 0.16);
+        const ease = 1 - Math.pow(1 - ls.grabT, 2);
+        this.position.lerpVectors(ls.startPos, ls.hangPos, ease);
+        if (ls.grabT >= 1) ls.phase = 'hanging';
+      } else {
+        if (pressingCancel) {
+          // Let go of the ledge cleanly!
+          this.position.x -= ls.inwardX * 0.20;
+          this.position.z -= ls.inwardZ * 0.20;
+          this.velocity.set(-ls.inwardX * 1.2, -0.8, -ls.inwardZ * 1.2);
+          this.ledgeState = null;
+          this.ledgeCooldown = 0.45;
+          return;
+        }
+        if (pressingForward) {
+          ls.phase = 'pulling';
+          ls.pullProgress = Math.min(1, ls.pullProgress + dt / 0.62);
+        } else {
+          ls.phase = 'hanging';
+          if (ls.pullProgress > 0 && ls.pullProgress < 0.65) {
+            ls.pullProgress = Math.max(0, ls.pullProgress - dt * 0.75);
+          }
+        }
+
+        // Progressive 2-stage pull curve: hoist vertically (0..0.68), then vault forward onto top (0.68..1.0)
+        const p = ls.pullProgress;
+        const riseT = THREE.MathUtils.clamp(p / 0.68, 0, 1);
+        const riseEase = riseT * riseT * (3 - 2 * riseT);
+        const vaultT = THREE.MathUtils.clamp((p - 0.62) / 0.38, 0, 1);
+        const vaultEase = vaultT * vaultT * (3 - 2 * vaultT);
+
+        const curX = THREE.MathUtils.lerp(ls.hangPos.x, ls.endPos.x, riseEase * 0.22 + vaultEase * 0.78);
+        const curZ = THREE.MathUtils.lerp(ls.hangPos.z, ls.endPos.z, riseEase * 0.22 + vaultEase * 0.78);
+        const peakY = ls.endPos.y + 0.08;
+        const curY = p < 0.68
+          ? THREE.MathUtils.lerp(ls.hangPos.y, peakY, riseEase)
+          : THREE.MathUtils.lerp(peakY, ls.endPos.y, vaultEase);
+        this.position.set(curX, curY, curZ);
+
+        if (ls.pullProgress >= 1) {
+          this.position.copy(ls.endPos);
+          this.ledgeState = null;
+          this.ledgeCooldown = 0.25;
+          this.onGround = true;
+          this.stance = 'stand';
+          if (window.soundEngine && window.soundEngine.playFootstep) {
+            try { window.soundEngine.playFootstep(true); } catch (e) {}
+          }
+        }
+      }
+
+      const heavePitch = ls.phase === 'pulling' ? -Math.sin(ls.pullProgress * Math.PI) * 0.075 : 0;
+      const heaveRoll = ls.phase === 'pulling' ? Math.sin(ls.pullProgress * Math.PI * 2) * 0.028 : 0;
+      this._updateThirdPersonModel(dt);
+      if (!this.isThirdPerson) {
+        this.camera.position.copy(this.position);
+        this.camera.rotation.order = 'YXZ';
+        this.camera.rotation.y = this.yaw;
+        this.camera.rotation.x = THREE.MathUtils.clamp(this.pitch + heavePitch, -Math.PI / 2 + 0.08, Math.PI / 2 - 0.08);
+        this.camera.rotation.z = heaveRoll;
+      }
       return;
     }
 
@@ -1476,10 +1761,19 @@ class Player {
     // Gravity
     this.velocity.y -= 18.0 * dt;
 
-    // Axis-separated AABB collision
+    // Axis-separated AABB collision (with smooth auto-step-up for low curbs <= 0.36m)
+    const curFeetY = this.position.y - this.currentEyeHeight;
     const nextX = this.position.x + this.velocity.x * dt;
     if (!this._collidesAt(nextX, this.position.y, this.position.z)) {
       this.position.x = nextX;
+    } else if (this.onGround && !this._collidesAt(nextX, this.position.y + 0.36, this.position.z)) {
+      const stepY = this._getSupportHeightAt(nextX, this.position.z, curFeetY);
+      if (stepY > curFeetY && stepY <= curFeetY + 0.36) {
+        this.position.x = nextX;
+        this.position.y = stepY + this.currentEyeHeight;
+      } else {
+        this.velocity.x = 0;
+      }
     } else {
       this.velocity.x = 0;
     }
@@ -1487,15 +1781,46 @@ class Player {
     const nextZ = this.position.z + this.velocity.z * dt;
     if (!this._collidesAt(this.position.x, this.position.y, nextZ)) {
       this.position.z = nextZ;
+    } else if (this.onGround && !this._collidesAt(this.position.x, this.position.y + 0.36, nextZ)) {
+      const stepY = this._getSupportHeightAt(this.position.x, nextZ, this.position.y - this.currentEyeHeight);
+      if (stepY > (this.position.y - this.currentEyeHeight) && stepY <= (this.position.y - this.currentEyeHeight) + 0.36) {
+        this.position.z = nextZ;
+        this.position.y = stepY + this.currentEyeHeight;
+      } else {
+        this.velocity.z = 0;
+      }
     } else {
       this.velocity.z = 0;
     }
 
-    this.position.y += this.velocity.y * dt;
-    if (this.position.y <= this.currentEyeHeight) {
-      this.position.y = this.currentEyeHeight;
+    // Vertical movement + standing on top of shipping containers, crates & objects + ceiling clamp
+    const prevFeetY = this.position.y - this.currentEyeHeight;
+    let nextEyeY = this.position.y + this.velocity.y * dt;
+    if (this.velocity.y > 0) {
+      const ceilY = this._getCeilingHeightAt(this.position.x, this.position.z, prevFeetY);
+      if (nextEyeY + 0.18 > ceilY) {
+        nextEyeY = ceilY - 0.18;
+        this.velocity.y = 0;
+      }
+    }
+    const nextFeetY = nextEyeY - this.currentEyeHeight;
+    const supportY = this._getSupportHeightAt(this.position.x, this.position.z, Math.max(prevFeetY, nextFeetY));
+
+    if (this.velocity.y <= 0 && nextFeetY <= supportY + 0.03) {
+      this.position.y = supportY + this.currentEyeHeight;
       this.velocity.y = 0;
       this.onGround = true;
+    } else {
+      this.position.y = nextEyeY;
+      this.onGround = false;
+    }
+
+    // Automatic mid-air head-height ledge catch when jumping toward a tall container/wall while holding forward or jump
+    if (!this.onGround && !this.isDowned && !this.dead && this.ledgeCooldown <= 0 && this.velocity.y > -2.5 && (moveForward > 0.3 || this.keys[kb.jump || 'Space'])) {
+      const airLedge = this._findClimbableObstacle(true);
+      if (airLedge && airLedge.kind === 'ledge') {
+        this._startClimb(airLedge);
+      }
     }
 
     // Footsteps & weighty stride head-bob (suppressed while sliding)

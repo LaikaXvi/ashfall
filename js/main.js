@@ -1481,7 +1481,7 @@
   }
 
   function firePlayerWeapon() {
-    if (player.isDowned || player.dead || player.isRevivingAlly) return;
+    if (player.isDowned || player.dead || player.isRevivingAlly || player.ledgeState || player.mantleState) return;
     if (player.activeSlot === 'melee') {
       performMeleeStrike(false);
       return;
@@ -1689,6 +1689,15 @@
 
     if (player.isDowned || player.dead) {
       promptEl.classList.add('hidden');
+      return;
+    }
+
+    if (player.ledgeState) {
+      const pct = Math.round((player.ledgeState.pullProgress || 0) * 100);
+      textEl.textContent = pct > 2
+        ? `PULLING UP (${pct}%)  ·  [S / A / D] LET GO`
+        : `HOLD [W] TO PULL UP  ·  [S / A / D] LET GO`;
+      promptEl.classList.remove('hidden');
       return;
     }
 

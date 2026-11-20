@@ -730,6 +730,40 @@ class WeaponSystem {
     this.downedLegsParts = { leftLeg, rightLeg, supportArm };
   }
 
+  _ensureLedgeHands() {
+    const cam = this.vmCamera || this.viewmodelCamera || this.camera;
+    if (this.ledgeHandsGroup || !cam) return;
+    const root = new THREE.Group();
+    const sleeveMat = new THREE.MeshLambertMaterial({ color: 0x3b4436 });
+    const cuffMat = new THREE.MeshLambertMaterial({ color: 0x1e2220 });
+
+    const makeArm = (isRight) => {
+      const side = isRight ? 1 : -1;
+      const g = new THREE.Group();
+      // Forearm sleeve
+      const forearm = new THREE.Mesh(new THREE.BoxGeometry(0.088, 0.082, 0.34), sleeveMat);
+      forearm.position.set(0, -0.05, 0.16);
+      forearm.rotation.x = 0.24;
+      const cuff = new THREE.Mesh(new THREE.BoxGeometry(0.094, 0.088, 0.045), cuffMat);
+      cuff.position.set(0, -0.012, 0.01);
+      // Gloved hand gripping forward over the ledge lip
+      const hand = this._createHand(isRight, 'grip');
+      hand.position.set(0, 0.0, -0.04);
+      hand.rotation.set(-0.35, side * -0.10, side * 0.06);
+      g.add(forearm, cuff, hand);
+      g.position.set(side * 0.24, 0.02, -0.44);
+      return g;
+    };
+
+    const leftArm = makeArm(false);
+    const rightArm = makeArm(true);
+    root.add(leftArm, rightArm);
+    root.visible = false;
+    cam.add(root);
+    this.ledgeHandsGroup = root;
+    this.ledgeHandsParts = { leftArm, rightArm };
+  }
+
   buildViewmodel(weaponDef, mods = {}, withHands = true) {
     this.isMeleeMode = false;
     if (this.meleeMesh) {
@@ -1365,11 +1399,13 @@ class WeaponSystem {
 
     // Downed / Dead State: ALWAYS hide all weapons, plates, medkits & fists! Show 1st-person seated legs + supporting arm when downed!
     this._ensureDownedLegs();
+    this._ensureLedgeHands();
     if (player.isDowned || player.dead) {
       this.viewmodelGroup.visible = false;
       if (this.plateRig) this.plateRig.visible = false;
       if (this.medRig) this.medRig.visible = false;
       if (this.tacFistRig) this.tacFistRig.visible = false;
+      if (this.ledgeHandsGroup) this.ledgeHandsGroup.visible = false;
 
       if (this.downedLegsGroup) {
         const showDownedLegs = !!(player.isDowned && !player.isThirdPerson);
@@ -1419,9 +1455,50 @@ class WeaponSystem {
       return;
     } else {
       if (this.downedLegsGroup) this.downedLegsGroup.visible = false;
+      if (player.ledgeState) {
+        // Two-handed progressive ledge-grab: stow weapon & show both gloved hands gripping & hoisting over the ledge!
+        this.viewmodelGroup.visible = false;
+        if (this.plateRig) this.plateRig.visible = false;
+        if (this.medRig) this.medRig.visible = false;
+        if (this.tacFistRig) this.tacFistRig.visible = false;
+        if (this.ledgeHandsGroup) {
+          this.ledgeHandsGroup.visible = !player.isThirdPerson;
+          const ls = player.ledgeState;
+          const breathe = Math.sin(performance.now() * 0.004) * 0.008;
+          if (ls.phase === 'grabbing') {
+            const gEase = 1 - Math.pow(1 - ls.grabT, 2);
+            this.ledgeHandsGroup.position.set(0, THREE.MathUtils.lerp(-0.34, 0.04, gEase), THREE.MathUtils.lerp(-0.18, 0.0, gEase));
+            this.ledgeHandsGroup.rotation.set(THREE.MathUtils.lerp(0.55, 0.12, gEase) - player.pitch * 0.55, 0, 0);
+          } else {
+            const p = ls.pullProgress || 0;
+            const pEase = p * p * (3 - 2 * p);
+            const strain = ls.phase === 'pulling' ? Math.sin(p * Math.PI * 3) * 0.014 : 0;
+            // Hands stay firmly planted on the lip while your torso hoists up -> hands move down & push back in camera space!
+            this.ledgeHandsGroup.position.set(
+              strain,
+              THREE.MathUtils.lerp(0.04, -0.34, pEase) + breathe,
+              THREE.MathUtils.lerp(0.0, 0.14, pEase)
+            );
+            this.ledgeHandsGroup.rotation.set(
+              THREE.MathUtils.lerp(0.12, -0.68, pEase) - player.pitch * 0.45,
+              0,
+              strain * 1.4
+            );
+          }
+        }
+        return;
+      }
+      if (this.ledgeHandsGroup) this.ledgeHandsGroup.visible = false;
       if (!this.isThirdPerson && !this.isHealing) {
         this.viewmodelGroup.visible = true;
       }
+    }
+
+    // Hip-height mantle quick weapon dip
+    if (player.mantleState && this.viewmodelGroup) {
+      const mArc = Math.sin(player.mantleState.t * Math.PI);
+      this.viewmodelGroup.position.y = THREE.MathUtils.lerp(this.viewmodelGroup.position.y, -0.26 - mArc * 0.18, Math.min(1, dt * 18));
+      this.viewmodelGroup.rotation.x = THREE.MathUtils.lerp(this.viewmodelGroup.rotation.x, -0.35 * mArc, Math.min(1, dt * 18));
     }
 
     // Weapon Draw Animation (shoulder_down from top OR undersling_up from bottom)
