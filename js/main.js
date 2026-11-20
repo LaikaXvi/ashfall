@@ -364,11 +364,11 @@
     }
 
     if (e.code === (kb.lethal || 'KeyF') || e.code === 'Digit5') {
-      if (!e.repeat && throwableSystem) throwableSystem.startPrep('lethal', player, weaponSystem);
+      if (!e.repeat && !player.isDowned && !player.dead && throwableSystem) throwableSystem.startPrep('lethal', player, weaponSystem);
       return;
     }
     if (e.code === (kb.tactical || 'KeyQ')) {
-      if (!e.repeat && throwableSystem) throwableSystem.startPrep('tactical', player, weaponSystem);
+      if (!e.repeat && !player.isDowned && !player.dead && throwableSystem) throwableSystem.startPrep('tactical', player, weaponSystem);
       return;
     }
 

@@ -322,27 +322,32 @@ class Player {
     if (p.weaponMount) p.weaponMount.visible = !this.isDowned && !this.dead;
 
     if (this.isDowned) {
-      // === DOWNED SEATED POSTURE: SUPPORTING ARM PLANTED TO SCOOT, NO WEAPON HELD, LEGS BENT IN FRONT ===
+      // === DOWNED SEATED POSTURE: RECLINED BACK ON SUPPORTING LEFT ARM, RIGHT HAND CLUTCHING CHEST, NO WEAPON ===
       autoClampFeet = false;
       const isScooting = !this.beingDragged && horizSpeed > 0.15;
-      const phase = isScooting ? Math.sin(this.animCycle * 0.65) : 0;
-      const heave = isScooting ? Math.max(0, phase) : 0;
-      pelvisY = 0.23 + heave * 0.045;
-      rigRoll = phase * 0.06;
-      torsoPitch = -0.34 - heave * 0.06 + breathe * 0.02;
+      const cycle = isScooting ? (this.animCycle * 0.55) : 0;
+      const phase = isScooting ? Math.sin(cycle) : 0;
+      const heave = isScooting ? Math.pow(Math.max(0, phase), 1.3) : 0;
+
       if (this.beingDragged) {
-        lHipX = 1.48; lHipZ = -0.08; lKneeX = -0.10; lAnkX = 0.25;
-        rHipX = 1.48; rHipZ = 0.08;  rKneeX = -0.10; rAnkX = 0.25;
-        lShX = -0.32; lElbX = 0.25; lShZ = -0.25;
-        rShX = -0.32; rElbX = 0.25; rShZ = 0.25;
+        pelvisY = 0.20;
+        torsoPitch = -0.58 + breathe * 0.02;
+        rigRoll = Math.sin(this.idleTime * 4.5) * 0.03;
+        lHipX = 1.54; lHipZ = -0.07; lKneeX = -0.08; lAnkX = 0.30;
+        rHipX = 1.54; rHipZ = 0.07;  rKneeX = -0.08; rAnkX = 0.30;
+        lShX = -0.45; lElbX = 0.18; lShZ = -0.22;
+        rShX = -0.45; rElbX = 0.18; rShZ = 0.22;
       } else {
-        // Knees bent with heels planting & pulling while supporting left arm pushes off the ground behind/beside!
-        lHipX = 1.28 + heave * 0.18; lHipZ = -0.10; lKneeX = -0.58 - heave * 0.22; lAnkX = 0.32;
-        rHipX = 1.34 + heave * 0.12; rHipZ = 0.10;  rKneeX = -0.48 - heave * 0.16; rAnkX = 0.28;
-        // Left supporting arm braced downward/back on ground pushing body forward
-        lShX = -0.68 - phase * 0.28; lElbX = 0.22 + heave * 0.24; lShZ = -0.42;
-        // Right arm clutching wound / steadying torso (no weapon)
-        rShX = 0.35; rElbX = 1.25; rShZ = -0.35;
+        pelvisY = 0.22 + heave * 0.055;
+        rigRoll = phase * 0.075;
+        torsoPitch = -0.40 - heave * 0.08 + breathe * 0.025;
+        // Legs bent in front with heels planting & pulling/pushing in sync with supporting arm
+        lHipX = 1.24 + heave * 0.22; lHipZ = -0.11; lKneeX = -0.68 - heave * 0.25; lAnkX = 0.38;
+        rHipX = 1.38 + heave * 0.12; rHipZ = 0.11;  rKneeX = -0.38 - heave * 0.15; rAnkX = 0.26;
+        // Supporting left arm planted firmly behind/beside hip pushing torso along the ground
+        lShX = -0.88 - phase * 0.34; lElbX = 0.14 + heave * 0.26; lShZ = -0.34;
+        // Right arm clutching injured abdomen/chest (empty hand, weapon hidden)
+        rShX = 0.42; rElbX = 1.32; rShZ = -0.42;
       }
     } else if (this.isSliding) {
       // === LOW, FOCUSED COMBAT SLIDE: SKIMMING GROUND, LEAD LEG FLAT OUT, TRAILING KNEE TUCKED HORIZONTALLY, ARMS LOW STABILIZING GUN ===
@@ -718,9 +723,11 @@ class Player {
     p.torso.rotation.y = THREE.MathUtils.lerp(p.torso.rotation.y, torsoYaw, rate);
     p.torso.rotation.z = THREE.MathUtils.lerp(p.torso.rotation.z, -this.lean * 0.32, rate);
 
-    const headPitch = this.isProne
-      ? (1.15 + this.pitch * 0.4)
-      : (this.isSliding ? (-torsoPitch + this.pitch * 0.65) : (this.pitch * 0.65));
+    const headPitch = this.isDowned
+      ? (-torsoPitch + this.pitch * 0.65)
+      : (this.isProne
+        ? (1.15 + this.pitch * 0.4)
+        : (this.isSliding ? (-torsoPitch + this.pitch * 0.65) : (this.pitch * 0.65)));
     p.head.rotation.x = THREE.MathUtils.lerp(p.head.rotation.x, headPitch, rate);
 
     p.leftLeg.hip.rotation.x = THREE.MathUtils.lerp(p.leftLeg.hip.rotation.x, lHipX, rate);
@@ -767,6 +774,7 @@ class Player {
   }
 
   startInspect() {
+    if (this.isDowned || this.dead) return;
     const def = this.getActiveWeaponDef();
     if (def) this.weaponSystem.startInspect(def);
   }
@@ -782,6 +790,7 @@ class Player {
   }
 
   switchSlot(slotName) {
+    if (this.isDowned || this.dead) return;
     if (slotName === 'melee') {
       if (this.activeSlot === 'melee') return;
       this.activeSlot = 'melee';
@@ -850,6 +859,7 @@ class Player {
   }
 
   startReload() {
+    if (this.isDowned || this.dead) return;
     const slotObj = this.getActiveWeaponSlot();
     const def = this.getActiveWeaponDef();
     if (!slotObj || !def) return;
@@ -880,6 +890,7 @@ class Player {
   }
 
   startPlating() {
+    if (this.isDowned || this.dead) return false;
     if (this.maxArmor <= 0) return false;
     if (!window.DEV_MODE && (this.armor >= this.maxArmor || this.plates <= 0)) return false;
     const needed = Math.max(window.DEV_MODE ? 1 : 0, Math.ceil((this.maxArmor - this.armor) / 50));
@@ -914,6 +925,7 @@ class Player {
   }
 
   startMedkit() {
+    if (this.isDowned || this.dead) return false;
     if (!window.DEV_MODE && (this.getMedkitCount() <= 0 || this.hp >= this.maxHp)) return false;
     return this.weaponSystem.startMedkit();
   }
@@ -965,6 +977,13 @@ class Player {
       this.isSliding = false;
       this.isFiring = false;
       this.isADS = false;
+      if (this.weaponSystem) {
+        this.weaponSystem.cancelReload();
+        this.weaponSystem.cancelPlating();
+        this.weaponSystem.cancelMedkit();
+        this.weaponSystem.cancelInspect();
+        this.weaponSystem.viewmodelGroup.visible = false;
+      }
       return 'downed';
     }
     return null;

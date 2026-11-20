@@ -421,14 +421,14 @@ class GamepadController {
       }
     } else if (!this._fuChordConsumed) {
       // === RB (5): LETHAL THROWABLE (TAP = QUICK THROW, HOLD = COOK / AIM) ===
-      if (this._justPressed(pad, 5) && throwableSystem) {
+      if (this._justPressed(pad, 5) && !player.isDowned && !player.dead && throwableSystem) {
         throwableSystem.startPrep('lethal', player, weaponSystem);
       } else if (this._justReleased(pad, 5) && throwableSystem) {
         throwableSystem.releaseThrow('lethal', player, ctx.enemyManager, actions.onThrowableHit);
       }
 
       // === LB (4): TACTICAL THROWABLE (TAP = QUICK THROW, HOLD = AIM) ===
-      if (this._justPressed(pad, 4) && throwableSystem) {
+      if (this._justPressed(pad, 4) && !player.isDowned && !player.dead && throwableSystem) {
         throwableSystem.startPrep('tactical', player, weaponSystem);
       } else if (this._justReleased(pad, 4) && throwableSystem) {
         throwableSystem.releaseThrow('tactical', player, ctx.enemyManager, actions.onThrowableHit);
@@ -436,19 +436,21 @@ class GamepadController {
     }
 
     // === R3 (11): TAP = QUICK MELEE, HOLD = EQUIP DEDICATED MELEE WEAPON ===
-    if (this._isDown(pad, 11)) {
-      this.r3HoldTime += dt;
-      if (!this.r3HoldTriggered && this.r3HoldTime >= 0.32) {
-        this.r3HoldTriggered = true;
-        player.switchSlot('melee');
-        if (ui) ui.addFeedMessage('Equipped Melee Weapon', '#f5a623');
+    if (!player.isDowned && !player.dead) {
+      if (this._isDown(pad, 11)) {
+        this.r3HoldTime += dt;
+        if (!this.r3HoldTriggered && this.r3HoldTime >= 0.32) {
+          this.r3HoldTriggered = true;
+          player.switchSlot('melee');
+          if (ui) ui.addFeedMessage('Equipped Melee Weapon', '#f5a623');
+        }
+      } else if (this._justReleased(pad, 11)) {
+        if (!this.r3HoldTriggered && this.r3HoldTime < 0.32) {
+          if (actions.quickMelee) actions.quickMelee();
+        }
+        this.r3HoldTime = 0;
+        this.r3HoldTriggered = false;
       }
-    } else if (this._justReleased(pad, 11)) {
-      if (!this.r3HoldTriggered && this.r3HoldTime < 0.32) {
-        if (actions.quickMelee) actions.quickMelee();
-      }
-      this.r3HoldTime = 0;
-      this.r3HoldTriggered = false;
     }
 
     // === D-PAD: UP (12) = MEDKIT, LEFT (14) = INSPECT, RIGHT (15) = 3RD PERSON ===

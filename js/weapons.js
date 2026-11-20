@@ -1362,46 +1362,63 @@ class WeaponSystem {
       }
     }
 
-    // Downed 1st-Person Seated Legs (visible in front of you as you scoot around or get dragged!)
+    // Downed / Dead State: ALWAYS hide all weapons, plates, medkits & fists! Show 1st-person seated legs + supporting arm when downed!
     this._ensureDownedLegs();
-    if (this.downedLegsGroup) {
-      const showDownedLegs = !!(player.isDowned && !player.isThirdPerson);
-      this.downedLegsGroup.visible = showDownedLegs;
-      if (showDownedLegs) {
-        this.viewmodelGroup.visible = false;
-        const scootSpd = Math.hypot(player.velocity.x, player.velocity.z);
-        const isScooting = scootSpd > 0.15 && !player.beingDragged;
-        if (isScooting) {
-          this.downedScootCycle += dt * 4.8; // deliberate scoot-heave cadence, not frantic kicking
-        }
-        const phase = isScooting ? Math.sin(this.downedScootCycle) : 0;
-        const heave = isScooting ? Math.max(0, Math.sin(this.downedScootCycle)) : 0;
-        const p = this.downedLegsParts;
-        // Keep legs grounded horizontally + subtle body heave/roll as supporting arm pushes you forward!
-        this.downedLegsGroup.position.y = heave * 0.038;
-        this.downedLegsGroup.rotation.x = -player.pitch * 0.72 - heave * 0.045;
-        this.downedLegsGroup.rotation.z = phase * 0.045;
+    if (player.isDowned || player.dead) {
+      this.viewmodelGroup.visible = false;
+      if (this.plateRig) this.plateRig.visible = false;
+      if (this.medRig) this.medRig.visible = false;
+      if (this.tacFistRig) this.tacFistRig.visible = false;
 
-        // Planted heels pull/push steadily with bent knees while scooting; relaxed flat when dragged
-        if (player.beingDragged) {
-          p.leftLeg.hip.rotation.x = 0.02;
-          p.leftLeg.knee.rotation.x = -0.08;
-          p.rightLeg.hip.rotation.x = 0.02;
-          p.rightLeg.knee.rotation.x = -0.08;
-        } else {
-          p.leftLeg.hip.rotation.x = 0.18 + heave * 0.16;
-          p.leftLeg.knee.rotation.x = -0.34 - heave * 0.24;
-          p.rightLeg.hip.rotation.x = 0.14 + heave * 0.12;
-          p.rightLeg.knee.rotation.x = -0.28 - heave * 0.18;
+      if (this.downedLegsGroup) {
+        const showDownedLegs = !!(player.isDowned && !player.isThirdPerson);
+        this.downedLegsGroup.visible = showDownedLegs;
+        if (showDownedLegs) {
+          const scootSpd = Math.hypot(player.velocity.x, player.velocity.z);
+          const isScooting = scootSpd > 0.15 && !player.beingDragged;
+          if (isScooting) {
+            this.downedScootCycle += dt * 4.2; // weighty scoot-push cadence
+          }
+          const sinC = isScooting ? Math.sin(this.downedScootCycle) : 0;
+          const cosC = isScooting ? Math.cos(this.downedScootCycle) : 0;
+          const heave = isScooting ? Math.pow(Math.max(0, sinC), 1.35) : 0;
+          const breathe = Math.sin(performance.now() * 0.0028) * 0.008;
+          const p = this.downedLegsParts;
+
+          this.downedLegsGroup.position.y = heave * 0.048 + breathe;
+          this.downedLegsGroup.position.z = -heave * 0.035;
+          this.downedLegsGroup.rotation.x = -player.pitch * 0.72 - heave * 0.06;
+          this.downedLegsGroup.rotation.z = sinC * 0.055;
+
+          if (player.beingDragged) {
+            // Relaxed straight legs trailing smoothly as teammate drags you from behind
+            p.leftLeg.hip.rotation.x = 0.01;
+            p.leftLeg.knee.rotation.x = -0.05;
+            p.rightLeg.hip.rotation.x = 0.01;
+            p.rightLeg.knee.rotation.x = -0.05;
+            if (p.supportArm) {
+              p.supportArm.position.set(-0.36, -0.26, -0.14);
+              p.supportArm.rotation.x = 0.12;
+            }
+          } else {
+            // Bent left knee plants heel & pulls/pushes while supporting left arm reaches out, plants palm & heaves torso!
+            p.leftLeg.hip.rotation.x = 0.24 + heave * 0.18;
+            p.leftLeg.knee.rotation.x = -0.44 - heave * 0.26;
+            p.rightLeg.hip.rotation.x = 0.12 + heave * 0.10;
+            p.rightLeg.knee.rotation.x = -0.24 - heave * 0.14;
+            if (p.supportArm) {
+              p.supportArm.position.x = -0.32;
+              p.supportArm.position.z = -0.20 - cosC * 0.14;
+              p.supportArm.position.y = -0.21 - heave * 0.05;
+              p.supportArm.rotation.x = -0.10 + sinC * 0.34;
+            }
+          }
         }
-        if (p.supportArm) {
-          // Supporting left arm reaches out, plants palm, and pushes body along the ground
-          p.supportArm.position.z = -0.18 - phase * 0.12;
-          p.supportArm.position.y = -0.22 - heave * 0.04;
-          p.supportArm.rotation.x = phase * 0.28;
-        }
-        return;
-      } else if (!this.isThirdPerson && !this.isHealing && !player.dead) {
+      }
+      return;
+    } else {
+      if (this.downedLegsGroup) this.downedLegsGroup.visible = false;
+      if (!this.isThirdPerson && !this.isHealing) {
         this.viewmodelGroup.visible = true;
       }
     }
