@@ -1444,21 +1444,51 @@ button:disabled {
   font-size: 9.5px;
 }
 
+.stash-unified-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--deploy-gap);
+  overflow-y: auto;
+  overflow-x: hidden;
+  max-height: calc(100vh - 140px);
+  padding: 2px 8px 4px 2px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(245, 166, 35, 0.55) rgba(255, 255, 255, 0.06);
+}
+
+.stash-unified-scroll::-webkit-scrollbar {
+  width: 7px;
+}
+
+.stash-unified-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+
+.stash-unified-scroll::-webkit-scrollbar-thumb {
+  background: rgba(245, 166, 35, 0.52);
+  border-radius: 4px;
+}
+
+.stash-unified-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(245, 166, 35, 0.8);
+}
+
 .stash-weapon-grid-15 {
   display: grid;
-  grid-template-columns: repeat(10, var(--deploy-slot));
+  grid-template-columns: repeat(8, var(--deploy-slot));
   gap: var(--deploy-gap);
   width: fit-content;
-  padding: 2px 0;
-  overflow: hidden;
+  padding: 0;
+  overflow: visible;
 }
 
 #menu-view-deploy .stash-grid-64 {
   grid-template-columns: repeat(8, var(--deploy-slot));
   gap: var(--deploy-gap);
   max-height: none;
-  overflow: hidden;
-  padding: 2px 0;
+  overflow: visible;
+  padding: 0;
 }
 
 #menu-view-deploy .inv-grid-compact {
