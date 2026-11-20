@@ -486,6 +486,10 @@
   document.getElementById('btn-close-loot').addEventListener('click', () => {
     closeLootAndResume();
   });
+  const btnCloseContainer = document.getElementById('btn-close-container');
+  if (btnCloseContainer) {
+    btnCloseContainer.addEventListener('click', () => closeLootAndResume());
+  }
 
   document.getElementById('btn-take-all').addEventListener('click', () => {
     if (!ui.activeLootSource || !player) return;
