@@ -1,7 +1,7 @@
 // Game Item Database, 5-Tier Loot Rarity, Logical POI Tables, Workbench & Attachments
 // IMPORTANT: Update GAME_DATA.VERSION (and ?v= cache-busters in index.html) with EVERY new commit!
 window.GAME_DATA = {
-  VERSION: 'v1.47',
+  VERSION: 'v1.48',
   SQUAD_COLORS: ['#69f0ae', '#42a5f5', '#ffeb3b', '#ff69b4'], // Green, Blue, Yellow, Pink
 
   RARITIES: {
@@ -710,13 +710,57 @@ window.GAME_DATA = {
       }
     }
     const tiers = ['common', 'rare', 'epic', 'legendary', 'ultra'];
-    const baseIdx = Math.max(0, tiers.indexOf(base.rarity === 'uncommon' ? 'common' : base.rarity));
-    const finalIdx = Math.min(tiers.length - 1, Math.max(baseIdx, attCount));
+    // Gun rarity is strictly equal to the number of attachments equipped (0=common, 1=rare, 2=epic, 3=legendary, 4-5=ultra)
+    const finalIdx = Math.min(tiers.length - 1, attCount);
     return {
       rarity: tiers[finalIdx],
       value: Math.round(base.value * (1 + attCount * 0.28) + attValue),
       attachmentCount: attCount
     };
+  },
+
+  rollRandomAttachmentsForRarity(weaponId, targetRarity = null) {
+    const base = this.ITEMS[weaponId];
+    if (!base || base.type !== 'weapon') return { mods: {}, rarity: targetRarity || 'common' };
+    const tiers = ['common', 'rare', 'epic', 'legendary', 'ultra'];
+    const rar = (targetRarity && tiers.includes(targetRarity))
+      ? targetRarity
+      : (tiers.includes(base.rarity) ? base.rarity : 'common');
+    const tierIdx = tiers.indexOf(rar);
+    // Exact attachment count matching rarity: 0=common, 1=rare, 2=epic, 3=legendary, 4 or 5=ultra
+    const wantCount = tierIdx >= 4 ? (Math.random() < 0.5 ? 5 : 4) : tierIdx;
+    const mods = {};
+    if (wantCount <= 0) return { mods, rarity: 'common' };
+
+    const slotKeys = ['optic', 'muzzle', 'underbarrel', 'magazine', 'stock'];
+    // Shuffle slot order so attachments are genuinely randomized per gun
+    const shuffled = [...slotKeys].sort(() => Math.random() - 0.5);
+    const chosenSlots = shuffled.slice(0, Math.min(wantCount, shuffled.length));
+
+    const isPistol = base.slot === 'secondary';
+    const isShotgun = base.pellets && base.pellets > 1;
+    const isSniper = base.id === 'm24' || (base.adsFov && base.adsFov <= 35);
+
+    for (const slot of chosenSlots) {
+      const poolObj = this.ATTACHMENTS[slot];
+      if (!poolObj) continue;
+      let candidates = Object.keys(poolObj).filter(k => k !== 'none');
+      if (slot === 'optic') {
+        if (isPistol || isShotgun) {
+          candidates = candidates.filter(k => k === 'red_dot' || k === 'holo');
+        } else if (isSniper) {
+          candidates = candidates.filter(k => k === 'acog_2x' || k === 'lpvo_4x' || k === 'sniper_8x');
+        } else {
+          candidates = candidates.filter(k => k !== 'sniper_8x');
+        }
+      }
+      if (candidates.length === 0) candidates = Object.keys(poolObj).filter(k => k !== 'none');
+      if (candidates.length > 0) {
+        mods[slot] = candidates[Math.floor(Math.random() * candidates.length)];
+      }
+    }
+    const calc = this.getWeaponRarityAndValue(weaponId, mods);
+    return { mods, rarity: calc.rarity };
   },
 
   ATTACHMENTS: {

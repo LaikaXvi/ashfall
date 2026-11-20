@@ -219,7 +219,12 @@ class WastelandWorld {
           let qty = entry.min + Math.floor(Math.random() * (entry.max - entry.min + 1));
           const def = GAME_DATA.ITEMS[entry.id];
           if (def && def.containerMaxStack) qty = Math.min(qty, def.containerMaxStack);
-          items.push({ id: entry.id, qty, revealed: false });
+          if (def && def.type === 'weapon' && GAME_DATA.rollRandomAttachmentsForRarity) {
+            const rolled = GAME_DATA.rollRandomAttachmentsForRarity(entry.id, def.rarity);
+            items.push({ id: entry.id, qty: 1, mods: rolled.mods, rarityOverride: rolled.rarity, revealed: false });
+          } else {
+            items.push({ id: entry.id, qty, revealed: false });
+          }
           break;
         }
       }
@@ -233,10 +238,10 @@ class WastelandWorld {
     const wPool = GAME_DATA.LOOT_TABLES.boss_legendary_weapons || ['ak74m', 'm24'];
     const wId = wPool[Math.floor(Math.random() * wPool.length)];
     const isUltra = Math.random() < 0.25;
-    const mods = isUltra
-      ? { optic: 'lpvo_4x', muzzle: 'suppressor', underbarrel: 'vert_grip', magazine: 'ext_mag', stock: 'heavy_marksman' }
-      : { optic: 'acog_2x', muzzle: 'compensator', underbarrel: 'vert_grip', magazine: 'ext_mag' };
-    items.push({ id: wId, qty: 1, mods, rarityOverride: isUltra ? 'ultra' : 'legendary', revealed: false });
+    const rolledBossWpn = GAME_DATA.rollRandomAttachmentsForRarity
+      ? GAME_DATA.rollRandomAttachmentsForRarity(wId, isUltra ? 'ultra' : 'legendary')
+      : { mods: {}, rarity: isUltra ? 'ultra' : 'legendary' };
+    items.push({ id: wId, qty: 1, mods: rolledBossWpn.mods, rarityOverride: rolledBossWpn.rarity, revealed: false });
 
     const epicPool = GAME_DATA.LOOT_TABLES.boss_epic || ['intel_drive'];
     for (let i = 0; i < 4; i++) {
@@ -594,7 +599,22 @@ class WastelandWorld {
     const def = GAME_DATA.ITEMS[id];
     if (!def) return null;
 
-    const rarKey = opts.rarityOverride || def.rarity || 'common';
+    let finalMods = opts.mods;
+    let finalRarity = opts.rarityOverride || null;
+    if (def.type === 'weapon') {
+      if (finalMods === undefined || finalMods === null) {
+        if (GAME_DATA.rollRandomAttachmentsForRarity) {
+          const rolled = GAME_DATA.rollRandomAttachmentsForRarity(id, finalRarity || def.rarity);
+          finalMods = rolled.mods;
+          finalRarity = rolled.rarity;
+        } else {
+          finalMods = {};
+        }
+      } else if (GAME_DATA.getWeaponRarityAndValue) {
+        finalRarity = GAME_DATA.getWeaponRarityAndValue(id, finalMods).rarity;
+      }
+    }
+    const rarKey = finalRarity || def.rarity || 'common';
     const rarInfo = (GAME_DATA.RARITIES && GAME_DATA.RARITIES[rarKey]) || { color: '#4caf50' };
     const rarColor = new THREE.Color(rarInfo.color);
 
@@ -624,7 +644,7 @@ class WastelandWorld {
       }
       const wb = this._wpnBuilder || (window.itemIcons && window.itemIcons._ensureWeaponBuilder && window.itemIcons._ensureWeaponBuilder());
       if (wb && typeof wb.buildThirdPersonWeapon === 'function') {
-        built = wb.buildThirdPersonWeapon(def, opts.mods || {});
+        built = wb.buildThirdPersonWeapon(def, finalMods || {});
       }
       if (built && built.group) {
         const wGroup = built.group;
@@ -687,9 +707,9 @@ class WastelandWorld {
       uid: opts.uid || ('gi_' + Math.random().toString(36).slice(2, 9)),
       id,
       qty,
-      mods: opts.mods || null,
+      mods: finalMods || null,
       mag: opts.mag !== undefined ? opts.mag : undefined,
-      rarityOverride: opts.rarityOverride || null,
+      rarityOverride: finalRarity || null,
       mesh: g,
       ringMesh: ring,
       position: new THREE.Vector3(pos.x, yBase, pos.z)
@@ -733,11 +753,14 @@ class WastelandWorld {
     const legWpns = (GAME_DATA.LOOT_TABLES && GAME_DATA.LOOT_TABLES.boss_legendary_weapons) || ['ak74m', 'm24', 'm870'];
     const legPick = legWpns[Math.floor(Math.random() * legWpns.length)];
     const legId = typeof legPick === 'string' ? legPick : legPick.id;
+    const rolledLeg = GAME_DATA.rollRandomAttachmentsForRarity
+      ? GAME_DATA.rollRandomAttachmentsForRarity(legId, 'legendary')
+      : { mods: {}, rarity: 'legendary' };
     const valuables = ['gold_watch', 'intel_drive', 'water_filter', 'fuel_can'].sort(() => Math.random() - 0.5);
 
     const items = [
       { id: 'boss_key', qty: 1, revealed: false },
-      { id: legId, qty: 1, rarityOverride: 'legendary', revealed: false },
+      { id: legId, qty: 1, mods: rolledLeg.mods, rarityOverride: rolledLeg.rarity, revealed: false },
       { id: valuables[0], qty: 1, revealed: false },
       { id: valuables[1], qty: 1, revealed: false }
     ];

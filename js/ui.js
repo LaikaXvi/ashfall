@@ -5885,10 +5885,11 @@ class GameUI {
         const openEnemyWeaponStage = (k) => {
           const itemId = eq[k];
           if (!itemId) return;
-          this.openRaidWeaponStaging(player, { id: itemId, mods: {}, rarityOverride: eq[k + 'Rarity'] || null }, {
+          this.openRaidWeaponStaging(player, { id: itemId, mods: eq[k + 'Mods'] || {}, rarityOverride: eq[k + 'Rarity'] || null }, {
             sourceLabel: `OPERATOR ${k.toUpperCase()}`,
             onComplete: (res) => {
               eq[k] = res.prevId || null;
+              eq[k + 'Mods'] = (res.prevSlotObj && res.prevSlotObj.mods) || {};
               eq[k + 'Rarity'] = (res.prevSlotObj && res.prevSlotObj.rarityOverride) || null;
             }
           });

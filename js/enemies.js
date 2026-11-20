@@ -133,9 +133,22 @@ class Enemy {
       const bags = ['bag_small', 'bag_medium', 'bag_large', 'bag_weapon'];
       const melees = ['melee_knife', 'melee_karambit', 'melee_axe'];
       const fus = ['fu_ammo_box', 'fu_dead_silence', 'fu_trophy'];
+      const secId = Math.random() < 0.55 ? 'g17' : 'pm9';
+      const pDef = GAME_DATA.ITEMS[this.weaponId];
+      const sDef = GAME_DATA.ITEMS[secId];
+      const pRoll = GAME_DATA.rollRandomAttachmentsForRarity
+        ? GAME_DATA.rollRandomAttachmentsForRarity(this.weaponId, (pDef && pDef.rarity) || 'rare')
+        : { mods: {}, rarity: (pDef && pDef.rarity) || 'rare' };
+      const sRoll = GAME_DATA.rollRandomAttachmentsForRarity
+        ? GAME_DATA.rollRandomAttachmentsForRarity(secId, (sDef && sDef.rarity) || 'common')
+        : { mods: {}, rarity: (sDef && sDef.rarity) || 'common' };
       this.operatorEquipment = {
         primary: this.weaponId,
-        secondary: Math.random() < 0.55 ? 'g17' : 'pm9',
+        primaryMods: pRoll.mods,
+        primaryRarity: pRoll.rarity,
+        secondary: secId,
+        secondaryMods: sRoll.mods,
+        secondaryRarity: sRoll.rarity,
         melee: melees[Math.floor(Math.random() * melees.length)],
         armor: vests[Math.min(vests.length - 1, Math.floor(Math.random() * (vests.length - (Math.random() < 0.65 ? 1 : 0))))],
         dogtag: 'dogtag',
@@ -485,9 +498,16 @@ class Enemy {
       if (this.weaponMeshGroup) this.weaponMeshGroup.visible = false;
       const dropNear = (ox, oz) => new THREE.Vector3(this.position.x + ox, 0.02, this.position.z + oz);
 
-      // 1. Always drop the gun they were holding
+      // 1. Always drop the gun they were holding (with randomized attachments matching its tier rarity)
       if (this.weaponId && GAME_DATA.ITEMS[this.weaponId]) {
-        this.world.spawnGroundItem(this.weaponId, 1, dropNear(0.45, 0.25));
+        const dropRar = this.tier === 'boss' ? 'legendary' : (this.tier === 'raider' ? 'rare' : 'common');
+        const rolled = GAME_DATA.rollRandomAttachmentsForRarity
+          ? GAME_DATA.rollRandomAttachmentsForRarity(this.weaponId, dropRar)
+          : { mods: {}, rarity: dropRar };
+        this.world.spawnGroundItem(this.weaponId, 1, dropNear(0.45, 0.25), {
+          mods: rolled.mods,
+          rarityOverride: rolled.rarity
+        });
       }
       // 2. Occasionally drop 1-2 armor plates
       const plateChance = this.tier === 'boss' ? 0.90 : (this.tier === 'raider' ? 0.55 : 0.35);
