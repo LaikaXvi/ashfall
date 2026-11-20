@@ -2559,18 +2559,16 @@ class GameUI {
                 <span class="slot-val">₽${(def.value * item.qty).toLocaleString()}</span>
                 ${item.qty > 1 ? `<span class="slot-qty">x${item.qty}</span>` : ''}
               `;
+              slot.title = `${def.name} — Left-Click: Quick-Move to Pack · Right-Click: Options`;
               slot.addEventListener('click', (e) => {
                 e.stopPropagation();
-                if (this._hoveredSlot && this._hoveredSlot.el === slot && this._hoveredSlot.mode === 'details') {
-                  this.hideItemPopout();
-                } else {
-                  this.showItemPopout(slot, 'container', item, idx, { inputMode: 'mouse', mode: 'details' });
-                }
+                this._hoveredSlot = { context: 'container', item, idx, el: slot };
+                this.handleSlotAction('quick');
               });
               slot.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                this.showItemPopout(slot, 'container', item, idx, { inputMode: 'mouse', mode: 'context' });
+                this.showItemPopout(slot, 'container', item, idx, { inputMode: 'mouse', mode: 'all' });
               });
             }
             cList.appendChild(slot);
