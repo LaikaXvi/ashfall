@@ -121,12 +121,20 @@ class GameUI {
   }
 
   setSelectedElement(el, opts = {}) {
+    const changed = this._selectedEl !== el;
     if (this._selectedEl && this._selectedEl !== el) {
       this._selectedEl.classList.remove('ui-selected', 'gp-focus');
     }
     this._selectedEl = el || null;
     if (this._selectedEl) {
       this._selectedEl.classList.add('ui-selected', 'gp-focus');
+      if (changed && window.soundEngine && window.soundEngine.playSelectorMove) {
+        const now = performance.now();
+        if (!this._lastSelSfx || now - this._lastSelSfx > 42) {
+          this._lastSelSfx = now;
+          try { window.soundEngine.playSelectorMove(); } catch (e) {}
+        }
+      }
       try {
         this._selectedEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
       } catch (e) {}
@@ -605,8 +613,11 @@ class GameUI {
     if (this._lootPlayer && (srcDesc.zone === 'raid_bag' || dstDesc.zone === 'raid_bag')) this._cleanSparseArray(this._lootPlayer.backpack);
     if (this.activeLootSource && (srcDesc.zone === 'raid_container' || dstDesc.zone === 'raid_container')) this._cleanSparseArray(this.activeLootSource.items);
 
-    if (window.soundEngine && window.soundEngine.playClick) {
-      try { window.soundEngine.playClick(); } catch (e) {}
+    if (window.soundEngine) {
+      try {
+        if (window.soundEngine.playInvDrop) window.soundEngine.playInvDrop();
+        else if (window.soundEngine.playClick) window.soundEngine.playClick();
+      } catch (e) {}
     }
 
     this.hideItemPopout();
@@ -674,6 +685,9 @@ class GameUI {
     if (!srcDesc || !srcItem) return false;
 
     this._dragState = { mode: 'gamepad', srcDesc, srcItem, dstDesc: srcDesc };
+    if (window.soundEngine && window.soundEngine.playInvPickup) {
+      try { window.soundEngine.playInvPickup(); } catch (e) {}
+    }
     if (srcDesc.el) srcDesc.el.classList.add('drag-source');
     const r = srcDesc.el.getBoundingClientRect();
     this._showDragGhost(srcItem, r.left + r.width / 2, r.top - 16);
@@ -723,6 +737,9 @@ class GameUI {
             srcItem: this._pendingMouseDrag.srcItem,
             dstDesc: null
           };
+          if (window.soundEngine && window.soundEngine.playInvPickup) {
+            try { window.soundEngine.playInvPickup(); } catch (e) {}
+          }
           if (this._dragState.srcDesc.el) this._dragState.srcDesc.el.classList.add('drag-source');
           this.hideItemPopout();
         }
@@ -4103,36 +4120,35 @@ class GameUI {
       }
     }
 
-    // Hostile Operators (shown when UAV active, or in combat / close)
+    // Hostile Operators & NPCs (2D pulsing translucent UAV radar circle radiating outward up to 150m!)
     const uavActive = (player.uavTimer || 0) > 0;
+    const UAV_RADIUS = 150;
     if (uavActive) {
-      // Animated rotating green UAV radar sweep wedge
-      const sweepAng = (performance.now() * 0.0024) % (Math.PI * 2);
+      const pulsePhase = (performance.now() % 2400) / 2400; // 0..1 radiating outward & dissipating
+      const maxMinimapR = Math.min(70, UAV_RADIUS * scale);
+      const curR = Math.max(2, pulsePhase * maxMinimapR);
+      const alpha = Math.max(0, 1 - pulsePhase);
       ctx.save();
       ctx.translate(cx, cy);
-      ctx.fillStyle = 'rgba(105, 240, 174, 0.14)';
+      ctx.fillStyle = `rgba(105, 240, 174, ${(0.14 * alpha).toFixed(3)})`;
       ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.arc(0, 0, 70, sweepAng - 0.55, sweepAng);
-      ctx.closePath();
+      ctx.arc(0, 0, curR, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = 'rgba(105, 240, 174, 0.65)';
-      ctx.lineWidth = 1.4;
+      ctx.strokeStyle = `rgba(105, 240, 174, ${(0.68 * alpha).toFixed(3)})`;
+      ctx.lineWidth = 1.8;
       ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(Math.cos(sweepAng) * 70, Math.sin(sweepAng) * 70);
+      ctx.arc(0, 0, curR, 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
     }
 
     if (enemyManager && enemyManager.enemies) {
       for (const e of enemyManager.enemies) {
-        if (e.dead) continue;
+        if (e.dead || e.extracted) continue;
         const dist = e.position.distanceTo(player.position);
-        const visible = uavActive || e.state === 'COMBAT' || dist < 24;
+        const visible = (uavActive && dist <= UAV_RADIUS) || e.state === 'COMBAT' || dist < 24;
         if (!visible) continue;
         const p = toMap(e.position.x, e.position.z);
-        // When UAV is active, clamp distant hostiles onto radar perimeter so player sees bearing to every squad!
         let px = p.x, py = p.y;
         const dxM = px - cx, dyM = py - cy;
         const rM = Math.hypot(dxM, dyM);
@@ -4316,24 +4332,34 @@ class GameUI {
       ctx.restore();
     }
 
-    // 7. UAV Radar Sweep & Hostiles
+    // 7. 2D Pulsing UAV Radar Ring (150m radius radiating outward & dissipating) & Hostiles
     const uavActive = (player.uavTimer || 0) > 0;
+    const UAV_RADIUS = 150;
     const pPos = toMap(player.position.x, player.position.z);
     if (uavActive) {
-      const sweepAng = (performance.now() * 0.0024) % (Math.PI * 2);
+      const pulsePhase = (performance.now() % 2400) / 2400;
+      const maxMapR = UAV_RADIUS * scale;
+      const curR = Math.max(3, pulsePhase * maxMapR);
+      const alpha = Math.max(0, 1 - pulsePhase);
       ctx.save();
       ctx.translate(pPos.x, pPos.y);
-      ctx.fillStyle = 'rgba(105, 240, 174, 0.12)';
+      // Faint 150m outer coverage boundary
+      ctx.strokeStyle = 'rgba(105, 240, 174, 0.16)';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([4, 4]);
       ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.arc(0, 0, 220, sweepAng - 0.5, sweepAng);
-      ctx.closePath();
+      ctx.arc(0, 0, maxMapR, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // Pulsing translucent circle radiating outwards & dissipating
+      ctx.fillStyle = `rgba(105, 240, 174, ${(0.13 * alpha).toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(0, 0, curR, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = 'rgba(105, 240, 174, 0.55)';
-      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = `rgba(105, 240, 174, ${(0.72 * alpha).toFixed(3)})`;
+      ctx.lineWidth = 2.0;
       ctx.beginPath();
-      ctx.moveTo(0, 0);
-      ctx.lineTo(Math.cos(sweepAng) * 220, Math.sin(sweepAng) * 220);
+      ctx.arc(0, 0, curR, 0, Math.PI * 2);
       ctx.stroke();
       ctx.restore();
     }
@@ -4342,7 +4368,8 @@ class GameUI {
       for (const e of enemyManager.enemies) {
         if (e.dead || e.extracted) continue;
         const dist = e.position.distanceTo(player.position);
-        if (!uavActive && e.state !== 'COMBAT' && dist > 30) continue;
+        const visible = (uavActive && dist <= UAV_RADIUS) || e.state === 'COMBAT' || dist <= 30;
+        if (!visible) continue;
         const ep = toMap(e.position.x, e.position.z);
         ctx.fillStyle = e.isDowned ? '#ffca28' : (e.isOperator ? '#ff3d3d' : '#ff7043');
         ctx.beginPath();
@@ -5652,19 +5679,35 @@ class GameUI {
       if (this.activeLootSource) {
         if (cTitle) cTitle.textContent = this.activeLootSource.title.toUpperCase();
         const items = this.activeLootSource.items;
+        const eq = this.activeLootSource.operatorEquipment;
         const firstUnrevealed = items.findIndex(it => it && it.revealed === false);
 
-        if (items.length === 0) {
+        // When looting an eliminated operator, accurately match the slot count of their equipped backpack!
+        let totalSlots = items.length;
+        if (eq) {
+          const eBagDef = eq.backpack ? GAME_DATA.ITEMS[eq.backpack] : null;
+          const bagSlots = (eBagDef && (eBagDef.bagSlots || eBagDef.slots)) || 8;
+          totalSlots = Math.max(bagSlots, items.length);
+        }
+
+        if (totalSlots === 0) {
           cList.innerHTML = '<p class="hint" style="padding:10px;grid-column:1/-1;">Backpack / Container is empty.</p>';
         } else {
-          items.forEach((item, idx) => {
-            const def = GAME_DATA.ITEMS[item.id];
-            if (!def) return;
+          for (let idx = 0; idx < totalSlots; idx++) {
+            const item = items[idx];
             const slot = document.createElement('div');
-            const isWpn = def.type === 'weapon';
-            slot.className = isWpn ? 'inv-slot weapon-slot-wide' : 'inv-slot';
             slot.dataset.context = 'container';
             slot.dataset.idx = idx;
+
+            if (!item || !GAME_DATA.ITEMS[item.id]) {
+              slot.className = 'inv-slot empty-slot';
+              cList.appendChild(slot);
+              continue;
+            }
+
+            const def = GAME_DATA.ITEMS[item.id];
+            const isWpn = def.type === 'weapon';
+            slot.className = isWpn ? 'inv-slot weapon-slot-wide' : 'inv-slot';
 
             if (item.revealed === false) {
               slot.classList.add('searching');
@@ -5695,7 +5738,7 @@ class GameUI {
               });
             }
             cList.appendChild(slot);
-          });
+          }
         }
       }
     }
