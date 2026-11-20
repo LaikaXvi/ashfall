@@ -731,8 +731,8 @@ class WeaponSystem {
   }
 
   _ensureLedgeHands() {
-    const cam = this.vmCamera || this.viewmodelCamera || this.camera;
-    if (this.ledgeHandsGroup || !cam) return;
+    if (this.ledgeHandsGroup || !this.scene) return;
+    // Anchored in WORLD SPACE on the actual ledge lip so looking around only rotates the head!
     const root = new THREE.Group();
     const sleeveMat = new THREE.MeshLambertMaterial({ color: 0x3b4436 });
     const cuffMat = new THREE.MeshLambertMaterial({ color: 0x1e2220 });
@@ -740,26 +740,46 @@ class WeaponSystem {
     const makeArm = (isRight) => {
       const side = isRight ? 1 : -1;
       const g = new THREE.Group();
-      // Forearm sleeve
-      const forearm = new THREE.Mesh(new THREE.BoxGeometry(0.088, 0.082, 0.34), sleeveMat);
-      forearm.position.set(0, -0.05, 0.16);
-      forearm.rotation.x = 0.24;
-      const cuff = new THREE.Mesh(new THREE.BoxGeometry(0.094, 0.088, 0.045), cuffMat);
-      cuff.position.set(0, -0.012, 0.01);
-      // Gloved hand gripping forward over the ledge lip
+
+      // Gloved hand gripping directly on top of the ledge lip (local origin = wrist/palm anchor on edge)
       const hand = this._createHand(isRight, 'grip');
-      hand.position.set(0, 0.0, -0.04);
-      hand.rotation.set(-0.35, side * -0.10, side * 0.06);
-      g.add(forearm, cuff, hand);
-      g.position.set(side * 0.24, 0.02, -0.44);
-      return g;
+      hand.position.set(0, 0.028, -0.045);
+      hand.rotation.set(-0.22, side * -0.06, side * 0.04);
+
+      // Circular forearm pivot anchored at the wrist so the arm pivots naturally as you hoist up
+      const armPivot = new THREE.Group();
+      armPivot.position.set(0, 0.015, 0.01);
+
+      // Circular wrist cuff (CylinderGeometry)
+      const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.044, 0.047, 0.055, 14), cuffMat);
+      cuff.rotation.x = Math.PI / 2;
+      cuff.position.set(0, -0.01, 0.035);
+
+      // Circular tapered tactical forearm (CylinderGeometry)
+      const forearm = new THREE.Mesh(new THREE.CylinderGeometry(0.046, 0.056, 0.34, 16), sleeveMat);
+      forearm.rotation.x = Math.PI / 2;
+      forearm.position.set(0, -0.01, 0.22);
+
+      // Rounded elbow cap (SphereGeometry)
+      const elbow = new THREE.Mesh(new THREE.SphereGeometry(0.056, 14, 12), sleeveMat);
+      elbow.position.set(0, -0.01, 0.39);
+
+      // Upper arm segment extending down toward shoulder
+      const upperArm = new THREE.Mesh(new THREE.CylinderGeometry(0.056, 0.062, 0.30, 16), sleeveMat);
+      upperArm.position.set(0, -0.15, 0.43);
+      upperArm.rotation.x = 0.28;
+
+      armPivot.add(cuff, forearm, elbow, upperArm);
+      g.add(hand, armPivot);
+      g.position.set(side * 0.24, 0, 0);
+      return { group: g, armPivot, hand };
     };
 
     const leftArm = makeArm(false);
     const rightArm = makeArm(true);
-    root.add(leftArm, rightArm);
+    root.add(leftArm.group, rightArm.group);
     root.visible = false;
-    cam.add(root);
+    this.scene.add(root);
     this.ledgeHandsGroup = root;
     this.ledgeHandsParts = { leftArm, rightArm };
   }
@@ -1461,29 +1481,35 @@ class WeaponSystem {
         if (this.plateRig) this.plateRig.visible = false;
         if (this.medRig) this.medRig.visible = false;
         if (this.tacFistRig) this.tacFistRig.visible = false;
-        if (this.ledgeHandsGroup) {
+        if (this.ledgeHandsGroup && this.ledgeHandsParts) {
           this.ledgeHandsGroup.visible = !player.isThirdPerson;
           const ls = player.ledgeState;
-          const breathe = Math.sin(performance.now() * 0.004) * 0.008;
+          const edge = ls.edgePos || ls.hangPos;
+          // Anchor directly to the world-space ledge lip & ledge orientation (independent of player's head look!)
+          this.ledgeHandsGroup.rotation.set(0, ls.ledgeYaw || 0, 0);
           if (ls.phase === 'grabbing') {
             const gEase = 1 - Math.pow(1 - ls.grabT, 2);
-            this.ledgeHandsGroup.position.set(0, THREE.MathUtils.lerp(-0.34, 0.04, gEase), THREE.MathUtils.lerp(-0.18, 0.0, gEase));
-            this.ledgeHandsGroup.rotation.set(THREE.MathUtils.lerp(0.55, 0.12, gEase) - player.pitch * 0.55, 0, 0);
+            this.ledgeHandsGroup.position.set(
+              edge.x - (ls.inwardX || 0) * THREE.MathUtils.lerp(0.18, 0.02, gEase),
+              edge.y + THREE.MathUtils.lerp(-0.28, 0.0, gEase),
+              edge.z - (ls.inwardZ || 0) * THREE.MathUtils.lerp(0.18, 0.02, gEase)
+            );
+            const armPitch = THREE.MathUtils.lerp(0.85, 0.42, gEase);
+            this.ledgeHandsParts.leftArm.armPivot.rotation.x = armPitch;
+            this.ledgeHandsParts.rightArm.armPivot.rotation.x = armPitch;
           } else {
             const p = ls.pullProgress || 0;
             const pEase = p * p * (3 - 2 * p);
-            const strain = ls.phase === 'pulling' ? Math.sin(p * Math.PI * 3) * 0.014 : 0;
-            // Hands stay firmly planted on the lip while your torso hoists up -> hands move down & push back in camera space!
             this.ledgeHandsGroup.position.set(
-              strain,
-              THREE.MathUtils.lerp(0.04, -0.34, pEase) + breathe,
-              THREE.MathUtils.lerp(0.0, 0.14, pEase)
+              edge.x - (ls.inwardX || 0) * 0.02,
+              edge.y,
+              edge.z - (ls.inwardZ || 0) * 0.02
             );
-            this.ledgeHandsGroup.rotation.set(
-              THREE.MathUtils.lerp(0.12, -0.68, pEase) - player.pitch * 0.45,
-              0,
-              strain * 1.4
-            );
+            // Forearms start angled down toward hanging torso (+0.42 rad) and pivot up/forward as you push off the ledge!
+            const armPitch = THREE.MathUtils.lerp(0.42, -0.55, pEase);
+            const strain = ls.phase === 'pulling' ? Math.sin(p * Math.PI * 3) * 0.03 : 0;
+            this.ledgeHandsParts.leftArm.armPivot.rotation.x = armPitch + strain;
+            this.ledgeHandsParts.rightArm.armPivot.rotation.x = armPitch - strain;
           }
         }
         return;

@@ -1243,6 +1243,7 @@ class Player {
           collider: c,
           relH,
           ledgeY: c.maxY,
+          edgePos: new THREE.Vector3(edgeX, c.maxY, edgeZ),
           hangPos: new THREE.Vector3(hangX, c.maxY - 0.16, hangZ),
           endPos: new THREE.Vector3(landX, standEye, landZ),
           inwardX,
@@ -1291,6 +1292,7 @@ class Player {
       grabT: 0,
       pullProgress: 0,
       startPos: this.position.clone(),
+      edgePos: info.edgePos.clone(),
       hangPos: info.hangPos.clone(),
       endPos: info.endPos.clone(),
       ledgeY: info.ledgeY,
@@ -1534,12 +1536,12 @@ class Player {
       this.onGround = false;
       this.currentEyeHeight = this.standEyeHeight;
 
-      // Gently clamp yaw within ±62° of the ledge normal while hanging
+      // Gently clamp head-look yaw within ±85° of the ledge normal while hands stay anchored to the ledge
       let yawDiff = this.yaw - ls.ledgeYaw;
       while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
       while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
-      if (Math.abs(yawDiff) > 1.08) {
-        this.yaw = ls.ledgeYaw + Math.sign(yawDiff) * 1.08;
+      if (Math.abs(yawDiff) > 1.48) {
+        this.yaw = ls.ledgeYaw + Math.sign(yawDiff) * 1.48;
       }
 
       const pressingForward = moveForward > 0.25 || !!this.keys[kb.jump || 'Space'];
