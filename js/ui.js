@@ -1530,11 +1530,23 @@ class GameUI {
     const pauseDevBtn = document.getElementById('btn-pause-dev');
     if (pauseDevBtn) {
       pauseDevBtn.addEventListener('click', () => {
-        if (!window.DEV_MODE && window.SQUAD_PVP) {
-          this._showSocialToast('Disable Squad PvP first to enable Dev Mode.');
-          return;
-        }
         window.DEV_MODE = !window.DEV_MODE;
+        if (window.DEV_MODE && window.SQUAD_PVP) {
+          window.SQUAD_PVP = false;
+          if (this._sendSocialPacket) {
+            this._sendSocialPacket({
+              type: 'party_pvp',
+              clientId: this._clientId,
+              partyId: this.partyId,
+              enabled: false,
+              ts: Date.now()
+            });
+          }
+          if (typeof window.onSquadPvpToggle === 'function') {
+            window.onSquadPvpToggle(false);
+          }
+          this._showSocialToast('Dev Mode: ON — Squad PvP disabled for squad');
+        }
         this.renderHideout();
         syncSettingsUI();
       });
@@ -1648,11 +1660,23 @@ class GameUI {
     });
 
     document.getElementById('btn-dev-mode').addEventListener('click', () => {
-      if (!window.DEV_MODE && window.SQUAD_PVP) {
-        this._showSocialToast('Disable Squad PvP first to enable Dev Mode.');
-        return;
-      }
       window.DEV_MODE = !window.DEV_MODE;
+      if (window.DEV_MODE && window.SQUAD_PVP) {
+        window.SQUAD_PVP = false;
+        if (this._sendSocialPacket) {
+          this._sendSocialPacket({
+            type: 'party_pvp',
+            clientId: this._clientId,
+            partyId: this.partyId,
+            enabled: false,
+            ts: Date.now()
+          });
+        }
+        if (typeof window.onSquadPvpToggle === 'function') {
+          window.onSquadPvpToggle(false);
+        }
+        this._showSocialToast('Dev Mode: ON — Squad PvP disabled for squad');
+      }
       this.renderHideout();
       syncSettingsUI();
     });
