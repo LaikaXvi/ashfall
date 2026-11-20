@@ -2078,9 +2078,10 @@ button:disabled {
   display: grid;
   grid-template-columns: repeat(8, 64px);
   gap: 4px;
-  overflow: visible;
-  max-height: none;
-  padding: 2px;
+  max-height: calc(100vh - 160px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 2px 6px 2px 2px;
   width: fit-content;
 }
 
