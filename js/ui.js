@@ -54,6 +54,7 @@ class GameUI {
     this.onDeploy = onDeployCallback;
     this.storageKey = 'ashfall_extraction_save_v1';
     this.traderCategory = 'weapons';
+    this.devTraderCategory = 'all';
     this.activeMenuTab = 'home';
     this.socialTab = 'friends';
     this.activeLootSource = null; // { title, items } or null for backpack-only
@@ -1902,7 +1903,7 @@ class GameUI {
     if (topbar) topbar.classList.toggle('hidden', isHome);
     if (homeView) homeView.classList.toggle('hidden', !isHome);
 
-    ['deploy', 'map', 'matchmaking', 'workbench', 'stash', 'operator', 'settings', 'keybinds'].forEach((t) => {
+    ['deploy', 'traders', 'map', 'matchmaking', 'workbench', 'stash', 'operator', 'settings', 'keybinds'].forEach((t) => {
       const el = document.getElementById(`menu-view-${t}`);
       if (el) el.classList.toggle('hidden', tabName !== t);
     });
@@ -1912,6 +1913,9 @@ class GameUI {
         (btn.dataset.tab === 'settings' && tabName === 'keybinds');
       btn.classList.toggle('active', activeMatch);
     });
+    if (tabName === 'traders') {
+      this.renderTrader();
+    }
     if (tabName === 'keybinds') {
       this.renderKeybindSettings();
     }
@@ -2374,6 +2378,15 @@ class GameUI {
         document.querySelectorAll('#trader-tabs .tab-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         this.traderCategory = btn.dataset.cat;
+        this.renderTrader();
+      });
+    });
+
+    document.querySelectorAll('#dev-trader-tabs .tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('#dev-trader-tabs .tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        this.devTraderCategory = btn.dataset.devCat || 'all';
         this.renderTrader();
       });
     });
@@ -3535,6 +3548,54 @@ class GameUI {
       });
 
       list.appendChild(row);
+    }
+
+    // DEV TRADER — only visible when window.DEV_MODE is ON, sells EVERY item in the game for FREE!
+    const devPanel = document.getElementById('dev-trader-panel');
+    const devList = document.getElementById('dev-trader-list');
+    if (devPanel) {
+      devPanel.classList.toggle('hidden', !window.DEV_MODE);
+    }
+    if (devPanel && devList && window.DEV_MODE) {
+      devList.innerHTML = '';
+      const cat = this.devTraderCategory || 'all';
+      const allDefs = Object.values(GAME_DATA.ITEMS || {});
+      const filtered = allDefs.filter((def) => {
+        if (!def || !def.id) return false;
+        if (cat === 'all') return true;
+        if (cat === 'weapons') return def.type === 'weapon' || def.type === 'melee';
+        if (cat === 'gear') return ['armor', 'backpack', 'headgear', 'field_upgrade', 'killstreak', 'self_revive'].includes(def.type);
+        if (cat === 'consumables') return ['med', 'ammo', 'plate', 'lethal', 'tactical'].includes(def.type);
+        return !['weapon', 'melee', 'armor', 'backpack', 'headgear', 'field_upgrade', 'killstreak', 'self_revive', 'med', 'ammo', 'plate', 'lethal', 'tactical'].includes(def.type);
+      });
+
+      for (const def of filtered) {
+        const qty = def.buyQty || (def.type === 'ammo' ? 30 : 1);
+        const row = document.createElement('div');
+        row.className = `item-row rarity-${def.rarity || 'common'}`;
+        row.innerHTML = `
+          <div class="item-info">
+            <div class="item-name">${def.name}${qty > 1 ? ' x' + qty : ''}</div>
+            <div class="item-meta">${(def.type || 'ITEM').toUpperCase()} · ${def.desc || ''}</div>
+          </div>
+          <div class="item-actions">
+            <button class="btn-small" style="border-color:#69f0ae;color:#69f0ae;">FREE (₽0)</button>
+          </div>
+        `;
+        row.querySelector('button').addEventListener('click', () => {
+          if (def.type === 'ammo') {
+            this.profile.loadout.ammo[def.id] = (this.profile.loadout.ammo[def.id] || 0) + qty;
+          } else {
+            this.addToStash(def.id, qty);
+          }
+          if (window.soundEngine && window.soundEngine.playInvDrop) {
+            try { window.soundEngine.playInvDrop(); } catch (e) {}
+          }
+          this.saveProfile();
+          this.renderHideout();
+        });
+        devList.appendChild(row);
+      }
     }
   }
 
