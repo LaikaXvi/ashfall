@@ -90,9 +90,10 @@ window.drawDownedBleedoutCanvas = function drawDownedBleedoutCanvas(canvas, pct,
 };
 
 class Enemy {
-  constructor(scene, world, spawnPos, tier = 'scav', opMeta = null) {
+  constructor(scene, world, spawnPos, tier = 'scav', opMeta = null, weaponSystem = null) {
     this.scene = scene;
     this.world = world;
+    this.weaponSystem = weaponSystem;
     this.tier = tier;
     this.isOperator = !!(opMeta && opMeta.isOperator);
     this.squadName = opMeta ? opMeta.squadName : null;
@@ -125,7 +126,35 @@ class Enemy {
       this.speed = st.spd;
       this.armorColor = st.col;
       this.headColor = 0x26292d;
-      this.weaponId = st.wpn;
+      const opPrimaries = this.playstyle === 'marksman' ? ['m24', 'ak74m']
+        : (this.playstyle === 'rusher' ? ['mp5k', 'm870'] : ['ak74m', 'mp5k', 'm870']);
+      this.weaponId = opPrimaries[Math.floor(Math.random() * opPrimaries.length)];
+      const vests = ['vest_1plate', 'vest_2plate', 'vest_2plate_gel', 'vest_2plate_helmet', 'vest_3plate'];
+      const bags = ['bag_small', 'bag_medium', 'bag_large'];
+      const melees = ['melee_knife', 'melee_karambit', 'melee_axe'];
+      const fus = ['fu_ammo_box', 'fu_dead_silence', 'fu_trophy'];
+      this.operatorEquipment = {
+        primary: this.weaponId,
+        secondary: Math.random() < 0.55 ? 'g17' : 'pm9',
+        melee: melees[Math.floor(Math.random() * melees.length)],
+        armor: vests[Math.min(vests.length - 1, Math.floor(Math.random() * (vests.length - (Math.random() < 0.65 ? 1 : 0))))],
+        plates: 1 + Math.floor(Math.random() * 4),
+        backpack: bags[Math.floor(Math.random() * bags.length)],
+        fieldUpgrade: fus[Math.floor(Math.random() * fus.length)],
+        killstreak: Math.random() < 0.38 ? (Math.random() < 0.7 ? 'ks_uav' : 'ks_airstrike') : null,
+        selfRevive: Math.random() < 0.35 ? 'self_revive' : null
+      };
+    } else if (tier === 'boss') {
+      this.name = 'COMMANDER VULTURE';
+      this.maxHp = 260;
+      this.damage = 18;
+      this.fireInterval = 0.20;
+      this.accuracy = 0.06;
+      this.speed = 3.0;
+      this.armorColor = 0x3b1e22;
+      this.headColor = 0x1d1e22;
+      const bossWpns = ['ak74m', 'm24', 'm870'];
+      this.weaponId = bossWpns[Math.floor(Math.random() * bossWpns.length)];
     } else if (tier === 'heavy') {
       this.name = 'Armored Juggernaut';
       this.maxHp = 190;
@@ -145,7 +174,8 @@ class Enemy {
       this.speed = 3.5;
       this.armorColor = 0x4b4232;
       this.headColor = 0x6b5a48;
-      this.weaponId = 'ak74m';
+      const raiderWpns = ['ak74m', 'mp5k', 'm870'];
+      this.weaponId = raiderWpns[Math.floor(Math.random() * raiderWpns.length)];
     } else {
       this.name = 'Scavenger';
       this.maxHp = 75;
@@ -155,7 +185,7 @@ class Enemy {
       this.speed = 3.2;
       this.armorColor = 0x5c4738;
       this.headColor = 0x8f735c;
-      this.weaponId = 'pm9';
+      this.weaponId = Math.random() < 0.5 ? 'pm9' : 'g17';
     }
 
     this.hp = this.maxHp;
@@ -229,8 +259,23 @@ class Enemy {
     rightArm.position.set(0.38, 1.16, 0.15);
     rightArm.rotation.x = -1.1;
 
-    const rifle = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, 0.65), gunMat);
-    rifle.position.set(0.25, 1.24, 0.42);
+    // Actual 3D game weapon in hands (built from WeaponSystem)
+    const wDef = GAME_DATA.ITEMS[this.weaponId];
+    let weaponObj = null;
+    if (this.weaponSystem && wDef && this.weaponSystem.buildThirdPersonWeapon) {
+      const built = this.weaponSystem.buildThirdPersonWeapon(wDef, {});
+      if (built && built.group) {
+        weaponObj = built.group;
+        weaponObj.scale.setScalar(1.22);
+        weaponObj.position.set(0.24, 1.24, 0.36);
+        weaponObj.rotation.set(0, Math.PI, 0); // barrel points along +Z (enemy forward)
+      }
+    }
+    if (!weaponObj) {
+      weaponObj = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, 0.65), gunMat);
+      weaponObj.position.set(0.25, 1.24, 0.42);
+    }
+    this.weaponMeshGroup = weaponObj;
 
     // Rifle muzzle flash
     this.muzzleMesh = new THREE.Mesh(
@@ -244,26 +289,28 @@ class Enemy {
 
     this.group.add(
       this.leftHip, this.rightHip, torso, head,
-      leftArm, rightArm, rifle, this.muzzleMesh, this.muzzleLight
+      leftArm, rightArm, weaponObj, this.muzzleMesh, this.muzzleLight
     );
   }
 
   _generateCorpseLoot() {
-    const items = [{ id: 'dogtag', qty: 1 }];
-    if (this.tier === 'heavy') {
-      items.push({ id: 'ammo_545', qty: 20 + Math.floor(Math.random() * 15) });
-      items.push({ id: 'medkit', qty: 1 });
-      if (Math.random() < 0.6) items.push({ id: 'intel_drive', qty: 1 });
-      if (Math.random() < 0.35) items.push({ id: 'vest_tactical', qty: 1 });
-    } else if (this.tier === 'raider') {
-      items.push({ id: 'ammo_545', qty: 12 + Math.floor(Math.random() * 15) });
-      if (Math.random() < 0.5) items.push({ id: 'medkit', qty: 1 });
-      if (Math.random() < 0.4) items.push({ id: 'gold_watch', qty: 1 });
-    } else {
-      items.push({ id: 'ammo_9x18', qty: 8 + Math.floor(Math.random() * 10) });
-      if (Math.random() < 0.45) items.push({ id: 'scrap_metal', qty: 1 });
+    if (this.isOperator) {
+      const wDef = GAME_DATA.ITEMS[this.weaponId];
+      const ammoId = (wDef && wDef.ammoType) || 'ammo_545';
+      const maxAmmo = ammoId === 'ammo_12g' ? 18 : (ammoId === 'ammo_762' ? 25 : 60);
+      const items = [
+        { id: 'dogtag', qty: 1, revealed: false },
+        { id: ammoId, qty: Math.min(maxAmmo, 20 + Math.floor(Math.random() * 40)), revealed: false },
+        { id: 'medkit', qty: 1 + (Math.random() < 0.35 ? 1 : 0), revealed: false },
+        { id: 'armor_plate', qty: 1 + Math.floor(Math.random() * 3), revealed: false }
+      ];
+      if (Math.random() < 0.5) items.push({ id: 'bandage', qty: 1 + Math.floor(Math.random() * 2), revealed: false });
+      if (Math.random() < 0.45) items.push({ id: Math.random() < 0.5 ? 'gold_watch' : 'water_filter', qty: 1, revealed: false });
+      if (Math.random() < 0.3) items.push({ id: 'intel_drive', qty: 1, revealed: false });
+      return items;
     }
-    return items;
+    // Scavengers, Raiders, and Bosses drop their gun, plates, ammo (and boss pack) physically on death!
+    return [];
   }
 
   _pickPatrolPoint() {
@@ -380,6 +427,7 @@ class Enemy {
   }
 
   die() {
+    if (this.dead) return;
     this.dead = true;
     this.isDowned = false;
     this.state = 'DEAD';
@@ -387,6 +435,35 @@ class Enemy {
     if (this.bleedSprite) this.bleedSprite.visible = false;
     this.group.rotation.x = -Math.PI / 2;
     this.group.position.y = 0.25;
+
+    // Scavengers, Raiders, and Bosses physically drop their gun in-hand + occasional plates/ammo (up to 60) + Boss Small Pack!
+    if (!this.isOperator && this.world && this.world.spawnGroundItem) {
+      if (this.weaponMeshGroup) this.weaponMeshGroup.visible = false;
+      const dropNear = (ox, oz) => new THREE.Vector3(this.position.x + ox, 0.02, this.position.z + oz);
+
+      // 1. Always drop the gun they were holding
+      if (this.weaponId && GAME_DATA.ITEMS[this.weaponId]) {
+        this.world.spawnGroundItem(this.weaponId, 1, dropNear(0.45, 0.25));
+      }
+      // 2. Occasionally drop 1-2 armor plates
+      const plateChance = this.tier === 'boss' ? 0.90 : (this.tier === 'raider' ? 0.55 : 0.35);
+      if (Math.random() < plateChance) {
+        const plateQty = 1 + (Math.random() < 0.45 ? 1 : 0);
+        this.world.spawnGroundItem('armor_plate', plateQty, dropNear(-0.45, 0.35));
+      }
+      // 3. Occasionally drop ammo stack matching their gun (up to 60 rounds)
+      const wDef = GAME_DATA.ITEMS[this.weaponId];
+      const ammoChance = this.tier === 'boss' ? 0.95 : 0.65;
+      if (wDef && wDef.ammoType && Math.random() < ammoChance) {
+        const cap = wDef.ammoType === 'ammo_12g' ? 20 : (wDef.ammoType === 'ammo_762' ? 30 : 60);
+        const qty = Math.min(cap, 15 + Math.floor(Math.random() * 46)); // up to 60 rounds
+        this.world.spawnGroundItem(wDef.ammoType, qty, dropNear(0.15, -0.50));
+      }
+      // 4. Boss drops a lootable Small Pack containing rare valuables, a legendary weapon & Boss Key!
+      if (this.tier === 'boss' && this.world.spawnBossPack) {
+        this.world.spawnBossPack(dropNear(-0.65, -0.35), this.name);
+      }
+    }
   }
 
   stun(duration = 5.0) {
@@ -573,7 +650,18 @@ class Enemy {
   }
 
   update(dt, player, onEnemyFire, onEnemyBleedout, allEnemies = []) {
-    if (this.dead) return;
+    if (this.dead) {
+      // Non-operator bodies despawn after 60s to save resources
+      if (!this.isOperator && !this.removed) {
+        this.deathTimer = (this.deathTimer || 0) + dt;
+        if (this.deathTimer >= 60.0) {
+          this.removed = true;
+          if (this.group && this.scene) this.scene.remove(this.group);
+          this.hitboxes = [];
+        }
+      }
+      return;
+    }
 
     if (this.muzzleTimer > 0) {
       this.muzzleTimer -= dt;
@@ -811,12 +899,13 @@ class Enemy {
 }
 
 class EnemyManager {
-  constructor(scene, world, zoneConfig) {
+  constructor(scene, world, zoneConfig, weaponSystem = null) {
     this.scene = scene;
     this.world = world;
+    this.weaponSystem = weaponSystem;
     this.enemies = [];
 
-    // Spawn 6 AI Operator Squads (1-3 operators each, randomized playstyles & callsigns!)
+    // 1. Spawn 6 AI Operator Squads (1-3 operators each, randomized gear & playstyles!)
     const squadPrefixes = ['ALPHA', 'BRAVO', 'CHARLIE', 'DELTA', 'ECHO', 'FOXTROT'];
     const callsigns = [
       'VIPER', 'PHANTOM', 'REAPER', 'COBALT', 'STRYKER', 'WRAITH',
@@ -841,15 +930,29 @@ class EnemyManager {
           squadName: squadPrefixes[s],
           callsign,
           playstyle: style
-        });
-        // Mark corpse loot items unrevealed for progressive search reveal
-        if (op.loot) {
-          op.loot.forEach(it => { it.revealed = false; });
-          op.loot.push({ id: 'dogtag', qty: 1, revealed: false });
-        }
+        }, weaponSystem);
         this.enemies.push(op);
       }
     }
+
+    // 2. Spawn Scavengers & Raiders patrolling POIs (drop gun-in-hand + occasional plates/ammo up to 60)
+    const aiSpawns = [
+      { pos: new THREE.Vector3(-24, 0, -14), tier: 'scav' },
+      { pos: new THREE.Vector3(-18, 0, -28), tier: 'scav' },
+      { pos: new THREE.Vector3(20, 0, -12), tier: 'raider' },
+      { pos: new THREE.Vector3(14, 0, 18), tier: 'scav' },
+      { pos: new THREE.Vector3(-14, 0, 22), tier: 'raider' }
+    ];
+    for (const sp of aiSpawns) {
+      this.enemies.push(new Enemy(scene, world, sp.pos, sp.tier, null, weaponSystem));
+    }
+
+    // 3. Spawn Sector Boss at the Boss Encampment POI (drops gun + plates/ammo + Boss Small Pack w/ Boss Key & Legendary Weapon!)
+    const bossPoi = (world.pois || []).find(p => (p.name || '').toLowerCase().includes('boss'));
+    const bossPos = bossPoi
+      ? new THREE.Vector3(bossPoi.x + 2.5, 0, bossPoi.z + 3.5)
+      : new THREE.Vector3(28, 0, -28);
+    this.enemies.push(new Enemy(scene, world, bossPos, 'boss', null, weaponSystem));
   }
 
   getHitboxMeshes() {

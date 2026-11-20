@@ -530,6 +530,52 @@ class WastelandWorld {
     if (entry.mesh && this.scene) this.scene.remove(entry.mesh);
   }
 
+  spawnBossPack(pos, bossName = 'Sector Boss') {
+    const g = new THREE.Group();
+    const yBase = Math.max(0.02, pos.y || 0.02);
+    g.position.set(pos.x, yBase, pos.z);
+    g.rotation.y = Math.random() * Math.PI * 2;
+
+    const packMat = new THREE.MeshLambertMaterial({ color: 0x3a2f24 });
+    const strapMat = new THREE.MeshLambertMaterial({ color: 0x1c1e1d });
+    const trimMat = new THREE.MeshBasicMaterial({ color: 0xffc107 });
+
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.24, 0.34), packMat);
+    body.position.y = 0.12;
+    const pocket = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.14, 0.08), strapMat);
+    pocket.position.set(0, 0.10, 0.20);
+    const tag = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.05, 0.02), trimMat);
+    tag.position.set(0, 0.25, 0);
+    g.add(body, pocket, tag);
+    this.scene.add(g);
+
+    const legWpns = (GAME_DATA.LOOT_TABLES && GAME_DATA.LOOT_TABLES.boss_legendary_weapons) || ['ak74m', 'm24', 'm870'];
+    const legPick = legWpns[Math.floor(Math.random() * legWpns.length)];
+    const legId = typeof legPick === 'string' ? legPick : legPick.id;
+    const valuables = ['gold_watch', 'intel_drive', 'water_filter', 'fuel_can'].sort(() => Math.random() - 0.5);
+
+    const items = [
+      { id: 'boss_key', qty: 1, revealed: false },
+      { id: legId, qty: 1, rarityOverride: 'legendary', revealed: false },
+      { id: valuables[0], qty: 1, revealed: false },
+      { id: valuables[1], qty: 1, revealed: false }
+    ];
+
+    const container = {
+      id: 'boss_pack_' + this.lootContainers.length,
+      name: `${bossName} Small Pack`,
+      kind: 'boss',
+      mesh: g,
+      position: new THREE.Vector3(pos.x, yBase + 0.22, pos.z),
+      items,
+      requiresKey: null,
+      unlocked: true,
+      searched: false
+    };
+    this.lootContainers.push(container);
+    return container;
+  }
+
   _addGunLocker(x, z, rotY = 0, kind = 'military', customName = 'Gun Locker') {
     const g = new THREE.Group();
     g.position.set(x, 0.16, z);

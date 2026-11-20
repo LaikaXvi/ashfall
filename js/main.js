@@ -111,7 +111,7 @@
       }
       ui.profile.loadout.backpackItems = [];
     }
-    enemyManager = new EnemyManager(scene, world, zone);
+    enemyManager = new EnemyManager(scene, world, zone, weaponSystem);
     squadManager = new SquadManager(scene, world, ui.partyMembers || []);
 
     // Notify any local browser tab in our party to infil into the same raid zone
@@ -424,7 +424,7 @@
     }
     isModalOpen = true;
     if (document.pointerLockElement === canvas) document.exitPointerLock();
-    ui.openLootModal(player, nearbyInteractable.label, nearbyInteractable.items);
+    ui.openLootModal(player, nearbyInteractable.label, nearbyInteractable.items, nearbyInteractable.operatorEquipment || null);
     return true;
   }
 
@@ -583,6 +583,30 @@
     ui.updateReviveBanner(player, null, false);
   }
 
+  function hasInteractLineOfSight(targetPos, ignoreMeshRoot = null) {
+    const eye = player.position;
+    const toTarget = targetPos.clone().sub(eye);
+    const dist = toTarget.length();
+    if (dist < 0.35) return true;
+    const dir = toTarget.divideScalar(dist);
+    const ray = new THREE.Raycaster(eye, dir, 0.15, Math.max(0.16, dist - 0.32));
+    const hits = ray.intersectObjects(world.shootableMeshes, false);
+    for (const h of hits) {
+      // Ignore hits on the container's own mesh (e.g. gun locker body)
+      if (ignoreMeshRoot) {
+        let cur = h.object;
+        let isSelf = false;
+        while (cur) {
+          if (cur === ignoreMeshRoot) { isSelf = true; break; }
+          cur = cur.parent;
+        }
+        if (isSelf) continue;
+      }
+      return false; // blocked by a wall or obstacle!
+    }
+    return true;
+  }
+
   function checkInteractions() {
     nearbyInteractable = null;
     const promptEl = document.getElementById('interact-prompt');
@@ -606,25 +630,33 @@
     let bestDist = 3.2;
     for (const c of world.lootContainers) {
       const d = player.position.distanceTo(c.position);
-      if (d < bestDist) {
+      if (d < bestDist && hasInteractLineOfSight(c.position, c.mesh)) {
         bestDist = d;
         nearbyInteractable = { type: 'crate', label: c.name, items: c.items, container: c };
       }
     }
 
+    // Only Operator corpses are lootable (non-operators drop their gear physically & despawn after 60s)
     for (const e of enemyManager.enemies) {
-      if (!e.dead) continue;
+      if (!e.dead || !e.isOperator) continue;
       const d = Math.hypot(player.position.x - e.position.x, player.position.z - e.position.z);
-      if (d < bestDist) {
+      const corpsePos = new THREE.Vector3(e.position.x, 0.45, e.position.z);
+      if (d < bestDist && hasInteractLineOfSight(corpsePos)) {
         bestDist = d;
-        nearbyInteractable = { type: 'corpse', label: `${e.name} Corpse`, items: e.lootItems };
+        nearbyInteractable = {
+          type: 'corpse',
+          label: `${e.name} (Operator)`,
+          items: e.lootItems,
+          operatorEquipment: e.operatorEquipment || null
+        };
       }
     }
 
     // Physical loose loot & dropped items on the ground
     for (const gi of (world.groundItems || [])) {
       const d = Math.hypot(player.position.x - gi.position.x, player.position.z - gi.position.z);
-      if (d < bestDist && d < 2.9) {
+      const giPos = new THREE.Vector3(gi.position.x, Math.max(0.25, gi.position.y + 0.15), gi.position.z);
+      if (d < bestDist && d < 2.9 && hasInteractLineOfSight(giPos)) {
         bestDist = d;
         const def = GAME_DATA.ITEMS[gi.id];
         const qtyTag = gi.qty > 1 ? ` x${gi.qty}` : '';

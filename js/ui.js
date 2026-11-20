@@ -2065,9 +2065,9 @@ class GameUI {
   }
 
   // ==================== NON-BLOCKING LOOT & BACKPACK UI ====================
-  openLootModal(player, title, containerItems) {
+  openLootModal(player, title, containerItems, operatorEquipment = null) {
     this._lootPlayer = player;
-    this.activeLootSource = containerItems ? { title, items: containerItems } : null;
+    this.activeLootSource = containerItems ? { title, items: containerItems, operatorEquipment } : null;
     this._searchRevealProgress = 0;
     this.hideItemPopout();
 
@@ -2359,7 +2359,88 @@ class GameUI {
       `).join('');
     }
 
-    // 2. Active Container Grid (Left) with Progressive Circular Reveal
+    // 2. Active Container Grid (Left) with Enemy Operator Equipment (if looting an Operator) + Progressive Circular Reveal
+    const cPanel = document.getElementById('inv-container-panel');
+    if (cPanel) {
+      let enemyEqEl = document.getElementById('loot-enemy-op-slots');
+      if (this.activeLootSource && this.activeLootSource.operatorEquipment) {
+        if (!enemyEqEl) {
+          enemyEqEl = document.createElement('div');
+          enemyEqEl.id = 'loot-enemy-op-slots';
+          enemyEqEl.className = 'op-equip-grid compact';
+          enemyEqEl.style.marginBottom = '10px';
+          cPanel.insertBefore(enemyEqEl, cList);
+        }
+        const eq = this.activeLootSource.operatorEquipment;
+        const makeCard = (key, label, id, customText = null, customRarity = null) => {
+          const def = id ? GAME_DATA.ITEMS[id] : null;
+          const rar = customRarity || (def ? def.rarity : 'common');
+          const txt = customText || (def ? def.name : 'Empty');
+          return `<div class="op-slot-card rarity-${rar}" data-op-key="${key}" style="cursor:${(id || (key === 'plates' && eq.plates > 0)) ? 'pointer' : 'default'};">
+            <span class="op-slot-label">${label}</span>
+            <span class="op-slot-val">${txt}</span>
+          </div>`;
+        };
+        enemyEqEl.innerHTML = `
+          <div class="op-slot-group">
+            <div class="op-group-label">OPERATOR WEAPONS (CLICK TO LOOT)</div>
+            <div class="op-group-row cols-3">
+              ${makeCard('primary', 'PRIMARY', eq.primary)}
+              ${makeCard('secondary', 'SECONDARY', eq.secondary)}
+              ${makeCard('melee', 'MELEE', eq.melee)}
+            </div>
+          </div>
+          <div class="op-slot-group">
+            <div class="op-group-label">OPERATOR ARMOR &amp; PACK</div>
+            <div class="op-group-row cols-3">
+              ${makeCard('armor', 'VEST', eq.armor)}
+              ${makeCard('plates', 'PLATES', null, `${eq.plates || 0} / 6`, 'rare')}
+              ${makeCard('backpack', 'BACKPACK', eq.backpack)}
+            </div>
+          </div>
+          <div class="op-slot-group">
+            <div class="op-group-label">OPERATOR SUPPORT</div>
+            <div class="op-group-row cols-3">
+              ${makeCard('fieldUpgrade', 'FIELD UPGRADE', eq.fieldUpgrade)}
+              ${makeCard('killstreak', 'KILLSTREAK', eq.killstreak)}
+              ${makeCard('selfRevive', 'SELF-REVIVE', eq.selfRevive)}
+            </div>
+          </div>
+        `;
+        enemyEqEl.querySelectorAll('.op-slot-card[data-op-key]').forEach((card) => {
+          card.addEventListener('click', () => {
+            const k = card.dataset.opKey;
+            if (k === 'plates') {
+              if ((eq.plates || 0) <= 0) return;
+              const need = Math.max(0, 6 - player.plates);
+              if (need > 0) {
+                const take = Math.min(need, eq.plates);
+                player.plates += take;
+                eq.plates -= take;
+              } else if (player.addToBackpack('armor_plate', eq.plates)) {
+                eq.plates = 0;
+              } else {
+                this.addFeedMessage('Backpack full / too heavy!', '#d94141');
+                return;
+              }
+              this.renderLootModal(player);
+              return;
+            }
+            const itemId = eq[k];
+            if (!itemId) return;
+            if (player.addToBackpack(itemId, 1)) {
+              eq[k] = null;
+              this.renderLootModal(player);
+            } else {
+              this.addFeedMessage('Backpack full / too heavy!', '#d94141');
+            }
+          });
+        });
+      } else if (enemyEqEl) {
+        enemyEqEl.remove();
+      }
+    }
+
     if (cList) {
       cList.innerHTML = '';
       if (this.activeLootSource) {
@@ -2369,7 +2450,7 @@ class GameUI {
         const firstUnrevealed = items.findIndex(it => it && it.revealed === false);
 
         if (items.length === 0) {
-          cList.innerHTML = '<p class="hint" style="padding:10px;grid-column:1/-1;">Container is empty.</p>';
+          cList.innerHTML = '<p class="hint" style="padding:10px;grid-column:1/-1;">Backpack / Container is empty.</p>';
         } else {
           items.forEach((item, idx) => {
             const def = GAME_DATA.ITEMS[item.id];
@@ -2390,7 +2471,8 @@ class GameUI {
                    <span class="slot-val">SEARCHING</span>`
                 : `<span class="reveal-q" style="opacity:0.4;">?</span><span class="slot-val">QUEUED</span>`;
             } else {
-              slot.classList.add(`rarity-${def.rarity || 'common'}`);
+              const effRar = item.rarityOverride || def.rarity || 'common';
+              slot.classList.add(`rarity-${effRar}`);
               slot.innerHTML = `
                 <span class="slot-name">${def.name}</span>
                 <span class="slot-val">₽${(def.value * item.qty).toLocaleString()}</span>
