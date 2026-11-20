@@ -7,6 +7,8 @@ class GamepadController {
     this.prevButtons = [];
     this.yHoldTime = 0;
     this.yHoldTriggered = false;
+    this.r3HoldTime = 0;
+    this.r3HoldTriggered = false;
     this.sprintToggled = false;
     this.adsLean = 0; // -1 left, 0 center, +1 right (toggled via L3/R3 while ADS)
     this.deadzone = 0.15;
@@ -431,6 +433,22 @@ class GamepadController {
       } else if (this._justReleased(pad, 4) && throwableSystem) {
         throwableSystem.releaseThrow('tactical', player, ctx.enemyManager, actions.onThrowableHit);
       }
+    }
+
+    // === R3 (11): TAP = QUICK MELEE, HOLD = EQUIP DEDICATED MELEE WEAPON ===
+    if (this._isDown(pad, 11)) {
+      this.r3HoldTime += dt;
+      if (!this.r3HoldTriggered && this.r3HoldTime >= 0.32) {
+        this.r3HoldTriggered = true;
+        player.switchSlot('melee');
+        if (ui) ui.addFeedMessage('Equipped Melee Weapon', '#f5a623');
+      }
+    } else if (this._justReleased(pad, 11)) {
+      if (!this.r3HoldTriggered && this.r3HoldTime < 0.32) {
+        if (actions.quickMelee) actions.quickMelee();
+      }
+      this.r3HoldTime = 0;
+      this.r3HoldTriggered = false;
     }
 
     // === D-PAD: UP (12) = MEDKIT, LEFT (14) = INSPECT, RIGHT (15) = 3RD PERSON ===

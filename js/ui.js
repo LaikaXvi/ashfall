@@ -2,6 +2,30 @@
 window.DEV_MODE = true;
 window.MOUSE_SENS = 1.0;
 window.BASE_FOV = 75;
+window.DEFAULT_KEYBINDS = {
+  moveForward: 'KeyW',
+  moveBack: 'KeyS',
+  moveLeft: 'KeyA',
+  moveRight: 'KeyD',
+  sprint: 'ShiftLeft',
+  crouch: 'KeyC',
+  jump: 'Space',
+  reload: 'KeyR',
+  inspect: 'KeyI',
+  plates: 'KeyG',
+  medkit: 'KeyH',
+  lethal: 'KeyF',
+  tactical: 'KeyQ',
+  fieldUpgrade: 'KeyZ',
+  slotPrimary: 'Digit1',
+  slotSecondary: 'Digit2',
+  slotMelee: 'Digit3',
+  quickMelee: 'KeyX',
+  interact: 'KeyE',
+  backpack: 'Tab',
+  thirdPerson: 'KeyV'
+};
+window.KEYBINDS = { ...window.DEFAULT_KEYBINDS };
 
 class GameUI {
   constructor(onDeployCallback) {
@@ -18,8 +42,10 @@ class GameUI {
     this._partyReady = false;
 
     this.profile = this._loadProfile();
+    window.KEYBINDS = { ...window.DEFAULT_KEYBINDS, ...(this.profile.keybinds || {}) };
     this._initSocial();
     this._bindHideoutEvents();
+    this.renderKeybindSettings();
     window.showCenterToast = (msg, color) => this.showCenterToast(msg, color);
     this.openMenuTab('home');
     this.renderHideout();
@@ -1118,6 +1144,100 @@ class GameUI {
     }
   }
 
+  _formatKeyCode(code) {
+    if (!code) return '---';
+    if (code.startsWith('Key')) return code.slice(3);
+    if (code.startsWith('Digit')) return code.slice(5);
+    const map = {
+      ShiftLeft: 'L-SHIFT', ShiftRight: 'R-SHIFT',
+      ControlLeft: 'L-CTRL', ControlRight: 'R-CTRL',
+      Space: 'SPACE', Tab: 'TAB', AltLeft: 'L-ALT', AltRight: 'R-ALT'
+    };
+    return map[code] || code.toUpperCase();
+  }
+
+  renderKeybindSettings() {
+    const grid = document.querySelector('#menu-view-settings .controls-grid');
+    if (!grid) return;
+    const labels = [
+      ['moveForward', 'Move Forward'],
+      ['moveBack', 'Move Backward'],
+      ['moveLeft', 'Move Left'],
+      ['moveRight', 'Move Right'],
+      ['sprint', 'Sprint / 2x Tac-Sprint'],
+      ['crouch', 'Crouch / Slide / Hold Prone'],
+      ['jump', 'Jump / Stand / Slide-Cancel'],
+      ['reload', 'Reload Weapon'],
+      ['inspect', 'Inspect Weapon'],
+      ['plates', 'Insert Armor Plates'],
+      ['medkit', 'Use Field Medkit'],
+      ['lethal', 'Lethal Throwable'],
+      ['tactical', 'Tactical Throwable'],
+      ['fieldUpgrade', 'Activate Field Upgrade'],
+      ['slotPrimary', 'Primary Weapon'],
+      ['slotSecondary', 'Secondary Weapon'],
+      ['slotMelee', 'Dedicated Melee Weapon'],
+      ['quickMelee', 'Quick Melee Strike'],
+      ['interact', 'Loot / Interact / Revive'],
+      ['backpack', 'Open Backpack'],
+      ['thirdPerson', 'Toggle 3rd-Person Camera']
+    ];
+    grid.innerHTML = '';
+    for (const [action, label] of labels) {
+      const row = document.createElement('div');
+      row.className = 'ctrl-row';
+      const btn = document.createElement('button');
+      btn.className = 'btn-small';
+      btn.style.minWidth = '78px';
+      btn.textContent = this._formatKeyCode(window.KEYBINDS[action]);
+      btn.addEventListener('click', () => {
+        if (this._rebindCleanup) this._rebindCleanup();
+        btn.textContent = 'PRESS KEY...';
+        btn.style.borderColor = '#f5a623';
+        btn.style.color = '#f5a623';
+        const onKey = (ev) => {
+          ev.preventDefault();
+          ev.stopPropagation();
+          if (ev.code !== 'Escape') {
+            window.KEYBINDS[action] = ev.code;
+            this.profile.keybinds = { ...window.KEYBINDS };
+            this.saveProfile();
+          }
+          cleanup();
+          this.renderKeybindSettings();
+        };
+        const cleanup = () => {
+          window.removeEventListener('keydown', onKey, true);
+          this._rebindCleanup = null;
+        };
+        this._rebindCleanup = cleanup;
+        window.addEventListener('keydown', onKey, true);
+      });
+      const lbl = document.createElement('span');
+      lbl.textContent = label;
+      row.append(btn, lbl);
+      grid.appendChild(row);
+    }
+
+    const resetRow = document.createElement('div');
+    resetRow.className = 'ctrl-row';
+    resetRow.style.marginTop = '6px';
+    const resetBtn = document.createElement('button');
+    resetBtn.className = 'btn-small btn-danger';
+    resetBtn.textContent = 'RESET KEYBINDS';
+    resetBtn.addEventListener('click', () => {
+      window.KEYBINDS = { ...window.DEFAULT_KEYBINDS };
+      this.profile.keybinds = { ...window.KEYBINDS };
+      this.saveProfile();
+      this.renderKeybindSettings();
+    });
+    const gpNote = document.createElement('span');
+    gpNote.style.color = '#69f0ae';
+    gpNote.textContent = 'Controller: LB+RB Field Upgrade · R3 Tap Quick Melee / Hold Equip Melee';
+    resetRow.append(resetBtn, gpNote);
+    grid.appendChild(resetRow);
+  }
+
   _equipOrPackFromStash(stashIdx, maxBagSlots) {
     const item = this.profile.stash[stashIdx];
     if (!item) return;
@@ -1126,8 +1246,18 @@ class GameUI {
     const L = this.profile.loadout;
     if (!Array.isArray(L.backpackItems)) L.backpackItems = [];
 
+    if (def.type === 'weapon') {
+      // Any gun can be equipped in either Primary or Secondary slot!
+      const targetSlot = !L.primary ? 'primary' : (!L.secondary ? 'secondary' : 'primary');
+      if (L[targetSlot]) this.addToStash(L[targetSlot], 1);
+      L[targetSlot] = item.id;
+      this.profile.stash.splice(stashIdx, 1);
+      this.saveProfile();
+      this.renderHideout();
+      return;
+    }
+
     const slotMap = {
-      weapon: def.slot,
       armor: 'armor',
       backpack: 'backpack',
       field_upgrade: 'fieldUpgrade',
@@ -1348,15 +1478,30 @@ class GameUI {
 
       const actions = row.querySelector('.item-actions');
 
-      if (def.type === 'weapon' || def.type === 'armor') {
+      if (def.type === 'weapon') {
+        ['primary', 'secondary'].forEach((slotKey) => {
+          const btnEq = document.createElement('button');
+          btnEq.className = 'btn-small';
+          btnEq.textContent = slotKey === 'primary' ? 'PRI' : 'SEC';
+          btnEq.title = `Equip in ${slotKey.toUpperCase()} slot`;
+          btnEq.addEventListener('click', () => {
+            const prev = this.profile.loadout[slotKey];
+            if (prev) this.addToStash(prev, 1);
+            this.profile.loadout[slotKey] = item.id;
+            this.profile.stash.splice(idx, 1);
+            this.saveProfile();
+            this.renderHideout();
+          });
+          actions.appendChild(btnEq);
+        });
+      } else if (def.type === 'armor') {
         const btnEq = document.createElement('button');
         btnEq.className = 'btn-small';
         btnEq.textContent = 'EQUIP';
         btnEq.addEventListener('click', () => {
-          const slotKey = def.type === 'armor' ? 'armor' : def.slot;
-          const prev = this.profile.loadout[slotKey];
+          const prev = this.profile.loadout.armor;
           if (prev) this.addToStash(prev, 1);
-          this.profile.loadout[slotKey] = item.id;
+          this.profile.loadout.armor = item.id;
           this.profile.stash.splice(idx, 1);
           this.saveProfile();
           this.renderHideout();
@@ -1842,7 +1987,12 @@ class GameUI {
     document.getElementById('hud-slot-1').classList.toggle('active', player.activeSlot === 'primary');
     document.getElementById('hud-slot-2').classList.toggle('active', player.activeSlot === 'secondary');
 
-    if (wDef && wSlot) {
+    if (player.activeSlot === 'melee') {
+      const mDef = GAME_DATA.ITEMS[player.melee || 'melee_knife'];
+      document.getElementById('hud-weapon-name').textContent = (mDef ? mDef.name : 'COMBAT KNIFE').toUpperCase();
+      document.getElementById('hud-mag').textContent = '—';
+      document.getElementById('hud-reserve').textContent = 'MELEE';
+    } else if (wDef && wSlot) {
       document.getElementById('hud-weapon-name').textContent = wDef.name.toUpperCase();
       document.getElementById('hud-mag').textContent = wSlot.mag;
       document.getElementById('hud-reserve').textContent = player.getReserveAmmo(wDef.ammoType);
@@ -2562,6 +2712,18 @@ class GameUI {
           if (!itemId) return;
           const def = GAME_DATA.ITEMS[itemId];
           if (k === 'primary' || k === 'secondary') {
+            const curEquipped = player.slots[k] ? player.slots[k].id : null;
+            if (curEquipped === itemId) {
+              // Same weapon already equipped in this slot -> stow in backpack!
+              if (player.addToBackpack(itemId, 1)) {
+                eq[k] = null;
+                if (def) this.addFeedMessage(`Stowed duplicate ${def.name} in backpack`, '#69f0ae');
+                this.renderLootModal(player);
+              } else {
+                this.addFeedMessage('Backpack full / too heavy!', '#d94141');
+              }
+              return;
+            }
             const res = player.equipWeaponInRaid(itemId, k);
             if (res.equipped) {
               eq[k] = res.prevId || null;
@@ -2591,6 +2753,26 @@ class GameUI {
             return;
           }
           if (k === 'armor' || k === 'backpack' || k === 'fieldUpgrade' || k === 'killstreak' || k === 'selfRevive' || k === 'headgear' || k === 'melee') {
+            const curMap = {
+              armor: player.armorId,
+              backpack: player.backpackId,
+              fieldUpgrade: player.fieldUpgrade,
+              killstreak: player.killstreak,
+              selfRevive: player.selfRevive,
+              headgear: player.headgear,
+              melee: player.melee
+            };
+            if (curMap[k] === itemId) {
+              // Same gear already equipped -> stow in backpack!
+              if (player.addToBackpack(itemId, 1)) {
+                eq[k] = null;
+                if (def) this.addFeedMessage(`Stowed duplicate ${def.name} in backpack`, '#69f0ae');
+                this.renderLootModal(player);
+              } else {
+                this.addFeedMessage('Backpack full / too heavy!', '#d94141');
+              }
+              return;
+            }
             const prev = this._swapGearWithPlayer(player, itemId);
             eq[k] = prev || null;
             if (def) this.addFeedMessage(`Equipped ${def.name}`, '#69f0ae');

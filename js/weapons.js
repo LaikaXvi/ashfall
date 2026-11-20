@@ -1292,6 +1292,17 @@ class WeaponSystem {
     // Weapon Inspect progress
     let inspectPosOffset = { x: 0, y: 0, z: 0 };
     let inspectRotOffset = { x: 0, y: 0, z: 0 };
+    if (this.meleeSwingTimer > 0) {
+      this.meleeSwingTimer = Math.max(0, this.meleeSwingTimer - dt);
+      const mp = 1 - (this.meleeSwingTimer / (this.meleeSwingDuration || 0.32));
+      const arc = Math.sin(mp * Math.PI);
+      inspectPosOffset.x = -0.26 * arc;
+      inspectPosOffset.y = -0.06 * arc;
+      inspectPosOffset.z = -0.18 * arc;
+      inspectRotOffset.x = -0.55 * arc;
+      inspectRotOffset.y = 0.95 * arc;
+      inspectRotOffset.z = 0.72 * arc;
+    }
     if (this.isInspecting) {
       if (this.isReloading || player.isADS || player.isSprinting) {
         this.cancelInspect();
@@ -1467,7 +1478,7 @@ class WeaponSystem {
 
     const activePosOff = this.isReloading ? reloadPosOffset : (this.isPlating ? platePosOffset : (this.isHealing ? healPosOffset : inspectPosOffset));
     const activeRotOff = this.isReloading ? reloadRotOffset : (this.isPlating ? plateRotOffset : (this.isHealing ? healRotOffset : inspectRotOffset));
-    const customRot = this.isReloading || this.isInspecting || this.isPlating || this.isHealing;
+    const customRot = this.isReloading || this.isInspecting || this.isPlating || this.isHealing || (this.meleeSwingTimer > 0);
 
     // 2-stage wall handling: Stage 1 pulls weapon smoothly backwards (+Z), Stage 2 tucks barrel up into CQB high-port
     const wp = customRot ? 0 : this.wallPush;
@@ -2993,6 +3004,110 @@ class WeaponSystem {
       this._spawnTracer(muzzleWorld, hitPoint, 0xffdd88);
     }
 
+    return true;
+  }
+
+  buildMeleeViewmodel(meleeDef) {
+    this.isMeleeMode = true;
+    while (this.viewmodelGroup.children.length > 0) {
+      this.viewmodelGroup.remove(this.viewmodelGroup.children[0]);
+    }
+    this.magMesh = null;
+    this.spareMagMesh = null;
+    this.boltMesh = null;
+    this.charmPivot = null;
+    this.leftHand = null;
+    this.rightHand = null;
+    this.leftArm = null;
+    this.rightArm = null;
+    this.leftFist = null;
+
+    const id = (meleeDef && meleeDef.id) || 'melee_knife';
+    const gripMat = new THREE.MeshLambertMaterial({ color: 0x1e2123 });
+    const steelMat = new THREE.MeshLambertMaterial({ color: id === 'melee_karambit' ? 0x2d343a : 0xb8c2c8 });
+    const edgeMat = new THREE.MeshLambertMaterial({ color: id === 'melee_axe' ? 0x8b2e2e : 0xdce4ea });
+    const gloveMat = new THREE.MeshLambertMaterial({ color: 0x2a2e2b });
+
+    const g = new THREE.Group();
+    if (id === 'melee_axe') {
+      const handle = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.34, 0.036), gripMat);
+      handle.position.set(0, -0.02, 0);
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.11, 0.15), edgeMat);
+      head.position.set(0, 0.13, -0.05);
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.12, 0.04), steelMat);
+      blade.position.set(0, 0.13, -0.13);
+      g.add(handle, head, blade);
+    } else if (id === 'melee_karambit') {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.024, 0.007, 6, 12), gripMat);
+      ring.position.set(0, -0.10, 0);
+      const handle = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.12, 0.034), gripMat);
+      handle.position.set(0, -0.02, 0);
+      const bladeA = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.10, 0.032), steelMat);
+      bladeA.position.set(0, 0.07, -0.025);
+      bladeA.rotation.x = 0.45;
+      const bladeB = new THREE.Mesh(new THREE.BoxGeometry(0.010, 0.09, 0.024), edgeMat);
+      bladeB.position.set(0, 0.12, -0.075);
+      bladeB.rotation.x = 1.05;
+      g.add(ring, handle, bladeA, bladeB);
+    } else {
+      // Tactical Combat Knife
+      const handle = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.13, 0.036), gripMat);
+      handle.position.set(0, -0.04, 0);
+      const guard = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.014, 0.064), gripMat);
+      guard.position.set(0, 0.028, 0);
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.21, 0.036), steelMat);
+      blade.position.set(0, 0.14, -0.004);
+      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.018, 0.055, 4), edgeMat);
+      tip.position.set(0, 0.27, -0.004);
+      g.add(handle, guard, blade, tip);
+    }
+
+    const hand = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.085, 0.09), gloveMat);
+    hand.position.set(0, -0.04, 0.01);
+    g.add(hand);
+    g.rotation.set(-0.32, 0.24, 0.18);
+    this.viewmodelGroup.add(g);
+    this.sightHeight = 0.12;
+    this.adsZ = -0.34;
+    this.viewmodelGroup.visible = !this.isThirdPerson;
+  }
+
+  tryMeleeSlash(player, world, enemyManager, onHitCallback, isQuick = false) {
+    if (this.meleeSwingTimer > 0) return false;
+    this.cancelReload();
+    this.cancelInspect();
+    this.cancelPlating();
+    this.cancelMedkit();
+    this.meleeSwingDuration = isQuick ? 0.28 : 0.34;
+    this.meleeSwingTimer = this.meleeSwingDuration;
+    this.fireTimer = this.meleeSwingDuration;
+
+    if (window.soundEngine && window.soundEngine.playClick) {
+      try { window.soundEngine.playClick(); } catch (e) {}
+    }
+
+    const origin = new THREE.Vector3();
+    this.camera.getWorldPosition(origin);
+    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion).normalize();
+    const reach = 2.5;
+    const raycaster = new THREE.Raycaster(origin, dir, 0.1, reach);
+    const worldHits = raycaster.intersectObjects(world.shootableMeshes, false);
+    const worldDist = worldHits.length > 0 ? worldHits[0].distance : reach;
+    const enemyHits = raycaster.intersectObjects(enemyManager.getHitboxMeshes(), false);
+
+    if (enemyHits.length > 0 && enemyHits[0].distance < worldDist) {
+      const hit = enemyHits[0];
+      const { enemy, part } = hit.object.userData;
+      const isHead = part === 'head';
+      const dmg = isHead ? 105 : 68;
+      const mDef = GAME_DATA.ITEMS[player.melee || 'melee_knife'];
+      const attackerInfo = { name: 'YOU', isPlayer: true, weaponId: player.melee || 'melee_knife', weaponName: mDef ? mDef.name : 'Combat Knife' };
+      const killed = enemy.takeDamage(dmg, origin, attackerInfo);
+      this._spawnImpact(hit.point, 0x991111, 6);
+      if (onHitCallback) onHitCallback(isHead, killed, enemy, attackerInfo);
+    } else if (worldHits.length > 0) {
+      this._spawnImpact(worldHits[0].point, 0xc8b898, 4);
+    }
     return true;
   }
 

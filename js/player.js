@@ -724,12 +724,18 @@ class Player {
   }
 
   _equipCurrentWeapon() {
+    this.weaponSystem.cancelReload();
+    this.weaponSystem.cancelInspect();
+    this.weaponSystem.cancelPlating();
+    this.weaponSystem.cancelMedkit();
+    if (this.activeSlot === 'melee') {
+      const mDef = GAME_DATA.ITEMS[this.melee || 'melee_knife'];
+      this.weaponSystem.buildMeleeViewmodel(mDef);
+      return;
+    }
     const slotObj = this.getActiveWeaponSlot();
     if (slotObj) {
-      this.weaponSystem.cancelReload();
-      this.weaponSystem.cancelInspect();
-      this.weaponSystem.cancelPlating();
-      this.weaponSystem.cancelMedkit();
+      this.weaponSystem.isMeleeMode = false;
       const def = GAME_DATA.ITEMS[slotObj.id];
       this.weaponSystem.buildViewmodel(def, slotObj.mods, true);
       this._rebuildThirdPersonWeapon(def, slotObj.mods);
@@ -742,6 +748,7 @@ class Player {
   }
 
   getActiveWeaponSlot() {
+    if (this.activeSlot === 'melee') return null;
     return this.slots[this.activeSlot];
   }
 
@@ -751,6 +758,12 @@ class Player {
   }
 
   switchSlot(slotName) {
+    if (slotName === 'melee') {
+      if (this.activeSlot === 'melee') return;
+      this.activeSlot = 'melee';
+      this._equipCurrentWeapon();
+      return;
+    }
     if (slotName === this.activeSlot || !this.slots[slotName]) return;
     this.activeSlot = slotName;
     this._equipCurrentWeapon();
@@ -1140,13 +1153,14 @@ class Player {
       }
     }
 
-    // Movement input (Keyboard + Analog Gamepad Left Stick)
+    // Movement input (Rebindable Keyboard + Analog Gamepad Left Stick)
+    const kb = window.KEYBINDS || {};
     let moveForward = this.padMoveY || 0;
     let moveRight = this.padMoveX || 0;
-    if (this.keys['KeyW']) moveForward += 1;
-    if (this.keys['KeyS']) moveForward -= 1;
-    if (this.keys['KeyD']) moveRight += 1;
-    if (this.keys['KeyA']) moveRight -= 1;
+    if (this.keys[kb.moveForward || 'KeyW']) moveForward += 1;
+    if (this.keys[kb.moveBack || 'KeyS']) moveForward -= 1;
+    if (this.keys[kb.moveRight || 'KeyD']) moveRight += 1;
+    if (this.keys[kb.moveLeft || 'KeyA']) moveRight -= 1;
     moveForward = THREE.MathUtils.clamp(moveForward, -1, 1);
     moveRight = THREE.MathUtils.clamp(moveRight, -1, 1);
 
@@ -1281,6 +1295,11 @@ class Player {
       else if (this.stance === 'prone') speed = 1.5;
       else if (this.stance === 'crouch') speed = 3.0;
       else if (this.isADS) speed = 3.4;
+
+      // Dedicated melee weapon gives a slight movement & sprint speed boost (+12%)
+      if (this.activeSlot === 'melee') {
+        speed *= 1.12;
+      }
 
       this.velocity.x = wishDir.x * speed * moveMag;
       this.velocity.z = wishDir.z * speed * moveMag;

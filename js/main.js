@@ -318,9 +318,10 @@
       }
       return;
     }
+    const kb = window.KEYBINDS || {};
     player.keys[e.code] = true;
 
-    if (e.code === 'Tab') {
+    if (e.code === (kb.backpack || 'Tab')) {
       e.preventDefault();
       if (isModalOpen) {
         closeLootAndResume();
@@ -343,58 +344,63 @@
       return;
     }
 
-    if (e.code === 'KeyV') {
+    if (e.code === (kb.thirdPerson || 'KeyV')) {
       const tp = player.toggleThirdPerson();
-      ui.addFeedMessage(`CAMERA: ${tp ? '3RD PERSON' : '1ST PERSON'} [V]`, '#f5a623');
+      ui.addFeedMessage(`CAMERA: ${tp ? '3RD PERSON' : '1ST PERSON'}`, '#f5a623');
       return;
     }
 
-    if (e.code === 'ShiftLeft') {
+    if (e.code === (kb.sprint || 'ShiftLeft')) {
       if (!e.repeat) player.onSprintKeyDown();
       return;
     }
-    if (e.code === 'KeyC' || e.code === 'ControlLeft') {
+    if (e.code === (kb.crouch || 'KeyC') || e.code === 'ControlLeft') {
       if (!e.repeat) player.onCrouchKeyDown();
       return;
     }
-    if (e.code === 'Space') {
+    if (e.code === (kb.jump || 'Space')) {
       if (!e.repeat) player.onJumpKeyDown();
       return;
     }
 
-    if (e.code === 'KeyF' || e.code === 'Digit5') {
+    if (e.code === (kb.lethal || 'KeyF') || e.code === 'Digit5') {
       if (!e.repeat && throwableSystem) throwableSystem.startPrep('lethal', player, weaponSystem);
       return;
     }
-    if (e.code === 'KeyQ' || e.code === 'Digit3') {
+    if (e.code === (kb.tactical || 'KeyQ')) {
       if (!e.repeat && throwableSystem) throwableSystem.startPrep('tactical', player, weaponSystem);
       return;
     }
 
-    if (e.code === 'Digit1') player.switchSlot('primary');
-    else if (e.code === 'Digit2') player.switchSlot('secondary');
-    else if (e.code === 'KeyR') player.startReload();
-    else if (e.code === 'KeyI') player.startInspect();
-    else if (e.code === 'KeyH') {
+    if (e.code === (kb.slotPrimary || 'Digit1')) player.switchSlot('primary');
+    else if (e.code === (kb.slotSecondary || 'Digit2')) player.switchSlot('secondary');
+    else if (e.code === (kb.slotMelee || 'Digit3')) player.switchSlot('melee');
+    else if (e.code === (kb.quickMelee || 'KeyX')) {
+      if (!e.repeat) performMeleeStrike(true);
+    }
+    else if (e.code === (kb.reload || 'KeyR')) player.startReload();
+    else if (e.code === (kb.inspect || 'KeyI')) player.startInspect();
+    else if (e.code === (kb.medkit || 'KeyH')) {
       if (player.startMedkit()) ui.addFeedMessage('Applying Field Medkit...', '#69f0ae');
-    } else if (e.code === 'KeyG' || e.code === 'Digit4') {
+    } else if (e.code === (kb.plates || 'KeyG') || e.code === 'Digit4') {
       player.startPlating();
-    } else if (e.code === 'KeyZ') {
+    } else if (e.code === (kb.fieldUpgrade || 'KeyZ')) {
       const fuMsg = player.activateFieldUpgrade ? player.activateFieldUpgrade() : null;
       if (fuMsg) ui.addFeedMessage(fuMsg, '#69f0ae');
-    } else if (e.code === 'KeyE' && nearbyInteractable) {
+    } else if (e.code === (kb.interact || 'KeyE') && nearbyInteractable) {
       openNearbyInteractable();
     }
   });
 
   window.addEventListener('keyup', (e) => {
     if (!inRaid || !player) return;
+    const kb = window.KEYBINDS || {};
     player.keys[e.code] = false;
-    if (e.code === 'KeyC' || e.code === 'ControlLeft') {
+    if (e.code === (kb.crouch || 'KeyC') || e.code === 'ControlLeft') {
       player.onCrouchKeyUp();
-    } else if ((e.code === 'KeyF' || e.code === 'Digit5') && throwableSystem) {
+    } else if ((e.code === (kb.lethal || 'KeyF') || e.code === 'Digit5') && throwableSystem) {
       throwableSystem.releaseThrow('lethal', player, enemyManager, onThrowableHit);
-    } else if ((e.code === 'KeyQ' || e.code === 'Digit3') && throwableSystem) {
+    } else if (e.code === (kb.tactical || 'KeyQ') && throwableSystem) {
       throwableSystem.releaseThrow('tactical', player, enemyManager, onThrowableHit);
     }
   });
@@ -494,8 +500,24 @@
     handleOperatorHitResult(isHead, killed, enemy, attackerInfo);
   }
 
+  function performMeleeStrike(isQuick = false) {
+    if (!player || player.isDowned || player.dead || player.isRevivingAlly || isModalOpen) return;
+    const hit = weaponSystem.tryMeleeSlash(player, world, enemyManager, (isHead, killed, enemy, attackerInfo) => {
+      window.soundEngine.playHitmarker(isHead);
+      ui.triggerHitmarker(isHead);
+      handleOperatorHitResult(isHead, killed, enemy, attackerInfo);
+    }, isQuick);
+    if (hit && gamepad && gamepad.connected) {
+      gamepad.rumble(75, 0.45, 0.55);
+    }
+  }
+
   function firePlayerWeapon() {
     if (player.isDowned || player.dead || player.isRevivingAlly) return;
+    if (player.activeSlot === 'melee') {
+      performMeleeStrike(false);
+      return;
+    }
     const slotObj = player.getActiveWeaponSlot();
     if (!slotObj) return;
     const fired = weaponSystem.tryFire(player, slotObj, world, enemyManager, (isHead, killed, enemy, attackerInfo) => {
@@ -768,7 +790,8 @@
           activateFieldUpgrade: () => {
             const fuMsg = player.activateFieldUpgrade ? player.activateFieldUpgrade() : null;
             if (fuMsg) ui.addFeedMessage(fuMsg, '#69f0ae');
-          }
+          },
+          quickMelee: () => performMeleeStrike(true)
         }
       });
 
@@ -865,16 +888,30 @@
               action: 'eliminated'
             });
             ui.showXpFeedback({ label: 'KILL', xp: 100 });
-          } else if (db) {
+          } else if (db && bledEnemy && bledEnemy.isOperator) {
             raidKills += 1;
             ui.addKillFeedEntry({
               killerName: db.name,
-              killerIsEnemy: false,
+              killerIsEnemy: !!db.isOperator && !db.isPlayer,
               weaponId: db.weaponId || '',
               weaponName: db.weaponName || '',
               victimName: bledEnemy.name,
               victimIsEnemy: true,
               action: 'eliminated'
+            });
+          }
+        }, raidTimeLeft, (evtType, shooter, victim, muzzleWorld, aimPos, info) => {
+          if (evtType === 'shot' && muzzleWorld && aimPos) {
+            weaponSystem._spawnTracer(muzzleWorld, aimPos, 0xffaa55);
+          } else if ((evtType === 'downed' || evtType === 'eliminated') && victim && victim.isOperator) {
+            ui.addKillFeedEntry({
+              killerName: shooter ? shooter.name : 'HOSTILE',
+              killerIsEnemy: true,
+              weaponId: (info && info.weaponId) || (shooter && shooter.weaponId) || 'ak74m',
+              weaponName: (info && info.weaponName) || 'AK-74M',
+              victimName: victim.name,
+              victimIsEnemy: true,
+              action: evtType
             });
           }
         });
