@@ -2921,8 +2921,8 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(6, 9, 8, 0.52);
-  pointer-events: none;
+  background: rgba(6, 9, 8, 0.56);
+  pointer-events: auto;
 }
 
 .tacmap-card {
@@ -2960,7 +2960,141 @@ button:disabled {
   height: min(540px, 72vh);
   border: 1px solid rgba(255, 255, 255, 0.16);
   display: block;
+  cursor: crosshair;
 }
+
+.lg-ping { background: #ffca28; transform: rotate(45deg); border-radius: 1px; }
+
+/* Live 3D-Projected Ping Markers */
+.hud-ping-markers {
+  position: fixed;
+  inset: 0;
+  z-index: 17;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.world-ping-marker {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  font-family: var(--font-mono);
+  pointer-events: none;
+}
+
+.wp-diamond {
+  width: 14px;
+  height: 14px;
+  transform: rotate(45deg);
+  border: 2px solid #f5a623;
+  background: rgba(12, 15, 14, 0.82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.85);
+}
+
+.wp-diamond span {
+  transform: rotate(-45deg);
+  font-size: 9px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.wp-tag {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  padding: 1px 4px;
+  background: rgba(10, 12, 12, 0.78);
+  border-radius: 2px;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px #000;
+}
+
+.world-ping-marker.live-enemy .wp-diamond {
+  animation: pingPulse 0.45s ease-in-out infinite alternate;
+}
+
+@keyframes pingPulse {
+  from { transform: rotate(45deg) scale(1); }
+  to { transform: rotate(45deg) scale(1.22); }
+}
+
+/* Hold-Mouse3 Radial Ping Wheel */
+.ping-wheel-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 27;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.ping-wheel-ring {
+  position: relative;
+  width: 240px;
+  height: 240px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(12, 15, 14, 0.35) 28%, rgba(10, 13, 12, 0.86) 29%);
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.78);
+}
+
+.pw-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 62px;
+  height: 62px;
+  border-radius: 50%;
+  background: rgba(12, 16, 15, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--accent-bright);
+  letter-spacing: 0.8px;
+}
+
+.pw-opt {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 68px;
+  padding: 5px 4px;
+  border-radius: 4px;
+  background: rgba(14, 18, 17, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  font-family: var(--font-mono);
+  color: var(--text-main);
+  transition: transform 0.08s, border-color 0.08s, background 0.08s;
+}
+
+.pw-opt b { font-size: 13px; line-height: 1; }
+.pw-opt span { font-size: 8.5px; font-weight: 800; letter-spacing: 0.6px; }
+.pw-opt.active {
+  transform: translate(-50%, -50%) scale(1.12);
+  border-color: var(--accent-bright);
+  background: rgba(245, 166, 35, 0.24);
+}
+.pw-opt.pw-top { left: 50%; top: 17%; color: #ff5252; }
+.pw-opt.pw-tr  { left: 82%; top: 34%; color: #ff7043; }
+.pw-opt.pw-br  { left: 82%; top: 66%; color: #69f0ae; }
+.pw-opt.pw-bot { left: 50%; top: 83%; color: #ce93d8; }
+.pw-opt.pw-bl  { left: 18%; top: 66%; color: #64b5f6; }
+.pw-opt.pw-tl  { left: 18%; top: 34%; color: #9ea6a0; }
 
 .tacmap-legend {
   display: flex;

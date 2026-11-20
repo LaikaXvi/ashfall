@@ -1043,11 +1043,9 @@ class Player {
 
   addToBackpack(id, qty = 1) {
     const def = GAME_DATA.ITEMS[id];
-    if (!def) return false;
-    const addW = def.weight * qty;
-    if (this.getBackpackWeight() + addW > this.maxWeight) {
-      return false;
-    }
+    if (!def || qty <= 0) return false;
+
+    const maxSlots = this.backpackMaxSlots || 8;
 
     if (id === 'armor_plate') {
       if (this.plates < 6) {
@@ -1059,16 +1057,44 @@ class Player {
     }
 
     if (def.stackable) {
-      const existing = this.backpack.find(i => i.id === id);
-      if (existing) {
-        existing.qty += qty;
-        return true;
+      const maxStack = def.maxStack || 999;
+      let rem = qty;
+      // First check if existing stacks + available empty slots can fit at least some items
+      let capacity = 0;
+      for (const existing of this.backpack) {
+        if (existing.id === id && existing.qty < maxStack) {
+          capacity += (maxStack - existing.qty);
+        }
       }
+      const freeSlots = Math.max(0, maxSlots - this.backpack.length);
+      capacity += freeSlots * maxStack;
+      if (capacity <= 0) return false;
+
+      // Fill existing stacks first
+      for (const existing of this.backpack) {
+        if (existing.id === id && existing.qty < maxStack && rem > 0) {
+          const add = Math.min(rem, maxStack - existing.qty);
+          existing.qty += add;
+          rem -= add;
+        }
+      }
+      // Allocate new slots strictly within maxSlots
+      while (rem > 0 && this.backpack.length < maxSlots) {
+        const chunk = Math.min(rem, maxStack);
+        this.backpack.push({ id, qty: chunk });
+        rem -= chunk;
+      }
+      return rem < qty;
     }
-    for (let i = 0; i < (def.stackable ? 1 : qty); i++) {
-      this.backpack.push({ id, qty: def.stackable ? qty : 1 });
+
+    // Non-stackable items require 1 free slot each — never exceed maxSlots!
+    if (this.backpack.length >= maxSlots) return false;
+    let added = 0;
+    for (let i = 0; i < qty && this.backpack.length < maxSlots; i++) {
+      this.backpack.push({ id, qty: 1 });
+      added++;
     }
-    return true;
+    return added > 0;
   }
 
   _collidesAt(x, eyeY, z) {

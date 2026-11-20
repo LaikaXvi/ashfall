@@ -1375,7 +1375,6 @@ class GameUI {
         L.backpackItems.push({ id: item.id, qty: item.qty });
         this.profile.stash.splice(stashIdx, 1);
       } else {
-        this._showSocialToast('Backpack is full!');
         return;
       }
     }
@@ -1841,6 +1840,32 @@ class GameUI {
     kf.prepend(row);
     while (kf.children.length > 4) kf.lastElementChild.remove();
     setTimeout(() => row.remove(), 5500);
+  }
+
+  addPingFeedEntry({ caller = 'YOU', label = 'LOCATION', color = '#f5a623', symbol = '◈', dist = null } = {}) {
+    const kf = document.getElementById('hud-kill-feed');
+    if (!kf) return;
+
+    const row = document.createElement('div');
+    row.className = 'kill-feed-item';
+    row.style.borderLeftColor = color;
+
+    const callerSpan = document.createElement('span');
+    callerSpan.className = 'kf-player ally';
+    callerSpan.textContent = caller;
+
+    const symSpan = document.createElement('span');
+    symSpan.style.color = color;
+    symSpan.textContent = symbol;
+
+    const msgSpan = document.createElement('span');
+    msgSpan.style.color = '#e6ece8';
+    msgSpan.textContent = dist !== null ? `${label} (${dist}m)` : label;
+
+    row.append(callerSpan, symSpan, msgSpan);
+    kf.prepend(row);
+    while (kf.children.length > 4) kf.lastElementChild.remove();
+    setTimeout(() => row.remove(), 5200);
   }
 
   showXpFeedback({ label = 'KILL', xp = 100, isDowned = false, isRevive = false } = {}) {
@@ -2311,6 +2336,28 @@ class GameUI {
       }
     }
 
+    // Active Tactical Pings on Minimap
+    const pings = window.activePings || [];
+    for (const pg of pings) {
+      const pp = toMap(pg.position.x, pg.position.z);
+      let px = pp.x, py = pp.y;
+      const dxM = px - cx, dyM = py - cy;
+      const rM = Math.hypot(dxM, dyM);
+      if (rM > 66) {
+        px = cx + (dxM / rM) * 66;
+        py = cy + (dyM / rM) * 66;
+      }
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = pg.color || '#f5a623';
+      ctx.fillRect(-3.2, -3.2, 6.4, 6.4);
+      ctx.strokeStyle = '#0b0e0d';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(-3.2, -3.2, 6.4, 6.4);
+      ctx.restore();
+    }
+
     // Player chevron in center
     ctx.save();
     ctx.translate(cx, cy);
@@ -2499,6 +2546,27 @@ class GameUI {
         ctx.arc(ap.x, ap.y, 4.5, 0, Math.PI * 2);
         ctx.fill();
       }
+    }
+
+    // 8b. Active Tactical Pings on Full-Size Map
+    const pings = window.activePings || [];
+    for (const pg of pings) {
+      const pp = toMap(pg.position.x, pg.position.z);
+      ctx.save();
+      ctx.translate(pp.x, pp.y);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = pg.color || '#f5a623';
+      ctx.fillRect(-5, -5, 10, 10);
+      ctx.strokeStyle = '#0a0d0c';
+      ctx.lineWidth = 1.6;
+      ctx.strokeRect(-5, -5, 10, 10);
+      ctx.restore();
+      ctx.save();
+      ctx.font = 'bold 9.5px Consolas, monospace';
+      ctx.fillStyle = pg.color || '#f5a623';
+      ctx.textAlign = 'center';
+      ctx.fillText(pg.label || 'PING', pp.x, pp.y - 10);
+      ctx.restore();
     }
 
     // 9. Player Chevron + Field-of-View Cone
@@ -2741,7 +2809,7 @@ class GameUI {
 
     pop.innerHTML = `
       <div class="pop-title" style="color:${rarInfo.color}">${def.name}${item.qty > 1 ? ' x' + item.qty : ''}</div>
-      <div class="pop-meta">${rarInfo.label} · ₽${(def.value * item.qty).toLocaleString()} · ${(def.weight * item.qty).toFixed(1)}kg</div>
+      <div class="pop-meta">${rarInfo.label} · ₽${(def.value * item.qty).toLocaleString()}</div>
       ${descHtml}
       ${actionsHtml ? `<div class="pop-actions">${actionsHtml}</div>` : emptyCtxHtml}
     `;
@@ -2791,8 +2859,7 @@ class GameUI {
     if (def.type === 'backpack') {
       const prev = player.backpackId;
       player.backpackId = itemId;
-      player.backpackMaxSlots = def.slots || def.bagSlots || 12;
-      player.maxWeight = def.maxWeight || 32;
+      player.backpackMaxSlots = def.slots || def.bagSlots || 8;
       return prev;
     }
     if (def.type === 'field_upgrade') {
@@ -2902,8 +2969,6 @@ class GameUI {
         if (item.revealed === false) return;
         if (player.addToBackpack(item.id, item.qty)) {
           this.activeLootSource.items.splice(idx, 1);
-        } else {
-          this.addFeedMessage('Backpack full / too heavy!', '#d94141');
         }
       } else if (context === 'backpack') {
         if (this.activeLootSource) {
@@ -2946,9 +3011,13 @@ class GameUI {
         }
       }
     } else if (action === 'split' && def.stackable && item.qty > 1) {
+      const list = context === 'container' && this.activeLootSource ? this.activeLootSource.items : player.backpack;
+      if (context === 'backpack' && list.length >= (player.backpackMaxSlots || 8)) {
+        this.hideItemPopout();
+        return;
+      }
       const half = Math.floor(item.qty / 2);
       item.qty -= half;
-      const list = context === 'container' && this.activeLootSource ? this.activeLootSource.items : player.backpack;
       list.splice(idx + 1, 0, { id: item.id, qty: half, revealed: true });
     } else if (action === 'drop' && context === 'backpack') {
       const removed = player.backpack.splice(idx, 1)[0];
@@ -3151,7 +3220,6 @@ class GameUI {
             } else if (player.addToBackpack('armor_plate', eq.plates)) {
               eq.plates = 0;
             } else {
-              this.addFeedMessage('Backpack full / too heavy!', '#d94141');
               return;
             }
             this.renderLootModal(player);
@@ -3166,17 +3234,13 @@ class GameUI {
               // Same weapon already equipped in this slot -> stow in backpack!
               if (player.addToBackpack(itemId, 1)) {
                 eq[k] = null;
-                if (def) this.addFeedMessage(`Stowed duplicate ${def.name} in backpack`, '#69f0ae');
                 this.renderLootModal(player);
-              } else {
-                this.addFeedMessage('Backpack full / too heavy!', '#d94141');
               }
               return;
             }
             const res = player.equipWeaponInRaid(itemId, k);
             if (res.equipped) {
               eq[k] = res.prevId || null;
-              if (def) this.addFeedMessage(`Swapped ${k.toUpperCase()} → ${def.name}`, '#69f0ae');
               this.renderLootModal(player);
             }
             return;
@@ -3184,20 +3248,14 @@ class GameUI {
           if (k === 'dogtag') {
             if (player.addToBackpack('dogtag', 1)) {
               eq.dogtag = null;
-              this.addFeedMessage(`Secured ${eq.dogtagOwner || 'Operator'} Dogtag`, '#ffca28');
               this.renderLootModal(player);
-            } else {
-              this.addFeedMessage('Backpack full / too heavy!', '#d94141');
             }
             return;
           }
           if (k === 'tactical' || k === 'lethal') {
             if (player.addToBackpack(itemId, 1)) {
               eq[k] = null;
-              if (def) this.addFeedMessage(`Looted ${def.name}`, '#69f0ae');
               this.renderLootModal(player);
-            } else {
-              this.addFeedMessage('Backpack full / too heavy!', '#d94141');
             }
             return;
           }
@@ -3215,16 +3273,12 @@ class GameUI {
               // Same gear already equipped -> stow in backpack!
               if (player.addToBackpack(itemId, 1)) {
                 eq[k] = null;
-                if (def) this.addFeedMessage(`Stowed duplicate ${def.name} in backpack`, '#69f0ae');
                 this.renderLootModal(player);
-              } else {
-                this.addFeedMessage('Backpack full / too heavy!', '#d94141');
               }
               return;
             }
             const prev = this._swapGearWithPlayer(player, itemId);
             eq[k] = prev || null;
-            if (def) this.addFeedMessage(`Equipped ${def.name}`, '#69f0ae');
             this.renderLootModal(player);
           }
         }, 'Click to Swap / Loot', { revealedMap: eq.revealedSlots, activeKey: activeOpRevealKey });
@@ -3284,15 +3338,17 @@ class GameUI {
       }
     }
 
-    // 3. Backpack Grid (Right / Lower Centered)
-    document.getElementById('bag-weight').textContent = player.getBackpackWeight();
-    document.getElementById('bag-max-weight').textContent = player.maxWeight;
+    // 3. Backpack Grid (Right / Lower Centered — strictly capped to backpackMaxSlots, zero weight!)
+    const maxSlots = player.backpackMaxSlots || 8;
+    const usedEl = document.getElementById('bag-slots-used');
+    const maxEl = document.getElementById('bag-slots-max');
+    if (usedEl) usedEl.textContent = Math.min(maxSlots, player.backpack.length);
+    if (maxEl) maxEl.textContent = maxSlots;
     document.getElementById('bag-total-val').textContent = `₽ ${player.getBackpackValue().toLocaleString()}`;
 
     if (bList) {
       bList.innerHTML = '';
-      const maxSlots = player.backpackMaxSlots || 8;
-      for (let idx = 0; idx < Math.max(maxSlots, player.backpack.length); idx++) {
+      for (let idx = 0; idx < maxSlots; idx++) {
         const item = player.backpack[idx];
         const slot = document.createElement('div');
         slot.className = 'inv-slot';

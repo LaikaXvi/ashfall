@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ASHFALL // 3D Extraction Looter-Shooter</title>
-  <link rel="stylesheet" href="css/style.css?v=108" />
+  <link rel="stylesheet" href="css/style.css?v=109" />
   <!-- Three.js r128 UMD for zero-build compatibility (works on both http:// and file://) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
@@ -51,7 +51,7 @@
     <!-- VIEW 0: CLEAN MAIN MENU TITLE CARD & OPTIONS -->
     <section id="menu-view-home" class="menu-home-stage">
       <!-- IMPORTANT: Update version in GAME_DATA.VERSION (js/data.js) and here with EVERY new commit -->
-      <div id="menu-version-badge" class="menu-version-badge">v1.08</div>
+      <div id="menu-version-badge" class="menu-version-badge">v1.09</div>
       <div class="menu-home-card">
         <div class="title-card">
           <span class="brand-tag">SECTOR 7 // TACTICAL EXTRACTION</span>
@@ -545,15 +545,32 @@
       <div class="tacmap-card">
         <div class="tacmap-header">
           <span class="tacmap-title">TACTICAL SECTOR MAP // <span id="tacmap-zone-name">DUSTLINE OUTPOST</span></span>
-          <span class="tacmap-hint">[M] OR [BACK/SELECT] TO CLOSE</span>
+          <span class="tacmap-hint">CLICK TO PING · RIGHT-CLICK ENEMY PING · [M] / [BACK] TO CLOSE</span>
         </div>
         <canvas id="hud-tacmap-canvas" width="560" height="560"></canvas>
         <div class="tacmap-legend">
           <span><i class="lg-dot lg-you"></i>YOU</span>
           <span><i class="lg-dot lg-ally"></i>SQUAD</span>
           <span><i class="lg-dot lg-extract"></i>EXTRACT</span>
-          <span><i class="lg-dot lg-redzone"></i>RED ZONE (OUT OF BOUNDS)</span>
+          <span><i class="lg-dot lg-ping"></i>LIVE PING</span>
+          <span><i class="lg-dot lg-redzone"></i>RED ZONE</span>
         </div>
+      </div>
+    </div>
+
+    <!-- Live 3D-Projected World & Enemy Ping Markers -->
+    <div id="hud-ping-markers" class="hud-ping-markers"></div>
+
+    <!-- Hold Mouse3 Tactical Ping Radial Wheel -->
+    <div id="ping-wheel-overlay" class="ping-wheel-overlay hidden">
+      <div class="ping-wheel-ring">
+        <div class="pw-opt pw-top" data-ping="enemy"><b>⚠</b><span>ENEMY</span></div>
+        <div class="pw-opt pw-tr" data-ping="attack"><b>⚔</b><span>ATTACK</span></div>
+        <div class="pw-opt pw-br" data-ping="loot"><b>◆</b><span>LOOT</span></div>
+        <div class="pw-opt pw-bot" data-ping="regroup"><b>◎</b><span>REGROUP</span></div>
+        <div class="pw-opt pw-bl" data-ping="defend"><b>⛨</b><span>DEFEND</span></div>
+        <div class="pw-opt pw-tl" data-ping="cancel"><b>✕</b><span>CANCEL</span></div>
+        <div id="ping-wheel-center" class="pw-center">PING</div>
       </div>
     </div>
 
@@ -716,7 +733,7 @@
       <!-- Right Edge: Backpack (top) + Operator Equipment (bottom), always shown together -->
       <div id="inv-operator-panel" class="inv-panel inv-operator-panel">
         <div class="panel-header" style="margin-bottom:4px;">
-          <h3>BACKPACK (<span id="bag-weight">0</span> / <span id="bag-max-weight">25</span> kg)</h3>
+          <h3>BACKPACK (<span id="bag-slots-used">0</span> / <span id="bag-slots-max">8</span>)</h3>
           <div style="display:flex;align-items:center;gap:8px;">
             <span id="bag-total-val" class="accent">₽ 0</span>
             <button id="btn-close-loot" class="btn-small">CLOSE [TAB / B]</button>
@@ -810,7 +827,7 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION with every new commit) -->
-  <script src="js/data.js?v=108"></script>
+  <script src="js/data.js?v=109"></script>
   <script src="js/sfx_samples.js?v=21"></script>
   <script src="js/audio.js?v=78"></script>
   <script src="js/world.js?v=108"></script>
@@ -819,11 +836,11 @@
   <script src="js/throwables.js?v=79"></script>
   <script src="js/enemies.js?v=107"></script>
   <script src="js/squad.js?v=92"></script>
-  <script src="js/player.js?v=103"></script>
+  <script src="js/player.js?v=109"></script>
   <script src="js/gamepad.js?v=108"></script>
   <script src="js/gunsmith.js?v=41"></script>
   <script src="js/matchmaking.js?v=76"></script>
-  <script src="js/ui.js?v=108"></script>
-  <script src="js/main.js?v=108"></script>
+  <script src="js/ui.js?v=109"></script>
+  <script src="js/main.js?v=109"></script>
 </body>
 </html>
