@@ -71,11 +71,227 @@ class GameUI {
     this._initSocial();
     this._bindHideoutEvents();
     this._bindWeaponStagingModal();
+    this._bindSpatialKeyboardNav();
     window.addEventListener('resize', () => this._updateDeployResponsiveScale());
     this.renderKeybindSettings();
     window.showCenterToast = (msg, color) => this.showCenterToast(msg, color);
     this.openMenuTab('home');
     this.renderHideout();
+    requestAnimationFrame(() => this.ensureInitialSelection());
+  }
+
+  // ==================== UNIFIED AMBER SPATIAL SELECTOR (WASD / ARROWS / CONTROLLER D-PAD) ====================
+  _getNavScope() {
+    const wpnModal = document.getElementById('weapon-staging-modal');
+    if (wpnModal && !wpnModal.classList.contains('hidden')) return wpnModal;
+    const pauseOv = document.getElementById('pointer-lock-overlay');
+    if (pauseOv && !pauseOv.classList.contains('hidden')) return pauseOv;
+    const lootMod = document.getElementById('loot-modal');
+    if (lootMod && !lootMod.classList.contains('hidden')) return lootMod;
+    const gs = document.getElementById('gunsmith-screen');
+    if (gs && gs.classList.contains('active')) return gs;
+    const sum = document.getElementById('summary-screen');
+    if (sum && sum.classList.contains('active')) return sum;
+    const hideout = document.getElementById('hideout-screen');
+    if (hideout && hideout.classList.contains('active')) return hideout;
+    return null;
+  }
+
+  _getSpatialFocusables(scope) {
+    if (!scope) return [];
+    const selector = [
+      'button:not(:disabled)',
+      'input[type="range"]',
+      '.inv-slot:not(.empty-slot):not(.searching)',
+      '.op-slot-card',
+      '.map-node',
+      '.zone-card'
+    ].join(', ');
+    const all = Array.from(scope.querySelectorAll(selector));
+    return all.filter((el) => {
+      if (el.offsetParent === null) return false;
+      if (el.closest('.hidden')) return false;
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0;
+    });
+  }
+
+  setSelectedElement(el, opts = {}) {
+    if (this._selectedEl && this._selectedEl !== el) {
+      this._selectedEl.classList.remove('ui-selected', 'gp-focus');
+    }
+    this._selectedEl = el || null;
+    if (this._selectedEl) {
+      this._selectedEl.classList.add('ui-selected', 'gp-focus');
+      try {
+        this._selectedEl.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      } catch (e) {}
+
+      // If inside in-raid loot/inventory modal and selecting an item slot, sync hoveredSlot
+      const lootMod = document.getElementById('loot-modal');
+      if (lootMod && !lootMod.classList.contains('hidden') && this._selectedEl.classList.contains('inv-slot')) {
+        const ctxName = this._selectedEl.dataset.context;
+        const idx = parseInt(this._selectedEl.dataset.idx, 10);
+        const item = ctxName === 'container'
+          ? (this.activeLootSource && this.activeLootSource.items[idx])
+          : (this._lootPlayer && this._lootPlayer.backpack && this._lootPlayer.backpack[idx]);
+        if (item) {
+          this._hoveredSlot = { context: ctxName, item, idx, el: this._selectedEl, inputMode: opts.inputMode || 'keyboard', mode: 'all' };
+          if (opts.inputMode === 'gamepad') {
+            this.showItemPopout(this._selectedEl, ctxName, item, idx, { inputMode: 'gamepad', mode: 'all' });
+          }
+        }
+      } else if (opts.inputMode === 'gamepad' && lootMod && !lootMod.classList.contains('hidden')) {
+        this.hideItemPopout();
+      }
+    }
+  }
+
+  clearSelection() {
+    this.setSelectedElement(null);
+  }
+
+  ensureInitialSelection(opts = {}) {
+    const scope = this._getNavScope();
+    if (!scope) return null;
+    const items = this._getSpatialFocusables(scope);
+    if (items.length === 0) return null;
+    if (this._selectedEl && items.includes(this._selectedEl)) return this._selectedEl;
+    const first = items[0];
+    this.setSelectedElement(first, opts);
+    return first;
+  }
+
+  moveSpatialSelection(dir, opts = {}) {
+    const scope = this._getNavScope();
+    if (!scope) return false;
+    const items = this._getSpatialFocusables(scope);
+    if (items.length === 0) return false;
+
+    if (!this._selectedEl || !items.includes(this._selectedEl)) {
+      this.setSelectedElement(items[0], opts);
+      return true;
+    }
+
+    // Range slider adjustment with Left / Right
+    if (this._selectedEl.tagName === 'INPUT' && this._selectedEl.type === 'range' && (dir === 'left' || dir === 'right')) {
+      const step = parseFloat(this._selectedEl.step) || 1;
+      const min = parseFloat(this._selectedEl.min);
+      const max = parseFloat(this._selectedEl.max);
+      const cur = parseFloat(this._selectedEl.value);
+      const next = Math.max(min, Math.min(max, cur + (dir === 'right' ? step : -step)));
+      this._selectedEl.value = next;
+      this._selectedEl.dispatchEvent(new Event('input', { bubbles: true }));
+      return true;
+    }
+
+    const curRect = this._selectedEl.getBoundingClientRect();
+    const cx = curRect.left + curRect.width / 2;
+    const cy = curRect.top + curRect.height / 2;
+
+    let bestEl = null;
+    let bestScore = Infinity;
+
+    for (const cand of items) {
+      if (cand === this._selectedEl) continue;
+      const r = cand.getBoundingClientRect();
+      const tx = r.left + r.width / 2;
+      const ty = r.top + r.height / 2;
+      const dx = tx - cx;
+      const dy = ty - cy;
+
+      let primary = 0;
+      let perp = 0;
+      if (dir === 'right') { if (dx <= 6) continue; primary = dx; perp = Math.abs(dy); }
+      else if (dir === 'left') { if (dx >= -6) continue; primary = -dx; perp = Math.abs(dy); }
+      else if (dir === 'down') { if (dy <= 6) continue; primary = dy; perp = Math.abs(dx); }
+      else if (dir === 'up') { if (dy >= -6) continue; primary = -dy; perp = Math.abs(dx); }
+
+      const score = primary + perp * 2.4;
+      if (score < bestScore) {
+        bestScore = score;
+        bestEl = cand;
+      }
+    }
+
+    // Fallback wrap-around if at edge of a linear list
+    if (!bestEl && items.length > 1) {
+      const idx = items.indexOf(this._selectedEl);
+      const delta = (dir === 'down' || dir === 'right') ? 1 : -1;
+      bestEl = items[(idx + delta + items.length) % items.length];
+    }
+
+    if (bestEl) {
+      this.setSelectedElement(bestEl, opts);
+      return true;
+    }
+    return false;
+  }
+
+  activateSelectedElement(opts = {}) {
+    const scope = this._getNavScope();
+    if (!scope) return false;
+    const items = this._getSpatialFocusables(scope);
+    if (!this._selectedEl || !items.includes(this._selectedEl)) {
+      if (items.length > 0) this.setSelectedElement(items[0], opts);
+      return false;
+    }
+    const el = this._selectedEl;
+    const lootMod = document.getElementById('loot-modal');
+    if (lootMod && !lootMod.classList.contains('hidden') && el.classList.contains('inv-slot')) {
+      if (opts.inputMode === 'gamepad' && this._hoveredSlot) {
+        this.handleSlotAction('quick');
+        return true;
+      }
+    }
+    el.click();
+    return true;
+  }
+
+  _bindSpatialKeyboardNav() {
+    window.addEventListener('keydown', (e) => {
+      if (this._rebindCleanup) return;
+      if (window.devConsole && window.devConsole.isOpen) return;
+      const tag = (document.activeElement && document.activeElement.tagName) || '';
+      if (tag === 'INPUT' && document.activeElement.type !== 'range') return;
+      if (tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      const scope = this._getNavScope();
+      if (!scope) return;
+
+      const dirMap = {
+        KeyW: 'up', ArrowUp: 'up',
+        KeyS: 'down', ArrowDown: 'down',
+        KeyA: 'left', ArrowLeft: 'left',
+        KeyD: 'right', ArrowRight: 'right'
+      };
+      const dir = dirMap[e.code];
+      if (dir) {
+        e.preventDefault();
+        e.stopPropagation();
+        this.moveSpatialSelection(dir, { inputMode: 'keyboard' });
+        return;
+      }
+      if (e.code === 'Enter' || e.code === 'Space') {
+        if (this._selectedEl && scope.contains(this._selectedEl)) {
+          e.preventDefault();
+          e.stopPropagation();
+          this.activateSelectedElement({ inputMode: 'keyboard' });
+        }
+      }
+    }, true);
+
+    // Sync amber selector cleanly on mouse hover over buttons & inventory slots
+    document.addEventListener('mouseover', (e) => {
+      const scope = this._getNavScope();
+      if (!scope) return;
+      const target = e.target && e.target.closest
+        ? e.target.closest('button:not(:disabled), .inv-slot:not(.empty-slot):not(.searching), .op-slot-card, .map-node, .zone-card')
+        : null;
+      if (target && scope.contains(target) && target !== this._selectedEl) {
+        this.setSelectedElement(target, { inputMode: 'mouse' });
+      }
+    });
   }
 
   _defaultProfile() {
@@ -1217,6 +1433,7 @@ class GameUI {
     if (tabName === 'keybinds') {
       this.renderKeybindSettings();
     }
+    requestAnimationFrame(() => this.ensureInitialSelection());
     if (tabName === 'deploy') {
       this._updateDeployResponsiveScale();
       this.renderPreMatchLoadout();
@@ -3790,6 +4007,7 @@ class GameUI {
     if (this.activeLootSource && camera) {
       this.positionContainerPanel(camera);
     }
+    requestAnimationFrame(() => this.ensureInitialSelection());
   }
 
   autoLootExistingStacks(player) {
