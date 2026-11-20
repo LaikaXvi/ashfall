@@ -698,7 +698,7 @@
       activateKillstreak();
     } else if (e.code === (kb.map || 'KeyM')) {
       e.preventDefault();
-      toggleFullMapMode();
+      if (!e.repeat) toggleFullMapMode();
     } else if (e.code === 'Escape' && ui.isTacMapOpen) {
       e.preventDefault();
       toggleFullMapMode(false);
@@ -878,7 +878,14 @@
   function toggleFullMapMode(forceState = null) {
     const nowOpen = ui.toggleTacMap(forceState);
     if (nowOpen) {
+      if (player) {
+        player.isFiring = false;
+        player.isADS = false;
+      }
       if (document.pointerLockElement === canvas) document.exitPointerLock();
+      if (inRaid && player && world && ui._renderFullMap) {
+        ui._renderFullMap(player, world, enemyManager, squadManager);
+      }
     } else if (inRaid && !isModalOpen && !gamepad.active) {
       canvas.requestPointerLock();
     }
@@ -1861,8 +1868,8 @@
 
     if (inRaid && player && world) {
       const isPaused = gamepad.active
-        ? (padPaused && !isModalOpen)
-        : (document.pointerLockElement !== canvas && !isModalOpen);
+        ? (padPaused && !isModalOpen && !ui.isTacMapOpen)
+        : (document.pointerLockElement !== canvas && !isModalOpen && !ui.isTacMapOpen);
 
       gamepad.update(dt, {
         player,
@@ -1901,8 +1908,8 @@
             const gw = _getLookedAtGroundWeapon();
             if (gw) _pickupGroundWeapon(gw, 'backpackWeapon');
           },
-          toggleTacMap: () => {
-            if (!isModalOpen) toggleFullMapMode();
+          toggleTacMap: (forceState = null) => {
+            if (!isModalOpen) toggleFullMapMode(forceState);
           },
           closeModal: () => closeLootAndResume(),
           takeAll: () => document.getElementById('btn-take-all')?.click(),
@@ -1942,7 +1949,7 @@
 
         // Auto-fire if holding LMB with automatic weapon
         const wDef = player.getActiveWeaponDef();
-        if (player.isFiring && wDef && wDef.auto && !isModalOpen) {
+        if (player.isFiring && wDef && wDef.auto && !isModalOpen && !ui.isTacMapOpen) {
           firePlayerWeapon();
         }
 
