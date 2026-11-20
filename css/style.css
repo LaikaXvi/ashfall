@@ -1410,17 +1410,30 @@ button:disabled {
   gap: 8px;
 }
 
+#menu-view-deploy {
+  padding: 8px 10px;
+}
+
 #menu-view-deploy .edge-panel-left {
   width: fit-content;
-  max-width: 56vw;
+  max-width: calc(100vw - 392px);
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
 #menu-view-deploy .edge-panel-right {
-  width: fit-content;
-  min-width: 368px;
+  width: 358px;
+  min-width: 358px;
+  max-width: 358px;
+  flex-shrink: 0;
+  overflow: visible;
+}
+
+#menu-view-deploy .deploy-summary-bar {
+  padding: 7px 9px;
+  gap: 6px 10px;
+  font-size: 10px;
 }
 
 #menu-view-stash .edge-panel-left,
