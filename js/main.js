@@ -841,7 +841,10 @@
     }
     isModalOpen = true;
     if (document.pointerLockElement === canvas) document.exitPointerLock();
-    ui.openLootModal(player, nearbyInteractable.label, nearbyInteractable.items, nearbyInteractable.operatorEquipment || null);
+    const worldPos = (nearbyInteractable.container && nearbyInteractable.container.position)
+      || nearbyInteractable.worldPos
+      || null;
+    ui.openLootModal(player, nearbyInteractable.label, nearbyInteractable.items, nearbyInteractable.operatorEquipment || null, worldPos, camera);
     return true;
   }
 
@@ -1791,7 +1794,8 @@
           type: 'corpse',
           label: `${e.name} (Operator)`,
           items: e.lootItems,
-          operatorEquipment: e.operatorEquipment || null
+          operatorEquipment: e.operatorEquipment || null,
+          worldPos: corpsePos
         };
       }
     }
@@ -2138,6 +2142,9 @@
         checkInteractions();
         checkExtraction(dt);
         ui.updateSearchReveal(dt);
+        if (isModalOpen && ui.activeLootSource && ui.positionContainerPanel) {
+          ui.positionContainerPanel(camera);
+        }
         ui.updateHUD(player, world, raidTimeLeft, weaponSystem, throwableSystem, enemyManager, squadManager, raidXp);
       }
       // Sync viewmodel camera to world camera & render in two passes (clearDepth prevents all wall clipping!)
