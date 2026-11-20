@@ -326,22 +326,38 @@ class GamepadController {
         ui.ensureInitialSelection({ inputMode: 'gamepad' });
       }
 
-      // A (0): Activate / Quick-Move selected slot, operator card, or button
-      if (this._justPressed(pad, 0) && ui) {
+      // Right Trigger (RT / bFire): Hold to Drag & Drop selected item to any slot (swapping if occupied!)
+      const rtDownModal = this._isDown(pad, bFire);
+      if (ui && rtDownModal && !this._modalRtDragging) {
+        if (ui.startDragFromSelected && ui.startDragFromSelected()) {
+          this._modalRtDragging = true;
+        }
+      } else if (this._modalRtDragging && !rtDownModal) {
+        this._modalRtDragging = false;
+        if (ui && ui.finishDragToSelected) ui.finishDragToSelected();
+      }
+
+      // A (0): Activate / Quick-Move selected slot, operator card, or button (unless dragging with RT)
+      if (this._justPressed(pad, 0) && ui && !this._modalRtDragging) {
         ui.activateSelectedElement({ inputMode: 'gamepad' });
       }
       // Y (3): Split Stack
-      if (this._justPressed(pad, 3) && ui && ui._hoveredSlot) {
+      if (this._justPressed(pad, 3) && ui && ui._hoveredSlot && !this._modalRtDragging) {
         ui.handleSlotAction('split');
       }
       // X (2): Drop selected backpack item
-      if (this._justPressed(pad, 2) && ui && ui._hoveredSlot && ui._hoveredSlot.context === 'backpack') {
+      if (this._justPressed(pad, 2) && ui && ui._hoveredSlot && ui._hoveredSlot.context === 'backpack' && !this._modalRtDragging) {
         ui.handleSlotAction('drop');
       }
-      // B (1): Close modal
-      if (this._justPressed(pad, 1) && actions.closeModal) {
-        if (gpCursor) gpCursor.classList.add('hidden');
-        actions.closeModal();
+      // B (1): Cancel drag or close modal
+      if (this._justPressed(pad, 1)) {
+        if (this._modalRtDragging) {
+          this._modalRtDragging = false;
+          if (ui && ui.cancelDrag) ui.cancelDrag();
+        } else if (actions.closeModal) {
+          if (gpCursor) gpCursor.classList.add('hidden');
+          actions.closeModal();
+        }
       }
       this._snapshot(pad);
       return;
@@ -602,6 +618,18 @@ class GamepadController {
       : null;
 
     if (ui && ui.moveSpatialSelection) {
+      // Right Trigger (RT): Hold to Drag & Drop items across Pre-Match Stash / Backpack / Operator slots
+      const bFireMenu = (window.GAMEPAD_BINDS && window.GAMEPAD_BINDS.fire !== undefined) ? window.GAMEPAD_BINDS.fire : 7;
+      const rtDownMenu = this._isDown(pad, bFireMenu);
+      if (rtDownMenu && !this._menuRtDragging && !(gunsmith && gunsmith.isOpen)) {
+        if (ui.startDragFromSelected && ui.startDragFromSelected()) {
+          this._menuRtDragging = true;
+        }
+      } else if (this._menuRtDragging && !rtDownMenu) {
+        this._menuRtDragging = false;
+        if (ui.finishDragToSelected) ui.finishDragToSelected();
+      }
+
       if (dir && this._menuNavCooldown <= 0) {
         ui.moveSpatialSelection(dir, { inputMode: 'gamepad' });
         this._menuNavCooldown = (dUp || dDown || dLeft || dRight) ? 0.16 : 0.20;
@@ -610,7 +638,7 @@ class GamepadController {
       }
 
       // A (0): Activate / Click focused element
-      if (this._justPressed(pad, 0)) {
+      if (this._justPressed(pad, 0) && !this._menuRtDragging) {
         ui.activateSelectedElement({ inputMode: 'gamepad' });
       }
     } else {
