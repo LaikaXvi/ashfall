@@ -749,7 +749,11 @@
           takeAll: () => document.getElementById('btn-take-all')?.click(),
           fire: () => firePlayerWeapon(),
           onThrowableHit,
-          interact: () => openNearbyInteractable()
+          interact: () => openNearbyInteractable(),
+          activateFieldUpgrade: () => {
+            const fuMsg = player.activateFieldUpgrade ? player.activateFieldUpgrade() : null;
+            if (fuMsg) ui.addFeedMessage(fuMsg, '#69f0ae');
+          }
         }
       });
 

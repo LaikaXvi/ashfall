@@ -1970,6 +1970,10 @@ button:disabled {
   gap: 4px;
 }
 
+.op-group-row.cols-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
 .op-group-row.cols-3 {
   grid-template-columns: repeat(3, 1fr);
 }

@@ -257,10 +257,12 @@ class GamepadController {
           ui.hideItemPopout();
         }
 
-        // A (0): Quick-Move hovered item or click hovered button
+        // A (0): Quick-Move hovered item, swap/loot enemy operator equipment slot, or click hovered button
         if (this._justPressed(pad, 0)) {
           if (slot && ui && ui._hoveredSlot) {
             ui.handleSlotAction('quick');
+          } else if (el && el.closest('.op-slot-card[data-op-key]')) {
+            el.closest('.op-slot-card[data-op-key]').click();
           } else if (el && el.closest('button')) {
             el.closest('button').click();
           }
@@ -400,18 +402,35 @@ class GamepadController {
       this.yHoldTriggered = false;
     }
 
-    // === RB (5): LETHAL THROWABLE (TAP = QUICK THROW, HOLD = COOK / AIM) ===
-    if (this._justPressed(pad, 5) && throwableSystem) {
-      throwableSystem.startPrep('lethal', player, weaponSystem);
-    } else if (this._justReleased(pad, 5) && throwableSystem) {
-      throwableSystem.releaseThrow('lethal', player, ctx.enemyManager, actions.onThrowableHit);
+    // === LB (4) + RB (5) TOGETHER: ACTIVATE FIELD UPGRADE ===
+    const lbDown = this._isDown(pad, 4);
+    const rbDown = this._isDown(pad, 5);
+    if (!lbDown && !rbDown) {
+      this._fuChordConsumed = false;
     }
+    if (lbDown && rbDown && !this._fuChordConsumed) {
+      this._fuChordConsumed = true;
+      if (throwableSystem && throwableSystem.state === 'prep') {
+        throwableSystem.cancelPrep();
+        if (weaponSystem && !player.isThirdPerson) weaponSystem.viewmodelGroup.visible = true;
+      }
+      if (actions.activateFieldUpgrade) {
+        actions.activateFieldUpgrade();
+      }
+    } else if (!this._fuChordConsumed) {
+      // === RB (5): LETHAL THROWABLE (TAP = QUICK THROW, HOLD = COOK / AIM) ===
+      if (this._justPressed(pad, 5) && throwableSystem) {
+        throwableSystem.startPrep('lethal', player, weaponSystem);
+      } else if (this._justReleased(pad, 5) && throwableSystem) {
+        throwableSystem.releaseThrow('lethal', player, ctx.enemyManager, actions.onThrowableHit);
+      }
 
-    // === LB (4): TACTICAL THROWABLE (TAP = QUICK THROW, HOLD = AIM) ===
-    if (this._justPressed(pad, 4) && throwableSystem) {
-      throwableSystem.startPrep('tactical', player, weaponSystem);
-    } else if (this._justReleased(pad, 4) && throwableSystem) {
-      throwableSystem.releaseThrow('tactical', player, ctx.enemyManager, actions.onThrowableHit);
+      // === LB (4): TACTICAL THROWABLE (TAP = QUICK THROW, HOLD = AIM) ===
+      if (this._justPressed(pad, 4) && throwableSystem) {
+        throwableSystem.startPrep('tactical', player, weaponSystem);
+      } else if (this._justReleased(pad, 4) && throwableSystem) {
+        throwableSystem.releaseThrow('tactical', player, ctx.enemyManager, actions.onThrowableHit);
+      }
     }
 
     // === D-PAD: UP (12) = MEDKIT, LEFT (14) = INSPECT, RIGHT (15) = 3RD PERSON ===

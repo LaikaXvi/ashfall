@@ -138,6 +138,8 @@ class Enemy {
         secondary: Math.random() < 0.55 ? 'g17' : 'pm9',
         melee: melees[Math.floor(Math.random() * melees.length)],
         armor: vests[Math.min(vests.length - 1, Math.floor(Math.random() * (vests.length - (Math.random() < 0.65 ? 1 : 0))))],
+        dogtag: 'dogtag',
+        dogtagOwner: this.name,
         plates: 1 + Math.floor(Math.random() * 4),
         backpack: bags[Math.floor(Math.random() * bags.length)],
         fieldUpgrade: fus[Math.floor(Math.random() * fus.length)],
@@ -299,7 +301,6 @@ class Enemy {
       const ammoId = (wDef && wDef.ammoType) || 'ammo_545';
       const maxAmmo = ammoId === 'ammo_12g' ? 18 : (ammoId === 'ammo_762' ? 25 : 60);
       const items = [
-        { id: 'dogtag', qty: 1, revealed: false },
         { id: ammoId, qty: Math.min(maxAmmo, 20 + Math.floor(Math.random() * 40)), revealed: false },
         { id: 'medkit', qty: 1 + (Math.random() < 0.35 ? 1 : 0), revealed: false },
         { id: 'armor_plate', qty: 1 + Math.floor(Math.random() * 3), revealed: false }

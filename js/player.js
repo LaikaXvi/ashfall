@@ -754,6 +754,30 @@ class Player {
     this._equipCurrentWeapon();
   }
 
+  equipWeaponInRaid(weaponId, preferredSlot = null) {
+    const def = GAME_DATA.ITEMS[weaponId];
+    if (!def || def.type !== 'weapon') return { equipped: false, prevId: null, slot: null };
+
+    let targetSlot = preferredSlot;
+    if (!targetSlot) {
+      if (def.slot && !this.slots[def.slot]) targetSlot = def.slot;
+      else if (!this.slots.primary) targetSlot = 'primary';
+      else if (!this.slots.secondary) targetSlot = 'secondary';
+      else targetSlot = def.slot || this.activeSlot || 'primary';
+    }
+
+    const prevSlotObj = this.slots[targetSlot];
+    const prevId = prevSlotObj ? prevSlotObj.id : null;
+    const eff = GAME_DATA.getEffectiveWeaponStats(weaponId, {});
+    this.slots[targetSlot] = { id: weaponId, mods: {}, mag: eff.magSize };
+
+    if (!this.activeSlot || this.activeSlot === targetSlot || !this.slots[this.activeSlot]) {
+      this.activeSlot = targetSlot;
+      this._equipCurrentWeapon();
+    }
+    return { equipped: true, prevId, slot: targetSlot };
+  }
+
   getReserveAmmo(ammoId) {
     if (window.DEV_MODE) return 999;
     let total = 0;

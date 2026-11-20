@@ -2147,13 +2147,20 @@ class GameUI {
 
     let actionsHtml = '';
     if (mode === 'all' || mode === 'details') {
+      if (def.type === 'weapon') {
+        actionsHtml += `<button class="pop-act" data-act="equip_primary">Equip Primary</button>`;
+        actionsHtml += `<button class="pop-act" data-act="equip_secondary">Equip Secondary</button>`;
+      } else if (def.type === 'armor' || def.type === 'backpack' || def.type === 'field_upgrade' || def.type === 'killstreak' || def.type === 'self_revive' || def.type === 'melee') {
+        actionsHtml += `<button class="pop-act" data-act="equip_gear">Equip / Swap</button>`;
+      }
+
       if (context === 'container') {
         actionsHtml += `<button class="pop-act" data-act="quick">${badge('A')}Quick-Move to Pack</button>`;
       } else if (context === 'backpack') {
         if (hasContainer) {
           actionsHtml += `<button class="pop-act" data-act="quick">${badge('A')}Quick-Move to Container</button>`;
-        } else if (def.type === 'weapon' || def.type === 'armor' || def.type === 'backpack' || def.type === 'field_upgrade' || def.type === 'killstreak' || def.type === 'self_revive' || def.type === 'melee' || def.type === 'plate' || def.type === 'med') {
-          actionsHtml += `<button class="pop-act" data-act="quick">${badge('A')}Equip / Use</button>`;
+        } else if (def.type === 'plate' || def.type === 'med') {
+          actionsHtml += `<button class="pop-act" data-act="quick">${badge('A')}Use / Equip</button>`;
         }
       }
     }
@@ -2211,6 +2218,47 @@ class GameUI {
     }
   }
 
+  _swapGearWithPlayer(player, itemId) {
+    const def = GAME_DATA.ITEMS[itemId];
+    if (!def) return null;
+    if (def.type === 'armor') {
+      const prev = player.armorId;
+      player.armorId = itemId;
+      player.plateSlots = def.plateSlots || 2;
+      player.maxArmor = def.maxArmor || 100;
+      player.armor = Math.min(player.maxArmor, Math.max(player.armor, player.maxArmor));
+      return prev;
+    }
+    if (def.type === 'backpack') {
+      const prev = player.backpackId;
+      player.backpackId = itemId;
+      player.backpackMaxSlots = def.slots || def.bagSlots || 12;
+      player.maxWeight = def.maxWeight || 32;
+      return prev;
+    }
+    if (def.type === 'field_upgrade') {
+      const prev = player.fieldUpgrade;
+      player.fieldUpgrade = itemId;
+      return prev;
+    }
+    if (def.type === 'killstreak') {
+      const prev = player.killstreak;
+      player.killstreak = itemId;
+      return prev;
+    }
+    if (def.type === 'self_revive') {
+      const prev = player.selfRevive;
+      player.selfRevive = itemId;
+      return prev;
+    }
+    if (def.type === 'melee') {
+      const prev = player.melee;
+      player.melee = itemId;
+      return prev;
+    }
+    return null;
+  }
+
   handleSlotAction(action) {
     if (!this._hoveredSlot || !this._lootPlayer) return;
     const { context, item, idx } = this._hoveredSlot;
@@ -2218,7 +2266,28 @@ class GameUI {
     const def = GAME_DATA.ITEMS[item.id];
     if (!def) return;
 
-    if (action === 'quick') {
+    const sourceList = (context === 'container' && this.activeLootSource) ? this.activeLootSource.items : player.backpack;
+
+    if (action === 'equip_primary' || action === 'equip_secondary') {
+      if (context === 'container' && item.revealed === false) return;
+      const slotName = action === 'equip_primary' ? 'primary' : 'secondary';
+      const res = player.equipWeaponInRaid(item.id, slotName);
+      if (res.equipped) {
+        sourceList.splice(idx, 1);
+        if (res.prevId) {
+          sourceList.splice(idx, 0, { id: res.prevId, qty: 1, revealed: true });
+        }
+        this.addFeedMessage(`Equipped ${def.name} (${slotName.toUpperCase()})`, '#69f0ae');
+      }
+    } else if (action === 'equip_gear') {
+      if (context === 'container' && item.revealed === false) return;
+      const prev = this._swapGearWithPlayer(player, item.id);
+      sourceList.splice(idx, 1);
+      if (prev) {
+        sourceList.splice(idx, 0, { id: prev, qty: 1, revealed: true });
+      }
+      this.addFeedMessage(`Equipped ${def.name}`, '#69f0ae');
+    } else if (action === 'quick') {
       if (context === 'container' && this.activeLootSource) {
         if (item.revealed === false) return;
         if (player.addToBackpack(item.id, item.qty)) {
@@ -2230,6 +2299,13 @@ class GameUI {
         if (this.activeLootSource) {
           this.activeLootSource.items.push({ id: item.id, qty: item.qty, revealed: true });
           player.backpack.splice(idx, 1);
+        } else if (def.type === 'weapon') {
+          const res = player.equipWeaponInRaid(item.id);
+          if (res.equipped) {
+            player.backpack.splice(idx, 1);
+            if (res.prevId) player.backpack.splice(idx, 0, { id: res.prevId, qty: 1 });
+            this.addFeedMessage(`Equipped ${def.name}`, '#69f0ae');
+          }
         } else if (def.type === 'plate' && player.plates < 6) {
           const move = Math.min(6 - player.plates, item.qty);
           player.plates += move;
@@ -2242,41 +2318,11 @@ class GameUI {
           } else {
             this.addFeedMessage('Health already full', '#a0a8a3');
           }
-        } else if (def.type === 'armor') {
-          const prev = player.armorId;
-          player.armorId = item.id;
-          player.plateSlots = def.plateSlots || 2;
-          player.maxArmor = def.maxArmor || 100;
-          player.armor = Math.min(player.maxArmor, Math.max(player.armor, player.maxArmor));
+        } else if (def.type === 'armor' || def.type === 'backpack' || def.type === 'field_upgrade' || def.type === 'killstreak' || def.type === 'self_revive' || def.type === 'melee') {
+          const prev = this._swapGearWithPlayer(player, item.id);
           player.backpack.splice(idx, 1);
-          if (prev) player.backpack.push({ id: prev, qty: 1 });
-        } else if (def.type === 'backpack') {
-          const prev = player.backpackId;
-          player.backpackId = item.id;
-          player.backpackMaxSlots = def.bagSlots || 12;
-          player.maxWeight = def.maxWeight || 32;
-          player.backpack.splice(idx, 1);
-          if (prev) player.backpack.push({ id: prev, qty: 1 });
-        } else if (def.type === 'field_upgrade') {
-          const prev = player.fieldUpgrade;
-          player.fieldUpgrade = item.id;
-          player.backpack.splice(idx, 1);
-          if (prev) player.backpack.push({ id: prev, qty: 1 });
-        } else if (def.type === 'killstreak') {
-          const prev = player.killstreak;
-          player.killstreak = item.id;
-          player.backpack.splice(idx, 1);
-          if (prev) player.backpack.push({ id: prev, qty: 1 });
-        } else if (def.type === 'self_revive') {
-          const prev = player.selfRevive;
-          player.selfRevive = item.id;
-          player.backpack.splice(idx, 1);
-          if (prev) player.backpack.push({ id: prev, qty: 1 });
-        } else if (def.type === 'melee') {
-          const prev = player.melee;
-          player.melee = item.id;
-          player.backpack.splice(idx, 1);
-          if (prev) player.backpack.push({ id: prev, qty: 1 });
+          if (prev) player.backpack.splice(idx, 0, { id: prev, qty: 1 });
+          this.addFeedMessage(`Equipped ${def.name}`, '#69f0ae');
         }
       }
     } else if (action === 'split' && def.stackable && item.qty > 1) {
@@ -2315,6 +2361,7 @@ class GameUI {
       const kDef = player.killstreak ? GAME_DATA.ITEMS[player.killstreak] : null;
       const srDef = player.selfRevive ? GAME_DATA.ITEMS[player.selfRevive] : null;
 
+      const myCallsign = (this.profile && this.profile.social && this.profile.social.callsign) || 'OPERATOR';
       const opGroups = [
         {
           title: 'WEAPONS',
@@ -2326,18 +2373,19 @@ class GameUI {
           ]
         },
         {
-          title: 'ARMOR & PACK',
+          title: 'ARMOR · DOGTAG · PACK',
           cols: 3,
           items: [
             { label: 'VEST', name: vDef ? vDef.name : 'No Vest', rarity: vDef ? vDef.rarity : 'common' },
-            { label: 'PLATES', name: `${player.plates} / 6`, rarity: 'rare' },
+            { label: 'DOGTAG', name: myCallsign, rarity: 'rare' },
             { label: 'BACKPACK', name: bDef ? bDef.name : 'Small Pack', rarity: bDef ? bDef.rarity : 'common' }
           ]
         },
         {
           title: 'SUPPORT',
-          cols: 3,
+          cols: 4,
           items: [
+            { label: 'PLATES', name: `${player.plates} / 6`, rarity: 'rare' },
             { label: 'FIELD UPGRADE', name: fDef ? fDef.name : 'None', rarity: fDef ? fDef.rarity : 'rare' },
             { label: 'KILLSTREAK', name: kDef ? kDef.name : 'None', rarity: kDef ? kDef.rarity : 'common' },
             { label: 'SELF-REVIVE', name: srDef ? srDef.name : 'None', rarity: srDef ? srDef.rarity : 'common' }
@@ -2359,7 +2407,7 @@ class GameUI {
       `).join('');
     }
 
-    // 2. Active Container Grid (Left) with Enemy Operator Equipment (if looting an Operator) + Progressive Circular Reveal
+    // 2. Active Container Grid (TOP) + Enemy Operator Inventory (BOTTOM when looting an Operator!)
     const cPanel = document.getElementById('inv-container-panel');
     if (cPanel) {
       let enemyEqEl = document.getElementById('loot-enemy-op-slots');
@@ -2368,22 +2416,27 @@ class GameUI {
           enemyEqEl = document.createElement('div');
           enemyEqEl.id = 'loot-enemy-op-slots';
           enemyEqEl.className = 'op-equip-grid compact';
-          enemyEqEl.style.marginBottom = '10px';
-          cPanel.insertBefore(enemyEqEl, cList);
+          enemyEqEl.style.marginTop = '10px';
+          enemyEqEl.style.paddingTop = '8px';
+          enemyEqEl.style.borderTop = '1px solid rgba(255,255,255,0.10)';
         }
+        // Always place Enemy Operator Equipment BELOW their Backpack (flipped relative to player!)
+        cPanel.appendChild(enemyEqEl);
+
         const eq = this.activeLootSource.operatorEquipment;
         const makeCard = (key, label, id, customText = null, customRarity = null) => {
           const def = id ? GAME_DATA.ITEMS[id] : null;
           const rar = customRarity || (def ? def.rarity : 'common');
           const txt = customText || (def ? def.name : 'Empty');
-          return `<div class="op-slot-card rarity-${rar}" data-op-key="${key}" style="cursor:${(id || (key === 'plates' && eq.plates > 0)) ? 'pointer' : 'default'};">
+          const clickable = !!(id || (key === 'plates' && eq.plates > 0));
+          return `<div class="op-slot-card rarity-${rar}" data-op-key="${key}" title="${clickable ? 'Click to Equip / Swap or Loot' : 'Empty'}" style="cursor:${clickable ? 'pointer' : 'default'};">
             <span class="op-slot-label">${label}</span>
             <span class="op-slot-val">${txt}</span>
           </div>`;
         };
         enemyEqEl.innerHTML = `
           <div class="op-slot-group">
-            <div class="op-group-label">OPERATOR WEAPONS (CLICK TO LOOT)</div>
+            <div class="op-group-label">OPERATOR WEAPONS (CLICK TO SWAP / EQUIP)</div>
             <div class="op-group-row cols-3">
               ${makeCard('primary', 'PRIMARY', eq.primary)}
               ${makeCard('secondary', 'SECONDARY', eq.secondary)}
@@ -2391,16 +2444,17 @@ class GameUI {
             </div>
           </div>
           <div class="op-slot-group">
-            <div class="op-group-label">OPERATOR ARMOR &amp; PACK</div>
+            <div class="op-group-label">ARMOR · DOGTAG · PACK</div>
             <div class="op-group-row cols-3">
               ${makeCard('armor', 'VEST', eq.armor)}
-              ${makeCard('plates', 'PLATES', null, `${eq.plates || 0} / 6`, 'rare')}
+              ${makeCard('dogtag', 'DOGTAG', eq.dogtag, eq.dogtag ? (eq.dogtagOwner || 'Operator Tag') : 'Looted', eq.dogtag ? 'rare' : 'common')}
               ${makeCard('backpack', 'BACKPACK', eq.backpack)}
             </div>
           </div>
           <div class="op-slot-group">
             <div class="op-group-label">OPERATOR SUPPORT</div>
-            <div class="op-group-row cols-3">
+            <div class="op-group-row cols-4">
+              ${makeCard('plates', 'PLATES', null, `${eq.plates || 0} / 6`, 'rare')}
               ${makeCard('fieldUpgrade', 'FIELD UPGRADE', eq.fieldUpgrade)}
               ${makeCard('killstreak', 'KILLSTREAK', eq.killstreak)}
               ${makeCard('selfRevive', 'SELF-REVIVE', eq.selfRevive)}
@@ -2428,11 +2482,32 @@ class GameUI {
             }
             const itemId = eq[k];
             if (!itemId) return;
-            if (player.addToBackpack(itemId, 1)) {
-              eq[k] = null;
+            const def = GAME_DATA.ITEMS[itemId];
+            if (k === 'primary' || k === 'secondary') {
+              const res = player.equipWeaponInRaid(itemId, k);
+              if (res.equipped) {
+                eq[k] = res.prevId || null;
+                if (def) this.addFeedMessage(`Swapped ${k.toUpperCase()} → ${def.name}`, '#69f0ae');
+                this.renderLootModal(player);
+              }
+              return;
+            }
+            if (k === 'dogtag') {
+              if (player.addToBackpack('dogtag', 1)) {
+                eq.dogtag = null;
+                this.addFeedMessage(`Secured ${eq.dogtagOwner || 'Operator'} Dogtag`, '#ffca28');
+                this.renderLootModal(player);
+              } else {
+                this.addFeedMessage('Backpack full / too heavy!', '#d94141');
+              }
+              return;
+            }
+            if (k === 'armor' || k === 'backpack' || k === 'fieldUpgrade' || k === 'killstreak' || k === 'selfRevive' || k === 'melee') {
+              const prev = this._swapGearWithPlayer(player, itemId);
+              eq[k] = prev || null;
+              if (def) this.addFeedMessage(`Equipped ${def.name}`, '#69f0ae');
               this.renderLootModal(player);
-            } else {
-              this.addFeedMessage('Backpack full / too heavy!', '#d94141');
+              return;
             }
           });
         });
