@@ -238,6 +238,16 @@ class GameUI {
       if (m.isSelf) m.name = newCallsign;
     }
     this.saveProfile();
+    if (this._sendSocialPacket) {
+      this._sendSocialPacket({
+        type: 'rename',
+        clientId: this._clientId,
+        oldName: oldCallsign,
+        from: newCallsign,
+        status: 'ONLINE',
+        ts: Date.now()
+      });
+    }
     this._broadcastPresence();
     this._syncUsernameSettingsUI();
     this.renderSocial();
@@ -270,87 +280,242 @@ class GameUI {
     this.partyHost = this.profile.social.callsign;
     this.partyMembers = [{ name: this.profile.social.callsign, isSelf: true, isLeader: true, squadColor: '#69f0ae' }];
 
-    // REAL online clients only (zero fake/simulated players!)
+    // REAL online clients only (cross-device live WebSocket lobby + local same-browser fallback, zero fake players!)
     this.onlinePlayers = [];
+    this._peers = new Map(); // clientId -> { clientId, name, status, ts }
+    this._knownRealUsers = new Set(); // verified real operator callsigns seen from live clients
     this._presenceKey = 'ashfall_online_clients_v2';
+    this._lobbyTopic = 'ashfall_s7_lobby_presence_v3';
+    this._wsConnected = false;
+    this._wsRetryMs = 3000;
+    this._ws = null;
 
-    this._syncRealOnlineClients = () => {
+    const PEER_TTL_MS = 52000;
+
+    this._rebuildOnlineList = () => {
       const now = Date.now();
-      let map = {};
+      const myName = (this.profile && this.profile.social && this.profile.social.callsign) || '';
+
+      // Merge any same-browser localStorage tabs too
       try {
-        map = JSON.parse(localStorage.getItem(this._presenceKey) || '{}') || {};
-      } catch (e) { map = {}; }
+        const localMap = JSON.parse(localStorage.getItem(this._presenceKey) || '{}') || {};
+        for (const [cid, entry] of Object.entries(localMap)) {
+          if (!entry || now - (entry.ts || 0) > 15000) continue;
+          if (cid !== this._clientId && entry.name) {
+            const cur = this._peers.get(cid);
+            if (!cur || (entry.ts || 0) >= (cur.ts || 0)) {
+              this._peers.set(cid, { clientId: cid, name: entry.name, status: entry.status || 'ONLINE', ts: entry.ts || now });
+            }
+            this._knownRealUsers.add(entry.name.toUpperCase());
+          }
+        }
+      } catch (e) {}
 
-      // Heartbeat self
-      map[this._clientId] = {
-        name: this.profile.social.callsign,
-        status: 'ONLINE',
-        ts: now
-      };
-
-      // Prune stale clients (> 8s without heartbeat)
-      const list = [];
-      for (const [cid, entry] of Object.entries(map)) {
-        if (!entry || now - (entry.ts || 0) > 8000) {
-          delete map[cid];
+      // Prune stale peers & deduplicate by callsign (keeping freshest entry)
+      const byName = new Map();
+      for (const [cid, peer] of this._peers.entries()) {
+        if (!peer || !peer.name || now - (peer.ts || 0) > PEER_TTL_MS) {
+          this._peers.delete(cid);
           continue;
         }
-        if (cid !== this._clientId && entry.name && entry.name !== this.profile.social.callsign) {
-          list.push({ clientId: cid, name: entry.name, status: entry.status || 'ONLINE' });
+        if (cid === this._clientId) continue;
+        if (peer.name.toUpperCase() === myName.toUpperCase()) continue;
+        this._knownRealUsers.add(peer.name.toUpperCase());
+        const existing = byName.get(peer.name.toUpperCase());
+        if (!existing || peer.ts > existing.ts) {
+          byName.set(peer.name.toUpperCase(), {
+            clientId: cid,
+            name: peer.name,
+            status: peer.status || 'ONLINE',
+            ts: peer.ts
+          });
         }
       }
-      try { localStorage.setItem(this._presenceKey, JSON.stringify(map)); } catch (e) {}
-      this.onlinePlayers = list;
+
+      this.onlinePlayers = Array.from(byName.values()).sort((a, b) => a.name.localeCompare(b.name));
       this.renderSocial();
     };
 
-    this._broadcastPresence = () => {
-      this._syncRealOnlineClients();
+    this._handleSocialPacket = (msg) => {
+      if (!msg || !msg.clientId || msg.clientId === this._clientId) return;
+      const now = Date.now();
+      if (msg.type === 'presence' || msg.type === 'rename') {
+        const name = (msg.from || msg.name || '').trim().toUpperCase();
+        if (!name) return;
+        const pktTs = (typeof msg.ts === 'number' && msg.ts <= now + 5000) ? msg.ts : now;
+        if (now - pktTs > PEER_TTL_MS) return;
+        this._peers.set(msg.clientId, {
+          clientId: msg.clientId,
+          name,
+          status: msg.status || 'ONLINE',
+          ts: pktTs
+        });
+        this._knownRealUsers.add(name);
+        // If a friend renamed themselves, update their callsign in our friends list automatically
+        if (msg.type === 'rename' && msg.oldName) {
+          const oldUp = msg.oldName.toUpperCase();
+          const f = (this.profile.social.friends || []).find(it => it.name.toUpperCase() === oldUp);
+          if (f) {
+            f.name = name;
+            this.saveProfile();
+          }
+        }
+        this._rebuildOnlineList();
+      } else if (msg.type === 'leave') {
+        this._peers.delete(msg.clientId);
+        this._rebuildOnlineList();
+      } else if (msg.type === 'deploy_raid') {
+        if (this.partyMembers.some(m => m.name === msg.from) && this.onDeploy) {
+          this.onDeploy(msg.zoneId || 'outpost');
+        }
+      }
+    };
+
+    this._sendSocialPacket = (payload, useBeacon = false) => {
+      const json = JSON.stringify(payload);
+      // 1. Local same-browser tabs via BroadcastChannel
       try {
-        if (this._socialChannel) {
-          this._socialChannel.postMessage({
-            type: 'presence',
-            clientId: this._clientId,
-            from: this.profile.social.callsign,
-            status: 'ONLINE'
-          });
+        if (this._socialChannel) this._socialChannel.postMessage(payload);
+      } catch (e) {}
+      // 2. Global cross-device live lobby via ntfy.sh HTTPS POST / Beacon
+      const url = `https://ntfy.sh/${this._lobbyTopic}`;
+      try {
+        if (useBeacon && navigator.sendBeacon) {
+          navigator.sendBeacon(url, new Blob([json], { type: 'text/plain;charset=UTF-8' }));
+        } else {
+          fetch(url, {
+            method: 'POST',
+            body: json,
+            mode: 'cors',
+            keepalive: useBeacon
+          }).catch(() => {});
         }
       } catch (e) {}
+    };
+
+    this._pollRemoteLobby = () => {
+      fetch(`https://ntfy.sh/${this._lobbyTopic}/json?poll=1&since=65s`, { mode: 'cors' })
+        .then(r => r.ok ? r.text() : '')
+        .then((txt) => {
+          if (!txt) return;
+          const lines = txt.split('\n');
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const outer = JSON.parse(line);
+              if (outer && outer.event === 'message' && outer.message) {
+                const pkt = JSON.parse(outer.message);
+                this._handleSocialPacket(pkt);
+              }
+            } catch (e) {}
+          }
+        })
+        .catch(() => {});
+    };
+
+    this._connectLobbyWS = () => {
+      if (this._ws && (this._ws.readyState === WebSocket.OPEN || this._ws.readyState === WebSocket.CONNECTING)) return;
+      try {
+        const ws = new WebSocket(`wss://ntfy.sh/${this._lobbyTopic}/ws?since=90s`);
+        this._ws = ws;
+        ws.onopen = () => {
+          this._wsConnected = true;
+          this._wsRetryMs = 3000;
+          this._broadcastPresence();
+          this.renderSocial();
+        };
+        ws.onmessage = (ev) => {
+          try {
+            const outer = JSON.parse(ev.data);
+            if (outer && outer.event === 'message' && outer.message) {
+              const pkt = JSON.parse(outer.message);
+              this._handleSocialPacket(pkt);
+            }
+          } catch (e) {}
+        };
+        ws.onerror = () => {};
+        ws.onclose = () => {
+          this._wsConnected = false;
+          this._ws = null;
+          this.renderSocial();
+          // Fallback poll & auto-reconnect
+          this._pollRemoteLobby();
+          clearTimeout(this._wsReconnectTimer);
+          this._wsReconnectTimer = setTimeout(() => {
+            this._wsRetryMs = Math.min(15000, Math.round(this._wsRetryMs * 1.4));
+            this._connectLobbyWS();
+          }, this._wsRetryMs);
+        };
+      } catch (e) {
+        this._wsConnected = false;
+        this._pollRemoteLobby();
+      }
+    };
+
+    this._broadcastPresence = () => {
+      const now = Date.now();
+      const myName = this.profile.social.callsign;
+      // Update localStorage for same-browser tabs
+      try {
+        const map = JSON.parse(localStorage.getItem(this._presenceKey) || '{}') || {};
+        map[this._clientId] = { name: myName, status: 'ONLINE', ts: now };
+        for (const [cid, entry] of Object.entries(map)) {
+          if (!entry || now - (entry.ts || 0) > 15000) delete map[cid];
+        }
+        localStorage.setItem(this._presenceKey, JSON.stringify(map));
+      } catch (e) {}
+
+      this._sendSocialPacket({
+        type: 'presence',
+        clientId: this._clientId,
+        from: myName,
+        status: 'ONLINE',
+        ts: now
+      });
+      this._rebuildOnlineList();
     };
 
     try {
       if (typeof BroadcastChannel !== 'undefined') {
         this._socialChannel = new BroadcastChannel('ashfall_social_v2');
-        this._socialChannel.onmessage = (ev) => {
-          const msg = ev.data;
-          if (!msg || msg.clientId === this._clientId) return;
-          if (msg.type === 'presence' || msg.type === 'leave') {
-            this._syncRealOnlineClients();
-          } else if (msg.type === 'deploy_raid') {
-            if (this.partyMembers.some(m => m.name === msg.from) && this.onDeploy) {
-              this.onDeploy(msg.zoneId || 'outpost');
-            }
-          }
-        };
+        this._socialChannel.onmessage = (ev) => this._handleSocialPacket(ev.data);
       }
     } catch (e) {}
 
     window.addEventListener('storage', (ev) => {
-      if (ev.key === this._presenceKey) this._syncRealOnlineClients();
+      if (ev.key === this._presenceKey) this._rebuildOnlineList();
     });
-    window.addEventListener('beforeunload', () => {
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        this._broadcastPresence();
+        if (!this._wsConnected) this._connectLobbyWS();
+      }
+    });
+
+    const announceLeave = () => {
       try {
         const map = JSON.parse(localStorage.getItem(this._presenceKey) || '{}') || {};
         delete map[this._clientId];
         localStorage.setItem(this._presenceKey, JSON.stringify(map));
-        if (this._socialChannel) {
-          this._socialChannel.postMessage({ type: 'leave', clientId: this._clientId, from: this.profile.social.callsign });
-        }
       } catch (e) {}
-    });
+      this._sendSocialPacket({
+        type: 'leave',
+        clientId: this._clientId,
+        from: this.profile.social.callsign,
+        ts: Date.now()
+      }, true);
+    };
+    window.addEventListener('beforeunload', announceLeave);
+    window.addEventListener('pagehide', announceLeave);
 
+    // Connect live WebSocket immediately, heartbeat every 18s, and prune stale peers every 5s
+    this._connectLobbyWS();
     this._broadcastPresence();
-    this._presenceInterval = setInterval(() => this._broadcastPresence(), 3000);
+    this._presenceInterval = setInterval(() => {
+      this._broadcastPresence();
+      if (!this._wsConnected) this._pollRemoteLobby();
+    }, 18000);
+    this._pruneInterval = setInterval(() => this._rebuildOnlineList(), 5000);
   }
 
   _showSocialToast(msg) {
@@ -366,36 +531,55 @@ class GameUI {
     const cleaned = (rawQuery || '').trim().toUpperCase().replace(/[^A-Z0-9_\-#]/g, '').slice(0, 22);
     if (!cleaned) return;
 
-    // Match either exact Username#1234 or a real online client matching the query
-    let targetTag = cleaned;
-    if (!/#\d{4}$/.test(targetTag)) {
-      const matchOnline = (this.onlinePlayers || []).find(p =>
-        p.name.toUpperCase() === cleaned || p.name.toUpperCase().startsWith(cleaned + '#')
-      );
-      if (matchOnline) {
-        targetTag = matchOnline.name;
-      } else {
-        this._showSocialToast('Use full ID format: USERNAME#1234');
-        return;
-      }
+    const myCallsign = (this.profile && this.profile.social && this.profile.social.callsign || '').toUpperCase();
+    if (cleaned === myCallsign || cleaned === (this.profile.social.username || '').toUpperCase()) {
+      this._showSocialToast('You cannot add yourself.');
+      return;
     }
 
-    if (targetTag === this.profile.social.callsign) {
+    // Strictly verify against REAL connected / recently seen clients — never allow adding fake/non-existent usernames!
+    const onlineList = this.onlinePlayers || [];
+    let verifiedTag = null;
+
+    // 1. Exact full ID match against live online clients
+    const exactOnline = onlineList.find(p => p.name.toUpperCase() === cleaned);
+    if (exactOnline) {
+      verifiedTag = exactOnline.name.toUpperCase();
+    } else if (!/#\d{4}$/.test(cleaned)) {
+      // 2. Prefix username match (without #1234) against live online clients
+      const prefixMatches = onlineList.filter(p => p.name.toUpperCase().startsWith(cleaned + '#'));
+      if (prefixMatches.length === 1) {
+        verifiedTag = prefixMatches[0].name.toUpperCase();
+      } else if (prefixMatches.length > 1) {
+        this._showSocialToast(`Multiple online operators match "${cleaned}". Enter full USERNAME#1234.`);
+        return;
+      }
+    } else if (this._knownRealUsers && this._knownRealUsers.has(cleaned)) {
+      // 3. Exact full ID match against a real client verified on the live lobby during this session
+      verifiedTag = cleaned;
+    }
+
+    if (!verifiedTag) {
+      this._showSocialToast(`Operator "${cleaned}" not found online. Only real connected players can be added.`);
+      return;
+    }
+
+    if (verifiedTag === myCallsign) {
       this._showSocialToast('You cannot add yourself.');
       return;
     }
     const friends = this.profile.social.friends;
-    if (friends.some(f => f.name === targetTag)) {
-      this._showSocialToast(`${targetTag} is already on your friends list.`);
+    if (friends.some(f => f.name.toUpperCase() === verifiedTag)) {
+      this._showSocialToast(`${verifiedTag} is already on your friends list.`);
       return;
     }
     friends.push({
-      name: targetTag,
+      name: verifiedTag,
       favorite: false
     });
     this.saveProfile();
     this.renderSocial();
-    this._showSocialToast(`Added ${targetTag} as a friend.`);
+    this._showSocialToast(`Added ${verifiedTag} as a friend.`);
   }
 
   toggleFavoriteFriend(friendName) {
@@ -464,10 +648,15 @@ class GameUI {
   renderSocial() {
     this.assignSquadColors();
     const friends = this.profile.social.friends || [];
-    const onlineSet = new Map((this.onlinePlayers || []).map(p => [p.name, p]));
+    const onlineSet = new Map((this.onlinePlayers || []).map(p => [p.name.toUpperCase(), p]));
 
     const onlineCountEl = document.getElementById('social-online-count');
-    if (onlineCountEl) onlineCountEl.textContent = `${this.onlinePlayers.length} ONLINE`;
+    if (onlineCountEl) {
+      onlineCountEl.textContent = this._wsConnected
+        ? `● LIVE · ${this.onlinePlayers.length} ONLINE`
+        : `${this.onlinePlayers.length} ONLINE`;
+      onlineCountEl.style.color = this._wsConnected ? '#69f0ae' : '#f5a623';
+    }
     const fCountEl = document.getElementById('friends-count');
     if (fCountEl) fCountEl.textContent = friends.length;
     const oTabCountEl = document.getElementById('online-tab-count');
@@ -517,16 +706,17 @@ class GameUI {
       // Sort: Favorites pinned to top, then online, then alphabetical
       const sorted = [...friends].sort((a, b) => {
         if (!!b.favorite !== !!a.favorite) return b.favorite ? 1 : -1;
-        const aOn = onlineSet.has(a.name) ? 1 : 0;
-        const bOn = onlineSet.has(b.name) ? 1 : 0;
+        const aOn = onlineSet.has(a.name.toUpperCase()) ? 1 : 0;
+        const bOn = onlineSet.has(b.name.toUpperCase()) ? 1 : 0;
         if (bOn !== aOn) return bOn - aOn;
         return a.name.localeCompare(b.name);
       });
 
       sorted.forEach((f) => {
-        const isOnline = onlineSet.has(f.name);
-        const onlineInfo = onlineSet.get(f.name);
-        const inParty = this.partyMembers.some(m => m.name === f.name);
+        const keyUp = f.name.toUpperCase();
+        const isOnline = onlineSet.has(keyUp);
+        const onlineInfo = onlineSet.get(keyUp);
+        const inParty = this.partyMembers.some(m => m.name.toUpperCase() === keyUp);
         const row = document.createElement('div');
         row.className = 'social-row';
         row.innerHTML = `
