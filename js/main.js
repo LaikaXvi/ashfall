@@ -534,10 +534,6 @@
       player.isFiring = true;
       firePlayerWeapon();
     } else if (e.button === 2) {
-      if (designatorActive) {
-        setDesignatorActive(false);
-        return;
-      }
       if (throwableSystem && throwableSystem.state === 'prep') {
         throwableSystem.cancelPrep();
         if (weaponSystem && !player.isThirdPerson) weaponSystem.viewmodelGroup.visible = true;
@@ -1284,8 +1280,53 @@
   }
 
   let designatorActive = false;
+  let designatorRig = null;
+  let designatorAimBlend = 0;
   let designatorLaserLine = null;
   let uavPhoneAnim = { active: false, t: 0, dur: 1.15, triggered: false, mesh: null };
+
+  function _createDesignatorRig() {
+    const g = new THREE.Group();
+    const bodyMat = new THREE.MeshLambertMaterial({ color: 0x2d352c });
+    const rubberMat = new THREE.MeshLambertMaterial({ color: 0x161918 });
+    const lensMat = new THREE.MeshBasicMaterial({ color: 0x224455 });
+    const laserMat = new THREE.MeshBasicMaterial({ color: 0xff3030 });
+    const gloveMat = new THREE.MeshLambertMaterial({ color: 0x2c302b });
+
+    // Dual binocular barrels + central bridge + laser emitter housing
+    const barrelL = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.044, 0.21, 10), bodyMat);
+    barrelL.rotation.x = Math.PI / 2;
+    barrelL.position.set(-0.048, 0, 0);
+    const barrelR = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.044, 0.21, 10), bodyMat);
+    barrelR.rotation.x = Math.PI / 2;
+    barrelR.position.set(0.048, 0, 0);
+    const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.048, 0.13), rubberMat);
+    const laserPod = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.032, 0.12), rubberMat);
+    laserPod.position.set(0, 0.042, -0.02);
+    const laserLens = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.012, 8), laserMat);
+    laserLens.rotation.x = Math.PI / 2;
+    laserLens.position.set(0, 0.042, -0.084);
+    const cupL = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.036, 0.028, 10), rubberMat);
+    cupL.rotation.x = Math.PI / 2;
+    cupL.position.set(-0.048, 0, 0.11);
+    const cupR = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.036, 0.028, 10), rubberMat);
+    cupR.rotation.x = Math.PI / 2;
+    cupR.position.set(0.048, 0, 0.11);
+    const glassL = new THREE.Mesh(new THREE.CircleGeometry(0.03, 10), lensMat);
+    glassL.position.set(-0.048, 0, 0.125);
+    const glassR = new THREE.Mesh(new THREE.CircleGeometry(0.03, 10), lensMat);
+    glassR.position.set(0.048, 0, 0.125);
+
+    // Gloved hands gripping sides of binocular housing
+    const handL = new THREE.Mesh(new THREE.BoxGeometry(0.048, 0.075, 0.09), gloveMat);
+    handL.position.set(-0.105, -0.02, 0.01);
+    const handR = new THREE.Mesh(new THREE.BoxGeometry(0.048, 0.075, 0.09), gloveMat);
+    handR.position.set(0.105, -0.02, 0.01);
+
+    g.add(barrelL, barrelR, bridge, laserPod, laserLens, cupL, cupR, glassL, glassR, handL, handR);
+    g.visible = false;
+    return g;
+  }
 
   function _createUavPhoneRig() {
     const g = new THREE.Group();
@@ -1338,6 +1379,7 @@
 
   function startUavPhoneAnim() {
     if (!viewmodelCamera) return;
+    if (designatorActive) setDesignatorActive(false);
     if (!uavPhoneAnim.mesh) {
       uavPhoneAnim.mesh = _createUavPhoneRig();
       viewmodelCamera.add(uavPhoneAnim.mesh);
@@ -1346,18 +1388,24 @@
     uavPhoneAnim.t = 0;
     uavPhoneAnim.triggered = false;
     uavPhoneAnim.mesh.visible = true;
-    if (weaponSystem && weaponSystem.viewmodelGroup) weaponSystem.viewmodelGroup.visible = false;
+    // Keep weapon visible — lowered & supported by left hand in forward grip while right hand uses phone!
     ksCooldown = 1.4;
   }
 
   function setDesignatorActive(active) {
     designatorActive = !!active;
+    designatorAimBlend = 0;
+    if (designatorActive && viewmodelCamera && !designatorRig) {
+      designatorRig = _createDesignatorRig();
+      viewmodelCamera.add(designatorRig);
+    }
+    if (designatorRig) designatorRig.visible = designatorActive && !player.isThirdPerson;
     const ov = document.getElementById('designator-overlay');
-    if (ov) ov.classList.toggle('hidden', !designatorActive);
+    if (ov) ov.classList.add('hidden');
     const ch = document.getElementById('crosshair');
-    if (ch) ch.classList.toggle('hidden', designatorActive);
+    if (ch) ch.classList.remove('hidden');
     if (weaponSystem && weaponSystem.viewmodelGroup) {
-      weaponSystem.viewmodelGroup.visible = !designatorActive && !player.isThirdPerson && !(uavPhoneAnim && uavPhoneAnim.active);
+      weaponSystem.viewmodelGroup.visible = !designatorActive && !player.isThirdPerson;
     }
     if (!designatorActive && designatorLaserLine && scene) {
       scene.remove(designatorLaserLine);
@@ -1365,8 +1413,7 @@
     }
     if (designatorActive) {
       player.isFiring = false;
-      player.isADS = false;
-      ui.showCenterToast('LASER DESIGNATOR 4X — FIRE TO MARK TARGET', '#ff5252');
+      ui.showCenterToast('DESIGNATOR EQUIPPED — HOLD [RMB / LT] TO ZOOM 4X', '#ff5252');
     }
   }
 
@@ -1460,19 +1507,30 @@
   function updateKillstreaks(dt) {
     if (ksCooldown > 0) ksCooldown = Math.max(0, ksCooldown - dt);
 
-    // 1. One-Handed Right-Hand Rugged Army Phone Raise & Thumb-Tap Animation (UAV -> 30s 2D 150m radar)
+    // 1. One-Handed Right-Hand Rugged Army Phone Raise & Thumb-Tap Animation
+    //    Weapon stays visible, lowered and supported by the left hand in a forward grip!
     if (uavPhoneAnim && uavPhoneAnim.active && uavPhoneAnim.mesh) {
       uavPhoneAnim.t += dt;
       const p = Math.min(1, uavPhoneAnim.t / uavPhoneAnim.dur);
       const rig = uavPhoneAnim.mesh;
       const lift = p < 0.28 ? (p / 0.28) : (p > 0.78 ? Math.max(0, (1 - p) / 0.22) : 1);
       // Raised exclusively with the right hand from bottom-right toward eye level
-      rig.position.set(0.16 - lift * 0.09, -0.36 + lift * 0.28, -0.37);
+      rig.position.set(0.16 - lift * 0.08, -0.36 + lift * 0.28, -0.37);
       rig.rotation.set(-0.16 * lift, -0.22 * lift, 0.08 * lift);
+
+      // Lower & cant held weapon cleanly on the left-hand forward grip while right hand uses phone
+      if (weaponSystem && weaponSystem.viewmodelGroup && !player.isThirdPerson) {
+        weaponSystem.viewmodelGroup.visible = true;
+        weaponSystem.viewmodelGroup.position.x -= 0.11 * lift;
+        weaponSystem.viewmodelGroup.position.y -= 0.19 * lift;
+        weaponSystem.viewmodelGroup.position.z += 0.05 * lift;
+        weaponSystem.viewmodelGroup.rotation.x -= 0.34 * lift;
+        weaponSystem.viewmodelGroup.rotation.y += 0.18 * lift;
+        weaponSystem.viewmodelGroup.rotation.z += 0.24 * lift;
+      }
 
       const thumbPivot = rig.userData.thumbPivot;
       if (thumbPivot) {
-        // Right thumb reaches across and presses down onto the screen at p ~ 0.48
         const tapP = Math.max(0, Math.min(1, 1 - Math.abs(p - 0.50) / 0.16));
         thumbPivot.rotation.set(tapP * 0.34, -tapP * 0.42, -tapP * 0.22);
         thumbPivot.position.set(0.056 - tapP * 0.012, -0.035 + tapP * 0.014, 0.014 - tapP * 0.008);
@@ -1491,39 +1549,67 @@
       if (p >= 1) {
         uavPhoneAnim.active = false;
         rig.visible = false;
-        if (weaponSystem && weaponSystem.viewmodelGroup && !player.isThirdPerson && !designatorActive) {
-          weaponSystem.viewmodelGroup.visible = true;
-        }
       }
     }
 
-    // 2. 4x Zoom Binocular Laser Designator (live red laser beam + 4x FOV zoom + rangefinder)
+    // 2. Binocular Laser Designator (Hip-held by default -> Hold RMB / LT to raise to eye level & zoom 4x!)
     if (designatorActive && player && camera) {
       if (player.isDowned || player.dead || isModalOpen) {
         setDesignatorActive(false);
       } else {
-        const targetFov = (window.BASE_FOV || 75) / 4; // True 4x magnification
-        camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, Math.min(1, dt * 14));
+        const aiming = !!player.isADS;
+        designatorAimBlend = THREE.MathUtils.lerp(designatorAimBlend, aiming ? 1 : 0, Math.min(1, dt * 14));
+
+        // Only zoom when aiming the designator!
+        const baseFov = window.BASE_FOV || 75;
+        const targetFov = THREE.MathUtils.lerp(baseFov, baseFov / 4, designatorAimBlend);
+        camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, Math.min(1, dt * 16));
         camera.updateProjectionMatrix();
 
-        const targetPt = _getKillstreakTargetPoint();
-        const origin = new THREE.Vector3();
-        camera.getWorldPosition(origin);
-        const startPt = origin.clone().add(new THREE.Vector3(0, -0.08, 0));
-        const rangeM = Math.round(origin.distanceTo(targetPt));
-        const rangeEl = document.getElementById('desig-range');
-        if (rangeEl) rangeEl.textContent = `RANGE: ${rangeM}m`;
+        // Position 3D binocular rig: hip-held in hand vs raised to eye level
+        const fullyAimed = designatorAimBlend > 0.72;
+        if (designatorRig) {
+          designatorRig.visible = !player.isThirdPerson && !fullyAimed;
+          designatorRig.position.set(
+            THREE.MathUtils.lerp(0.14, 0.0, designatorAimBlend),
+            THREE.MathUtils.lerp(-0.18, -0.02, designatorAimBlend),
+            THREE.MathUtils.lerp(-0.40, -0.15, designatorAimBlend)
+          );
+          designatorRig.rotation.set(
+            THREE.MathUtils.lerp(-0.12, 0, designatorAimBlend),
+            THREE.MathUtils.lerp(-0.18, 0, designatorAimBlend),
+            0
+          );
+        }
 
-        if (!designatorLaserLine && scene) {
-          const geo = new THREE.BufferGeometry().setFromPoints([startPt, targetPt]);
-          const mat = new THREE.LineBasicMaterial({ color: 0xff3d3d, transparent: true, opacity: 0.78 });
-          designatorLaserLine = new THREE.Line(geo, mat);
-          scene.add(designatorLaserLine);
-        } else if (designatorLaserLine) {
-          const posArr = designatorLaserLine.geometry.attributes.position.array;
-          posArr[0] = startPt.x; posArr[1] = startPt.y; posArr[2] = startPt.z;
-          posArr[3] = targetPt.x; posArr[4] = targetPt.y; posArr[5] = targetPt.z;
-          designatorLaserLine.geometry.attributes.position.needsUpdate = true;
+        const ov = document.getElementById('designator-overlay');
+        if (ov) ov.classList.toggle('hidden', !fullyAimed);
+        const ch = document.getElementById('crosshair');
+        if (ch) ch.classList.toggle('hidden', fullyAimed);
+
+        if (aiming) {
+          const targetPt = _getKillstreakTargetPoint();
+          const origin = new THREE.Vector3();
+          camera.getWorldPosition(origin);
+          const startPt = origin.clone().add(new THREE.Vector3(0, -0.08, 0));
+          const rangeM = Math.round(origin.distanceTo(targetPt));
+          const rangeEl = document.getElementById('desig-range');
+          if (rangeEl) rangeEl.textContent = `RANGE: ${rangeM}m`;
+
+          if (!designatorLaserLine && scene) {
+            const geo = new THREE.BufferGeometry().setFromPoints([startPt, targetPt]);
+            const mat = new THREE.LineBasicMaterial({ color: 0xff3d3d, transparent: true, opacity: 0.78 });
+            designatorLaserLine = new THREE.Line(geo, mat);
+            scene.add(designatorLaserLine);
+          } else if (designatorLaserLine) {
+            const posArr = designatorLaserLine.geometry.attributes.position.array;
+            posArr[0] = startPt.x; posArr[1] = startPt.y; posArr[2] = startPt.z;
+            posArr[3] = targetPt.x; posArr[4] = targetPt.y; posArr[5] = targetPt.z;
+            designatorLaserLine.geometry.attributes.position.needsUpdate = true;
+          }
+        } else if (designatorLaserLine && scene) {
+          scene.remove(designatorLaserLine);
+          designatorLaserLine = null;
         }
       }
     }
