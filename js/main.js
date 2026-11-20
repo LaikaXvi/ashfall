@@ -129,12 +129,17 @@
     raidKills = 0;
     raidXp = 0;
     extractProgress = 0;
+    redZoneTimer = 0;
+    redZoneDmgAccum = 0;
     activeAirstrikes = [];
     ksExplosions = [];
     uavDroneMesh = null;
     ksCooldown = 0;
     inRaid = true;
     isModalOpen = false;
+    ui.toggleTacMap(false);
+    const rzEl = document.getElementById('redzone-banner');
+    if (rzEl) rzEl.classList.add('hidden');
 
     document.getElementById('hud-feed').innerHTML = '';
     const kfEl = document.getElementById('hud-kill-feed');
@@ -162,6 +167,11 @@
   }
 
   function endRaid(extracted) {
+    if (inRaid) {
+      ui.toggleTacMap(false);
+      const rzEl = document.getElementById('redzone-banner');
+      if (rzEl) rzEl.classList.add('hidden');
+    }
     inRaid = false;
     isModalOpen = false;
     if (document.pointerLockElement === canvas) {
@@ -393,6 +403,9 @@
       if (fuMsg) ui.addFeedMessage(fuMsg, '#69f0ae');
     } else if (e.code === (kb.killstreak || 'KeyK')) {
       activateKillstreak();
+    } else if (e.code === (kb.map || 'KeyM')) {
+      e.preventDefault();
+      ui.toggleTacMap();
     } else if (e.code === (kb.interact || 'KeyE') && nearbyInteractable) {
       openNearbyInteractable();
     }
@@ -456,7 +469,48 @@
   }
 
   let activeReviveAlly = null;
+  let redZoneTimer = 0;
+  let redZoneDmgAccum = 0;
   let activeAirstrikes = [];
+
+  function updateRedZone(dt) {
+    const banner = document.getElementById('redzone-banner');
+    const timerEl = document.getElementById('redzone-timer');
+    const subEl = document.getElementById('redzone-sub');
+    if (!player || !world) return;
+
+    const B = world.mapHalfSize || 190;
+    const hardLimit = B + 45;
+    player.position.x = THREE.MathUtils.clamp(player.position.x, -hardLimit, hardLimit);
+    player.position.z = THREE.MathUtils.clamp(player.position.z, -hardLimit, hardLimit);
+
+    const outDist = Math.max(Math.abs(player.position.x) - B, Math.abs(player.position.z) - B);
+    if (outDist > 0 && !player.dead) {
+      redZoneTimer += dt;
+      const warnLimit = 6.0;
+      const rem = Math.max(0, warnLimit - redZoneTimer);
+      if (banner) banner.classList.remove('hidden');
+      if (rem > 0 && outDist < 26) {
+        if (timerEl) timerEl.textContent = `${rem.toFixed(1)}s`;
+        if (subEl) subEl.innerHTML = `LETHAL RADIATION &amp; SNIPER FIRE IN <b id="redzone-timer">${rem.toFixed(1)}s</b>`;
+      } else {
+        if (subEl) subEl.innerHTML = `<b style="color:#ff5252;">TAKING LETHAL RED ZONE DAMAGE — TURN BACK!</b>`;
+        redZoneDmgAccum += dt;
+        if (redZoneDmgAccum >= 0.45) {
+          redZoneDmgAccum = 0;
+          ui.triggerDamageFlash();
+          const res = player.takeDamage(16, { name: 'RED ZONE', weaponId: 'm24', weaponName: 'Perimeter Sniper' });
+          if (res === 'eliminated' && (!squadManager || !squadManager.hasLivingAlly())) {
+            endRaid(false);
+          }
+        }
+      }
+    } else {
+      redZoneTimer = 0;
+      redZoneDmgAccum = 0;
+      if (banner) banner.classList.add('hidden');
+    }
+  }
   let ksExplosions = [];
   let uavDroneMesh = null;
   let ksCooldown = 0;
@@ -1106,10 +1160,14 @@
             if (isModalOpen) {
               closeLootAndResume();
             } else {
+              ui.toggleTacMap(false);
               isModalOpen = true;
               if (document.pointerLockElement === canvas) document.exitPointerLock();
               ui.openLootModal(player, 'BACKPACK', null);
             }
+          },
+          toggleTacMap: () => {
+            if (!isModalOpen) ui.toggleTacMap();
           },
           closeModal: () => closeLootAndResume(),
           takeAll: () => document.getElementById('btn-take-all')?.click(),
@@ -1309,6 +1367,7 @@
 
         updatePlayerRevive(dt);
         updateKillstreaks(dt);
+        updateRedZone(dt);
         checkInteractions();
         checkExtraction(dt);
         ui.updateSearchReveal(dt);

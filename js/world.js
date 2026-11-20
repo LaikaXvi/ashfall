@@ -40,7 +40,7 @@ class WastelandWorld {
     const tex = new THREE.CanvasTexture(canvas);
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(56, 56);
+    tex.repeat.set(110, 110);
     return tex;
   }
 
@@ -82,8 +82,9 @@ class WastelandWorld {
   }
 
   _buildEnvironment() {
-    // Expanded Ground plane (460x460m wasteland floor for 380x380m playable sector)
-    const groundGeo = new THREE.PlaneGeometry(460, 460);
+    // Open Wasteland Ground Plane (900x900m stretching smoothly into the Red Zone horizon)
+    this.mapHalfSize = 190;
+    const groundGeo = new THREE.PlaneGeometry(900, 900);
     const ground = new THREE.Mesh(groundGeo, this._materials.ground);
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
@@ -332,12 +333,47 @@ class WastelandWorld {
   }
 
   _buildMapLayout() {
-    // Expanded Perimeter Walls (380x380m arena: -190 to +190 — nearly 6x the playable area!)
-    const wallH = 6.0;
-    this._addBox(0, wallH / 2, -190, 380, wallH, 1.8, this._materials.darkConcrete);
-    this._addBox(0, wallH / 2, 190, 380, wallH, 1.8, this._materials.darkConcrete);
-    this._addBox(-190, wallH / 2, 0, 1.8, wallH, 380, this._materials.darkConcrete);
-    this._addBox(190, wallH / 2, 0, 1.8, wallH, 380, this._materials.darkConcrete);
+    // Open Sector Perimeter — NO outer concrete walls! Visual 3D Red Zone hazard border lines & warning posts at ±190m
+    const B = this.mapHalfSize || 190;
+    const redLineMat = new THREE.MeshBasicMaterial({ color: 0xff2e2e, transparent: true, opacity: 0.72, side: THREE.DoubleSide });
+    const redZoneMat = new THREE.MeshBasicMaterial({ color: 0xff1e1e, transparent: true, opacity: 0.16, side: THREE.DoubleSide });
+    const addRedBorderStrip = (x, z, w, d) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), redLineMat);
+      m.rotation.x = -Math.PI / 2;
+      m.position.set(x, 0.05, z);
+      this.scene.add(m);
+    };
+    const addRedZoneBand = (x, z, w, d) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), redZoneMat);
+      m.rotation.x = -Math.PI / 2;
+      m.position.set(x, 0.04, z);
+      this.scene.add(m);
+    };
+    // Glowing crimson perimeter border lines at ±190m
+    addRedBorderStrip(0, -B, B * 2, 0.9);
+    addRedBorderStrip(0, B, B * 2, 0.9);
+    addRedBorderStrip(-B, 0, 0.9, B * 2);
+    addRedBorderStrip(B, 0, 0.9, B * 2);
+    // Red-tinted out-of-bounds ground band surrounding the entire sector (190m -> 310m)
+    const bandW = 120;
+    addRedZoneBand(0, -(B + bandW / 2), (B + bandW) * 2, bandW);
+    addRedZoneBand(0, (B + bandW / 2), (B + bandW) * 2, bandW);
+    addRedZoneBand(-(B + bandW / 2), 0, bandW, B * 2);
+    addRedZoneBand((B + bandW / 2), 0, bandW, B * 2);
+
+    // Sparse hazard warning beacons along the Red Zone edge
+    const postMat = new THREE.MeshLambertMaterial({ color: 0x2a2c2e });
+    const bulbMat = new THREE.MeshBasicMaterial({ color: 0xff3d3d });
+    for (let p = -B; p <= B; p += 38) {
+      const pts = [[p, -B], [p, B], [-B, p], [B, p]];
+      for (const [px, pz] of pts) {
+        const post = new THREE.Mesh(new THREE.BoxGeometry(0.28, 2.2, 0.28), postMat);
+        post.position.set(px, 1.1, pz);
+        const bulb = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.36, 0.36), bulbMat);
+        bulb.position.set(px, 2.35, pz);
+        this.scene.add(post, bulb);
+      }
+    }
 
     // === 8 SPREAD-OUT TACTICAL POI BUILDINGS & LANDMARKS ===
 

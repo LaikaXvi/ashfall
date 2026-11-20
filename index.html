@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ASHFALL // 3D Extraction Looter-Shooter</title>
-  <link rel="stylesheet" href="css/style.css?v=104" />
+  <link rel="stylesheet" href="css/style.css?v=108" />
   <!-- Three.js r128 UMD for zero-build compatibility (works on both http:// and file://) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
@@ -51,7 +51,7 @@
     <!-- VIEW 0: CLEAN MAIN MENU TITLE CARD & OPTIONS -->
     <section id="menu-view-home" class="menu-home-stage">
       <!-- IMPORTANT: Update version in GAME_DATA.VERSION (js/data.js) and here with EVERY new commit -->
-      <div id="menu-version-badge" class="menu-version-badge">v1.07</div>
+      <div id="menu-version-badge" class="menu-version-badge">v1.08</div>
       <div class="menu-home-card">
         <div class="title-card">
           <span class="brand-tag">SECTOR 7 // TACTICAL EXTRACTION</span>
@@ -534,6 +534,29 @@
       <div class="extract-countdown" id="extract-countdown">5.0s</div>
     </div>
 
+    <!-- Red Zone Out-of-Bounds Warning Banner -->
+    <div id="redzone-banner" class="redzone-banner hidden">
+      <div class="redzone-title">⚠ RED ZONE — RETURN TO SECTOR</div>
+      <div id="redzone-sub" class="redzone-sub">LETHAL RADIATION &amp; SNIPER FIRE IN <b id="redzone-timer">6.0s</b></div>
+    </div>
+
+    <!-- Full-Size Tactical Map Overlay ([M] / Controller Back-Select) -->
+    <div id="tacmap-overlay" class="tacmap-overlay hidden">
+      <div class="tacmap-card">
+        <div class="tacmap-header">
+          <span class="tacmap-title">TACTICAL SECTOR MAP // <span id="tacmap-zone-name">DUSTLINE OUTPOST</span></span>
+          <span class="tacmap-hint">[M] OR [BACK/SELECT] TO CLOSE</span>
+        </div>
+        <canvas id="hud-tacmap-canvas" width="560" height="560"></canvas>
+        <div class="tacmap-legend">
+          <span><i class="lg-dot lg-you"></i>YOU</span>
+          <span><i class="lg-dot lg-ally"></i>SQUAD</span>
+          <span><i class="lg-dot lg-extract"></i>EXTRACT</span>
+          <span><i class="lg-dot lg-redzone"></i>RED ZONE (OUT OF BOUNDS)</span>
+        </div>
+      </div>
+    </div>
+
     <!-- Bottom Left: Vitals + Dynamic Stance Silhouette -->
     <div class="hud-bottom-left hud-vitals-wrap">
       <div id="hud-stance-icon" class="stance-silhouette" title="Operator Stance"></div>
@@ -787,20 +810,20 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION with every new commit) -->
-  <script src="js/data.js?v=107"></script>
+  <script src="js/data.js?v=108"></script>
   <script src="js/sfx_samples.js?v=21"></script>
   <script src="js/audio.js?v=78"></script>
-  <script src="js/world.js?v=107"></script>
+  <script src="js/world.js?v=108"></script>
   <script src="js/weapons.js?v=106"></script>
   <script src="js/icons.js?v=101"></script>
   <script src="js/throwables.js?v=79"></script>
   <script src="js/enemies.js?v=107"></script>
   <script src="js/squad.js?v=92"></script>
   <script src="js/player.js?v=103"></script>
-  <script src="js/gamepad.js?v=104"></script>
+  <script src="js/gamepad.js?v=108"></script>
   <script src="js/gunsmith.js?v=41"></script>
   <script src="js/matchmaking.js?v=76"></script>
-  <script src="js/ui.js?v=107"></script>
-  <script src="js/main.js?v=107"></script>
+  <script src="js/ui.js?v=108"></script>
+  <script src="js/main.js?v=108"></script>
 </body>
 </html>

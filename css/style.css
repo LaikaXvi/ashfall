@@ -2879,6 +2879,116 @@ button:disabled {
   vertical-align: middle;
 }
 
+/* ==================== RED ZONE WARNING & FULL-SIZE TACTICAL MAP ==================== */
+.redzone-banner {
+  position: fixed;
+  top: 76px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 25;
+  padding: 10px 22px;
+  background: rgba(45, 8, 8, 0.90);
+  border: 1.5px solid #ff3d3d;
+  box-shadow: 0 0 24px rgba(255, 45, 45, 0.55);
+  text-align: center;
+  font-family: var(--font-mono);
+  pointer-events: none;
+  animation: redzonePulse 0.8s ease-in-out infinite alternate;
+}
+
+.redzone-title {
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 1.6px;
+  color: #ff5252;
+}
+
+.redzone-sub {
+  font-size: 10.5px;
+  color: #ffcccc;
+  margin-top: 2px;
+}
+
+@keyframes redzonePulse {
+  from { box-shadow: 0 0 12px rgba(255, 45, 45, 0.35); border-color: #ff3d3d; }
+  to { box-shadow: 0 0 28px rgba(255, 45, 45, 0.85); border-color: #ff8a80; }
+}
+
+.tacmap-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 28;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(6, 9, 8, 0.52);
+  pointer-events: none;
+}
+
+.tacmap-card {
+  background: rgba(11, 15, 14, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 12px 42px rgba(0, 0, 0, 0.82);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tacmap-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  font-family: var(--font-mono);
+}
+
+.tacmap-title {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  color: var(--accent-bright);
+}
+
+.tacmap-hint {
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+#hud-tacmap-canvas {
+  width: min(540px, 72vh);
+  height: min(540px, 72vh);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  display: block;
+}
+
+.tacmap-legend {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.tacmap-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.lg-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.lg-you { background: #f5a623; }
+.lg-ally { background: #4fc3f7; }
+.lg-extract { background: #69f0ae; }
+.lg-redzone { background: #ff3d3d; border-radius: 1px; }
+
 /* ==================== CENTER-SCREEN HUD TOAST ==================== */
 /* Horizontally centered, vertically aligned with the middle of the bottom health & ammo widgets */
 .hud-center-toast {

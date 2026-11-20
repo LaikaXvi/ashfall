@@ -24,6 +24,7 @@ window.DEFAULT_KEYBINDS = {
   quickMelee: 'KeyX',
   interact: 'KeyE',
   backpack: 'Tab',
+  map: 'KeyM',
   thirdPerson: 'KeyV'
 };
 window.KEYBINDS = { ...window.DEFAULT_KEYBINDS };
@@ -1259,6 +1260,7 @@ class GameUI {
       ['quickMelee', 'Quick Melee Strike'],
       ['interact', 'Loot / Interact / Revive'],
       ['backpack', 'Open Backpack'],
+      ['map', 'Toggle Full-Size Map'],
       ['thirdPerson', 'Toggle 3rd-Person Camera']
     ];
     grid.innerHTML = '';
@@ -2139,9 +2141,20 @@ class GameUI {
     }
     document.getElementById('ads-vignette').style.opacity = player.isADS ? '1' : '0';
 
-    // Compass & Top-Left Live Minimap
+    // Compass, Top-Left Live Minimap & Full-Size Tactical Map ([M] / Back-Select)
     this._updateCompass(player, world);
     this._renderMinimap(player, world, enemyManager, squadManager);
+    if (this.isTacMapOpen) {
+      this._renderFullMap(player, world, enemyManager, squadManager);
+    }
+  }
+
+  toggleTacMap(forceState = null) {
+    const ov = document.getElementById('tacmap-overlay');
+    if (!ov) return false;
+    this.isTacMapOpen = forceState !== null ? !!forceState : !this.isTacMapOpen;
+    ov.classList.toggle('hidden', !this.isTacMapOpen);
+    return this.isTacMapOpen;
   }
 
   _getOrdnanceSVG(id) {
@@ -2197,6 +2210,23 @@ class GameUI {
       x: cx + (wx - player.position.x) * scale,
       y: cy + (wz - player.position.z) * scale
     });
+
+    // Red Zone (Out-of-Bounds area surrounding the ±190m playable sector)
+    const halfSize = (world && world.mapHalfSize) || 190;
+    const tl = toMap(-halfSize, -halfSize);
+    const br = toMap(halfSize, halfSize);
+    ctx.save();
+    ctx.fillStyle = 'rgba(255, 38, 38, 0.28)';
+    // Shade outside the playable square (4 surrounding bands clipped to canvas)
+    ctx.fillRect(0, 0, W, Math.max(0, tl.y));
+    ctx.fillRect(0, Math.min(H, br.y), W, Math.max(0, H - br.y));
+    ctx.fillRect(0, Math.max(0, tl.y), Math.max(0, tl.x), Math.max(0, Math.min(H, br.y) - Math.max(0, tl.y)));
+    ctx.fillRect(Math.min(W, br.x), Math.max(0, tl.y), Math.max(0, W - br.x), Math.max(0, Math.min(H, br.y) - Math.max(0, tl.y)));
+    // Crisp Red Zone boundary outline
+    ctx.strokeStyle = '#ff3d3d';
+    ctx.lineWidth = 1.6;
+    ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+    ctx.restore();
 
     // POIs
     if (world.pois) {
@@ -2291,6 +2321,203 @@ class GameUI {
     ctx.lineTo(-4, 5);
     ctx.lineTo(0, 2.5);
     ctx.lineTo(4, 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  _renderFullMap(player, world, enemyManager, squadManager) {
+    const canvas = document.getElementById('hud-tacmap-canvas');
+    if (!canvas || !world) return;
+    const zoneLbl = document.getElementById('tacmap-zone-name');
+    if (zoneLbl && world.zone && world.zone.name) {
+      zoneLbl.textContent = world.zone.name.toUpperCase();
+    }
+
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width;
+    const H = canvas.height;
+    const halfSize = world.mapHalfSize || 190;
+    const viewExtent = halfSize + 48; // show generous 48m Red Zone border on all 4 sides!
+    const scale = W / (viewExtent * 2);
+    const toMap = (wx, wz) => ({
+      x: W * 0.5 + wx * scale,
+      y: H * 0.5 + wz * scale
+    });
+
+    // 1. Base Red Zone fill across entire canvas
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#240b0b';
+    ctx.fillRect(0, 0, W, H);
+
+    // Diagonal hazard hatching in the Red Zone
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 55, 55, 0.22)';
+    ctx.lineWidth = 2;
+    for (let i = -H; i < W + H; i += 14) {
+      ctx.beginPath();
+      ctx.moveTo(i, 0);
+      ctx.lineTo(i - H, H);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // 2. Playable Sector Interior (±190m)
+    const tl = toMap(-halfSize, -halfSize);
+    const br = toMap(halfSize, halfSize);
+    ctx.fillStyle = '#121815';
+    ctx.fillRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+
+    // Tactical coordinate grid inside playable sector
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+    ctx.lineWidth = 1;
+    for (let g = -160; g <= 160; g += 40) {
+      const p1 = toMap(g, -halfSize);
+      const p2 = toMap(g, halfSize);
+      ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+      const q1 = toMap(-halfSize, g);
+      const q2 = toMap(halfSize, g);
+      ctx.beginPath(); ctx.moveTo(q1.x, q1.y); ctx.lineTo(q2.x, q2.y); ctx.stroke();
+    }
+    ctx.restore();
+
+    // 3. Highway & Ring Road Network
+    ctx.save();
+    ctx.strokeStyle = 'rgba(130, 138, 132, 0.34)';
+    const drawRoad = (x1, z1, x2, z2, lw) => {
+      const a = toMap(x1, z1);
+      const b = toMap(x2, z2);
+      ctx.lineWidth = lw;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    };
+    drawRoad(0, -halfSize, 0, halfSize, 11 * scale);
+    drawRoad(-halfSize, -12, halfSize, -12, 11 * scale);
+    drawRoad(-120, -108, 120, -108, 7 * scale);
+    drawRoad(-120, 86, 120, 86, 7 * scale);
+    drawRoad(-112, -112, -112, 88, 7 * scale);
+    drawRoad(112, -112, 112, 88, 7 * scale);
+    ctx.restore();
+
+    // 4. Crisp Crimson Red Zone Boundary Border & Labels
+    ctx.save();
+    ctx.strokeStyle = '#ff3d3d';
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+    ctx.font = 'bold 10px Consolas, monospace';
+    ctx.fillStyle = '#ff6b6b';
+    ctx.textAlign = 'center';
+    ctx.fillText('RED ZONE // OUT OF BOUNDS', W * 0.5, tl.y * 0.58);
+    ctx.fillText('RED ZONE // OUT OF BOUNDS', W * 0.5, br.y + (H - br.y) * 0.62);
+    ctx.restore();
+
+    // 5. Labeled POIs
+    if (world.pois) {
+      ctx.save();
+      ctx.font = 'bold 10px Consolas, monospace';
+      ctx.textAlign = 'center';
+      for (const poi of world.pois) {
+        const p = toMap(poi.x, poi.z);
+        ctx.fillStyle = poi.color || 'rgba(255,255,255,0.28)';
+        ctx.globalAlpha = 0.28;
+        ctx.fillRect(p.x - 16, p.y - 12, 32, 24);
+        ctx.globalAlpha = 1.0;
+        ctx.strokeStyle = poi.color || '#d8e0dc';
+        ctx.lineWidth = 1.3;
+        ctx.strokeRect(p.x - 16, p.y - 12, 32, 24);
+        ctx.fillStyle = '#e8eee9';
+        ctx.fillText(poi.name, p.x, p.y - 16);
+      }
+      ctx.restore();
+    }
+
+    // 6. Labeled Extraction Zones
+    if (world.extractZones) {
+      ctx.save();
+      ctx.font = 'bold 9.5px Consolas, monospace';
+      ctx.textAlign = 'center';
+      for (const ez of world.extractZones) {
+        const p = toMap(ez.position.x, ez.position.z);
+        ctx.fillStyle = 'rgba(105, 240, 174, 0.22)';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 11, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#69f0ae';
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y - 6);
+        ctx.lineTo(p.x - 5, p.y + 4);
+        ctx.lineTo(p.x + 5, p.y + 4);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillText(ez.name, p.x, p.y + 18);
+      }
+      ctx.restore();
+    }
+
+    // 7. UAV Radar Sweep & Hostiles
+    const uavActive = (player.uavTimer || 0) > 0;
+    const pPos = toMap(player.position.x, player.position.z);
+    if (uavActive) {
+      const sweepAng = (performance.now() * 0.0024) % (Math.PI * 2);
+      ctx.save();
+      ctx.translate(pPos.x, pPos.y);
+      ctx.fillStyle = 'rgba(105, 240, 174, 0.12)';
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.arc(0, 0, 220, sweepAng - 0.5, sweepAng);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(105, 240, 174, 0.55)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(sweepAng) * 220, Math.sin(sweepAng) * 220);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    if (enemyManager && enemyManager.enemies) {
+      for (const e of enemyManager.enemies) {
+        if (e.dead || e.extracted) continue;
+        const dist = e.position.distanceTo(player.position);
+        if (!uavActive && e.state !== 'COMBAT' && dist > 30) continue;
+        const ep = toMap(e.position.x, e.position.z);
+        ctx.fillStyle = e.isDowned ? '#ffca28' : (e.isOperator ? '#ff3d3d' : '#ff7043');
+        ctx.beginPath();
+        ctx.arc(ep.x, ep.y, e.isOperator ? 4.2 : 3.2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // 8. Allied Squadmates
+    if (squadManager && squadManager.allies) {
+      for (const ally of squadManager.allies) {
+        if (ally.dead) continue;
+        const ap = toMap(ally.position.x, ally.position.z);
+        ctx.fillStyle = '#4fc3f7';
+        ctx.beginPath();
+        ctx.arc(ap.x, ap.y, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // 9. Player Chevron + Field-of-View Cone
+    ctx.save();
+    ctx.translate(pPos.x, pPos.y);
+    ctx.rotate(-player.yaw);
+    ctx.fillStyle = 'rgba(245, 166, 35, 0.18)';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(-18, -36);
+    ctx.lineTo(18, -36);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#f5a623';
+    ctx.beginPath();
+    ctx.moveTo(0, -8);
+    ctx.lineTo(-5.5, 6);
+    ctx.lineTo(0, 3);
+    ctx.lineTo(5.5, 6);
     ctx.closePath();
     ctx.fill();
     ctx.restore();

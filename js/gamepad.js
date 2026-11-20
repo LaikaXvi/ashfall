@@ -217,8 +217,12 @@ class GamepadController {
     if (this._justPressed(pad, 9) && actions.togglePause) {
       actions.togglePause();
     }
-    // Back / Select (8) or D-Pad Down (13): Toggle Backpack Modal
-    if ((this._justPressed(pad, 8) || this._justPressed(pad, 13)) && actions.toggleBackpack) {
+    // Back / Select (8): Toggle Full-Size Tactical Map
+    if (this._justPressed(pad, 8) && actions.toggleTacMap) {
+      actions.toggleTacMap();
+    }
+    // D-Pad Down (13): Toggle Backpack Modal
+    if (this._justPressed(pad, 13) && actions.toggleBackpack) {
       actions.toggleBackpack();
       this._snapshot(pad);
       return;
@@ -453,19 +457,15 @@ class GamepadController {
       }
     }
 
-    // === D-PAD: UP (12) = MEDKIT, DOWN (13) = KILLSTREAK, LEFT (14) = INSPECT, RIGHT (15) = 3RD PERSON ===
+    // === D-PAD: UP (12) = MEDKIT, LEFT (14) = INSPECT, RIGHT (15) = KILLSTREAK ===
     if (this._justPressed(pad, 12)) {
       if (player.startMedkit() && ui) ui.addFeedMessage('Applying Field Medkit...', '#69f0ae');
-    }
-    if (this._justPressed(pad, 13)) {
-      if (actions.activateKillstreak) actions.activateKillstreak();
     }
     if (this._justPressed(pad, 14)) {
       player.startInspect();
     }
     if (this._justPressed(pad, 15)) {
-      const tp = player.toggleThirdPerson();
-      if (ui) ui.addFeedMessage(`CAMERA: ${tp ? '3RD PERSON' : '1ST PERSON'}`, '#f5a623');
+      if (actions.activateKillstreak) actions.activateKillstreak();
     }
 
     this._snapshot(pad);
