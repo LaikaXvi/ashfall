@@ -79,6 +79,13 @@ class WeaponSystem {
     this.tacFist = null;
     this.tacFistArm = null;
     this.isThirdPerson = false;
+    this.isMeleeMode = false;
+    this.meleeMesh = null;
+    this.drawTimer = 0;
+    this.drawDuration = 0.42;
+    this.drawStyle = 'shoulder_down'; // 'shoulder_down' | 'undersling_up'
+    this.downedLegsGroup = null;
+    this.downedScootCycle = 0;
 
     this.magMesh = null;
     this.magRestPos = new THREE.Vector3();
@@ -662,9 +669,61 @@ class WeaponSystem {
     armGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
   }
 
+  startDraw(style = 'shoulder_down') {
+    this.drawStyle = style;
+    this.drawDuration = style === 'shoulder_down' ? 0.44 : 0.38;
+    this.drawTimer = this.drawDuration;
+  }
+
+  _ensureDownedLegs() {
+    if (this.downedLegsGroup || !this.viewmodelCamera) return;
+    const root = new THREE.Group();
+    const pantsMat = new THREE.MeshLambertMaterial({ color: 0x2f342d });
+    const kneePadMat = new THREE.MeshLambertMaterial({ color: 0x1a1d1f });
+    const bootMat = new THREE.MeshLambertMaterial({ color: 0x191a1c });
+    const soleMat = new THREE.MeshLambertMaterial({ color: 0x2b2824 });
+
+    const makeLeg = (xOff) => {
+      const hip = new THREE.Group();
+      hip.position.set(xOff, -0.36, -0.06);
+      const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.145, 0.14, 0.42), pantsMat);
+      thigh.position.set(0, -0.02, -0.21);
+      const knee = new THREE.Group();
+      knee.position.set(0, -0.02, -0.41);
+      const pad = new THREE.Mesh(new THREE.BoxGeometry(0.135, 0.06, 0.11), kneePadMat);
+      pad.position.set(0, 0.065, -0.02);
+      const shin = new THREE.Mesh(new THREE.BoxGeometry(0.125, 0.125, 0.38), pantsMat);
+      shin.position.set(0, -0.04, -0.19);
+      shin.rotation.x = -0.16;
+      const boot = new THREE.Mesh(new THREE.BoxGeometry(0.125, 0.19, 0.14), bootMat);
+      boot.position.set(0, -0.02, -0.41);
+      boot.rotation.x = 0.25;
+      const sole = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.19, 0.03), soleMat);
+      sole.position.set(0, -0.02, -0.485);
+      sole.rotation.x = 0.25;
+      knee.add(pad, shin, boot, sole);
+      hip.add(thigh, knee);
+      root.add(hip);
+      return { hip, knee };
+    };
+
+    const leftLeg = makeLeg(-0.15);
+    const rightLeg = makeLeg(0.15);
+    root.visible = false;
+    this.viewmodelCamera.add(root);
+    this.downedLegsGroup = root;
+    this.downedLegsParts = { leftLeg, rightLeg };
+  }
+
   buildViewmodel(weaponDef, mods = {}, withHands = true) {
+    this.isMeleeMode = false;
+    if (this.meleeMesh) {
+      this.viewmodelGroup.remove(this.meleeMesh);
+      this.meleeMesh = null;
+    }
     if (this.currentMesh) {
       this.viewmodelGroup.remove(this.currentMesh);
+      this.currentMesh = null;
     }
     this.spareMagMesh = null;
 
@@ -1289,6 +1348,58 @@ class WeaponSystem {
       }
     }
 
+    // Downed 1st-Person Seated Legs (visible in front of you as you scoot around or get dragged!)
+    this._ensureDownedLegs();
+    if (this.downedLegsGroup) {
+      const showDownedLegs = !!(player.isDowned && !player.isThirdPerson);
+      this.downedLegsGroup.visible = showDownedLegs;
+      if (showDownedLegs) {
+        this.viewmodelGroup.visible = false;
+        const scootSpd = Math.hypot(player.velocity.x, player.velocity.z);
+        if (scootSpd > 0.15 && !player.beingDragged) {
+          this.downedScootCycle += dt * 7.5;
+        }
+        const kick = (scootSpd > 0.15 && !player.beingDragged) ? Math.sin(this.downedScootCycle) : 0;
+        const p = this.downedLegsParts;
+        // Keep legs grounded horizontally regardless of camera look pitch
+        this.downedLegsGroup.rotation.x = -player.pitch * 0.75;
+        p.leftLeg.hip.rotation.x = 0.08 + Math.max(0, kick) * 0.16;
+        p.leftLeg.knee.rotation.x = -0.18 - Math.max(0, kick) * 0.28;
+        p.rightLeg.hip.rotation.x = 0.08 + Math.max(0, -kick) * 0.16;
+        p.rightLeg.knee.rotation.x = -0.18 - Math.max(0, -kick) * 0.28;
+        return;
+      } else if (!this.isThirdPerson && !this.isHealing && !player.dead) {
+        this.viewmodelGroup.visible = true;
+      }
+    }
+
+    // Weapon Draw Animation (shoulder_down from top OR undersling_up from bottom)
+    let drawPos = { x: 0, y: 0, z: 0 };
+    let drawRot = { x: 0, y: 0, z: 0 };
+    if (this.drawTimer > 0) {
+      this.drawTimer = Math.max(0, this.drawTimer - dt);
+      const t = 1 - (this.drawTimer / (this.drawDuration || 0.42));
+      const ease = 1 - Math.pow(1 - t, 3); // smooth cubic ease-out
+      const inv = 1 - ease;
+      if (this.drawStyle === 'shoulder_down') {
+        // Pulled down from over-the-shoulder sling
+        drawPos.x = 0.10 * inv;
+        drawPos.y = 0.28 * inv;
+        drawPos.z = 0.06 * inv;
+        drawRot.x = -0.62 * inv;
+        drawRot.y = -0.22 * inv;
+        drawRot.z = -0.38 * inv;
+      } else {
+        // Pulled up from underneath / back-under sling
+        drawPos.x = 0.06 * inv;
+        drawPos.y = -0.32 * inv;
+        drawPos.z = 0.08 * inv;
+        drawRot.x = 0.65 * inv;
+        drawRot.y = 0.20 * inv;
+        drawRot.z = 0.30 * inv;
+      }
+    }
+
     // Weapon Inspect progress
     let inspectPosOffset = { x: 0, y: 0, z: 0 };
     let inspectRotOffset = { x: 0, y: 0, z: 0 };
@@ -1501,11 +1612,11 @@ class WeaponSystem {
     const basePosY = isAdsActive ? -this.sightHeight : (tacSprintingHip ? -0.14 : (sprintingHip ? -0.235 : -0.20));
     const basePosZ = isAdsActive ? this.adsZ : (tacSprintingHip ? -0.34 : (sprintingHip ? -0.40 : -0.42));
 
-    const targetX = basePosX + activePosOff.x + wallPosX + leanAlignX;
-    const targetY = basePosY + activePosOff.y + wallPosY;
-    const targetZ = basePosZ + this.recoilOffset + activePosOff.z + wallPosZ;
+    const targetX = basePosX + activePosOff.x + wallPosX + leanAlignX + drawPos.x;
+    const targetY = basePosY + activePosOff.y + wallPosY + drawPos.y;
+    const targetZ = basePosZ + this.recoilOffset + activePosOff.z + wallPosZ + drawPos.z;
 
-    const lerpRate = this.isReloading ? 28 : ((this.isPlating || this.isHealing) ? 16 : (this.isInspecting ? 9 : 13));
+    const lerpRate = this.isReloading ? 28 : ((this.isPlating || this.isHealing) ? 16 : (this.isInspecting ? 9 : (this.drawTimer > 0 ? 22 : 13)));
     this.viewmodelGroup.position.x = THREE.MathUtils.lerp(this.viewmodelGroup.position.x, targetX + bobX, Math.min(1, dt * lerpRate));
     this.viewmodelGroup.position.y = THREE.MathUtils.lerp(this.viewmodelGroup.position.y, targetY - bobY, Math.min(1, dt * lerpRate));
     this.viewmodelGroup.position.z = THREE.MathUtils.lerp(this.viewmodelGroup.position.z, targetZ, Math.min(1, dt * (lerpRate + 2)));
@@ -1516,9 +1627,9 @@ class WeaponSystem {
     const sprintRotX = tacSprintingHip ? 0.86 : (sprintingHip ? -0.14 : 0);
     const sprintRotY = tacSprintingHip ? 0.16 : (sprintingHip ? 0.22 : 0);
     const sprintRotZ = tacSprintingHip ? -0.14 : (sprintingHip ? 0.08 : 0);
-    const targetRotX = customRot ? activeRotOff.x : (sprintRotX + swayRotX + this.recoilOffset * 1.8 + wallRotX);
-    const targetRotY = customRot ? activeRotOff.y : (sprintRotY + slideCantY + wallRotY + leanCantY);
-    const targetRotZ = (customRot ? activeRotOff.z : (sprintRotZ + swayRotZ + slideCantZ + wallRotZ)) - player.lean * (isAdsActive ? 0.075 : 0.21);
+    const targetRotX = (customRot ? activeRotOff.x : (sprintRotX + swayRotX + this.recoilOffset * 1.8 + wallRotX)) + drawRot.x;
+    const targetRotY = (customRot ? activeRotOff.y : (sprintRotY + slideCantY + wallRotY + leanCantY)) + drawRot.y;
+    const targetRotZ = (customRot ? activeRotOff.z : (sprintRotZ + swayRotZ + slideCantZ + wallRotZ)) - player.lean * (isAdsActive ? 0.075 : 0.21) + drawRot.z;
     const rotRate = this.isReloading ? 26 : ((this.isPlating || this.isHealing) ? 14 : (this.isInspecting ? 8 : 11));
     this.viewmodelGroup.rotation.x = THREE.MathUtils.lerp(this.viewmodelGroup.rotation.x, targetRotX, Math.min(1, dt * rotRate));
     this.viewmodelGroup.rotation.y = THREE.MathUtils.lerp(this.viewmodelGroup.rotation.y, targetRotY, Math.min(1, dt * rotRate));
@@ -3009,63 +3120,151 @@ class WeaponSystem {
 
   buildMeleeViewmodel(meleeDef) {
     this.isMeleeMode = true;
-    while (this.viewmodelGroup.children.length > 0) {
-      this.viewmodelGroup.remove(this.viewmodelGroup.children[0]);
+    if (this.currentMesh) {
+      this.viewmodelGroup.remove(this.currentMesh);
+      this.currentMesh = null;
+    }
+    if (this.meleeMesh) {
+      this.viewmodelGroup.remove(this.meleeMesh);
+      this.meleeMesh = null;
     }
     this.magMesh = null;
     this.spareMagMesh = null;
     this.boltMesh = null;
     this.charmPivot = null;
     this.leftHand = null;
-    this.rightHand = null;
     this.leftArm = null;
-    this.rightArm = null;
     this.leftFist = null;
 
     const id = (meleeDef && meleeDef.id) || 'melee_knife';
-    const gripMat = new THREE.MeshLambertMaterial({ color: 0x1e2123 });
-    const steelMat = new THREE.MeshLambertMaterial({ color: id === 'melee_karambit' ? 0x2d343a : 0xb8c2c8 });
-    const edgeMat = new THREE.MeshLambertMaterial({ color: id === 'melee_axe' ? 0x8b2e2e : 0xdce4ea });
-    const gloveMat = new THREE.MeshLambertMaterial({ color: 0x2a2e2b });
+    const gripMat = new THREE.MeshLambertMaterial({ color: 0x1b1e20 });
+    const wrapMat = new THREE.MeshLambertMaterial({ color: 0x2d322c });
+    const darkSteel = new THREE.MeshLambertMaterial({ color: 0x262a2e });
+    const brightEdge = new THREE.MeshLambertMaterial({ color: 0xd6dfe6 });
+    const brassMat = new THREE.MeshLambertMaterial({ color: 0x8a7248 });
 
     const g = new THREE.Group();
+    const bladeRoot = new THREE.Group();
+
     if (id === 'melee_axe') {
-      const handle = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.34, 0.036), gripMat);
+      // Tactical Breaching Hatchet (Bearded Blade + Rear Spike)
+      const handle = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.34, 0.032), gripMat);
       handle.position.set(0, -0.02, 0);
-      const head = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.11, 0.15), edgeMat);
-      head.position.set(0, 0.13, -0.05);
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.12, 0.04), steelMat);
-      blade.position.set(0, 0.13, -0.13);
-      g.add(handle, head, blade);
+      for (let i = 0; i < 4; i++) {
+        const rib = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.018, 0.035), wrapMat);
+        rib.position.set(0, -0.14 + i * 0.032, 0);
+        bladeRoot.add(rib);
+      }
+      const axeShape = new THREE.Shape();
+      axeShape.moveTo(0, -0.02);
+      axeShape.lineTo(0.095, -0.065);
+      axeShape.quadraticCurveTo(0.115, 0.01, 0.092, 0.068);
+      axeShape.lineTo(-0.02, 0.042);
+      axeShape.lineTo(-0.088, 0.018); // rear breaching spike
+      axeShape.lineTo(-0.02, -0.012);
+      axeShape.closePath();
+      const axeGeo = new THREE.ExtrudeGeometry(axeShape, { depth: 0.012, bevelEnabled: true, bevelThickness: 0.002, bevelSize: 0.002, bevelSegments: 1 });
+      axeGeo.center();
+      const axeHead = new THREE.Mesh(axeGeo, darkSteel);
+      axeHead.rotation.y = Math.PI / 2;
+      axeHead.position.set(0, 0.14, -0.015);
+      const edgeStrip = new THREE.Mesh(new THREE.BoxGeometry(0.004, 0.12, 0.014), brightEdge);
+      edgeStrip.position.set(0, 0.14, -0.105);
+      bladeRoot.add(handle, axeHead, edgeStrip);
     } else if (id === 'melee_karambit') {
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.024, 0.007, 6, 12), gripMat);
-      ring.position.set(0, -0.10, 0);
-      const handle = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.12, 0.034), gripMat);
-      handle.position.set(0, -0.02, 0);
-      const bladeA = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.10, 0.032), steelMat);
-      bladeA.position.set(0, 0.07, -0.025);
-      bladeA.rotation.x = 0.45;
-      const bladeB = new THREE.Mesh(new THREE.BoxGeometry(0.010, 0.09, 0.024), edgeMat);
-      bladeB.position.set(0, 0.12, -0.075);
-      bladeB.rotation.x = 1.05;
-      g.add(ring, handle, bladeA, bladeB);
+      // Sculpted Curved Tactical Karambit (Finger Ring + Curved Ergonomic Handle + Hawkbill Talon Blade)
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.018, 0.0045, 8, 16), darkSteel);
+      ring.rotation.y = Math.PI / 2;
+      ring.position.set(0, -0.095, 0.014);
+
+      const handleShape = new THREE.Shape();
+      handleShape.moveTo(-0.012, -0.082);
+      handleShape.quadraticCurveTo(0.012, -0.04, 0.004, 0.018);
+      handleShape.lineTo(-0.018, 0.022);
+      handleShape.quadraticCurveTo(-0.012, -0.04, -0.026, -0.078);
+      handleShape.closePath();
+      const handleGeo = new THREE.ExtrudeGeometry(handleShape, { depth: 0.016, bevelEnabled: true, bevelThickness: 0.002, bevelSize: 0.002, bevelSegments: 1 });
+      handleGeo.translate(0, 0, -0.008);
+      const handle = new THREE.Mesh(handleGeo, gripMat);
+      handle.rotation.y = Math.PI / 2;
+
+      const talonShape = new THREE.Shape();
+      talonShape.moveTo(-0.014, 0.018);
+      talonShape.quadraticCurveTo(0.015, 0.095, 0.105, 0.145); // outer curved spine to needle tip
+      talonShape.quadraticCurveTo(0.055, 0.085, 0.016, 0.016); // sharp inner curved edge
+      talonShape.closePath();
+      const talonGeo = new THREE.ExtrudeGeometry(talonShape, { depth: 0.0045, bevelEnabled: true, bevelThickness: 0.001, bevelSize: 0.001, bevelSegments: 1 });
+      talonGeo.translate(0, 0, -0.00225);
+      const blade = new THREE.Mesh(talonGeo, brightEdge);
+      blade.rotation.y = Math.PI / 2;
+
+      bladeRoot.add(ring, handle, blade);
     } else {
-      // Tactical Combat Knife
-      const handle = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.13, 0.036), gripMat);
-      handle.position.set(0, -0.04, 0);
-      const guard = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.014, 0.064), gripMat);
-      guard.position.set(0, 0.028, 0);
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.21, 0.036), steelMat);
-      blade.position.set(0, 0.14, -0.004);
-      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.018, 0.055, 4), edgeMat);
-      tip.position.set(0, 0.27, -0.004);
-      g.add(handle, guard, blade, tip);
+      // Sculpted Tactical Combat Knife (Clip-Point Bowie Blade, Fuller Groove, Crossguard & Ribbed Grip)
+      const pommel = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.012, 0.016, 10), darkSteel);
+      pommel.position.set(0, -0.105, 0);
+
+      const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.013, 0.11, 10), gripMat);
+      handle.scale.set(0.75, 1, 1.2);
+      handle.position.set(0, -0.045, 0);
+
+      for (let i = 0; i < 4; i++) {
+        const rib = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.008, 0.032), wrapMat);
+        rib.position.set(0, -0.08 + i * 0.022, 0);
+        bladeRoot.add(rib);
+      }
+
+      // Crossguard with quillons
+      const guard = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.010, 0.068), darkSteel);
+      guard.position.set(0, 0.014, 0);
+      const collar = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.006, 0.038), brassMat);
+      collar.position.set(0, 0.021, 0);
+
+      // Clip-point Bowie blade profile (extruded thin steel)
+      const bladeShape = new THREE.Shape();
+      bladeShape.moveTo(-0.014, 0.022);      // spine base
+      bladeShape.lineTo(-0.014, 0.145);      // straight spine
+      bladeShape.lineTo(-0.002, 0.228);      // clip-point razor tip
+      bladeShape.quadraticCurveTo(0.020, 0.175, 0.018, 0.115); // curved cutting belly
+      bladeShape.lineTo(0.016, 0.022);       // heel of edge
+      bladeShape.closePath();
+      const bladeGeo = new THREE.ExtrudeGeometry(bladeShape, { depth: 0.004, bevelEnabled: true, bevelThickness: 0.0012, bevelSize: 0.001, bevelSegments: 1 });
+      bladeGeo.translate(0, 0, -0.002);
+      const blade = new THREE.Mesh(bladeGeo, darkSteel);
+      blade.rotation.y = Math.PI / 2;
+
+      // Bright honed cutting edge bevel along the front edge
+      const edgeShape = new THREE.Shape();
+      edgeShape.moveTo(0.011, 0.024);
+      edgeShape.lineTo(0.014, 0.118);
+      edgeShape.quadraticCurveTo(0.016, 0.172, -0.001, 0.227);
+      edgeShape.quadraticCurveTo(0.022, 0.174, 0.019, 0.115);
+      edgeShape.lineTo(0.017, 0.024);
+      edgeShape.closePath();
+      const edgeGeo = new THREE.ExtrudeGeometry(edgeShape, { depth: 0.0024, bevelEnabled: false });
+      edgeGeo.translate(0, 0, -0.0012);
+      const edgeMesh = new THREE.Mesh(edgeGeo, brightEdge);
+      edgeMesh.rotation.y = Math.PI / 2;
+
+      bladeRoot.add(pommel, handle, guard, collar, blade, edgeMesh);
     }
 
-    const hand = new THREE.Mesh(new THREE.BoxGeometry(0.075, 0.085, 0.09), gloveMat);
-    hand.position.set(0, -0.04, 0.01);
-    g.add(hand);
-    g.rotation.set(-0.32, 0.24, 0.18);
+    // Angle blade naturally forward-left like a real FPS combat knife ready stance
+    bladeRoot.position.set(0.01, -0.01, -0.02);
+    bladeRoot.rotation.set(-0.78, 0.35, 0.28);
+    g.add(bladeRoot);
+
+    // Attach proper gloved right hand & forearm!
+    this.rightHand = this._createGlovedHand(true, 'grip');
+    this.rightHand.position.set(0.015, -0.055, 0.02);
+    this.rightHand.rotation.set(-0.45, 0.25, 0.20);
+    this.rightHandRestPos.copy(this.rightHand.position);
+    this.rightHandRestRot.copy(this.rightHand.rotation);
+    this.rightArm = this._createForearm();
+    g.add(this.rightHand, this.rightArm);
+
+    this.meleeMesh = g;
+    this.currentMesh = g;
     this.viewmodelGroup.add(g);
     this.sightHeight = 0.12;
     this.adsZ = -0.34;

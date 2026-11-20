@@ -320,7 +320,23 @@ class Player {
     if (p.handMag) p.handMag.visible = false;
     if (p.handShell) p.handShell.visible = false;
 
-    if (this.isSliding) {
+    if (this.isDowned) {
+      // === DOWNED SEATED POSTURE: LEGS STRETCHED OUT IN FRONT, SCOOTING ON GROUND OR DRAGGED FROM BEHIND ===
+      autoClampFeet = false;
+      pelvisY = 0.24;
+      torsoPitch = -0.32 + breathe * 0.02;
+      const scoot = (!this.beingDragged && horizSpeed > 0.15) ? Math.sin(this.animCycle * 1.1) : 0;
+      lHipX = 1.44 + Math.max(0, scoot) * 0.14;
+      lHipZ = -0.10;
+      lKneeX = -0.26 - Math.max(0, scoot) * 0.26;
+      lAnkX = 0.22;
+      rHipX = 1.44 + Math.max(0, -scoot) * 0.14;
+      rHipZ = 0.10;
+      rKneeX = -0.26 - Math.max(0, -scoot) * 0.26;
+      rAnkX = 0.22;
+      lShX = -0.42; lElbX = 0.35; lShZ = -0.36;
+      rShX = -0.42; rElbX = 0.35; rShZ = 0.36;
+    } else if (this.isSliding) {
       // === LOW, FOCUSED COMBAT SLIDE: SKIMMING GROUND, LEAD LEG FLAT OUT, TRAILING KNEE TUCKED HORIZONTALLY, ARMS LOW STABILIZING GUN ===
       autoClampFeet = false;
       const sp = THREE.MathUtils.clamp(1 - (this.slideTimer / this.slideDuration), 0, 1);
@@ -762,11 +778,18 @@ class Player {
       if (this.activeSlot === 'melee') return;
       this.activeSlot = 'melee';
       this._equipCurrentWeapon();
+      if (this.weaponSystem && this.weaponSystem.startDraw) {
+        this.weaponSystem.startDraw('undersling_up');
+      }
       return;
     }
     if (slotName === this.activeSlot || !this.slots[slotName]) return;
     this.activeSlot = slotName;
     this._equipCurrentWeapon();
+    if (this.weaponSystem && this.weaponSystem.startDraw) {
+      // Primary pulls down from over-the-shoulder sling; Secondary pulls up from underneath sling
+      this.weaponSystem.startDraw(slotName === 'primary' ? 'shoulder_down' : 'undersling_up');
+    }
   }
 
   equipWeaponInRaid(weaponId, preferredSlot = null) {
@@ -1112,6 +1135,7 @@ class Player {
   }
 
   onJumpKeyDown() {
+    if (this.isDowned || this.dead) return;
     if (this.isSliding) {
       // Smooth slide-cancel back to standing / sprinting
       if (this.slideTimer < this.slideDuration - 0.14) {
@@ -1308,9 +1332,10 @@ class Player {
     this.isProne = (this.stance === 'prone' && !this.isSliding);
     this.isCrouching = (this.stance === 'crouch' || this.stance === 'prone' || this.isSliding);
 
-    // Smooth eye-height interpolation across Stand / Crouch / Slide / Prone
+    // Smooth eye-height interpolation across Stand / Crouch / Slide / Prone / Downed Seated
     let targetEye = this.standEyeHeight;
-    if (this.isSliding) targetEye = this.slideEyeHeight;
+    if (this.isDowned) targetEye = 0.72;
+    else if (this.isSliding) targetEye = this.slideEyeHeight;
     else if (this.stance === 'prone') targetEye = this.proneEyeHeight;
     else if (this.stance === 'crouch') targetEye = this.crouchEyeHeight;
 

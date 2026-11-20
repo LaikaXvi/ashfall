@@ -417,8 +417,11 @@ class Enemy {
         this.downedBleedTimer = this.downedBleedMax;
         this.downedBy = attackerInfo || { name: 'YOU', isPlayer: true, weaponId: '', weaponName: '' };
         this.state = 'DOWNED';
-        this.group.position.y = -0.45;
-        this.group.rotation.x = -0.55;
+        // Seated downed posture: legs stretched out in front on the ground
+        this.group.position.y = -0.52;
+        this.group.rotation.x = -0.22;
+        if (this.leftHip) this.leftHip.rotation.x = -1.42;
+        if (this.rightHip) this.rightHip.rotation.x = -1.42;
         if (this.alertSprite) this.alertSprite.visible = false;
         // Never show enemy revive symbols or bleedout status to the player
         if (this.bleedSprite) this.bleedSprite.visible = false;
@@ -579,6 +582,8 @@ class Enemy {
     this.reviveProgress = 0;
     this.group.position.y = 0;
     this.group.rotation.x = 0;
+    if (this.leftHip) this.leftHip.rotation.x = 0;
+    if (this.rightHip) this.rightHip.rotation.x = 0;
     if (this.bleedSprite) this.bleedSprite.visible = false;
     this.state = 'ALERT';
     this.alertTimer = 4.0;
@@ -753,7 +758,13 @@ class Enemy {
             this.group.position.z = this.position.z;
           }
           this.group.rotation.y = Math.atan2(awayX, awayZ);
+          this._scootCycle = (this._scootCycle || 0) + dt * 7.0;
+          if (this.leftHip) this.leftHip.rotation.x = -1.42 + Math.sin(this._scootCycle) * 0.16;
+          if (this.rightHip) this.rightHip.rotation.x = -1.42 - Math.sin(this._scootCycle) * 0.16;
         }
+      } else {
+        if (this.leftHip) this.leftHip.rotation.x = -1.42;
+        if (this.rightHip) this.rightHip.rotation.x = -1.42;
       }
       if (!this.beingRevivedBy && this.downedBleedTimer <= 0) {
         this.die();

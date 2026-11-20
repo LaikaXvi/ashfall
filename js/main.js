@@ -550,9 +550,12 @@
   }
 
   function updatePlayerRevive(dt) {
-    // Self-Revive Kit: if player is downed and has a Self-Revive Kit equipped, hold [E] to revive yourself!
+    const kb = window.KEYBINDS || {};
+    const interactKey = kb.interact || 'KeyE';
+    // Self-Revive Kit: hold [Interact] while downed to channel Self-Revive AND pause the death/bleedout timer!
     if (player && player.isDowned && !player.dead) {
-      if (player.selfRevive && !isModalOpen && player.keys['KeyE'] && !player.beingRevivedBy) {
+      const canSelfRevive = !player.beingRevivedBy || player.beingRevivedBy === 'SELF-REVIVE';
+      if (player.selfRevive && !isModalOpen && player.keys[interactKey] && canSelfRevive) {
         player.beingRevivedBy = 'SELF-REVIVE';
         player.reviveProgress = Math.min(1, (player.reviveProgress || 0) + dt / 4.5);
         if (player.reviveProgress >= 1) {
@@ -568,7 +571,7 @@
       return;
     }
 
-    const holdingRevive = !!(player && !player.isDowned && !player.dead && !isModalOpen && player.keys['KeyE']);
+    const holdingRevive = !!(player && !player.isDowned && !player.dead && !isModalOpen && player.keys[interactKey]);
     const candidate = activeReviveAlly || findRevivableAlly();
 
     if (holdingRevive && candidate && (candidate.isDowned || candidate.dead)) {
