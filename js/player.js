@@ -73,7 +73,8 @@ class Player {
     this.tactical = loadoutState.tactical !== undefined ? loadoutState.tactical : 'smoke_grenade';
     this.tacticalQty = loadoutState.tacticalQty !== undefined ? loadoutState.tacticalQty : (this.tactical ? 2 : 0);
     this.backpackId = loadoutState.backpack || 'bag_small';
-    this.backpackMaxSlots = (GAME_DATA.ITEMS[this.backpackId] && GAME_DATA.ITEMS[this.backpackId].slots) || 8;
+    const bagDef = GAME_DATA.ITEMS[this.backpackId];
+    this.backpackMaxSlots = (bagDef && bagDef.slots) || 8;
     this.fieldUpgrade = loadoutState.fieldUpgrade || 'fu_ammo_box';
     this.fieldUpgradeCharge = 100; // starts ready (0..100%)
     this.killstreak = loadoutState.killstreak || null;
@@ -98,6 +99,9 @@ class Player {
       secondary: makeSlot(loadoutState.secondary)
     };
     this.activeSlot = this.slots.primary ? 'primary' : 'secondary';
+    this.backpackWeapon = (bagDef && bagDef.weaponSlot && loadoutState.backpackWeapon)
+      ? makeSlot(typeof loadoutState.backpackWeapon === 'string' ? loadoutState.backpackWeapon : loadoutState.backpackWeapon.id)
+      : null;
 
     // Backpack (stores ammo, meds, and looted items during raid)
     this.maxWeight = 25.0;
@@ -811,9 +815,14 @@ class Player {
     }
   }
 
-  equipWeaponInRaid(weaponId, preferredSlot = null) {
+  hasWeaponBackpack() {
+    const def = this.backpackId && GAME_DATA.ITEMS[this.backpackId];
+    return !!(def && def.weaponSlot);
+  }
+
+  equipWeaponInRaid(weaponId, preferredSlot = null, extra = {}) {
     const def = GAME_DATA.ITEMS[weaponId];
-    if (!def || def.type !== 'weapon') return { equipped: false, prevId: null, slot: null };
+    if (!def || def.type !== 'weapon') return { equipped: false, prevId: null, prevSlotObj: null, slot: null };
 
     let targetSlot = preferredSlot;
     if (!targetSlot) {
@@ -823,16 +832,29 @@ class Player {
       else targetSlot = def.slot || this.activeSlot || 'primary';
     }
 
+    const mods = extra.mods || {};
+    const eff = GAME_DATA.getEffectiveWeaponStats(weaponId, mods);
+    const mag = extra.mag !== undefined ? extra.mag : (eff ? eff.magSize : (def.magSize || 30));
+
+    if (targetSlot === 'backpackWeapon') {
+      if (!this.hasWeaponBackpack()) {
+        return { equipped: false, prevId: null, prevSlotObj: null, slot: null };
+      }
+      const prevSlotObj = this.backpackWeapon;
+      const prevId = prevSlotObj ? prevSlotObj.id : null;
+      this.backpackWeapon = { id: weaponId, mods, mag };
+      return { equipped: true, prevId, prevSlotObj, slot: 'backpackWeapon' };
+    }
+
     const prevSlotObj = this.slots[targetSlot];
     const prevId = prevSlotObj ? prevSlotObj.id : null;
-    const eff = GAME_DATA.getEffectiveWeaponStats(weaponId, {});
-    this.slots[targetSlot] = { id: weaponId, mods: {}, mag: eff.magSize };
+    this.slots[targetSlot] = { id: weaponId, mods, mag };
 
     if (!this.activeSlot || this.activeSlot === targetSlot || !this.slots[this.activeSlot]) {
       this.activeSlot = targetSlot;
       this._equipCurrentWeapon();
     }
-    return { equipped: true, prevId, slot: targetSlot };
+    return { equipped: true, prevId, prevSlotObj, slot: targetSlot };
   }
 
   getReserveAmmo(ammoId) {
@@ -1036,6 +1058,9 @@ class Player {
 
   getBackpackValue() {
     let val = 0;
+    if (this.backpackWeapon && GAME_DATA.ITEMS[this.backpackWeapon.id]) {
+      val += GAME_DATA.ITEMS[this.backpackWeapon.id].value;
+    }
     for (const item of this.backpack) {
       const def = GAME_DATA.ITEMS[item.id];
       if (def) val += def.value * item.qty;
@@ -1043,9 +1068,22 @@ class Player {
     return val;
   }
 
-  addToBackpack(id, qty = 1) {
+  addToBackpack(id, qty = 1, extra = {}) {
     const def = GAME_DATA.ITEMS[id];
     if (!def || qty <= 0) return false;
+
+    // Weapons can ONLY be looted into a backpack if a Weapon Backpack is equipped and its dedicated double-wide weapon slot is available!
+    if (def.type === 'weapon') {
+      if (!this.hasWeaponBackpack() || this.backpackWeapon) return false;
+      const mods = extra.mods || {};
+      const eff = GAME_DATA.getEffectiveWeaponStats(id, mods);
+      this.backpackWeapon = {
+        id,
+        mods,
+        mag: extra.mag !== undefined ? extra.mag : (eff ? eff.magSize : (def.magSize || 30))
+      };
+      return true;
+    }
 
     const maxSlots = this.backpackMaxSlots || 8;
 

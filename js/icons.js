@@ -79,9 +79,10 @@ class ItemIconRenderer {
     const fovRad = (this.camera.fov * Math.PI) / 180;
     const distV = (maxDimY * 0.5) / Math.tan(fovRad * 0.5);
     const distH = (maxDimX * 0.5) / (Math.tan(fovRad * 0.5) * this.camera.aspect);
-    const dist = Math.max(distV, distH) * 1.28 + size.z * 0.55;
+    const padMult = wide ? 1.10 : 1.28;
+    const dist = Math.max(distV, distH) * padMult + size.z * (wide ? 0.38 : 0.55);
 
-    this.camera.position.set(0, 0, Math.max(0.35, dist));
+    this.camera.position.set(0, 0, Math.max(0.32, dist));
     this.camera.lookAt(0, 0, 0);
 
     this.renderer.render(this.scene, this.camera);
@@ -104,8 +105,8 @@ class ItemIconRenderer {
       if (wb && wb.buildThirdPersonWeapon) {
         const built = wb.buildThirdPersonWeapon(def, mods);
         if (built && built.group) {
-          // Side-profile hero angle facing right
-          built.group.rotation.set(0.08, Math.PI / 2 - 0.22, 0.14);
+          // Clean side-profile hero angle facing right to showcase full 3D weapon geometry in double-wide slots
+          built.group.rotation.set(0.05, Math.PI / 2 - 0.14, 0.05);
           g.add(built.group);
           return g;
         }
@@ -221,8 +222,9 @@ class ItemIconRenderer {
 
     // 5. BACKPACKS
     if (def && def.type === 'backpack') {
-      const s = id === 'bag_large' ? 1.18 : (id === 'bag_medium' ? 1.0 : 0.84);
-      const col = id === 'bag_large' ? 0x6b4f2a : (id === 'bag_medium' ? 0x344c63 : 0x4a5244);
+      const isWpnBag = id === 'bag_weapon';
+      const s = (id === 'bag_large' || isWpnBag) ? 1.18 : (id === 'bag_medium' ? 1.0 : 0.84);
+      const col = isWpnBag ? 0x3b4836 : (id === 'bag_large' ? 0x6b4f2a : (id === 'bag_medium' ? 0x344c63 : 0x4a5244));
       const body = new THREE.Mesh(new THREE.BoxGeometry(0.42 * s, 0.54 * s, 0.24 * s), this._mat(col));
       const pocket = new THREE.Mesh(new THREE.BoxGeometry(0.32 * s, 0.24 * s, 0.10 * s), this._mat(0x232724));
       pocket.position.set(0, -0.10 * s, 0.15 * s);
@@ -231,6 +233,18 @@ class ItemIconRenderer {
       const handle = new THREE.Mesh(new THREE.TorusGeometry(0.07 * s, 0.018, 6, 12, Math.PI), this._mat(0x181a18));
       handle.position.set(0, 0.29 * s, 0);
       g.add(body, pocket, flap, handle);
+      if (isWpnBag) {
+        // Side-mounted tactical weapon scabbard + protruding rifle barrel/stock silhouette & gold trim
+        const scabbard = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.68, 0.14), this._mat(0x252926));
+        scabbard.position.set(-0.22, 0.08, -0.02);
+        scabbard.rotation.z = 0.12;
+        const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.30, 8), this._mat(0x16181a));
+        barrel.position.set(-0.26, 0.48, -0.02);
+        barrel.rotation.z = 0.12;
+        const badge = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.06, 0.03), this._mat(0xffc107, 0x3b2800));
+        badge.position.set(0, 0.08, 0.16);
+        g.add(scabbard, barrel, badge);
+      }
       g.rotation.set(0.22, -0.48, 0);
       return g;
     }

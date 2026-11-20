@@ -130,7 +130,7 @@ class Enemy {
         : (this.playstyle === 'rusher' ? ['mp5k', 'm870'] : ['ak74m', 'mp5k', 'm870']);
       this.weaponId = opPrimaries[Math.floor(Math.random() * opPrimaries.length)];
       const vests = ['vest_1plate', 'vest_2plate', 'vest_2plate_gel', 'vest_2plate_helmet', 'vest_3plate'];
-      const bags = ['bag_small', 'bag_medium', 'bag_large'];
+      const bags = ['bag_small', 'bag_medium', 'bag_large', 'bag_weapon'];
       const melees = ['melee_knife', 'melee_karambit', 'melee_axe'];
       const fus = ['fu_ammo_box', 'fu_dead_silence', 'fu_trophy'];
       this.operatorEquipment = {

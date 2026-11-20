@@ -1407,33 +1407,120 @@ button:disabled {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
 }
 
 #menu-view-deploy {
-  padding: 8px 10px;
+  --deploy-slot: clamp(36px, min(5.9vh, 4.6vw), 58px);
+  --deploy-gap: 4px;
+  padding: 6px 10px;
+  overflow: hidden !important;
+  align-items: flex-start;
 }
 
 #menu-view-deploy .edge-panel-left {
   width: fit-content;
-  max-width: calc(100vw - 392px);
-  overflow: hidden;
+  max-width: calc(100vw - 380px);
+  max-height: calc(100vh - 76px);
+  overflow: hidden !important;
   display: flex;
   flex-direction: column;
+  padding: 8px 10px;
 }
 
 #menu-view-deploy .edge-panel-right {
-  width: 358px;
-  min-width: 358px;
-  max-width: 358px;
+  width: fit-content;
+  min-width: calc(var(--deploy-slot) * 5 + var(--deploy-gap) * 4 + 20px);
+  max-width: calc(var(--deploy-slot) * 5 + var(--deploy-gap) * 4 + 20px);
+  max-height: calc(100vh - 76px);
   flex-shrink: 0;
-  overflow: visible;
+  overflow: hidden !important;
+  padding: 8px 10px;
 }
 
 #menu-view-deploy .deploy-summary-bar {
-  padding: 7px 9px;
-  gap: 6px 10px;
-  font-size: 10px;
+  padding: 5px 8px;
+  gap: 4px 8px;
+  font-size: 9.5px;
+}
+
+.stash-weapon-grid-15 {
+  display: grid;
+  grid-template-columns: repeat(10, var(--deploy-slot));
+  gap: var(--deploy-gap);
+  width: fit-content;
+  padding: 2px 0;
+  overflow: hidden;
+}
+
+#menu-view-deploy .stash-grid-64 {
+  grid-template-columns: repeat(8, var(--deploy-slot));
+  gap: var(--deploy-gap);
+  max-height: none;
+  overflow: hidden;
+  padding: 2px 0;
+}
+
+#menu-view-deploy .inv-grid-compact {
+  grid-template-columns: repeat(5, var(--deploy-slot));
+  gap: var(--deploy-gap);
+}
+
+#menu-view-deploy .op-tactical-grid {
+  grid-template-columns: repeat(5, var(--deploy-slot));
+  gap: var(--deploy-gap);
+}
+
+#menu-view-deploy .inv-slot,
+#menu-view-deploy .stash-grid-64 .inv-slot {
+  width: var(--deploy-slot);
+  height: var(--deploy-slot);
+  min-width: var(--deploy-slot);
+  max-width: var(--deploy-slot);
+  min-height: var(--deploy-slot);
+  max-height: var(--deploy-slot);
+}
+
+#menu-view-deploy .inv-slot.weapon-slot-wide {
+  grid-column: span 2;
+  width: calc(var(--deploy-slot) * 2 + var(--deploy-gap));
+  min-width: calc(var(--deploy-slot) * 2 + var(--deploy-gap));
+  max-width: calc(var(--deploy-slot) * 2 + var(--deploy-gap));
+  height: var(--deploy-slot);
+  min-height: var(--deploy-slot);
+  max-height: var(--deploy-slot);
+}
+
+#menu-view-deploy .op-tactical-grid .op-slot-card {
+  width: var(--deploy-slot);
+  height: var(--deploy-slot);
+  min-height: var(--deploy-slot);
+  max-height: var(--deploy-slot);
+}
+
+#menu-view-deploy .op-tactical-grid .op-slot-card.span-2 {
+  grid-column: span 2;
+  width: calc(var(--deploy-slot) * 2 + var(--deploy-gap));
+}
+
+#menu-view-deploy .slot-icon-img {
+  width: calc(var(--deploy-slot) * 0.75);
+  height: calc(var(--deploy-slot) * 0.75);
+}
+
+#menu-view-deploy .inv-slot.weapon-slot-wide .slot-icon-img.wide-weapon-icon {
+  width: calc(var(--deploy-slot) * 1.82);
+  height: calc(var(--deploy-slot) * 0.80);
+}
+
+#menu-view-deploy .op-slot-icon {
+  width: calc(var(--deploy-slot) * 0.80);
+  height: calc(var(--deploy-slot) * 0.80);
+}
+
+#menu-view-deploy .op-tactical-grid .op-slot-card.span-2 .op-slot-icon {
+  width: calc(var(--deploy-slot) * 1.82);
+  height: calc(var(--deploy-slot) * 0.80);
 }
 
 #menu-view-stash .edge-panel-left,
@@ -2305,6 +2392,23 @@ button:disabled {
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
 }
 
+.inv-slot.weapon-slot-wide {
+  grid-column: span 2;
+  width: 132px;
+  min-width: 132px;
+  max-width: 132px;
+  height: 64px;
+  min-height: 64px;
+  max-height: 64px;
+  box-shadow: inset 0 0 0 1px rgba(245, 166, 35, 0.24);
+}
+
+.inv-slot.weapon-slot-wide.empty-slot {
+  opacity: 0.45;
+  border-style: dashed;
+  border-color: rgba(245, 166, 35, 0.38);
+}
+
 .slot-icon-img {
   width: 48px;
   height: 48px;
@@ -2314,6 +2418,36 @@ button:disabled {
   user-select: none;
   display: block;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.8));
+}
+
+.inv-slot.weapon-slot-wide .slot-icon-img.wide-weapon-icon {
+  width: 118px;
+  height: 52px;
+  margin-top: 6px;
+}
+
+.slot-wpn-tag {
+  position: absolute;
+  left: 5px;
+  bottom: 2px;
+  z-index: 2;
+  font-family: var(--font-mono);
+  font-size: 7.5px;
+  font-weight: 800;
+  color: rgba(232, 236, 233, 0.88);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
+  pointer-events: none;
+}
+
+.empty-wpn-hint {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  color: var(--accent-bright);
+  opacity: 0.72;
+  margin-top: 6px;
+  pointer-events: none;
 }
 
 .inv-slot-name, .slot-name {
@@ -3167,4 +3301,192 @@ button:disabled {
 @keyframes centerToastPop {
   from { opacity: 0; transform: translate(-50%, 6px) scale(0.95); }
   to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+
+/* ==================== WEAPON SLOT STAGING MODAL ==================== */
+.weapon-staging-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 65;
+  background: rgba(6, 9, 8, 0.76);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+.weapon-staging-card {
+  width: 540px;
+  max-width: 94vw;
+  background: rgba(14, 18, 16, 0.97);
+  border: 1px solid var(--accent-bright);
+  box-shadow: 0 14px 44px rgba(0, 0, 0, 0.88);
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-family: var(--font-mono);
+}
+
+.ws-incoming-box {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 12px;
+  background: rgba(22, 27, 24, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+.ws-incoming-icon {
+  width: 156px;
+  height: 74px;
+  background: rgba(10, 12, 11, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.ws-incoming-icon img {
+  width: 144px;
+  height: 66px;
+  object-fit: contain;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.88));
+}
+
+.ws-incoming-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.ws-incoming-tag {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: var(--accent-bright);
+}
+
+.ws-incoming-name {
+  font-size: 15px;
+  font-weight: 900;
+  color: var(--text-main);
+}
+
+.ws-incoming-meta {
+  font-size: 10.5px;
+  color: var(--text-dim);
+}
+
+.ws-divider {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  color: var(--text-dim);
+  text-align: center;
+  padding: 2px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.ws-slots-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ws-slot-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 9px 12px;
+  background: rgba(18, 22, 20, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s, transform 0.1s;
+}
+
+.ws-slot-card:hover:not(.locked) {
+  border-color: var(--accent-bright);
+  background: rgba(245, 166, 35, 0.15);
+  transform: translateX(3px);
+}
+
+.ws-slot-card.locked {
+  opacity: 0.42;
+  cursor: not-allowed;
+  border-style: dashed;
+}
+
+.ws-slot-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.ws-slot-thumb {
+  width: 124px;
+  height: 56px;
+  background: rgba(10, 12, 11, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 9px;
+  color: var(--text-dim);
+}
+
+.ws-slot-thumb img {
+  width: 114px;
+  height: 50px;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.85));
+}
+
+.ws-slot-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ws-slot-title {
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--accent-bright);
+  letter-spacing: 0.8px;
+}
+
+.ws-slot-cur {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.ws-slot-sub {
+  font-size: 9.5px;
+  color: var(--text-dim);
+}
+
+.ws-slot-action {
+  padding: 5px 10px;
+  background: rgba(245, 166, 35, 0.18);
+  border: 1px solid var(--accent-bright);
+  color: var(--accent-bright);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ws-slot-card.locked .ws-slot-action {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.16);
+  color: var(--text-dim);
 }

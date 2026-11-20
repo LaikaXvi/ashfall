@@ -166,7 +166,10 @@
       const jitter = (Math.random() - 0.5) * 0.35;
       const dropX = player.position.x - sinY * 1.05 + cosY * jitter;
       const dropZ = player.position.z - cosY * 1.05 - sinY * jitter;
-      world.spawnGroundItem(droppedItem.id, droppedItem.qty, new THREE.Vector3(dropX, 0.02, dropZ));
+      world.spawnGroundItem(droppedItem.id, droppedItem.qty || 1, new THREE.Vector3(dropX, 0.02, dropZ), {
+        mods: droppedItem.mods || null,
+        mag: droppedItem.mag
+      });
     };
     ui.addFeedMessage(`Deployed to ${zone.name}`, '#69f0ae');
     canvas.requestPointerLock();
@@ -194,6 +197,7 @@
       totalVal += (player.cash || 0);
       ui.profile.loadout.primary = player.slots.primary ? player.slots.primary.id : null;
       ui.profile.loadout.secondary = player.slots.secondary ? player.slots.secondary.id : null;
+      ui.profile.loadout.backpackWeapon = player.backpackWeapon ? player.backpackWeapon.id : null;
       ui.profile.loadout.melee = player.melee || null;
       ui.profile.loadout.armor = player.armorId || null;
       ui.profile.loadout.backpack = player.backpackId || 'bag_small';
@@ -203,6 +207,12 @@
       ui.profile.loadout.headgear = player.headgear || null;
       ui.profile.loadout.plates = player.plates;
       ui.profile.loadout.ammo = {};
+
+      if (player.backpackWeapon && GAME_DATA.ITEMS[player.backpackWeapon.id]) {
+        const bwDef = GAME_DATA.ITEMS[player.backpackWeapon.id];
+        totalVal += bwDef.value || 0;
+        recovered.push({ id: player.backpackWeapon.id, qty: 1 });
+      }
 
       for (const item of player.backpack) {
         const def = GAME_DATA.ITEMS[item.id];
@@ -220,6 +230,7 @@
       ui.profile.loadout = {
         primary: null,
         secondary: null,
+        backpackWeapon: null,
         armor: null,
         backpackItems: [],
         ammo: {}
@@ -281,9 +292,6 @@
     }
     ui.activeLootSource.items.length = 0;
     ui.activeLootSource.items.push(...remaining);
-    if (remaining.some(i => i.revealed !== false)) {
-      ui.addFeedMessage('Some items too heavy!', '#d94141');
-    }
     ui.renderLootModal(player);
   });
 
@@ -502,6 +510,33 @@
     if (nearbyInteractable.type === 'ground') {
       const gi = nearbyInteractable.groundItem;
       if (!gi) return false;
+      const def = GAME_DATA.ITEMS[gi.id];
+      if (def && def.type === 'weapon') {
+        // Picking up a physical ground weapon opens the Weapon Slot Staging UI!
+        isModalOpen = true;
+        if (document.pointerLockElement === canvas) document.exitPointerLock();
+        const dropPos = gi.position.clone();
+        ui.openRaidWeaponStaging(player, { id: gi.id, mods: gi.mods || {}, mag: gi.mag }, {
+          sourceLabel: 'GROUND WEAPON',
+          onComplete: (res) => {
+            world.removeGroundItem(gi);
+            if (res.prevId) {
+              world.spawnGroundItem(res.prevId, 1, dropPos, {
+                mods: (res.prevSlotObj && res.prevSlotObj.mods) || null,
+                mag: res.prevSlotObj && res.prevSlotObj.mag
+              });
+            }
+            nearbyInteractable = null;
+            isModalOpen = false;
+            if (inRaid) canvas.requestPointerLock();
+          },
+          onCancel: () => {
+            isModalOpen = false;
+            if (inRaid) canvas.requestPointerLock();
+          }
+        });
+        return true;
+      }
       if (player.addToBackpack(gi.id, gi.qty)) {
         world.removeGroundItem(gi);
         if (window.soundEngine && window.soundEngine.playClick) {

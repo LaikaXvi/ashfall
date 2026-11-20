@@ -44,9 +44,12 @@ class GameUI {
     this._partyReady = false;
 
     this.profile = this._loadProfile();
+    this._normalizeStash();
     window.KEYBINDS = { ...window.DEFAULT_KEYBINDS, ...(this.profile.keybinds || {}) };
     this._initSocial();
     this._bindHideoutEvents();
+    this._bindWeaponStagingModal();
+    window.addEventListener('resize', () => this._updateDeployResponsiveScale());
     this.renderKeybindSettings();
     window.showCenterToast = (msg, color) => this.showCenterToast(msg, color);
     this.openMenuTab('home');
@@ -62,6 +65,7 @@ class GameUI {
       loadout: {
         primary: 'mp5k',
         secondary: 'pm9',
+        backpackWeapon: null,
         melee: 'melee_knife',
         armor: 'vest_2plate',
         backpack: 'bag_small',
@@ -82,8 +86,14 @@ class GameUI {
           ammo_9x18: 24
         }
       },
-      stash: [
+      weaponStash: [
         { id: 'ak74m', qty: 1 },
+        { id: 'm870', qty: 1 },
+        { id: 'm24', qty: 1 },
+        { id: 'g17', qty: 1 }
+      ],
+      stash: [
+        { id: 'bag_weapon', qty: 1 },
         { id: 'ammo_545', qty: 60 },
         { id: 'medkit', qty: 2 },
         { id: 'armor_plate', qty: 3 },
@@ -102,6 +112,74 @@ class GameUI {
         friends: []
       }
     };
+  }
+
+  _normalizeStash() {
+    if (!this.profile) return;
+    if (!Array.isArray(this.profile.weaponStash)) this.profile.weaponStash = [];
+    if (!Array.isArray(this.profile.stash)) this.profile.stash = [];
+    const L = this.profile.loadout || (this.profile.loadout = {});
+    if (!Array.isArray(L.backpackItems)) L.backpackItems = [];
+
+    // Move any weapons currently in regular stash into the 15 dedicated double-wide weapon stash slots!
+    const nonWeapons = [];
+    for (const item of this.profile.stash) {
+      if (!item || !GAME_DATA.ITEMS[item.id]) continue;
+      const def = GAME_DATA.ITEMS[item.id];
+      if (def.type === 'weapon') {
+        const count = Math.max(1, item.qty || 1);
+        for (let c = 0; c < count; c++) {
+          if (this.profile.weaponStash.length < 15) {
+            this.profile.weaponStash.push({ id: item.id, qty: 1, ...(item.mods ? { mods: item.mods } : {}) });
+          }
+        }
+      } else {
+        nonWeapons.push(item);
+      }
+    }
+    this.profile.stash = nonWeapons;
+
+    // Ensure regular 1x1 backpackItems never contain weapons
+    const bagDef = GAME_DATA.ITEMS[L.backpack || 'bag_small'];
+    const hasWpnSlot = !!(bagDef && bagDef.weaponSlot);
+    if (!hasWpnSlot && L.backpackWeapon) {
+      if (this.profile.weaponStash.length < 15) {
+        this.profile.weaponStash.push({ id: L.backpackWeapon, qty: 1 });
+      }
+      L.backpackWeapon = null;
+    }
+    L.backpackItems = L.backpackItems.filter((item) => {
+      if (!item || !GAME_DATA.ITEMS[item.id]) return false;
+      const def = GAME_DATA.ITEMS[item.id];
+      if (def.type === 'weapon') {
+        if (hasWpnSlot && !L.backpackWeapon) {
+          L.backpackWeapon = item.id;
+        } else if (this.profile.weaponStash.length < 15) {
+          this.profile.weaponStash.push({ id: item.id, qty: 1 });
+        }
+        return false;
+      }
+      return true;
+    });
+  }
+
+  _updateDeployResponsiveScale() {
+    const deployEl = document.getElementById('menu-view-deploy');
+    if (!deployEl || deployEl.classList.contains('hidden')) return;
+    const topbar = document.getElementById('menu-topbar');
+    const topH = (topbar && !topbar.classList.contains('hidden')) ? topbar.offsetHeight : 54;
+    const availH = Math.max(360, window.innerHeight - topH - 36);
+    const availW = Math.max(640, window.innerWidth - 48);
+
+    // Left panel: 3 rows of 5 double-wide weapon slots (10 single cols wide) + 8 rows of 8 item slots = 11 slot rows + headers
+    const maxSlotHLeft = Math.floor((availH - 116) / 11);
+    // Right panel: up to 4 rows of backpack + 4 rows of operator equipment = 8 slot rows + headers + summary + button
+    const maxSlotHRight = Math.floor((availH - 188) / 8);
+    // Horizontal: 10 single-slot columns on left + 5 single-slot columns on right = 15 columns + gaps & paddings
+    const maxSlotW = Math.floor((availW - 135) / 15);
+
+    const slotPx = Math.max(34, Math.min(62, maxSlotHLeft, maxSlotHRight, maxSlotW));
+    deployEl.style.setProperty('--deploy-slot', `${slotPx}px`);
   }
 
   _generateUniqueTagId(baseName) {
@@ -596,8 +674,119 @@ class GameUI {
         (btn.dataset.tab === 'deploy' && (tabName === 'map' || tabName === 'matchmaking'));
       btn.classList.toggle('active', activeMatch);
     });
-    if (tabName === 'deploy') this.renderPreMatchLoadout();
+    if (tabName === 'deploy') {
+      this._updateDeployResponsiveScale();
+      this.renderPreMatchLoadout();
+    }
     if (tabName === 'workbench') this.renderWorkbench();
+  }
+
+  _bindWeaponStagingModal() {
+    const modal = document.getElementById('weapon-staging-modal');
+    const cancelBtn = document.getElementById('btn-ws-cancel');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', () => this.closeWeaponStagingModal());
+    }
+    if (modal) {
+      modal.addEventListener('mousedown', (e) => {
+        if (e.target === modal) this.closeWeaponStagingModal();
+      });
+    }
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Escape' && modal && !modal.classList.contains('hidden')) {
+        e.stopPropagation();
+        this.closeWeaponStagingModal();
+      }
+    }, true);
+  }
+
+  closeWeaponStagingModal() {
+    const modal = document.getElementById('weapon-staging-modal');
+    if (modal) modal.classList.add('hidden');
+    if (this._weaponStagingOnCancel) {
+      const fn = this._weaponStagingOnCancel;
+      this._weaponStagingOnCancel = null;
+      fn();
+    }
+  }
+
+  openWeaponStagingModal({ weaponId, mods = null, mag = undefined, sourceLabel = 'WEAPON', slots = [], onSelectSlot = null, onCancel = null } = {}) {
+    const modal = document.getElementById('weapon-staging-modal');
+    const titleEl = document.getElementById('ws-modal-title');
+    const previewEl = document.getElementById('ws-incoming-preview');
+    const choicesEl = document.getElementById('ws-slot-choices');
+    const def = weaponId && GAME_DATA.ITEMS[weaponId];
+    if (!modal || !previewEl || !choicesEl || !def) return;
+
+    this.hideItemPopout();
+    this._weaponStagingOnCancel = onCancel || null;
+
+    if (titleEl) {
+      titleEl.textContent = `STAGE WEAPON // ${sourceLabel.toUpperCase()}`;
+    }
+
+    const rarKey = def.rarity || 'common';
+    const rarInfo = (GAME_DATA.RARITIES && GAME_DATA.RARITIES[rarKey]) || { label: rarKey.toUpperCase(), color: '#69f0ae' };
+    const ammoDef = def.ammoType && GAME_DATA.ITEMS[def.ammoType];
+    const eff = GAME_DATA.getEffectiveWeaponStats ? GAME_DATA.getEffectiveWeaponStats(weaponId, mods || {}) : def;
+    const magStr = mag !== undefined ? `${mag} / ${eff.magSize} RDS` : `${eff.magSize} RDS MAG`;
+    const iconHtml = this._renderItemIconHTML(weaponId, def, { wide: true, mods });
+
+    previewEl.innerHTML = `
+      <div class="ws-incoming-icon rarity-${rarKey}">${iconHtml}</div>
+      <div class="ws-incoming-info">
+        <span class="ws-incoming-tag">INCOMING FROM ${sourceLabel.toUpperCase()}</span>
+        <span class="ws-incoming-name" style="color:${rarInfo.color}">${def.name}</span>
+        <span class="ws-incoming-meta">${rarInfo.label} · ₽${(def.value || 0).toLocaleString()} · ${ammoDef ? ammoDef.name : ''} · ${magStr}</span>
+      </div>
+    `;
+
+    choicesEl.innerHTML = '';
+    for (const s of slots) {
+      const curDef = s.currentId ? GAME_DATA.ITEMS[s.currentId] : null;
+      const curRar = curDef ? (curDef.rarity || 'common') : 'common';
+      const locked = s.available === false;
+      const card = document.createElement('div');
+      card.className = `ws-slot-card${locked ? ' locked' : ''}`;
+      card.dataset.targetSlot = s.key;
+
+      const thumbHtml = curDef
+        ? this._renderItemIconHTML(s.currentId, curDef, { wide: true, mods: s.currentMods || null })
+        : `<span>${locked ? 'LOCKED' : 'EMPTY SLOT'}</span>`;
+
+      const curName = locked
+        ? (s.lockReason || 'REQUIRES WEAPON BACKPACK')
+        : (curDef ? `${curDef.name} (${this._formatShortValue(curDef.value)})` : 'EMPTY — EQUIP DIRECTLY');
+
+      const subText = locked
+        ? 'Equip a Weapon Backpack (16 Slots + 1 Weapon Slot) to unlock backpack weapon storage'
+        : (curDef ? `Replaces ${curDef.name}` : (s.key === 'backpackWeapon' ? 'Stow inside top-left double-wide backpack weapon slot' : `Equip into ${s.title}`));
+
+      const actLabel = locked ? 'LOCKED' : (curDef ? 'SWAP →' : (s.key === 'backpackWeapon' ? 'STOW →' : 'EQUIP →'));
+
+      card.innerHTML = `
+        <div class="ws-slot-left">
+          <div class="ws-slot-thumb ${curDef ? 'rarity-' + curRar : ''}">${thumbHtml}</div>
+          <div class="ws-slot-details">
+            <span class="ws-slot-title">${s.title}</span>
+            <span class="ws-slot-cur">${curName}</span>
+            <span class="ws-slot-sub">${subText}</span>
+          </div>
+        </div>
+        <span class="ws-slot-action">${actLabel}</span>
+      `;
+
+      if (!locked && onSelectSlot) {
+        card.addEventListener('click', () => {
+          this._weaponStagingOnCancel = null;
+          modal.classList.add('hidden');
+          onSelectSlot(s.key);
+        });
+      }
+      choicesEl.appendChild(card);
+    }
+
+    modal.classList.remove('hidden');
   }
 
   _bindHideoutEvents() {
@@ -910,7 +1099,7 @@ class GameUI {
 
     document.getElementById('btn-dev-grant').addEventListener('click', () => {
       this.profile.credits += 50000;
-      ['pm9', 'g17', 'mp5k', 'ak74m', 'm870', 'm24', 'vest_1plate', 'vest_2plate_gel', 'vest_2plate_helmet', 'vest_3plate', 'bag_large', 'boss_key', 'melee_karambit', 'fu_dead_silence', 'ks_uav', 'ks_airstrike'].forEach(id => this.addToStash(id, 1));
+      ['pm9', 'g17', 'mp5k', 'ak74m', 'm870', 'm24', 'vest_1plate', 'vest_2plate_gel', 'vest_2plate_helmet', 'vest_3plate', 'bag_large', 'bag_weapon', 'boss_key', 'melee_karambit', 'fu_dead_silence', 'ks_uav', 'ks_airstrike'].forEach(id => this.addToStash(id, 1));
       this.addToStash('medkit', 5);
       this.addToStash('armor_plate', 6);
       this.addToStash('scrap_metal', 10);
@@ -934,9 +1123,19 @@ class GameUI {
     });
   }
 
-  addToStash(id, qty = 1) {
+  addToStash(id, qty = 1, mods = null) {
+    this._normalizeStash();
     const def = GAME_DATA.ITEMS[id];
-    if (!def) return;
+    if (!def) return false;
+    // Weapons always go into the 15 dedicated double-wide weapon stash slots!
+    if (def.type === 'weapon') {
+      let added = 0;
+      for (let i = 0; i < qty && this.profile.weaponStash.length < 15; i++) {
+        this.profile.weaponStash.push({ id, qty: 1, ...(mods ? { mods } : {}) });
+        added++;
+      }
+      return added > 0;
+    }
     if (def.stackable) {
       const maxStack = def.maxStack || 999;
       let rem = qty;
@@ -945,19 +1144,20 @@ class GameUI {
           const add = Math.min(rem, maxStack - existing.qty);
           existing.qty += add;
           rem -= add;
-          if (rem <= 0) return;
+          if (rem <= 0) return true;
         }
       }
-      while (rem > 0) {
+      while (rem > 0 && this.profile.stash.length < 64) {
         const chunk = Math.min(rem, maxStack);
         this.profile.stash.push({ id, qty: chunk });
         rem -= chunk;
       }
-      return;
+      return true;
     }
-    for (let i = 0; i < qty; i++) {
+    for (let i = 0; i < qty && this.profile.stash.length < 64; i++) {
       this.profile.stash.push({ id, qty: 1 });
     }
+    return true;
   }
 
   renderHideout() {
@@ -1050,16 +1250,22 @@ class GameUI {
     return `₽${n}`;
   }
 
-  _renderInvSlotInner(item, def) {
-    const typeLbl = this._getItemTypeLabel(def);
+  _renderInvSlotInner(item, def, opts = {}) {
+    const wide = !!(opts.wide);
+    const typeLbl = opts.typeLabel || this._getItemTypeLabel(def);
     const totalVal = (def.value || 0) * (item.qty || 1);
     const valLbl = this._formatShortValue(totalVal);
+    const iconCls = wide ? 'slot-icon-img wide-weapon-icon' : 'slot-icon-img';
+    const wpnTag = (wide && def && def.type === 'weapon')
+      ? `<span class="slot-wpn-tag">${def.name}</span>`
+      : '';
     return `
       <div class="slot-top-bar">
         <span class="slot-type">${typeLbl}</span>
         ${valLbl ? `<span class="slot-price">${valLbl}</span>` : ''}
       </div>
-      ${this._renderItemIconHTML(item.id, def)}
+      ${this._renderItemIconHTML(item.id, def, { wide, cls: iconCls, mods: item.mods })}
+      ${wpnTag}
       ${item.qty > 1 ? `<span class="slot-qty">${item.qty}</span>` : ''}
     `;
   }
@@ -1087,7 +1293,7 @@ class GameUI {
       ammo_9x18: '918', ammo_9x19: '9MM', ammo_12g: '12G', ammo_545: '545', ammo_762: '762', ammo_rocket: 'RKT',
       medkit: 'MED', bandage: 'BND', painkillers: 'PK', self_revive: 'SR',
       armor_plate: 'PLT', vest_1plate: 'V1', vest_2plate: 'V2', vest_2plate_gel: 'V2G', vest_2plate_helmet: 'V2H', vest_3plate: 'V3',
-      bag_small: 'BG1', bag_medium: 'BG2', bag_large: 'BG3',
+      bag_small: 'BG1', bag_medium: 'BG2', bag_large: 'BG3', bag_weapon: 'BGW',
       gas_mask: 'MSK', nvg_goggles: 'NVG',
       fu_ammo_box: 'AMB', fu_dead_silence: 'DS', fu_trophy: 'TRP',
       ks_uav: 'UAV', ks_airstrike: 'AIR',
@@ -1101,8 +1307,11 @@ class GameUI {
     return name.replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase();
   }
 
-  // ==================== PRE-MATCH LOADOUT SETUP (64-SLOT STASH + OPERATOR + BACKPACK) ====================
+  // ==================== PRE-MATCH LOADOUT SETUP (15 DOUBLE-WIDE WEAPON SLOTS + 64-SLOT STASH + OPERATOR + BACKPACK) ====================
   renderPreMatchLoadout() {
+    this._normalizeStash();
+    this._updateDeployResponsiveScale();
+    const weaponStashGrid = document.getElementById('prematch-weapon-stash-grid');
     const stashGrid = document.getElementById('prematch-stash-grid');
     const opSlotsEl = document.getElementById('prematch-op-slots');
     const bagGrid = document.getElementById('prematch-bag-grid');
@@ -1111,7 +1320,8 @@ class GameUI {
     const L = this.profile.loadout;
     if (!Array.isArray(L.backpackItems)) L.backpackItems = [];
     const bagDef = GAME_DATA.ITEMS[L.backpack || 'bag_small'];
-    const maxBagSlots = (bagDef && bagDef.bagSlots) ? bagDef.bagSlots : 8;
+    const maxBagSlots = (bagDef && (bagDef.slots || bagDef.bagSlots)) ? (bagDef.slots || bagDef.bagSlots) : 8;
+    const hasWeaponBag = !!(bagDef && bagDef.weaponSlot);
 
     // Party role banner & Next / Ready button
     const roleEl = document.getElementById('prematch-party-role');
@@ -1133,7 +1343,31 @@ class GameUI {
       }
     }
 
-    // 1. 64-Slot Stash Grid (Left)
+    // 1A. 15 Dedicated Double-Wide Weapon Slots at the Top of the Stash (Left Top)
+    if (weaponStashGrid) {
+      weaponStashGrid.innerHTML = '';
+      for (let i = 0; i < 15; i++) {
+        const wItem = this.profile.weaponStash[i];
+        const cell = document.createElement('div');
+        cell.className = 'inv-slot weapon-slot-wide';
+        if (wItem && GAME_DATA.ITEMS[wItem.id]) {
+          const def = GAME_DATA.ITEMS[wItem.id];
+          const rar = def.rarity || 'common';
+          cell.classList.add(`rarity-${rar}`);
+          cell.innerHTML = this._renderInvSlotInner(wItem, def, { wide: true, typeLabel: 'WPN' });
+          cell.title = `${def.name} (₽${(def.value || 0).toLocaleString()}) — Click to Stage & Select Weapon Slot`;
+          cell.addEventListener('click', () => {
+            this._openDeployStashWeaponStaging(i);
+          });
+        } else {
+          cell.classList.add('empty-slot');
+          cell.innerHTML = `<div class="slot-top-bar"><span class="slot-type">WPN</span></div><span class="empty-wpn-hint">WEAPON SLOT</span>`;
+        }
+        weaponStashGrid.appendChild(cell);
+      }
+    }
+
+    // 1B. 64-Slot Gear & Item Stash Grid (Left Bottom)
     stashGrid.innerHTML = '';
     for (let i = 0; i < 64; i++) {
       const item = this.profile.stash[i];
@@ -1192,15 +1426,45 @@ class GameUI {
       } else if (L[key]) {
         this.addToStash(L[key], 1);
         L[key] = null;
+        if (key === 'backpack' && L.backpackWeapon) {
+          this.addToStash(L.backpackWeapon, 1);
+          L.backpackWeapon = null;
+        }
       }
       this.saveProfile();
       this.renderHideout();
     }, 'Click to unequip back to Stash');
 
-    // 3. Pre-Match Backpack Grid (Right Bottom)
+    // 3. Pre-Match Backpack Grid (Right Top — with Dedicated Top-Left Double-Wide Weapon Slot if Weapon Backpack is equipped!)
     const bagCountEl = document.getElementById('prematch-bag-count');
-    if (bagCountEl) bagCountEl.textContent = `${L.backpackItems.length}/${maxBagSlots}`;
+    if (bagCountEl) {
+      bagCountEl.textContent = hasWeaponBag
+        ? `${L.backpackItems.length}/${maxBagSlots} + ${L.backpackWeapon ? 1 : 0}/1 WPN`
+        : `${L.backpackItems.length}/${maxBagSlots}`;
+    }
     bagGrid.innerHTML = '';
+
+    if (hasWeaponBag) {
+      const wSlot = document.createElement('div');
+      wSlot.className = 'inv-slot weapon-slot-wide backpack-weapon-slot';
+      if (L.backpackWeapon && GAME_DATA.ITEMS[L.backpackWeapon]) {
+        const wDef = GAME_DATA.ITEMS[L.backpackWeapon];
+        wSlot.classList.add(`rarity-${wDef.rarity || 'common'}`);
+        wSlot.innerHTML = this._renderInvSlotInner({ id: L.backpackWeapon, qty: 1 }, wDef, { wide: true, typeLabel: 'WPN SLOT' });
+        wSlot.title = `${wDef.name} (Backpack Weapon Slot) — Click to return to Weapon Stash`;
+        wSlot.addEventListener('click', () => {
+          this.addToStash(L.backpackWeapon, 1);
+          L.backpackWeapon = null;
+          this.saveProfile();
+          this.renderHideout();
+        });
+      } else {
+        wSlot.classList.add('empty-slot');
+        wSlot.innerHTML = `<div class="slot-top-bar"><span class="slot-type">WPN SLOT</span></div><span class="empty-wpn-hint">WEAPON SLOT</span>`;
+      }
+      bagGrid.appendChild(wSlot);
+    }
+
     for (let i = 0; i < maxBagSlots; i++) {
       const item = L.backpackItems[i];
       const cell = document.createElement('div');
@@ -1221,6 +1485,34 @@ class GameUI {
       }
       bagGrid.appendChild(cell);
     }
+  }
+
+  _openDeployStashWeaponStaging(weaponStashIdx) {
+    const wItem = this.profile.weaponStash[weaponStashIdx];
+    if (!wItem || !GAME_DATA.ITEMS[wItem.id]) return;
+    const L = this.profile.loadout;
+    const bagDef = GAME_DATA.ITEMS[L.backpack || 'bag_small'];
+    const hasWeaponBag = !!(bagDef && bagDef.weaponSlot);
+    const allMods = this.profile.weaponMods || {};
+
+    this.openWeaponStagingModal({
+      weaponId: wItem.id,
+      mods: wItem.mods || allMods[wItem.id] || null,
+      sourceLabel: 'WEAPON STASH',
+      slots: [
+        { key: 'primary', title: '[1] PRIMARY WEAPON', currentId: L.primary, currentMods: L.primary ? allMods[L.primary] : null, available: true },
+        { key: 'secondary', title: '[2] SECONDARY WEAPON', currentId: L.secondary, currentMods: L.secondary ? allMods[L.secondary] : null, available: true },
+        { key: 'backpackWeapon', title: '[PACK] BACKPACK WEAPON SLOT', currentId: L.backpackWeapon, currentMods: L.backpackWeapon ? allMods[L.backpackWeapon] : null, available: hasWeaponBag, lockReason: 'REQUIRES WEAPON BACKPACK (16 + WPN)' }
+      ],
+      onSelectSlot: (targetKey) => {
+        const prevId = L[targetKey];
+        this.profile.weaponStash.splice(weaponStashIdx, 1);
+        if (prevId) this.addToStash(prevId, 1);
+        L[targetKey] = wItem.id;
+        this.saveProfile();
+        this.renderHideout();
+      }
+    });
   }
 
   _formatKeyCode(code) {
@@ -1352,6 +1644,18 @@ class GameUI {
       if (L[targetSlot]) this.addToStash(L[targetSlot], 1);
       L[targetSlot] = item.id;
       this.profile.stash.splice(stashIdx, 1);
+      if (targetSlot === 'backpack') {
+        const newBagDef = GAME_DATA.ITEMS[item.id];
+        const newMax = (newBagDef && (newBagDef.slots || newBagDef.bagSlots)) || 8;
+        if (!(newBagDef && newBagDef.weaponSlot) && L.backpackWeapon) {
+          this.addToStash(L.backpackWeapon, 1);
+          L.backpackWeapon = null;
+        }
+        while (L.backpackItems.length > newMax) {
+          const extra = L.backpackItems.pop();
+          if (extra) this.addToStash(extra.id, extra.qty);
+        }
+      }
     } else if (def.type === 'plate') {
       const space = Math.max(0, 6 - (L.plates || 0));
       if (space > 0) {
@@ -1532,13 +1836,49 @@ class GameUI {
   }
 
   renderStash() {
+    this._normalizeStash();
     const list = document.getElementById('stash-list');
     list.innerHTML = '';
-    if (this.profile.stash.length === 0) {
+    if (this.profile.weaponStash.length === 0 && this.profile.stash.length === 0) {
       list.innerHTML = '<p class="hint" style="padding:12px;">Stash is empty. Deploy to loot or buy gear from Rusty.</p>';
       return;
     }
 
+    // 1. Weapons in dedicated 15-slot Weapon Stash
+    this.profile.weaponStash.forEach((item, wIdx) => {
+      const def = GAME_DATA.ITEMS[item.id];
+      if (!def) return;
+      const row = document.createElement('div');
+      row.className = `item-row rarity-${def.rarity}`;
+      const totalVal = def.value * (item.qty || 1);
+      row.innerHTML = `
+        <div class="item-info">
+          <div class="item-name">${def.name}</div>
+          <div class="item-meta">₽ ${totalVal.toLocaleString()} · WEAPON STASH (${wIdx + 1}/15)</div>
+        </div>
+        <div class="item-actions"></div>
+      `;
+      const actions = row.querySelector('.item-actions');
+      const btnStage = document.createElement('button');
+      btnStage.className = 'btn-small';
+      btnStage.textContent = 'EQUIP';
+      btnStage.addEventListener('click', () => this._openDeployStashWeaponStaging(wIdx));
+      actions.appendChild(btnStage);
+
+      const btnSell = document.createElement('button');
+      btnSell.className = 'btn-small';
+      btnSell.textContent = 'SELL';
+      btnSell.addEventListener('click', () => {
+        this.profile.credits += totalVal;
+        this.profile.weaponStash.splice(wIdx, 1);
+        this.saveProfile();
+        this.renderHideout();
+      });
+      actions.appendChild(btnSell);
+      list.appendChild(row);
+    });
+
+    // 2. Regular Stash Items
     this.profile.stash.forEach((item, idx) => {
       const def = GAME_DATA.ITEMS[item.id];
       if (!def) return;
@@ -1558,23 +1898,7 @@ class GameUI {
 
       const actions = row.querySelector('.item-actions');
 
-      if (def.type === 'weapon') {
-        ['primary', 'secondary'].forEach((slotKey) => {
-          const btnEq = document.createElement('button');
-          btnEq.className = 'btn-small';
-          btnEq.textContent = slotKey === 'primary' ? 'PRI' : 'SEC';
-          btnEq.title = `Equip in ${slotKey.toUpperCase()} slot`;
-          btnEq.addEventListener('click', () => {
-            const prev = this.profile.loadout[slotKey];
-            if (prev) this.addToStash(prev, 1);
-            this.profile.loadout[slotKey] = item.id;
-            this.profile.stash.splice(idx, 1);
-            this.saveProfile();
-            this.renderHideout();
-          });
-          actions.appendChild(btnEq);
-        });
-      } else if (def.type === 'armor') {
+      if (def.type === 'armor') {
         const btnEq = document.createElement('button');
         btnEq.className = 'btn-small';
         btnEq.textContent = 'EQUIP';
@@ -1587,6 +1911,14 @@ class GameUI {
           this.renderHideout();
         });
         actions.appendChild(btnEq);
+      } else if (def.type === 'backpack') {
+        const btnEq = document.createElement('button');
+        btnEq.className = 'btn-small';
+        btnEq.textContent = 'EQUIP';
+        btnEq.addEventListener('click', () => {
+          this._equipOrPackFromStash(idx, 16);
+        });
+        actions.appendChild(btnEq);
       } else if (def.type === 'med') {
         const btnEq = document.createElement('button');
         btnEq.className = 'btn-small';
@@ -1595,7 +1927,7 @@ class GameUI {
           const L = this.profile.loadout;
           if (!Array.isArray(L.backpackItems)) L.backpackItems = [];
           const bagDef = GAME_DATA.ITEMS[L.backpack || 'bag_small'];
-          const maxBagSlots = (bagDef && bagDef.bagSlots) ? bagDef.bagSlots : 8;
+          const maxBagSlots = (bagDef && (bagDef.slots || bagDef.bagSlots)) ? (bagDef.slots || bagDef.bagSlots) : 8;
           const existing = def.stackable ? L.backpackItems.find(it => it && it.id === item.id) : null;
           if (existing) {
             existing.qty += 1;
@@ -2655,8 +2987,65 @@ class GameUI {
     const modal = document.getElementById('loot-modal');
     if (modal) modal.classList.add('hidden');
     this.hideItemPopout();
+    this.closeWeaponStagingModal();
     this.activeLootSource = null;
     this._lootPlayer = null;
+  }
+
+  openRaidWeaponStaging(player, weaponItem, { sourceLabel = 'OPERATOR WEAPON', onComplete = null, onCancel = null } = {}) {
+    if (!player || !weaponItem || !GAME_DATA.ITEMS[weaponItem.id]) return;
+    const pSlot = player.slots && player.slots.primary;
+    const sSlot = player.slots && player.slots.secondary;
+    const bwSlot = player.backpackWeapon;
+    const hasWpnBag = player.hasWeaponBackpack();
+
+    this.openWeaponStagingModal({
+      weaponId: weaponItem.id,
+      mods: weaponItem.mods || null,
+      mag: weaponItem.mag,
+      sourceLabel,
+      onCancel,
+      slots: [
+        {
+          key: 'primary',
+          title: '[1] PRIMARY WEAPON',
+          currentId: pSlot ? pSlot.id : null,
+          currentMods: pSlot ? pSlot.mods : null,
+          available: true
+        },
+        {
+          key: 'secondary',
+          title: '[2] SECONDARY WEAPON',
+          currentId: sSlot ? sSlot.id : null,
+          currentMods: sSlot ? sSlot.mods : null,
+          available: true
+        },
+        {
+          key: 'backpackWeapon',
+          title: '[PACK] BACKPACK WEAPON SLOT',
+          currentId: bwSlot ? bwSlot.id : null,
+          currentMods: bwSlot ? bwSlot.mods : null,
+          available: hasWpnBag,
+          lockReason: 'REQUIRES WEAPON BACKPACK (16 SLOTS + 1 WPN)'
+        }
+      ],
+      onSelectSlot: (targetSlotKey) => {
+        const res = player.equipWeaponInRaid(weaponItem.id, targetSlotKey, {
+          mods: weaponItem.mods || {},
+          mag: weaponItem.mag
+        });
+        if (res.equipped) {
+          if (onComplete) onComplete(res, targetSlotKey);
+          if (window.soundEngine && window.soundEngine.playMagIn) {
+            try { window.soundEngine.playMagIn(); } catch (e) {}
+          }
+          const modal = document.getElementById('loot-modal');
+          if (modal && !modal.classList.contains('hidden')) {
+            this.renderLootModal(player);
+          }
+        }
+      }
+    });
   }
 
   _getOperatorSlotOrder() {
@@ -2773,30 +3162,42 @@ class GameUI {
     const badge = (btn) => (isGamepad ? `<span class="gp-btn-badge">${btn}</span> ` : '');
 
     let actionsHtml = '';
-    if (mode === 'all' || mode === 'details') {
-      if (def.type === 'weapon') {
-        actionsHtml += `<button class="pop-act" data-act="equip_primary">Equip Primary</button>`;
-        actionsHtml += `<button class="pop-act" data-act="equip_secondary">Equip Secondary</button>`;
-      } else if (def.type === 'armor' || def.type === 'backpack' || def.type === 'field_upgrade' || def.type === 'killstreak' || def.type === 'self_revive' || def.type === 'headgear' || def.type === 'melee' || def.type === 'lethal' || def.type === 'tactical') {
-        actionsHtml += `<button class="pop-act" data-act="equip_gear">Equip / Swap</button>`;
+    const hasWpnBag = !!(this._lootPlayer && this._lootPlayer.hasWeaponBackpack && this._lootPlayer.hasWeaponBackpack());
+    if (def.type === 'weapon') {
+      actionsHtml += `<button class="pop-act" data-act="stage_weapon">${badge('A')}Select Weapon Slot...</button>`;
+      actionsHtml += `<button class="pop-act" data-act="equip_primary">Equip Primary</button>`;
+      actionsHtml += `<button class="pop-act" data-act="equip_secondary">Equip Secondary</button>`;
+      if (context !== 'backpack_weapon' && hasWpnBag) {
+        actionsHtml += `<button class="pop-act" data-act="equip_backpack_weapon">Stow in Weapon Slot</button>`;
       }
+      if ((context === 'backpack' || context === 'backpack_weapon') && hasContainer) {
+        actionsHtml += `<button class="pop-act" data-act="quick">Transfer to Container</button>`;
+      }
+      if (context === 'backpack' || context === 'backpack_weapon') {
+        actionsHtml += `<button class="pop-act danger" data-act="drop">${badge('X')}Drop to Ground</button>`;
+      }
+    } else {
+      if (mode === 'all' || mode === 'details' || mode === 'context') {
+        if (def.type === 'armor' || def.type === 'backpack' || def.type === 'field_upgrade' || def.type === 'killstreak' || def.type === 'self_revive' || def.type === 'headgear' || def.type === 'melee' || def.type === 'lethal' || def.type === 'tactical') {
+          actionsHtml += `<button class="pop-act" data-act="equip_gear">Equip / Swap</button>`;
+        }
 
-      if (context === 'container') {
-        actionsHtml += `<button class="pop-act" data-act="quick">${badge('A')}Quick-Move to Pack</button>`;
-      } else if (context === 'backpack') {
-        if (hasContainer) {
-          actionsHtml += `<button class="pop-act" data-act="quick">${badge('A')}Quick-Move to Container</button>`;
-        } else if (def.type === 'plate' || def.type === 'med') {
-          actionsHtml += `<button class="pop-act" data-act="quick">${badge('A')}Use / Equip</button>`;
+        if (context === 'container') {
+          actionsHtml += `<button class="pop-act" data-act="quick">${badge('A')}Quick-Move to Pack</button>`;
+        } else if (context === 'backpack') {
+          if (hasContainer) {
+            actionsHtml += `<button class="pop-act" data-act="quick">${badge('A')}Quick-Move to Container</button>`;
+          }
+          if (def.type === 'plate' || def.type === 'med') {
+            actionsHtml += `<button class="pop-act" data-act="use_item">Use / Apply</button>`;
+          }
         }
       }
-    }
-    if (mode === 'all' || mode === 'context') {
       if (canSplit) {
         actionsHtml += `<button class="pop-act" data-act="split">${badge('Y')}Split Stack</button>`;
       }
       if (context === 'backpack') {
-        actionsHtml += `<button class="pop-act danger" data-act="drop">${badge('X')}Drop Item</button>`;
+        actionsHtml += `<button class="pop-act danger" data-act="drop">${badge('X')}Drop to Ground</button>`;
       }
     }
 
@@ -2860,6 +3261,18 @@ class GameUI {
       const prev = player.backpackId;
       player.backpackId = itemId;
       player.backpackMaxSlots = def.slots || def.bagSlots || 8;
+      if (!def.weaponSlot && player.backpackWeapon) {
+        if (typeof this.onDropItem === 'function') {
+          this.onDropItem(player.backpackWeapon);
+        }
+        player.backpackWeapon = null;
+      }
+      while (player.backpack.length > player.backpackMaxSlots) {
+        const extra = player.backpack.pop();
+        if (extra && typeof this.onDropItem === 'function') {
+          this.onDropItem(extra);
+        }
+      }
       return prev;
     }
     if (def.type === 'field_upgrade') {
@@ -2933,16 +3346,58 @@ class GameUI {
 
     const sourceList = (context === 'container' && this.activeLootSource) ? this.activeLootSource.items : player.backpack;
 
-    if (action === 'equip_primary' || action === 'equip_secondary') {
+    if (action === 'stage_weapon' && def.type === 'weapon') {
       if (context === 'container' && item.revealed === false) return;
-      const slotName = action === 'equip_primary' ? 'primary' : 'secondary';
-      const res = player.equipWeaponInRaid(item.id, slotName);
-      if (res.equipped) {
-        sourceList.splice(idx, 1);
-        if (res.prevId) {
-          sourceList.splice(idx, 0, { id: res.prevId, qty: 1, revealed: true });
+      this.hideItemPopout();
+      this.openRaidWeaponStaging(player, item, {
+        sourceLabel: context === 'backpack_weapon' ? 'BACKPACK WEAPON SLOT' : 'CONTAINER',
+        onComplete: (res, targetSlotKey) => {
+          if (context === 'backpack_weapon') {
+            if (targetSlotKey !== 'backpackWeapon') {
+              player.backpackWeapon = res.prevId
+                ? { id: res.prevId, mods: (res.prevSlotObj && res.prevSlotObj.mods) || {}, mag: res.prevSlotObj && res.prevSlotObj.mag }
+                : null;
+            }
+          } else {
+            sourceList.splice(idx, 1);
+            if (res.prevId) {
+              sourceList.splice(idx, 0, {
+                id: res.prevId,
+                qty: 1,
+                mods: (res.prevSlotObj && res.prevSlotObj.mods) || {},
+                mag: res.prevSlotObj && res.prevSlotObj.mag,
+                revealed: true
+              });
+            }
+          }
         }
-        this.addFeedMessage(`Equipped ${def.name} (${slotName.toUpperCase()})`, '#69f0ae');
+      });
+      return;
+    }
+
+    if (action === 'equip_primary' || action === 'equip_secondary' || action === 'equip_backpack_weapon') {
+      if (context === 'container' && item.revealed === false) return;
+      const slotName = action === 'equip_primary' ? 'primary' : (action === 'equip_secondary' ? 'secondary' : 'backpackWeapon');
+      const res = player.equipWeaponInRaid(item.id, slotName, { mods: item.mods, mag: item.mag });
+      if (res.equipped) {
+        if (context === 'backpack_weapon') {
+          if (slotName !== 'backpackWeapon') {
+            player.backpackWeapon = res.prevId
+              ? { id: res.prevId, mods: (res.prevSlotObj && res.prevSlotObj.mods) || {}, mag: res.prevSlotObj && res.prevSlotObj.mag }
+              : null;
+          }
+        } else {
+          sourceList.splice(idx, 1);
+          if (res.prevId) {
+            sourceList.splice(idx, 0, {
+              id: res.prevId,
+              qty: 1,
+              mods: (res.prevSlotObj && res.prevSlotObj.mods) || {},
+              mag: res.prevSlotObj && res.prevSlotObj.mag,
+              revealed: true
+            });
+          }
+        }
       }
     } else if (action === 'equip_gear') {
       if (context === 'container' && item.revealed === false) return;
@@ -2952,9 +3407,6 @@ class GameUI {
           sourceList.splice(idx, 1);
           if (res.returned) sourceList.splice(idx, 0, res.returned);
           if (res.extra) sourceList.push(res.extra);
-          this.addFeedMessage(`Equipped ${def.name}`, '#69f0ae');
-        } else {
-          this.addFeedMessage(`${def.type.toUpperCase()} slot already full (4)`, '#a0a8a3');
         }
       } else {
         const prev = this._swapGearWithPlayer(player, item.id);
@@ -2962,25 +3414,59 @@ class GameUI {
         if (prev) {
           sourceList.splice(idx, 0, { id: prev, qty: 1, revealed: true });
         }
-        this.addFeedMessage(`Equipped ${def.name}`, '#69f0ae');
+      }
+    } else if (action === 'use_item' && context === 'backpack') {
+      if (def.type === 'plate' && player.plates < 6) {
+        const move = Math.min(6 - player.plates, item.qty);
+        player.plates += move;
+        item.qty -= move;
+        if (item.qty <= 0) player.backpack.splice(idx, 1);
+      } else if (def.type === 'med' && item.id === 'medkit') {
+        if (player.startMedkit()) {
+          this.closeLootModal();
+          return;
+        }
       }
     } else if (action === 'quick') {
       if (context === 'container' && this.activeLootSource) {
         if (item.revealed === false) return;
+        if (def.type === 'weapon') {
+          this.hideItemPopout();
+          this.openRaidWeaponStaging(player, item, {
+            sourceLabel: this.activeLootSource.title || 'CONTAINER',
+            onComplete: (res) => {
+              this.activeLootSource.items.splice(idx, 1);
+              if (res.prevId) {
+                this.activeLootSource.items.splice(idx, 0, {
+                  id: res.prevId,
+                  qty: 1,
+                  mods: (res.prevSlotObj && res.prevSlotObj.mods) || {},
+                  mag: res.prevSlotObj && res.prevSlotObj.mag,
+                  revealed: true
+                });
+              }
+            }
+          });
+          return;
+        }
         if (player.addToBackpack(item.id, item.qty)) {
           this.activeLootSource.items.splice(idx, 1);
+        }
+      } else if (context === 'backpack_weapon') {
+        if (this.activeLootSource && player.backpackWeapon) {
+          this.activeLootSource.items.push({
+            id: player.backpackWeapon.id,
+            qty: 1,
+            mods: player.backpackWeapon.mods || {},
+            mag: player.backpackWeapon.mag,
+            revealed: true
+          });
+          player.backpackWeapon = null;
         }
       } else if (context === 'backpack') {
         if (this.activeLootSource) {
           this.activeLootSource.items.push({ id: item.id, qty: item.qty, revealed: true });
           player.backpack.splice(idx, 1);
-        } else if (def.type === 'weapon') {
-          const res = player.equipWeaponInRaid(item.id);
-          if (res.equipped) {
-            player.backpack.splice(idx, 1);
-            if (res.prevId) player.backpack.splice(idx, 0, { id: res.prevId, qty: 1 });
-            this.addFeedMessage(`Equipped ${def.name}`, '#69f0ae');
-          }
         } else if (def.type === 'plate' && player.plates < 6) {
           const move = Math.min(6 - player.plates, item.qty);
           player.plates += move;
@@ -2990,8 +3476,6 @@ class GameUI {
           if (player.startMedkit()) {
             this.closeLootModal();
             return;
-          } else {
-            this.addFeedMessage('Health already full', '#a0a8a3');
           }
         } else if (def.type === 'lethal' || def.type === 'tactical') {
           const res = this._swapThrowableWithPlayer(player, item);
@@ -2999,15 +3483,11 @@ class GameUI {
             player.backpack.splice(idx, 1);
             if (res.returned) player.backpack.splice(idx, 0, res.returned);
             if (res.extra) player.backpack.push(res.extra);
-            this.addFeedMessage(`Equipped ${def.name}`, '#69f0ae');
-          } else {
-            this.addFeedMessage(`${def.type.toUpperCase()} slot already full (4)`, '#a0a8a3');
           }
         } else if (def.type === 'armor' || def.type === 'backpack' || def.type === 'field_upgrade' || def.type === 'killstreak' || def.type === 'self_revive' || def.type === 'headgear' || def.type === 'melee') {
           const prev = this._swapGearWithPlayer(player, item.id);
           player.backpack.splice(idx, 1);
           if (prev) player.backpack.splice(idx, 0, { id: prev, qty: 1 });
-          this.addFeedMessage(`Equipped ${def.name}`, '#69f0ae');
         }
       }
     } else if (action === 'split' && def.stackable && item.qty > 1) {
@@ -3019,10 +3499,18 @@ class GameUI {
       const half = Math.floor(item.qty / 2);
       item.qty -= half;
       list.splice(idx + 1, 0, { id: item.id, qty: half, revealed: true });
-    } else if (action === 'drop' && context === 'backpack') {
-      const removed = player.backpack.splice(idx, 1)[0];
-      if (removed && typeof this.onDropItem === 'function') {
-        this.onDropItem(removed);
+    } else if (action === 'drop') {
+      if (context === 'backpack_weapon' && player.backpackWeapon) {
+        const removed = player.backpackWeapon;
+        player.backpackWeapon = null;
+        if (typeof this.onDropItem === 'function') {
+          this.onDropItem({ id: removed.id, qty: 1, mods: removed.mods, mag: removed.mag });
+        }
+      } else if (context === 'backpack') {
+        const removed = player.backpack.splice(idx, 1)[0];
+        if (removed && typeof this.onDropItem === 'function') {
+          this.onDropItem(removed);
+        }
       }
     }
 
@@ -3030,7 +3518,7 @@ class GameUI {
     this.renderLootModal(player);
   }
 
-  _renderOperatorTacticalGrid(containerEl, data, onSlotClick = null, tooltipText = '', revealConfig = null) {
+  _renderOperatorTacticalGrid(containerEl, data, onSlotClick = null, tooltipText = '', revealConfig = null, onSlotContextMenu = null) {
     if (!containerEl) return;
     const itemDef = (id) => (id && GAME_DATA.ITEMS[id]) ? GAME_DATA.ITEMS[id] : null;
     const card = (opts) => {
@@ -3072,7 +3560,7 @@ class GameUI {
         opts.span ? `span-${opts.span}` : '',
         opts.spine ? 'spine-slot' : ''
       ].filter(Boolean).join(' ');
-      const clickable = !!(onSlotClick && hasVal && opts.clickable !== false);
+      const clickable = !!((onSlotClick || onSlotContextMenu) && hasVal && opts.clickable !== false);
       const tipName = (def ? def.name : val) || 'Empty';
       const tip = clickable ? `${tipName} — ${tooltipText}` : tipName;
       const itemVal = opts.value !== undefined ? opts.value : (def ? (def.value || 0) * (opts.qty || 1) : 0);
@@ -3120,10 +3608,22 @@ class GameUI {
       </div>
     `;
 
-    if (onSlotClick) {
+    if (onSlotClick || onSlotContextMenu) {
       containerEl.querySelectorAll('.op-slot-card[data-op-key]').forEach((el) => {
         if (el.dataset.unrevealed === '1') return;
-        el.addEventListener('click', () => onSlotClick(el.dataset.opKey));
+        if (onSlotClick) {
+          el.addEventListener('click', (e) => {
+            e.stopPropagation();
+            onSlotClick(el.dataset.opKey, el);
+          });
+        }
+        if (onSlotContextMenu) {
+          el.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            onSlotContextMenu(el.dataset.opKey, el);
+          });
+        }
       });
     }
   }
@@ -3160,7 +3660,44 @@ class GameUI {
         fieldUpgrade: player.fieldUpgrade,
         killstreak: player.killstreak,
         melee: player.melee
-      }, null);
+      }, (k) => {
+        // Clicking player's own Primary or Secondary weapon slot opens Weapon Slot Staging UI (move to Backpack Weapon Slot or swap!)
+        if (k === 'primary' || k === 'secondary') {
+          const wObj = player.slots && player.slots[k];
+          if (!wObj) return;
+          this.openRaidWeaponStaging(player, wObj, {
+            sourceLabel: `EQUIPPED ${k.toUpperCase()}`,
+            onComplete: (res, targetSlotKey) => {
+              if (targetSlotKey !== k) {
+                player.slots[k] = res.prevId
+                  ? { id: res.prevId, mods: (res.prevSlotObj && res.prevSlotObj.mods) || {}, mag: res.prevSlotObj && res.prevSlotObj.mag }
+                  : null;
+                if (player.activeSlot === k && !player.slots[k]) {
+                  player.activeSlot = player.slots.primary ? 'primary' : (player.slots.secondary ? 'secondary' : 'melee');
+                  player._equipCurrentWeapon();
+                } else if (player.activeSlot === k) {
+                  player._equipCurrentWeapon();
+                }
+              }
+            }
+          });
+        }
+      }, 'Click Weapon to Move / Stage · Right-Click Weapon to Drop', null, (k) => {
+        // Right-clicking player's own Primary or Secondary weapon drops the physical 3D weapon to the ground!
+        if (k === 'primary' || k === 'secondary') {
+          const wObj = player.slots && player.slots[k];
+          if (!wObj) return;
+          player.slots[k] = null;
+          if (player.activeSlot === k) {
+            player.activeSlot = player.slots.primary ? 'primary' : (player.slots.secondary ? 'secondary' : 'melee');
+            player._equipCurrentWeapon();
+          }
+          if (typeof this.onDropItem === 'function') {
+            this.onDropItem({ id: wObj.id, qty: 1, mods: wObj.mods, mag: wObj.mag });
+          }
+          this.renderLootModal(player);
+        }
+      });
     }
 
     // 2. Active Container Grid (TOP) + Enemy Operator Inventory (BOTTOM when looting an Operator!)
@@ -3184,6 +3721,17 @@ class GameUI {
         const hasUnrevealedBag = (this.activeLootSource.items || []).some(it => it && it.revealed === false);
         const activeOpRevealKey = hasUnrevealedBag ? null : this._getNextUnrevealedOperatorSlot(eq);
 
+        const openEnemyWeaponStage = (k) => {
+          const itemId = eq[k];
+          if (!itemId) return;
+          this.openRaidWeaponStaging(player, { id: itemId, mods: {} }, {
+            sourceLabel: `OPERATOR ${k.toUpperCase()}`,
+            onComplete: (res) => {
+              eq[k] = res.prevId || null;
+            }
+          });
+        };
+
         this._renderOperatorTacticalGrid(enemyEqEl, {
           cash: eq.cash || 0,
           plates: eq.plates || 0,
@@ -3201,12 +3749,12 @@ class GameUI {
           killstreak: eq.killstreak,
           melee: eq.melee
         }, (k) => {
+          // Left-Click on Enemy Operator Inventory
           if (k === 'cash') {
             if ((eq.cash || 0) <= 0) return;
             const amt = eq.cash;
             player.cash = (player.cash || 0) + amt;
             eq.cash = 0;
-            this.addFeedMessage(`Looted ₽${amt.toLocaleString()} Cash`, '#ffc107');
             this.renderLootModal(player);
             return;
           }
@@ -3227,22 +3775,9 @@ class GameUI {
           }
           const itemId = eq[k];
           if (!itemId) return;
-          const def = GAME_DATA.ITEMS[itemId];
           if (k === 'primary' || k === 'secondary') {
-            const curEquipped = player.slots[k] ? player.slots[k].id : null;
-            if (curEquipped === itemId) {
-              // Same weapon already equipped in this slot -> stow in backpack!
-              if (player.addToBackpack(itemId, 1)) {
-                eq[k] = null;
-                this.renderLootModal(player);
-              }
-              return;
-            }
-            const res = player.equipWeaponInRaid(itemId, k);
-            if (res.equipped) {
-              eq[k] = res.prevId || null;
-              this.renderLootModal(player);
-            }
+            // Open Weapon Slot Staging UI to select Primary, Secondary, or Backpack Weapon Slot!
+            openEnemyWeaponStage(k);
             return;
           }
           if (k === 'dogtag') {
@@ -3270,7 +3805,6 @@ class GameUI {
               melee: player.melee
             };
             if (curMap[k] === itemId) {
-              // Same gear already equipped -> stow in backpack!
               if (player.addToBackpack(itemId, 1)) {
                 eq[k] = null;
                 this.renderLootModal(player);
@@ -3281,7 +3815,38 @@ class GameUI {
             eq[k] = prev || null;
             this.renderLootModal(player);
           }
-        }, 'Click to Swap / Loot', { revealedMap: eq.revealedSlots, activeKey: activeOpRevealKey });
+        }, 'Left-Click: Equip/Stage · Right-Click: Stow in Bag', { revealedMap: eq.revealedSlots, activeKey: activeOpRevealKey }, (k) => {
+          // Right-Click on Enemy Operator Inventory: automatically stow items (killstreaks, vests, bags, etc.) into backpack!
+          if (k === 'cash') {
+            if ((eq.cash || 0) <= 0) return;
+            player.cash = (player.cash || 0) + eq.cash;
+            eq.cash = 0;
+            this.renderLootModal(player);
+            return;
+          }
+          if (k === 'plates') {
+            if ((eq.plates || 0) <= 0) return;
+            if (player.addToBackpack('armor_plate', eq.plates)) {
+              eq.plates = 0;
+              this.renderLootModal(player);
+            }
+            return;
+          }
+          const itemId = eq[k];
+          if (!itemId) return;
+          if (k === 'primary' || k === 'secondary') {
+            // Weapons open Weapon Slot Staging UI (so player can pick Backpack Weapon Slot, Primary, or Secondary)
+            openEnemyWeaponStage(k);
+            return;
+          }
+          if (player.addToBackpack(itemId, 1)) {
+            eq[k] = null;
+            if (window.soundEngine && window.soundEngine.playClick) {
+              try { window.soundEngine.playClick(); } catch (e) {}
+            }
+            this.renderLootModal(player);
+          }
+        });
       } else if (enemyEqEl) {
         enemyEqEl.remove();
       }
@@ -3302,7 +3867,8 @@ class GameUI {
             const def = GAME_DATA.ITEMS[item.id];
             if (!def) return;
             const slot = document.createElement('div');
-            slot.className = 'inv-slot';
+            const isWpn = def.type === 'weapon';
+            slot.className = isWpn ? 'inv-slot weapon-slot-wide' : 'inv-slot';
             slot.dataset.context = 'container';
             slot.dataset.idx = idx;
 
@@ -3319,8 +3885,10 @@ class GameUI {
             } else {
               const effRar = item.rarityOverride || def.rarity || 'common';
               slot.classList.add(`rarity-${effRar}`);
-              slot.innerHTML = this._renderInvSlotInner(item, def);
-              slot.title = `${def.name}${item.qty > 1 ? ' x' + item.qty : ''} (₽${(def.value * item.qty).toLocaleString()}) — Left-Click: Quick-Move · Right-Click: Options`;
+              slot.innerHTML = this._renderInvSlotInner(item, def, { wide: isWpn });
+              slot.title = isWpn
+                ? `${def.name} (₽${(def.value || 0).toLocaleString()}) — Click to Select Weapon Slot`
+                : `${def.name}${item.qty > 1 ? ' x' + item.qty : ''} (₽${(def.value * item.qty).toLocaleString()}) — Left-Click: Quick-Move · Right-Click: Options`;
               slot.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this._hoveredSlot = { context: 'container', item, idx, el: slot };
@@ -3340,14 +3908,53 @@ class GameUI {
 
     // 3. Backpack Grid (Right / Lower Centered — strictly capped to backpackMaxSlots, zero weight!)
     const maxSlots = player.backpackMaxSlots || 8;
+    const hasWeaponBag = player.hasWeaponBackpack();
     const usedEl = document.getElementById('bag-slots-used');
     const maxEl = document.getElementById('bag-slots-max');
     if (usedEl) usedEl.textContent = Math.min(maxSlots, player.backpack.length);
-    if (maxEl) maxEl.textContent = maxSlots;
+    if (maxEl) {
+      maxEl.textContent = hasWeaponBag
+        ? `${maxSlots} + ${player.backpackWeapon ? 1 : 0}/1 WPN`
+        : maxSlots;
+    }
     document.getElementById('bag-total-val').textContent = `₽ ${player.getBackpackValue().toLocaleString()}`;
 
     if (bList) {
       bList.innerHTML = '';
+
+      // Dedicated Double-Wide Weapon Slot in the Top-Left of the Weapon Backpack!
+      if (hasWeaponBag) {
+        const wSlot = document.createElement('div');
+        wSlot.className = 'inv-slot weapon-slot-wide backpack-weapon-slot';
+        wSlot.dataset.context = 'backpack_weapon';
+        wSlot.dataset.idx = '-1';
+        if (player.backpackWeapon && GAME_DATA.ITEMS[player.backpackWeapon.id]) {
+          const bw = player.backpackWeapon;
+          const wDef = GAME_DATA.ITEMS[bw.id];
+          const wItem = { id: bw.id, qty: 1, mods: bw.mods, mag: bw.mag };
+          wSlot.classList.add(`rarity-${wDef.rarity || 'common'}`);
+          wSlot.innerHTML = this._renderInvSlotInner(wItem, wDef, { wide: true, typeLabel: 'WPN SLOT' });
+          wSlot.title = `${wDef.name} (Backpack Weapon Slot) — Left-Click: Equip/Stage · Right-Click: Options / Drop to Ground`;
+          wSlot.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (this._hoveredSlot && this._hoveredSlot.el === wSlot && this._hoveredSlot.mode === 'details') {
+              this.hideItemPopout();
+            } else {
+              this.showItemPopout(wSlot, 'backpack_weapon', wItem, -1, { inputMode: 'mouse', mode: 'details' });
+            }
+          });
+          wSlot.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.showItemPopout(wSlot, 'backpack_weapon', wItem, -1, { inputMode: 'mouse', mode: 'context' });
+          });
+        } else {
+          wSlot.classList.add('empty-slot');
+          wSlot.innerHTML = `<div class="slot-top-bar"><span class="slot-type">WPN SLOT</span></div><span class="empty-wpn-hint">WEAPON SLOT</span>`;
+        }
+        bList.appendChild(wSlot);
+      }
+
       for (let idx = 0; idx < maxSlots; idx++) {
         const item = player.backpack[idx];
         const slot = document.createElement('div');
@@ -3359,7 +3966,7 @@ class GameUI {
           const def = GAME_DATA.ITEMS[item.id];
           slot.classList.add(`rarity-${def.rarity || 'common'}`);
           slot.innerHTML = this._renderInvSlotInner(item, def);
-          slot.title = `${def.name}${item.qty > 1 ? ' x' + item.qty : ''} (₽${(def.value * item.qty).toLocaleString()}) — Left-Click: Details/Equip · Right-Click: Split/Drop`;
+          slot.title = `${def.name}${item.qty > 1 ? ' x' + item.qty : ''} (₽${(def.value * item.qty).toLocaleString()}) — Left-Click: Details/Equip · Right-Click: Drop to Ground / Split`;
           slot.addEventListener('click', (e) => {
             e.stopPropagation();
             if (this._hoveredSlot && this._hoveredSlot.el === slot && this._hoveredSlot.mode === 'details') {

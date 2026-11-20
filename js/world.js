@@ -618,11 +618,35 @@ class WastelandWorld {
     const darkMat = new THREE.MeshLambertMaterial({ color: 0x26292c });
     const accentMat = new THREE.MeshLambertMaterial({ color: rarColor });
     if (def.type === 'weapon') {
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.08, 0.62), darkMat);
-      body.position.y = 0.06;
-      const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.26), new THREE.MeshLambertMaterial({ color: 0x151719 }));
-      barrel.position.set(0, 0.07, 0.36);
-      g.add(body, barrel);
+      let built = null;
+      if (!this._wpnBuilder && typeof WeaponSystem !== 'undefined') {
+        this._wpnBuilder = new WeaponSystem(this.scene, new THREE.Object3D());
+      }
+      const wb = this._wpnBuilder || (window.itemIcons && window.itemIcons._ensureWeaponBuilder && window.itemIcons._ensureWeaponBuilder());
+      if (wb && typeof wb.buildThirdPersonWeapon === 'function') {
+        built = wb.buildThirdPersonWeapon(def, opts.mods || {});
+      }
+      if (built && built.group) {
+        const wGroup = built.group;
+        const s = built.isPistol ? 1.32 : 1.42;
+        wGroup.scale.setScalar(s);
+        // Lay the physical 3D weapon flat on its side on the ground / table surface
+        wGroup.rotation.set(0.06, 0, Math.PI / 2 - 0.10);
+        wGroup.updateMatrixWorld(true);
+        const box = new THREE.Box3().setFromObject(wGroup);
+        const center = new THREE.Vector3();
+        box.getCenter(center);
+        wGroup.position.x -= center.x;
+        wGroup.position.z -= center.z;
+        wGroup.position.y -= (box.min.y - 0.022);
+        g.add(wGroup);
+      } else {
+        const body = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.08, 0.62), darkMat);
+        body.position.y = 0.06;
+        const barrel = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.26), new THREE.MeshLambertMaterial({ color: 0x151719 }));
+        barrel.position.set(0, 0.07, 0.36);
+        g.add(body, barrel);
+      }
     } else if (def.type === 'med') {
       const pouch = new THREE.Mesh(
         new THREE.BoxGeometry(0.24, 0.11, 0.19),
@@ -663,6 +687,8 @@ class WastelandWorld {
       uid: 'gi_' + Math.random().toString(36).slice(2, 9),
       id,
       qty,
+      mods: opts.mods || null,
+      mag: opts.mag !== undefined ? opts.mag : undefined,
       mesh: g,
       ringMesh: ring,
       position: new THREE.Vector3(pos.x, yBase, pos.z)

@@ -1,7 +1,7 @@
 // Game Item Database, 5-Tier Loot Rarity, Logical POI Tables, Workbench & Attachments
 // IMPORTANT: Update GAME_DATA.VERSION (and ?v= cache-busters in index.html) with EVERY new commit!
 window.GAME_DATA = {
-  VERSION: 'v1.11',
+  VERSION: 'v1.12',
   SQUAD_COLORS: ['#69f0ae', '#42a5f5', '#ffeb3b', '#ff69b4'], // Green, Blue, Yellow, Pink
 
   RARITIES: {
@@ -308,6 +308,7 @@ window.GAME_DATA = {
     bag_small: { id: 'bag_small', name: 'Daypack (8 Slots)', type: 'backpack', rarity: 'common', value: 1400, weight: 0.6, slots: 8, desc: 'Compact 8-slot tactical daypack.' },
     bag_medium: { id: 'bag_medium', name: 'Assault Pack (12 Slots)', type: 'backpack', rarity: 'rare', value: 4200, weight: 1.0, slots: 12, desc: 'Reinforced 12-slot operator backpack.' },
     bag_large: { id: 'bag_large', name: 'Expedition Rucksack (16 Slots)', type: 'backpack', rarity: 'epic', value: 8800, weight: 1.5, slots: 16, desc: 'High-capacity 16-slot wasteland rucksack.' },
+    bag_weapon: { id: 'bag_weapon', name: 'Weapon Backpack (16 + WPN)', type: 'backpack', rarity: 'legendary', value: 11800, weight: 1.8, slots: 16, weaponSlot: true, desc: '16-slot weapon backpack with a dedicated double-wide weapon slot in the top-left.' },
 
     // === FIELD UPGRADES ===
     fu_ammo_box: { id: 'fu_ammo_box', name: 'Munitions Box', type: 'field_upgrade', rarity: 'rare', value: 3200, weight: 1.2, chargeTime: 45, desc: 'Restocks reserve ammo, plates & throwables on activation ([Z]).' },
@@ -603,7 +604,7 @@ window.GAME_DATA = {
     gear: [
       'bandage', 'painkillers', 'medkit', 'self_revive', 'gas_mask', 'nvg_goggles', 'armor_plate',
       'vest_1plate', 'vest_2plate', 'vest_2plate_gel', 'vest_2plate_helmet', 'vest_3plate',
-      'bag_small', 'bag_medium', 'bag_large',
+      'bag_small', 'bag_medium', 'bag_large', 'bag_weapon',
       'fu_ammo_box', 'fu_dead_silence', 'fu_trophy',
       'ks_uav', 'ks_airstrike',
       'melee_knife', 'melee_karambit', 'melee_axe',
@@ -665,6 +666,7 @@ window.GAME_DATA = {
       { id: 'vest_2plate_helmet', min: 1, max: 1, w: 5 },
       { id: 'vest_3plate', min: 1, max: 1, w: 2 },
       { id: 'bag_medium', min: 1, max: 1, w: 6 },
+      { id: 'bag_weapon', min: 1, max: 1, w: 4 },
       { id: 'gas_mask', min: 1, max: 1, w: 5 },
       { id: 'nvg_goggles', min: 1, max: 1, w: 3 },
       { id: 'intel_drive', min: 1, max: 1, w: 8 },
@@ -688,7 +690,7 @@ window.GAME_DATA = {
       { id: 'fuel_can', min: 1, max: 1, w: 8 }
     ],
     // Boss Encampment Key Room pools (ZERO common items!)
-    boss_epic: ['vest_2plate_helmet', 'bag_large', 'intel_drive', 'gold_watch', 'fu_dead_silence', 'ks_uav', 'melee_karambit', 'ammo_rocket'],
+    boss_epic: ['vest_2plate_helmet', 'bag_large', 'bag_weapon', 'intel_drive', 'gold_watch', 'fu_dead_silence', 'ks_uav', 'melee_karambit', 'ammo_rocket'],
     boss_rare: ['vest_2plate_gel', 'bag_medium', 'water_filter', 'fuel_can', 'painkillers', 'medkit', 'fu_ammo_box', 'fu_trophy', 'ammo_762'],
     boss_legendary_weapons: ['ak74m', 'm24', 'mp5k', 'm870']
   },
