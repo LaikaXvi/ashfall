@@ -1676,7 +1676,7 @@ class Player {
         this.velocity.x = 0;
         this.velocity.z = 0;
       } else {
-        const crawlSpeed = 1.9;
+        const crawlSpeed = 1.45;
         this.velocity.x = wishDir.x * crawlSpeed * moveMag;
         this.velocity.z = wishDir.z * crawlSpeed * moveMag;
       }
@@ -1697,7 +1697,7 @@ class Player {
       if (wishDir.lengthSq() > 0) {
         this.slideDir.lerp(wishDir, Math.min(1, dt * 2.2)).normalize();
       }
-      const slideSpeed = THREE.MathUtils.lerp(13.6, 4.6, sp * sp);
+      const slideSpeed = THREE.MathUtils.lerp(11.0, 3.6, sp * sp);
       this.velocity.x = this.slideDir.x * slideSpeed;
       this.velocity.z = this.slideDir.z * slideSpeed;
       this.isSprinting = false;
@@ -1745,12 +1745,12 @@ class Player {
         }
       }
 
-      let speed = 6.8;
-      if (this.isTacSprinting) speed = 12.4;
-      else if (this.isSprinting) speed = 9.6;
-      else if (this.stance === 'prone') speed = 2.0;
-      else if (this.stance === 'crouch') speed = 3.9;
-      else if (this.isADS) speed = 4.3;
+      let speed = 5.4;
+      if (this.isTacSprinting) speed = 10.2;
+      else if (this.isSprinting) speed = 7.8;
+      else if (this.stance === 'prone') speed = 1.5;
+      else if (this.stance === 'crouch') speed = 3.0;
+      else if (this.isADS) speed = 3.4;
 
       // Dedicated melee weapon gives a slight movement & sprint speed boost (+12%)
       if (this.activeSlot === 'melee') {
