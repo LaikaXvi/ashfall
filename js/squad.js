@@ -299,12 +299,14 @@ class SquadMate {
       this.downedBy = attackerInfo || { name: 'HOSTILE', weaponId: 'ak74m', weaponName: 'AK-74M' };
       this.reviveProgress = 0;
       this.state = 'DOWNED';
-      // Seated downed posture: hide weapon, legs extended in front on the ground
+      // Grounded seated downed posture: hide weapon, reclined back with legs flat on top of ground
       if (this.rifleMesh) this.rifleMesh.visible = false;
-      this.group.position.y = -0.52;
-      this.group.rotation.x = -0.24;
-      if (this.leftHip) this.leftHip.rotation.x = -1.38;
-      if (this.rightHip) this.rightHip.rotation.x = -1.38;
+      this.group.position.y = -0.62;
+      this.group.rotation.x = -0.32;
+      if (this.leftHip) this.leftHip.rotation.x = -1.24;
+      if (this.rightHip) this.rightHip.rotation.x = -1.26;
+      if (this.leftArm) { this.leftArm.rotation.x = 0.55; this.leftArm.rotation.z = 0.24; }
+      if (this.rightArm) { this.rightArm.rotation.x = -0.78; this.rightArm.rotation.z = -0.48; }
       this._redrawTag('DOWNED', '#ff5252');
       if (this.bleedSprite && window.drawDownedBleedoutCanvas) {
         window.drawDownedBleedoutCanvas(this.bleedCanvas, 1, { isAlly: true });

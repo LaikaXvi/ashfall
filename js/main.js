@@ -353,6 +353,20 @@
           _placePing(pingWheelChoice, hit.pos, hit.enemy);
         }
       } else {
+        // If looking directly at one of our own ping markers, clicking Mouse3 removes it!
+        if (hoveredOwnPing) {
+          const idx = activePings.indexOf(hoveredOwnPing);
+          if (idx !== -1) {
+            if (hoveredOwnPing.beamMesh && scene) scene.remove(hoveredOwnPing.beamMesh);
+            activePings.splice(idx, 1);
+            window.activePings = activePings;
+            hoveredOwnPing = null;
+            if (window.soundEngine && window.soundEngine.playClick) {
+              try { window.soundEngine.playClick(); } catch (err) {}
+            }
+          }
+          return;
+        }
         // Quick tap on Mouse3: live-mark enemy under crosshair, or double-tap for enemy ping, or single-tap location ping
         const nowMs = performance.now();
         const isDouble = (nowMs - lastPingTapTime) < 340;
@@ -539,6 +553,7 @@
   let pingWheelY = 0;
   let pingWheelChoice = 'cancel';
   let lastPingTapTime = 0;
+  let hoveredOwnPing = null;
 
   const PING_DEFS = {
     location: { label: 'LOCATION', color: '#f5a623', symbol: '◈', duration: 20.0 },
@@ -635,6 +650,8 @@
       position: worldPos.clone(),
       targetEnemy: targetEnemy || null,
       beamMesh,
+      owner: getPlayerCallsign(),
+      isOwn: true,
       duration: targetEnemy ? 8.0 : cfg.duration,
       age: 0
     };
@@ -728,10 +745,15 @@
       }
     }
 
-    // Project active pings into crisp 2D HUD markers
+    // Project active pings into crisp 2D HUD markers & detect if crosshair is looking directly at our own ping
     const W = window.innerWidth;
     const H = window.innerHeight;
-    let html = '';
+    const cx = W * 0.5;
+    const cy = H * 0.5;
+    let bestHover = null;
+    let bestHoverDist = 52;
+    const projected = [];
+
     for (const pg of activePings) {
       const worldPt = pg.position.clone();
       if (!pg.targetEnemy) worldPt.y += 1.4;
@@ -740,10 +762,25 @@
       const sx = (proj.x * 0.5 + 0.5) * W;
       const sy = (-proj.y * 0.5 + 0.5) * H;
       if (sx < -40 || sx > W + 40 || sy < -40 || sy > H + 40) continue;
+      if (pg.isOwn) {
+        const dCenter = Math.hypot(sx - cx, sy - cy);
+        if (dCenter < bestHoverDist) {
+          bestHoverDist = dCenter;
+          bestHover = pg;
+        }
+      }
+      projected.push({ pg, sx, sy });
+    }
+    hoveredOwnPing = bestHover;
+
+    let html = '';
+    for (const { pg, sx, sy } of projected) {
       const dist = Math.round(player.position.distanceTo(pg.position));
       const isLive = !!pg.targetEnemy;
+      const showRemoveHint = (pg === hoveredOwnPing);
       html += `
         <div class="world-ping-marker${isLive ? ' live-enemy' : ''}" style="left:${sx.toFixed(1)}px;top:${sy.toFixed(1)}px;">
+          ${showRemoveHint ? `<div class="wp-remove-hint">[MMB] REMOVE</div>` : ''}
           <div class="wp-tag" style="color:${pg.color};border:1px solid ${pg.color};">${pg.label} ${dist}m</div>
           <div class="wp-diamond" style="border-color:${pg.color};color:${pg.color};"><span>${pg.symbol}</span></div>
         </div>

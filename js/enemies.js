@@ -764,19 +764,24 @@ class Enemy {
             this.group.position.z = this.position.z;
           }
           this.group.rotation.y = Math.atan2(awayX, awayZ);
-          // Supporting arm push-off scoot animation (heaving body along ground instead of kicking feet)
-          this._scootCycle = (this._scootCycle || 0) + dt * 4.5;
+          // Grounded seated reclined scoot animation (hips at y≈0.18m, legs flat on ground, left arm propping & pushing)
+          this._scootCycle = (this._scootCycle || 0) + dt * 4.2;
           const phase = Math.sin(this._scootCycle);
           const heave = Math.max(0, phase);
-          this.group.position.y = -0.52 + heave * 0.04;
-          if (this.leftArm) this.leftArm.rotation.x = 0.65 + phase * 0.35;
-          if (this.leftHip) this.leftHip.rotation.x = -1.32 - heave * 0.14;
-          if (this.rightHip) this.rightHip.rotation.x = -1.36 - heave * 0.10;
+          this.group.position.y = -0.62 + heave * 0.035;
+          this.group.rotation.x = -0.32 - heave * 0.05;
+          this.group.rotation.z = phase * 0.055;
+          if (this.leftArm) { this.leftArm.rotation.x = 0.55 + phase * 0.26; this.leftArm.rotation.z = 0.24; }
+          if (this.rightArm) { this.rightArm.rotation.x = -0.78; this.rightArm.rotation.z = -0.48; }
+          if (this.leftHip) this.leftHip.rotation.x = -1.24 - heave * 0.10;
+          if (this.rightHip) this.rightHip.rotation.x = -1.26 - heave * 0.06;
         }
       } else {
-        this.group.position.y = -0.52;
-        if (this.leftHip) this.leftHip.rotation.x = -1.44;
-        if (this.rightHip) this.rightHip.rotation.x = -1.44;
+        this.group.position.y = -0.62;
+        this.group.rotation.x = -0.48;
+        this.group.rotation.z = 0;
+        if (this.leftHip) this.leftHip.rotation.x = -1.10;
+        if (this.rightHip) this.rightHip.rotation.x = -1.10;
       }
       if (!this.beingRevivedBy && this.downedBleedTimer <= 0) {
         this.die();

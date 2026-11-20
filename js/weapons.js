@@ -1385,32 +1385,32 @@ class WeaponSystem {
           const breathe = Math.sin(performance.now() * 0.0028) * 0.008;
           const p = this.downedLegsParts;
 
-          this.downedLegsGroup.position.y = heave * 0.048 + breathe;
-          this.downedLegsGroup.position.z = -heave * 0.035;
-          this.downedLegsGroup.rotation.x = -player.pitch * 0.72 - heave * 0.06;
-          this.downedLegsGroup.rotation.z = sinC * 0.055;
+          this.downedLegsGroup.position.y = -0.02 + heave * 0.032 + breathe;
+          this.downedLegsGroup.position.z = -0.04 - heave * 0.028;
+          this.downedLegsGroup.rotation.x = -player.pitch * 0.78 - heave * 0.04;
+          this.downedLegsGroup.rotation.z = sinC * 0.04;
 
           if (player.beingDragged) {
             // Relaxed straight legs trailing smoothly as teammate drags you from behind
-            p.leftLeg.hip.rotation.x = 0.01;
-            p.leftLeg.knee.rotation.x = -0.05;
-            p.rightLeg.hip.rotation.x = 0.01;
-            p.rightLeg.knee.rotation.x = -0.05;
+            p.leftLeg.hip.rotation.x = 0.02;
+            p.leftLeg.knee.rotation.x = -0.04;
+            p.rightLeg.hip.rotation.x = 0.02;
+            p.rightLeg.knee.rotation.x = -0.04;
             if (p.supportArm) {
-              p.supportArm.position.set(-0.36, -0.26, -0.14);
-              p.supportArm.rotation.x = 0.12;
+              p.supportArm.position.set(-0.34, -0.26, -0.14);
+              p.supportArm.rotation.x = 0.10;
             }
           } else {
-            // Bent left knee plants heel & pulls/pushes while supporting left arm reaches out, plants palm & heaves torso!
-            p.leftLeg.hip.rotation.x = 0.24 + heave * 0.18;
-            p.leftLeg.knee.rotation.x = -0.44 - heave * 0.26;
-            p.rightLeg.hip.rotation.x = 0.12 + heave * 0.10;
-            p.rightLeg.knee.rotation.x = -0.24 - heave * 0.14;
+            // Grounded seated 1st-person legs: left knee raised slightly planting heel, right leg relaxed forward, supporting arm propping
+            p.leftLeg.hip.rotation.x = 0.30 + heave * 0.12;
+            p.leftLeg.knee.rotation.x = -0.42 - heave * 0.16;
+            p.rightLeg.hip.rotation.x = 0.10 + heave * 0.06;
+            p.rightLeg.knee.rotation.x = -0.14 - heave * 0.08;
             if (p.supportArm) {
               p.supportArm.position.x = -0.32;
-              p.supportArm.position.z = -0.20 - cosC * 0.14;
-              p.supportArm.position.y = -0.21 - heave * 0.05;
-              p.supportArm.rotation.x = -0.10 + sinC * 0.34;
+              p.supportArm.position.z = -0.18 - cosC * 0.10;
+              p.supportArm.position.y = -0.22 - heave * 0.035;
+              p.supportArm.rotation.x = -0.08 + sinC * 0.24;
             }
           }
         }
