@@ -534,6 +534,10 @@
       player.isFiring = true;
       firePlayerWeapon();
     } else if (e.button === 2) {
+      if (designatorActive) {
+        setDesignatorActive(false);
+        return;
+      }
       if (throwableSystem && throwableSystem.state === 'prep') {
         throwableSystem.cancelPrep();
         if (weaponSystem && !player.isThirdPerson) weaponSystem.viewmodelGroup.visible = true;
@@ -666,9 +670,9 @@
       return;
     }
 
-    if (e.code === (kb.slotPrimary || 'Digit1')) player.switchSlot('primary');
-    else if (e.code === (kb.slotSecondary || 'Digit2')) player.switchSlot('secondary');
-    else if (e.code === (kb.slotMelee || 'Digit3')) player.switchSlot('melee');
+    if (e.code === (kb.slotPrimary || 'Digit1')) { if (designatorActive) setDesignatorActive(false); player.switchSlot('primary'); }
+    else if (e.code === (kb.slotSecondary || 'Digit2')) { if (designatorActive) setDesignatorActive(false); player.switchSlot('secondary'); }
+    else if (e.code === (kb.slotMelee || 'Digit3')) { if (designatorActive) setDesignatorActive(false); player.switchSlot('melee'); }
     else if (e.code === (kb.quickMelee || 'KeyX')) {
       if (!e.repeat) performMeleeStrike(true);
     }
@@ -686,6 +690,9 @@
     } else if (e.code === (kb.map || 'KeyM')) {
       e.preventDefault();
       if (!e.repeat) toggleFullMapMode();
+    } else if (e.code === 'Escape' && designatorActive) {
+      e.preventDefault();
+      setDesignatorActive(false);
     } else if (e.code === 'Escape' && ui.isTacMapOpen) {
       e.preventDefault();
       toggleFullMapMode(false);
@@ -1276,9 +1283,149 @@
     return new THREE.Vector3(origin.x + dir.x * 48, 0.05, origin.z + dir.z * 48);
   }
 
+  let designatorActive = false;
+  let designatorLaserLine = null;
+  let uavPhoneAnim = { active: false, t: 0, dur: 1.15, triggered: false, mesh: null };
+
+  function _createUavPhoneRig() {
+    const g = new THREE.Group();
+    const caseMat = new THREE.MeshLambertMaterial({ color: 0x262d26 });
+    const bumperMat = new THREE.MeshLambertMaterial({ color: 0x151815 });
+    const screenMat = new THREE.MeshBasicMaterial({ color: 0x2fd678 });
+    const skinMat = new THREE.MeshLambertMaterial({ color: 0xc99c7a });
+    const gloveMat = new THREE.MeshLambertMaterial({ color: 0x2c302b });
+
+    // Rugged military phone body held in left hand
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.19, 0.022), caseMat);
+    const bumperTop = new THREE.Mesh(new THREE.BoxGeometry(0.118, 0.018, 0.026), bumperMat);
+    bumperTop.position.y = 0.095;
+    const bumperBot = new THREE.Mesh(new THREE.BoxGeometry(0.118, 0.018, 0.026), bumperMat);
+    bumperBot.position.y = -0.095;
+    const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.008, 0.075, 6), bumperMat);
+    antenna.position.set(0.038, 0.132, 0);
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.092, 0.145), screenMat);
+    screen.position.z = 0.012;
+
+    // Left hand cradling phone
+    const lHand = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.09, 0.045), gloveMat);
+    lHand.position.set(-0.045, -0.04, -0.012);
+
+    // Right hand & tapping index finger
+    const tapHand = new THREE.Group();
+    tapHand.position.set(0.14, -0.08, 0.08);
+    const rPalm = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.075, 0.045), gloveMat);
+    const rFinger = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.018, 0.075), skinMat);
+    rFinger.position.set(-0.028, 0.02, -0.045);
+    tapHand.add(rPalm, rFinger);
+
+    g.add(body, bumperTop, bumperBot, antenna, screen, lHand, tapHand);
+    g.userData.tapHand = tapHand;
+    g.userData.screenMat = screenMat;
+    g.visible = false;
+    return g;
+  }
+
+  function startUavPhoneAnim() {
+    if (!viewmodelCamera) return;
+    if (!uavPhoneAnim.mesh) {
+      uavPhoneAnim.mesh = _createUavPhoneRig();
+      viewmodelCamera.add(uavPhoneAnim.mesh);
+    }
+    uavPhoneAnim.active = true;
+    uavPhoneAnim.t = 0;
+    uavPhoneAnim.triggered = false;
+    uavPhoneAnim.mesh.visible = true;
+    if (weaponSystem && weaponSystem.viewmodelGroup) weaponSystem.viewmodelGroup.visible = false;
+    ksCooldown = 1.4;
+  }
+
+  function setDesignatorActive(active) {
+    designatorActive = !!active;
+    const ov = document.getElementById('designator-overlay');
+    if (ov) ov.classList.toggle('hidden', !designatorActive);
+    const ch = document.getElementById('crosshair');
+    if (ch) ch.classList.toggle('hidden', designatorActive);
+    if (weaponSystem && weaponSystem.viewmodelGroup) {
+      weaponSystem.viewmodelGroup.visible = !designatorActive && !player.isThirdPerson && !(uavPhoneAnim && uavPhoneAnim.active);
+    }
+    if (!designatorActive && designatorLaserLine && scene) {
+      scene.remove(designatorLaserLine);
+      designatorLaserLine = null;
+    }
+    if (designatorActive) {
+      player.isFiring = false;
+      player.isADS = false;
+      ui.showCenterToast('LASER DESIGNATOR 4X — FIRE TO MARK TARGET', '#ff5252');
+    }
+  }
+
+  function _deployPrecisionAirstrike(targetPos) {
+    if (!window.DEV_MODE) player.killstreak = null;
+    ksCooldown = 2.0;
+
+    const strikeDir = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw)).normalize();
+
+    const beaconGroup = new THREE.Group();
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(10.6, 11.5, 32),
+      new THREE.MeshBasicMaterial({ color: 0xff3d3d, side: THREE.DoubleSide, transparent: true, opacity: 0.72 })
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.08;
+    const beam = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.14, 0.14, 38, 8),
+      new THREE.MeshBasicMaterial({ color: 0xff3d3d, transparent: true, opacity: 0.55 })
+    );
+    beam.position.y = 19;
+    beaconGroup.add(ring, beam);
+    beaconGroup.position.copy(targetPos);
+    scene.add(beaconGroup);
+
+    const jets = [0, 1].map((passIdx) => {
+      const mesh = _createFighterJetMesh();
+      mesh.visible = false;
+      scene.add(mesh);
+      const startDelay = 1.9 + passIdx * 1.15;
+      const bombs = [];
+      for (let b = 0; b < 6; b++) {
+        const along = -13 + b * 5.2 + (passIdx === 1 ? 1.8 : 0);
+        const sideJitter = (Math.random() - 0.5) * 3.5;
+        const perp = new THREE.Vector3(-strikeDir.z, 0, strikeDir.x);
+        const bPos = targetPos.clone()
+          .addScaledVector(strikeDir, along)
+          .addScaledVector(perp, sideJitter);
+        bPos.y = 0.05;
+        bombs.push({ pos: bPos, triggerTime: startDelay + 0.52 + b * 0.11, detonated: false });
+      }
+      return { mesh, startDelay, duration: 2.3, bombs, passIdx };
+    });
+
+    activeAirstrikes.push({
+      targetPos,
+      strikeDir,
+      beaconGroup,
+      jets,
+      elapsed: 0,
+      maxDuration: 5.8
+    });
+
+    if (window.soundEngine) {
+      if (window.soundEngine.playDesignatorLock) window.soundEngine.playDesignatorLock();
+      else if (window.soundEngine.playCookTick) window.soundEngine.playCookTick(true);
+    }
+    ui.showCenterToast('PRECISION AIRSTRIKE INBOUND — 2.0s', '#ff5252');
+    ui.addFeedMessage('Precision Airstrike locked on laser designator coordinates!', '#ffca28');
+  }
+
   function activateKillstreak() {
     if (!inRaid || !player || player.isDowned || player.dead || isModalOpen) return false;
     if (ksCooldown > 0) return false;
+
+    if (designatorActive) {
+      setDesignatorActive(false);
+      return true;
+    }
+
     const ksId = player.killstreak;
     if (!ksId) {
       ui.showCenterToast('NO KILLSTREAK EQUIPPED', '#a0a8a3');
@@ -1286,81 +1433,13 @@
     }
 
     if (ksId === 'ks_uav') {
-      player.uavTimer = 25.0;
-      if (!window.DEV_MODE) player.killstreak = null;
-      ksCooldown = 1.5;
-      if (!uavDroneMesh && scene) {
-        uavDroneMesh = _createUavDroneMesh();
-        scene.add(uavDroneMesh);
-      }
-      if (window.soundEngine) {
-        if (window.soundEngine.playCookTick) window.soundEngine.playCookTick(true);
-        if (window.soundEngine.playHeal) window.soundEngine.playHeal();
-      }
-      ui.showCenterToast('UAV RECON ONLINE — 25s', '#69f0ae');
-      ui.addFeedMessage('UAV Recon Drone deployed — All hostiles revealed on radar (25s)', '#69f0ae');
+      if (uavPhoneAnim && uavPhoneAnim.active) return false;
+      startUavPhoneAnim();
       return true;
     }
 
     if (ksId === 'ks_airstrike') {
-      const targetPos = _getKillstreakTargetPoint();
-      if (!window.DEV_MODE) player.killstreak = null;
-      ksCooldown = 2.0;
-
-      // Strike axis perpendicular to player's view so jets fly dramatically across the sightline
-      const strikeDir = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw)).normalize();
-
-      // Red target laser pillar + pulsing ground warning ring
-      const beaconGroup = new THREE.Group();
-      const ring = new THREE.Mesh(
-        new THREE.RingGeometry(10.6, 11.5, 32),
-        new THREE.MeshBasicMaterial({ color: 0xff3d3d, side: THREE.DoubleSide, transparent: true, opacity: 0.72 })
-      );
-      ring.rotation.x = -Math.PI / 2;
-      ring.position.y = 0.08;
-      const beam = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.14, 0.14, 38, 8),
-        new THREE.MeshBasicMaterial({ color: 0xff3d3d, transparent: true, opacity: 0.55 })
-      );
-      beam.position.y = 19;
-      beaconGroup.add(ring, beam);
-      beaconGroup.position.copy(targetPos);
-      scene.add(beaconGroup);
-
-      // Schedule 2 staggered jet passes, each dropping 6 ordnance blasts along a 26m corridor
-      const jets = [0, 1].map((passIdx) => {
-        const mesh = _createFighterJetMesh();
-        mesh.visible = false;
-        scene.add(mesh);
-        const startDelay = 1.9 + passIdx * 1.15;
-        const bombs = [];
-        for (let b = 0; b < 6; b++) {
-          const along = -13 + b * 5.2 + (passIdx === 1 ? 1.8 : 0);
-          const sideJitter = (Math.random() - 0.5) * 3.5;
-          const perp = new THREE.Vector3(-strikeDir.z, 0, strikeDir.x);
-          const bPos = targetPos.clone()
-            .addScaledVector(strikeDir, along)
-            .addScaledVector(perp, sideJitter);
-          bPos.y = 0.05;
-          bombs.push({ pos: bPos, triggerTime: startDelay + 0.52 + b * 0.11, detonated: false });
-        }
-        return { mesh, startDelay, duration: 2.3, bombs, passIdx };
-      });
-
-      activeAirstrikes.push({
-        targetPos,
-        strikeDir,
-        beaconGroup,
-        jets,
-        elapsed: 0,
-        maxDuration: 5.8
-      });
-
-      if (window.soundEngine && window.soundEngine.playCookTick) {
-        window.soundEngine.playCookTick(true);
-      }
-      ui.showCenterToast('PRECISION AIRSTRIKE INBOUND — 2.0s', '#ff5252');
-      ui.addFeedMessage('Precision Airstrike called on target coordinates!', '#ffca28');
+      setDesignatorActive(true);
       return true;
     }
 
@@ -1370,23 +1449,68 @@
   function updateKillstreaks(dt) {
     if (ksCooldown > 0) ksCooldown = Math.max(0, ksCooldown - dt);
 
-    // 1. Orbiting 3D UAV Recon Drone
-    if (uavDroneMesh) {
-      if (player && (player.uavTimer || 0) > 0) {
-        const ang = performance.now() * 0.00075;
-        const rad = 34;
-        const cx = player.position.x + Math.cos(ang) * rad;
-        const cz = player.position.z + Math.sin(ang) * rad;
-        uavDroneMesh.position.set(cx, 44, cz);
-        uavDroneMesh.rotation.y = -ang;
-        uavDroneMesh.rotation.z = 0.22;
-        if (uavDroneMesh.userData.strobe) {
-          uavDroneMesh.userData.strobe.visible = Math.floor(performance.now() / 320) % 2 === 0;
+    // 1. Rugged Army Phone Tap 3D Animation (UAV activation -> 30s 2D 150m pulsing radar)
+    if (uavPhoneAnim && uavPhoneAnim.active && uavPhoneAnim.mesh) {
+      uavPhoneAnim.t += dt;
+      const p = Math.min(1, uavPhoneAnim.t / uavPhoneAnim.dur);
+      const rig = uavPhoneAnim.mesh;
+      const lift = p < 0.28 ? (p / 0.28) : (p > 0.78 ? Math.max(0, (1 - p) / 0.22) : 1);
+      rig.position.set(-0.04, -0.34 + lift * 0.26, -0.38);
+      rig.rotation.set(-0.18 * lift, 0.12 * lift, 0.04);
+
+      const tapHand = rig.userData.tapHand;
+      if (tapHand) {
+        const tapP = Math.max(0, Math.min(1, 1 - Math.abs(p - 0.50) / 0.16));
+        tapHand.position.set(0.14 - tapP * 0.11, -0.07 + tapP * 0.06, 0.09 - tapP * 0.06);
+      }
+      if (!uavPhoneAnim.triggered && p >= 0.48) {
+        uavPhoneAnim.triggered = true;
+        player.uavTimer = 30.0;
+        if (!window.DEV_MODE) player.killstreak = null;
+        if (rig.userData.screenMat) rig.userData.screenMat.color.setHex(0x69f0ae);
+        if (window.soundEngine && window.soundEngine.playUavPhoneTap) {
+          window.soundEngine.playUavPhoneTap();
         }
+        ui.showCenterToast('UAV RECON ONLINE — 30s (150m RADAR)', '#69f0ae');
+        ui.addFeedMessage('UAV Recon activated — 150m pulsing radar active on map & minimap (30s)', '#69f0ae');
+      }
+      if (p >= 1) {
+        uavPhoneAnim.active = false;
+        rig.visible = false;
+        if (weaponSystem && weaponSystem.viewmodelGroup && !player.isThirdPerson && !designatorActive) {
+          weaponSystem.viewmodelGroup.visible = true;
+        }
+      }
+    }
+
+    // 2. 4x Zoom Binocular Laser Designator (live red laser beam + 4x FOV zoom + rangefinder)
+    if (designatorActive && player && camera) {
+      if (player.isDowned || player.dead || isModalOpen) {
+        setDesignatorActive(false);
       } else {
-        scene.remove(uavDroneMesh);
-        uavDroneMesh = null;
-        ui.addFeedMessage('UAV Recon Drone offline', '#a0a8a3');
+        const targetFov = (window.BASE_FOV || 75) / 4; // True 4x magnification
+        camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, Math.min(1, dt * 14));
+        camera.updateProjectionMatrix();
+
+        const targetPt = _getKillstreakTargetPoint();
+        const origin = new THREE.Vector3();
+        camera.getWorldPosition(origin);
+        const startPt = origin.clone().add(new THREE.Vector3(0, -0.08, 0));
+        const rangeM = Math.round(origin.distanceTo(targetPt));
+        const rangeEl = document.getElementById('desig-range');
+        if (rangeEl) rangeEl.textContent = `RANGE: ${rangeM}m`;
+
+        if (!designatorLaserLine && scene) {
+          const geo = new THREE.BufferGeometry().setFromPoints([startPt, targetPt]);
+          const mat = new THREE.LineBasicMaterial({ color: 0xff3d3d, transparent: true, opacity: 0.78 });
+          designatorLaserLine = new THREE.Line(geo, mat);
+          scene.add(designatorLaserLine);
+        } else if (designatorLaserLine) {
+          const posArr = designatorLaserLine.geometry.attributes.position.array;
+          posArr[0] = startPt.x; posArr[1] = startPt.y; posArr[2] = startPt.z;
+          posArr[3] = targetPt.x; posArr[4] = targetPt.y; posArr[5] = targetPt.z;
+          designatorLaserLine.geometry.attributes.position.needsUpdate = true;
+        }
       }
     }
 
@@ -1528,6 +1652,13 @@
 
   function firePlayerWeapon() {
     if (player.isDowned || player.dead || player.isRevivingAlly || player.ledgeState || player.mantleState) return;
+    if (uavPhoneAnim && uavPhoneAnim.active) return;
+    if (designatorActive) {
+      const targetPos = _getKillstreakTargetPoint();
+      setDesignatorActive(false);
+      _deployPrecisionAirstrike(targetPos);
+      return;
+    }
     if (player.activeSlot === 'melee') {
       performMeleeStrike(false);
       return;
