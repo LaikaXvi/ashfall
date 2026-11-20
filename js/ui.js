@@ -1228,7 +1228,7 @@ class GameUI {
     }
   }
 
-  openWeaponStagingModal({ weaponId, mods = null, mag = undefined, sourceLabel = 'WEAPON', slots = [], onSelectSlot = null, onCancel = null } = {}) {
+  openWeaponStagingModal({ weaponId, mods = null, mag = undefined, rarityOverride = null, sourceLabel = 'WEAPON', slots = [], onSelectSlot = null, onCancel = null } = {}) {
     const modal = document.getElementById('weapon-staging-modal');
     const titleEl = document.getElementById('ws-modal-title');
     const previewEl = document.getElementById('ws-incoming-preview');
@@ -1243,7 +1243,7 @@ class GameUI {
       titleEl.textContent = `STAGE WEAPON // ${sourceLabel.toUpperCase()}`;
     }
 
-    const rarKey = def.rarity || 'common';
+    const rarKey = rarityOverride || def.rarity || 'common';
     const rarInfo = (GAME_DATA.RARITIES && GAME_DATA.RARITIES[rarKey]) || { label: rarKey.toUpperCase(), color: '#69f0ae' };
     const ammoDef = def.ammoType && GAME_DATA.ITEMS[def.ammoType];
     const eff = GAME_DATA.getEffectiveWeaponStats ? GAME_DATA.getEffectiveWeaponStats(weaponId, mods || {}) : def;
@@ -1262,7 +1262,7 @@ class GameUI {
     choicesEl.innerHTML = '';
     for (const s of slots) {
       const curDef = s.currentId ? GAME_DATA.ITEMS[s.currentId] : null;
-      const curRar = curDef ? (curDef.rarity || 'common') : 'common';
+      const curRar = s.currentRarity || (curDef ? (curDef.rarity || 'common') : 'common');
       const locked = s.available === false;
       const card = document.createElement('div');
       card.className = `ws-slot-card${locked ? ' locked' : ''}`;
@@ -3609,6 +3609,7 @@ class GameUI {
       weaponId: weaponItem.id,
       mods: weaponItem.mods || null,
       mag: weaponItem.mag,
+      rarityOverride: weaponItem.rarityOverride || null,
       sourceLabel,
       onCancel,
       slots: [
@@ -3617,6 +3618,7 @@ class GameUI {
           title: '[1] PRIMARY WEAPON',
           currentId: pSlot ? pSlot.id : null,
           currentMods: pSlot ? pSlot.mods : null,
+          currentRarity: pSlot ? pSlot.rarityOverride : null,
           available: true
         },
         {
@@ -3624,6 +3626,7 @@ class GameUI {
           title: '[2] SECONDARY WEAPON',
           currentId: sSlot ? sSlot.id : null,
           currentMods: sSlot ? sSlot.mods : null,
+          currentRarity: sSlot ? sSlot.rarityOverride : null,
           available: true
         },
         {
@@ -3631,6 +3634,7 @@ class GameUI {
           title: '[PACK] BACKPACK WEAPON SLOT',
           currentId: bwSlot ? bwSlot.id : null,
           currentMods: bwSlot ? bwSlot.mods : null,
+          currentRarity: bwSlot ? bwSlot.rarityOverride : null,
           available: hasWpnBag,
           lockReason: 'REQUIRES WEAPON BACKPACK (16 SLOTS + 1 WPN)'
         }
@@ -3638,7 +3642,8 @@ class GameUI {
       onSelectSlot: (targetSlotKey) => {
         const res = player.equipWeaponInRaid(weaponItem.id, targetSlotKey, {
           mods: weaponItem.mods || {},
-          mag: weaponItem.mag
+          mag: weaponItem.mag,
+          rarityOverride: weaponItem.rarityOverride || null
         });
         if (res.equipped) {
           if (onComplete) onComplete(res, targetSlotKey);
@@ -3761,7 +3766,7 @@ class GameUI {
     const isGamepad = inputMode === 'gamepad';
 
     this._hoveredSlot = { context, item, idx, el: slotEl, inputMode, mode };
-    const rarKey = def.rarity || 'common';
+    const rarKey = item.rarityOverride || def.rarity || 'common';
     const rarInfo = (GAME_DATA.RARITIES && GAME_DATA.RARITIES[rarKey]) || { label: rarKey.toUpperCase(), color: '#69f0ae' };
     const hasContainer = !!this.activeLootSource;
     const canSplit = def.stackable && item.qty > 1;
@@ -4064,7 +4069,7 @@ class GameUI {
           if (context === 'backpack_weapon') {
             if (targetSlotKey !== 'backpackWeapon') {
               player.backpackWeapon = res.prevId
-                ? { id: res.prevId, mods: (res.prevSlotObj && res.prevSlotObj.mods) || {}, mag: res.prevSlotObj && res.prevSlotObj.mag }
+                ? { id: res.prevId, mods: (res.prevSlotObj && res.prevSlotObj.mods) || {}, mag: res.prevSlotObj && res.prevSlotObj.mag, rarityOverride: (res.prevSlotObj && res.prevSlotObj.rarityOverride) || null }
                 : null;
             }
           } else {
@@ -4075,6 +4080,7 @@ class GameUI {
                 qty: 1,
                 mods: (res.prevSlotObj && res.prevSlotObj.mods) || {},
                 mag: res.prevSlotObj && res.prevSlotObj.mag,
+                rarityOverride: (res.prevSlotObj && res.prevSlotObj.rarityOverride) || null,
                 revealed: true
               });
             }
@@ -4087,12 +4093,12 @@ class GameUI {
     if (action === 'equip_primary' || action === 'equip_secondary' || action === 'equip_backpack_weapon') {
       if (context === 'container' && item.revealed === false) return;
       const slotName = action === 'equip_primary' ? 'primary' : (action === 'equip_secondary' ? 'secondary' : 'backpackWeapon');
-      const res = player.equipWeaponInRaid(item.id, slotName, { mods: item.mods, mag: item.mag });
+      const res = player.equipWeaponInRaid(item.id, slotName, { mods: item.mods, mag: item.mag, rarityOverride: item.rarityOverride || null });
       if (res.equipped) {
         if (context === 'backpack_weapon') {
           if (slotName !== 'backpackWeapon') {
             player.backpackWeapon = res.prevId
-              ? { id: res.prevId, mods: (res.prevSlotObj && res.prevSlotObj.mods) || {}, mag: res.prevSlotObj && res.prevSlotObj.mag }
+              ? { id: res.prevId, mods: (res.prevSlotObj && res.prevSlotObj.mods) || {}, mag: res.prevSlotObj && res.prevSlotObj.mag, rarityOverride: (res.prevSlotObj && res.prevSlotObj.rarityOverride) || null }
               : null;
           }
         } else {
@@ -4103,6 +4109,7 @@ class GameUI {
               qty: 1,
               mods: (res.prevSlotObj && res.prevSlotObj.mods) || {},
               mag: res.prevSlotObj && res.prevSlotObj.mag,
+              rarityOverride: (res.prevSlotObj && res.prevSlotObj.rarityOverride) || null,
               revealed: true
             });
           }
@@ -4151,6 +4158,7 @@ class GameUI {
                   qty: 1,
                   mods: (res.prevSlotObj && res.prevSlotObj.mods) || {},
                   mag: res.prevSlotObj && res.prevSlotObj.mag,
+                  rarityOverride: (res.prevSlotObj && res.prevSlotObj.rarityOverride) || null,
                   revealed: true
                 });
               }
@@ -4168,6 +4176,7 @@ class GameUI {
             qty: 1,
             mods: player.backpackWeapon.mods || {},
             mag: player.backpackWeapon.mag,
+            rarityOverride: player.backpackWeapon.rarityOverride || null,
             revealed: true
           });
           player.backpackWeapon = null;
@@ -4213,7 +4222,7 @@ class GameUI {
         const removed = player.backpackWeapon;
         player.backpackWeapon = null;
         if (typeof this.onDropItem === 'function') {
-          this.onDropItem({ id: removed.id, qty: 1, mods: removed.mods, mag: removed.mag });
+          this.onDropItem({ id: removed.id, qty: 1, mods: removed.mods, mag: removed.mag, rarityOverride: removed.rarityOverride || null });
         }
       } else if (context === 'backpack') {
         const removed = player.backpack.splice(idx, 1)[0];
@@ -4300,9 +4309,9 @@ class GameUI {
         ${card({ key: 'selfRevive', label: 'REVIVE', id: data.selfRevive })}
 
         <!-- Row 2: PRIMARY (2 cols) | VEST (Center) | SECONDARY (2 cols) -->
-        ${card({ key: 'primary', label: 'PRIMARY', id: data.primary, sub: pDef && data.primaryMag !== undefined ? `${data.primaryMag} RDS` : '', span: 2 })}
+        ${card({ key: 'primary', label: 'PRIMARY', id: data.primary, rarity: data.primaryRarity || undefined, sub: pDef && data.primaryMag !== undefined ? `${data.primaryMag} RDS` : '', span: 2 })}
         ${card({ key: 'armor', label: 'VEST', id: data.armor, spine: true })}
-        ${card({ key: 'secondary', label: 'SECONDARY', id: data.secondary, sub: sDef && data.secondaryMag !== undefined ? `${data.secondaryMag} RDS` : '', span: 2 })}
+        ${card({ key: 'secondary', label: 'SECONDARY', id: data.secondary, rarity: data.secondaryRarity || undefined, sub: sDef && data.secondaryMag !== undefined ? `${data.secondaryMag} RDS` : '', span: 2 })}
 
         <!-- Row 3: Tactical | Lethal | BACKPACK (Center) | Field Upgrade | Killstreak -->
         ${card({ key: 'tactical', label: 'TAC', id: data.tactical, qty: data.tacticalQty || 1, text: tacDef ? `${tacDef.name.split(' ')[0]}${data.tacticalQty ? ' x' + data.tacticalQty : ''}` : 'EMPTY', badge: tacDef && data.tacticalQty ? `x${data.tacticalQty}` : '' })}
@@ -4358,9 +4367,11 @@ class GameUI {
         selfRevive: player.selfRevive,
         primary: pSlot ? pSlot.id : null,
         primaryMag: pSlot ? pSlot.mag : undefined,
+        primaryRarity: pSlot ? pSlot.rarityOverride : null,
         armor: player.armorId,
         secondary: sSlot ? sSlot.id : null,
         secondaryMag: sSlot ? sSlot.mag : undefined,
+        secondaryRarity: sSlot ? sSlot.rarityOverride : null,
         tactical: player.tactical,
         tacticalQty: player.tacticalQty,
         lethal: player.lethal,
@@ -4379,7 +4390,7 @@ class GameUI {
             onComplete: (res, targetSlotKey) => {
               if (targetSlotKey !== k) {
                 player.slots[k] = res.prevId
-                  ? { id: res.prevId, mods: (res.prevSlotObj && res.prevSlotObj.mods) || {}, mag: res.prevSlotObj && res.prevSlotObj.mag }
+                  ? { id: res.prevId, mods: (res.prevSlotObj && res.prevSlotObj.mods) || {}, mag: res.prevSlotObj && res.prevSlotObj.mag, rarityOverride: (res.prevSlotObj && res.prevSlotObj.rarityOverride) || null }
                   : null;
                 if (player.activeSlot === k && !player.slots[k]) {
                   player.activeSlot = player.slots.primary ? 'primary' : (player.slots.secondary ? 'secondary' : 'melee');
@@ -4408,7 +4419,7 @@ class GameUI {
             player._equipCurrentWeapon();
           }
           if (typeof this.onDropItem === 'function') {
-            this.onDropItem({ id: wObj.id, qty: 1, mods: wObj.mods, mag: wObj.mag });
+            this.onDropItem({ id: wObj.id, qty: 1, mods: wObj.mods, mag: wObj.mag, rarityOverride: wObj.rarityOverride || null });
           }
           this.renderLootModal(player);
           return;
@@ -4445,10 +4456,11 @@ class GameUI {
         const openEnemyWeaponStage = (k) => {
           const itemId = eq[k];
           if (!itemId) return;
-          this.openRaidWeaponStaging(player, { id: itemId, mods: {} }, {
+          this.openRaidWeaponStaging(player, { id: itemId, mods: {}, rarityOverride: eq[k + 'Rarity'] || null }, {
             sourceLabel: `OPERATOR ${k.toUpperCase()}`,
             onComplete: (res) => {
               eq[k] = res.prevId || null;
+              eq[k + 'Rarity'] = (res.prevSlotObj && res.prevSlotObj.rarityOverride) || null;
             }
           });
         };
@@ -4461,8 +4473,10 @@ class GameUI {
           headgear: eq.headgear,
           selfRevive: eq.selfRevive,
           primary: eq.primary,
+          primaryRarity: eq.primaryRarity || null,
           armor: eq.armor,
           secondary: eq.secondary,
+          secondaryRarity: eq.secondaryRarity || null,
           tactical: eq.tactical,
           lethal: eq.lethal,
           backpack: eq.backpack,
@@ -4652,8 +4666,8 @@ class GameUI {
         if (player.backpackWeapon && GAME_DATA.ITEMS[player.backpackWeapon.id]) {
           const bw = player.backpackWeapon;
           const wDef = GAME_DATA.ITEMS[bw.id];
-          const wItem = { id: bw.id, qty: 1, mods: bw.mods, mag: bw.mag };
-          wSlot.classList.add(`rarity-${wDef.rarity || 'common'}`);
+          const wItem = { id: bw.id, qty: 1, mods: bw.mods, mag: bw.mag, rarityOverride: bw.rarityOverride || null };
+          wSlot.classList.add(`rarity-${bw.rarityOverride || wDef.rarity || 'common'}`);
           wSlot.innerHTML = this._renderInvSlotInner(wItem, wDef, { wide: true, typeLabel: 'WPN SLOT' });
           wSlot.title = `${wDef.name} (Backpack Weapon Slot) — Left-Click: Equip/Stage · Right-Click: Options / Drop to Ground`;
           wSlot.addEventListener('click', (e) => {
@@ -4685,7 +4699,7 @@ class GameUI {
 
         if (item && GAME_DATA.ITEMS[item.id]) {
           const def = GAME_DATA.ITEMS[item.id];
-          slot.classList.add(`rarity-${def.rarity || 'common'}`);
+          slot.classList.add(`rarity-${item.rarityOverride || def.rarity || 'common'}`);
           slot.innerHTML = this._renderInvSlotInner(item, def);
           slot.title = `${def.name}${item.qty > 1 ? ' x' + item.qty : ''} (₽${(def.value * item.qty).toLocaleString()}) — Left-Click: Details/Equip · Right-Click: Drop to Ground / Split`;
           slot.addEventListener('click', (e) => {

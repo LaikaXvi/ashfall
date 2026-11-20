@@ -840,6 +840,7 @@ class Player {
     const mods = extra.mods || {};
     const eff = GAME_DATA.getEffectiveWeaponStats(weaponId, mods);
     const mag = extra.mag !== undefined ? extra.mag : (eff ? eff.magSize : (def.magSize || 30));
+    const rarityOverride = extra.rarityOverride || null;
 
     if (targetSlot === 'backpackWeapon') {
       if (!this.hasWeaponBackpack()) {
@@ -847,13 +848,13 @@ class Player {
       }
       const prevSlotObj = this.backpackWeapon;
       const prevId = prevSlotObj ? prevSlotObj.id : null;
-      this.backpackWeapon = { id: weaponId, mods, mag };
+      this.backpackWeapon = { id: weaponId, mods, mag, rarityOverride };
       return { equipped: true, prevId, prevSlotObj, slot: 'backpackWeapon' };
     }
 
     const prevSlotObj = this.slots[targetSlot];
     const prevId = prevSlotObj ? prevSlotObj.id : null;
-    this.slots[targetSlot] = { id: weaponId, mods, mag };
+    this.slots[targetSlot] = { id: weaponId, mods, mag, rarityOverride };
 
     if (!this.activeSlot || this.activeSlot === targetSlot || !this.slots[this.activeSlot]) {
       this.activeSlot = targetSlot;

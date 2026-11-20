@@ -594,7 +594,7 @@ class WastelandWorld {
     const def = GAME_DATA.ITEMS[id];
     if (!def) return null;
 
-    const rarKey = def.rarity || 'common';
+    const rarKey = opts.rarityOverride || def.rarity || 'common';
     const rarInfo = (GAME_DATA.RARITIES && GAME_DATA.RARITIES[rarKey]) || { color: '#4caf50' };
     const rarColor = new THREE.Color(rarInfo.color);
 
@@ -689,6 +689,7 @@ class WastelandWorld {
       qty,
       mods: opts.mods || null,
       mag: opts.mag !== undefined ? opts.mag : undefined,
+      rarityOverride: opts.rarityOverride || null,
       mesh: g,
       ringMesh: ring,
       position: new THREE.Vector3(pos.x, yBase, pos.z)

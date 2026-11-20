@@ -235,7 +235,7 @@
                 pkt.id,
                 pkt.qty || 1,
                 new THREE.Vector3(pkt.x || 0, pkt.y != null ? pkt.y : 0.02, pkt.z || 0),
-                { uid: pkt.uid, mods: pkt.mods || null, mag: pkt.mag }
+                { uid: pkt.uid, mods: pkt.mods || null, mag: pkt.mag, rarityOverride: pkt.rarityOverride || null }
               );
             }
           } else if (pkt.type === 'ground_pickup' && world && pkt.uid) {
@@ -358,7 +358,8 @@
       const dropZ = player.position.z - cosY * 1.05 - sinY * jitter;
       const gi = world.spawnGroundItem(droppedItem.id, droppedItem.qty || 1, new THREE.Vector3(dropX, 0.02, dropZ), {
         mods: droppedItem.mods || null,
-        mag: droppedItem.mag
+        mag: droppedItem.mag,
+        rarityOverride: droppedItem.rarityOverride || null
       });
       if (mpSession && mpSession.active && gi) {
         mpSession.sendEvent({
@@ -370,7 +371,8 @@
           y: Math.round(gi.position.y * 100) / 100,
           z: Math.round(gi.position.z * 100) / 100,
           mods: gi.mods || null,
-          mag: gi.mag
+          mag: gi.mag,
+          rarityOverride: gi.rarityOverride || null
         });
       }
     };
@@ -722,7 +724,7 @@
         isModalOpen = true;
         if (document.pointerLockElement === canvas) document.exitPointerLock();
         const dropPos = gi.position.clone();
-        ui.openRaidWeaponStaging(player, { id: gi.id, mods: gi.mods || {}, mag: gi.mag }, {
+        ui.openRaidWeaponStaging(player, { id: gi.id, mods: gi.mods || {}, mag: gi.mag, rarityOverride: gi.rarityOverride || null }, {
           sourceLabel: 'GROUND WEAPON',
           onComplete: (res) => {
             const pickedUid = gi.uid;
@@ -733,7 +735,8 @@
             if (res.prevId) {
               const swapped = world.spawnGroundItem(res.prevId, 1, dropPos, {
                 mods: (res.prevSlotObj && res.prevSlotObj.mods) || null,
-                mag: res.prevSlotObj && res.prevSlotObj.mag
+                mag: res.prevSlotObj && res.prevSlotObj.mag,
+                rarityOverride: (res.prevSlotObj && res.prevSlotObj.rarityOverride) || null
               });
               if (mpSession && mpSession.active && swapped) {
                 mpSession.sendEvent({
@@ -745,7 +748,8 @@
                   y: Math.round(swapped.position.y * 100) / 100,
                   z: Math.round(swapped.position.z * 100) / 100,
                   mods: swapped.mods || null,
-                  mag: swapped.mag
+                  mag: swapped.mag,
+                  rarityOverride: swapped.rarityOverride || null
                 });
               }
             }
