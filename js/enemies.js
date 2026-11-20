@@ -109,14 +109,14 @@ class Enemy {
     this.looted = false;
     this.stunTimer = 0;
 
-    // Tier & Operator Playstyle stats
+    // Tier & Operator Playstyle stats (boosted speeds + player-like tactical mechanics)
     if (this.isOperator) {
       this.name = opMeta.callsign;
       const styles = {
-        rusher:   { hp: 105, dmg: 11, fire: 0.20, acc: 0.11, spd: 4.6, wpn: 'mp5k',  col: 0x3b4852 },
-        flanker:  { hp: 115, dmg: 13, fire: 0.24, acc: 0.08, spd: 4.1, wpn: 'ak74m', col: 0x424d3b },
-        tactical: { hp: 130, dmg: 14, fire: 0.26, acc: 0.06, spd: 3.4, wpn: 'ak74m', col: 0x383d42 },
-        marksman: { hp: 120, dmg: 22, fire: 0.72, acc: 0.03, spd: 2.5, wpn: 'm24',   col: 0x4a4536 }
+        rusher:   { hp: 105, dmg: 11, fire: 0.20, acc: 0.11, spd: 5.9, wpn: 'mp5k',  col: 0x3b4852 },
+        flanker:  { hp: 115, dmg: 13, fire: 0.24, acc: 0.08, spd: 5.3, wpn: 'ak74m', col: 0x424d3b },
+        tactical: { hp: 130, dmg: 14, fire: 0.26, acc: 0.06, spd: 4.6, wpn: 'ak74m', col: 0x383d42 },
+        marksman: { hp: 120, dmg: 22, fire: 0.72, acc: 0.03, spd: 3.6, wpn: 'm24',   col: 0x4a4536 }
       };
       const st = styles[this.playstyle] || styles.tactical;
       this.maxHp = st.hp;
@@ -151,13 +151,31 @@ class Enemy {
         selfRevive: Math.random() < 0.35 ? 'self_revive' : null,
         revealedSlots: {}
       };
+      // Real vest armor + player-like tactical combat state
+      const vestDef = GAME_DATA.ITEMS[this.operatorEquipment.armor];
+      this.maxArmor = vestDef ? (vestDef.maxArmor || ((vestDef.plateSlots || 2) * 50)) : 100;
+      this.armor = this.maxArmor;
+      this.platingTimer = 0;
+      this.tacStamina = 100;
+      this.isTacSprinting = false;
+      this.slideTimer = 0;
+      this.slideCooldown = 0;
+      this.slideDir = new THREE.Vector3();
+      this.leanAngle = 0;
+      this.leanDir = Math.random() < 0.5 ? -1 : 1;
+      this.grenadeCooldown = 4.5 + Math.random() * 5.0;
+      this.grenadesLeft = 2;
+      this.smokeLeft = 1;
+      this.focusedTarget = null;
+      this.targetLockTimer = 0;
+      this.activeGrenades = [];
     } else if (tier === 'boss') {
       this.name = 'COMMANDER VULTURE';
       this.maxHp = 260;
       this.damage = 18;
       this.fireInterval = 0.20;
       this.accuracy = 0.06;
-      this.speed = 3.0;
+      this.speed = 3.9;
       this.armorColor = 0x3b1e22;
       this.headColor = 0x1d1e22;
       const bossWpns = ['ak74m', 'm24', 'm870'];
@@ -168,7 +186,7 @@ class Enemy {
       this.damage = 16;
       this.fireInterval = 0.22;
       this.accuracy = 0.085;
-      this.speed = 2.6;
+      this.speed = 3.4;
       this.armorColor = 0x2a2f33;
       this.headColor = 0x3b4045;
       this.weaponId = 'ak74m';
@@ -178,7 +196,7 @@ class Enemy {
       this.damage = 13;
       this.fireInterval = 0.28;
       this.accuracy = 0.075;
-      this.speed = 3.5;
+      this.speed = 4.5;
       this.armorColor = 0x4b4232;
       this.headColor = 0x6b5a48;
       const raiderWpns = ['ak74m', 'mp5k', 'm870'];
@@ -189,7 +207,7 @@ class Enemy {
       this.damage = 9;
       this.fireInterval = 0.42;
       this.accuracy = 0.11;
-      this.speed = 3.2;
+      this.speed = 4.1;
       this.armorColor = 0x5c4738;
       this.headColor = 0x8f735c;
       this.weaponId = Math.random() < 0.5 ? 'pm9' : 'g17';
@@ -395,7 +413,16 @@ class Enemy {
       return false;
     }
 
+    // Operators absorb incoming fire with their vest armor just like players!
+    if (this.isOperator && this.armor > 0) {
+      const absorbed = Math.min(this.armor, Math.round(amount * 0.78));
+      this.armor -= absorbed;
+      amount -= absorbed;
+    }
     this.hp -= amount;
+    if (this.isOperator && attackerInfo && attackerInfo.isPlayer) {
+      this.targetLockTimer = 5.5;
+    }
     if (attackerPos && this.state !== 'COMBAT') {
       this.lastKnownPlayerPos = attackerPos.clone();
       this.state = 'COMBAT';
@@ -695,6 +722,28 @@ class Enemy {
       }
     }
 
+    // 0. Operator Target Focus: Stay locked on current target until eliminated/survived before switching!
+    if (this.isOperator && this.focusedTarget && this.targetLockTimer > 0) {
+      const ft = this.focusedTarget;
+      const alive = ft.type === 'player'
+        ? (player && !player.dead && !player.isDowned)
+        : (ft.ref && !ft.ref.dead && !ft.ref.isDowned && !ft.ref.extracted);
+      if (alive) {
+        const fPos = ft.type === 'player' ? player.position : ft.ref.position;
+        const fDist = this.position.distanceTo(fPos);
+        if (fDist < 58) {
+          const eyeCheck = ft.type === 'player' ? fPos : new THREE.Vector3(fPos.x, 1.4, fPos.z);
+          if (this._hasLineOfSight(eyeCheck, 62)) {
+            best = { type: ft.type, ref: ft.ref, pos: fPos, dist: fDist };
+            bestDist = Math.min(fDist, 5.5); // only interrupt focus for a point-blank threat < 5.5m!
+          }
+        }
+      } else {
+        this.focusedTarget = null;
+        this.targetLockTimer = 0;
+      }
+    }
+
     // 2. PvPvE Hostility:
     //    - Operators are hostile to local AI (Scavs/Raiders/Bosses) AND rival Operator squads!
     //    - Local AI (Scavs/Raiders/Bosses) are hostile to Operators!
@@ -716,7 +765,113 @@ class Enemy {
     return best;
   }
 
+  _startOperatorSlide(dirVec) {
+    if (!this.isOperator || this.slideTimer > 0 || this.slideCooldown > 0) return;
+    const len = Math.hypot(dirVec.x, dirVec.z);
+    if (len < 0.1) return;
+    this.slideDir.set(dirVec.x / len, 0, dirVec.z / len);
+    this.slideTimer = 0.55;
+    this.slideCooldown = 2.6 + Math.random() * 1.4;
+    this.isTacSprinting = false;
+  }
+
+  _throwOperatorGrenade(targetPos, kind = 'frag') {
+    if (!this.scene || !this.activeGrenades) return;
+    const isSmoke = kind === 'smoke';
+    const mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(0.085, 8, 8),
+      new THREE.MeshLambertMaterial({
+        color: isSmoke ? 0x6b7a70 : 0x3b4d35,
+        emissive: isSmoke ? 0x223328 : 0xaa2211,
+        emissiveIntensity: isSmoke ? 0.25 : 0.7
+      })
+    );
+    const startPos = new THREE.Vector3(this.position.x, 1.55, this.position.z);
+    mesh.position.copy(startPos);
+    this.scene.add(mesh);
+
+    const dx = targetPos.x - startPos.x;
+    const dz = targetPos.z - startPos.z;
+    const dist = Math.hypot(dx, dz) || 1;
+    const flightT = THREE.MathUtils.clamp(dist / 15.5, 0.55, 1.55);
+    const vel = new THREE.Vector3(
+      dx / flightT,
+      (0.2 - startPos.y + 0.5 * 16.0 * flightT * flightT) / flightT,
+      dz / flightT
+    );
+
+    this.activeGrenades.push({
+      kind,
+      mesh,
+      pos: startPos,
+      vel,
+      fuse: isSmoke ? flightT + 0.35 : Math.max(1.8, flightT + 0.85),
+      detonated: false
+    });
+    if (window.soundEngine && window.soundEngine.playThrowWhoosh) {
+      try { window.soundEngine.playThrowWhoosh(false); } catch (e) {}
+    }
+  }
+
+  _updateOperatorGrenades(dt, player, allEnemies) {
+    if (!this.activeGrenades || this.activeGrenades.length === 0) return;
+    for (let i = this.activeGrenades.length - 1; i >= 0; i--) {
+      const g = this.activeGrenades[i];
+      g.fuse -= dt;
+      g.vel.y -= 16.0 * dt;
+      g.pos.addScaledVector(g.vel, dt);
+      if (g.pos.y <= 0.12) {
+        g.pos.y = 0.12;
+        g.vel.y = Math.abs(g.vel.y) * 0.35;
+        g.vel.x *= 0.62;
+        g.vel.z *= 0.62;
+      }
+      g.mesh.position.copy(g.pos);
+
+      if (g.fuse <= 0) {
+        this.scene.remove(g.mesh);
+        if (g.kind === 'smoke') {
+          const puff = new THREE.Mesh(
+            new THREE.SphereGeometry(2.8, 10, 8),
+            new THREE.MeshLambertMaterial({ color: 0xaab2ac, transparent: true, opacity: 0.65 })
+          );
+          puff.position.set(g.pos.x, 1.5, g.pos.z);
+          this.scene.add(puff);
+          if (window.soundEngine && window.soundEngine.playSmokeHiss) {
+            try { window.soundEngine.playSmokeHiss(); } catch (e) {}
+          }
+          setTimeout(() => { if (this.scene) this.scene.remove(puff); }, 8500);
+        } else {
+          const flash = new THREE.Mesh(
+            new THREE.SphereGeometry(2.6, 10, 8),
+            new THREE.MeshBasicMaterial({ color: 0xff8822, transparent: true, opacity: 0.85 })
+          );
+          flash.position.copy(g.pos);
+          this.scene.add(flash);
+          setTimeout(() => { if (this.scene) this.scene.remove(flash); }, 220);
+
+          const distToPlayer = player ? g.pos.distanceTo(player.position) : 60;
+          if (window.soundEngine && window.soundEngine.playExplosion) {
+            try { window.soundEngine.playExplosion(distToPlayer); } catch (e) {}
+          }
+          if (player && !player.dead && distToPlayer < 8.5) {
+            const falloff = 1 - (distToPlayer / 8.5) * 0.75;
+            const dmg = Math.round(78 * falloff);
+            player.takeDamage(dmg, { name: this.name, weaponId: 'frag_grenade', weaponName: 'M67 Frag' });
+          }
+        }
+        this.activeGrenades.splice(i, 1);
+      }
+    }
+  }
+
   update(dt, player, onEnemyFire, onEnemyBleedout, allEnemies = [], squadGoal = null, onAiVsAiEvent = null) {
+    if (this.isOperator) {
+      this._updateOperatorGrenades(dt, player, allEnemies);
+      if (this.slideCooldown > 0) this.slideCooldown = Math.max(0, this.slideCooldown - dt);
+      if (this.grenadeCooldown > 0) this.grenadeCooldown = Math.max(0, this.grenadeCooldown - dt);
+      if (this.targetLockTimer > 0) this.targetLockTimer = Math.max(0, this.targetLockTimer - dt);
+    }
     if (this.extracted) return;
     if (this.dead) {
       // Non-operator bodies despawn after 60s to save resources
@@ -889,32 +1044,145 @@ class Enemy {
       }
     }
 
-    // === COMBAT (Cover-First Peek-Fire-Tuck against Player OR Hostile AI!) ===
+    // === COMBAT (Player-Like Operators: Focus Target, Tactical Sprint, Slide, Lean, Plates & Grenades!) ===
     if (this.state === 'COMBAT' && target) {
+      if (this.isOperator) {
+        this.focusedTarget = { type: target.type, ref: target.ref };
+        this.targetLockTimer = 5.5;
+      }
+
       const tPos = target.pos;
       const dx = tPos.x - this.position.x;
       const dz = tPos.z - this.position.z;
       this.group.rotation.y = Math.atan2(dx, dz);
 
-      this.coverSearchTimer -= dt;
-      if (!this.coverSpot || this.coverSearchTimer <= 0) {
-        const refreshed = this._findBestCoverSpot(tPos, 18);
-        if (refreshed) this.coverSpot = refreshed;
-        this.coverSearchTimer = 2.8;
+      // 1. Active Tactical Slide update (Operator slides into cover or around corners!)
+      if (this.isOperator && this.slideTimer > 0) {
+        this.slideTimer = Math.max(0, this.slideTimer - dt);
+        const sp = 1 - (this.slideTimer / 0.55);
+        const slideSpd = THREE.MathUtils.lerp(this.speed * 1.95, this.speed * 0.72, sp * sp);
+        const vx = this.slideDir.x * slideSpd * dt;
+        const vz = this.slideDir.z * slideSpd * dt;
+        if (!this._collides(this.position.x + vx, this.position.z, 0.42)) {
+          this.position.x += vx;
+          this.group.position.x = this.position.x;
+        }
+        if (!this._collides(this.position.x, this.position.z + vz, 0.42)) {
+          this.position.z += vz;
+          this.group.position.z = this.position.z;
+        }
+        this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, -0.36, dt * 16);
+        this.group.rotation.x = THREE.MathUtils.lerp(this.group.rotation.x, -0.30, dt * 14);
+        if (this.leftHip) this.leftHip.rotation.x = -0.95;
+        if (this.rightHip) this.rightHip.rotation.x = -0.35;
+        if (this.slideTimer <= 0) {
+          this.group.position.y = 0;
+          this.group.rotation.x = 0;
+        }
+        return;
       }
 
+      // 2. Survival Priority: Operator uses Armor Plates behind cover before re-engaging!
+      const needsPlate = this.isOperator && this.operatorEquipment && (this.operatorEquipment.plates || 0) > 0 &&
+        (this.armor < Math.max(25, this.maxArmor - 38) || this.hp < this.maxHp * 0.65) && target.dist > 6.0;
+
+      if (this.isOperator && this.platingTimer > 0) {
+        this.platingTimer -= dt;
+        this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, -0.22, dt * 10);
+        this.group.rotation.z = THREE.MathUtils.lerp(this.group.rotation.z, 0, dt * 10);
+        if (this.leftArm) this.leftArm.rotation.x = -1.15;
+        if (this.rightArm) this.rightArm.rotation.x = -1.15;
+        if (this.platingTimer <= 0) {
+          this.operatorEquipment.plates = Math.max(0, (this.operatorEquipment.plates || 1) - 1);
+          this.armor = Math.min(this.maxArmor, (this.armor || 0) + 50);
+          this.group.position.y = 0;
+        }
+        return;
+      }
+
+      this.coverSearchTimer -= dt;
+      if (!this.coverSpot || this.coverSearchTimer <= 0) {
+        const refreshed = this._findBestCoverSpot(tPos, 20);
+        if (refreshed) this.coverSpot = refreshed;
+        this.coverSearchTimer = 2.6;
+      }
+
+      // If hurt and needs to plate: pop smoke if exposed, tactical sprint / slide into cover, then plate up!
+      if (needsPlate) {
+        if (this.smokeLeft > 0 && this.grenadeCooldown <= 0 && target.dist < 28) {
+          this.smokeLeft -= 1;
+          this.grenadeCooldown = 8.0;
+          const mid = this.position.clone().lerp(tPos, 0.35);
+          this._throwOperatorGrenade(mid, 'smoke');
+        }
+        if (this.coverSpot) {
+          const distCov = Math.hypot(this.coverSpot.coverPos.x - this.position.x, this.coverSpot.coverPos.z - this.position.z);
+          if (distCov > 1.0) {
+            this.isTacSprinting = this.tacStamina > 12;
+            const moveSpd = this.isTacSprinting ? this.speed * 1.62 : this.speed * 1.2;
+            if (this.isTacSprinting) this.tacStamina = Math.max(0, this.tacStamina - 28 * dt);
+            this._moveToward(this.coverSpot.coverPos, moveSpd, dt);
+            if (this.isTacSprinting && distCov < 4.2 && this.slideCooldown <= 0) {
+              this._startOperatorSlide(this.coverSpot.coverPos.clone().sub(this.position));
+            }
+            return;
+          }
+        }
+        this.isTacSprinting = false;
+        this.platingTimer = 2.0;
+        return;
+      }
+
+      // 3. Occasional Frag Grenade throw during firefight (medium range 9..30m)
+      if (this.isOperator && this.grenadesLeft > 0 && this.grenadeCooldown <= 0 && target.dist > 9 && target.dist < 30 && Math.random() < 0.014) {
+        this.grenadesLeft -= 1;
+        this.grenadeCooldown = 9.0 + Math.random() * 6.0;
+        this._throwOperatorGrenade(tPos, 'frag');
+      }
+
+      // 4. Movement, Tactical Sprint, Slide-Peek & Corner Leaning
+      let targetLean = 0;
       if (this.coverSpot) {
         this.coverPeekTimer -= dt;
         if (this.coverPeekTimer <= 0) {
           this.isPeeking = !this.isPeeking;
-          this.coverPeekTimer = this.isPeeking ? (1.35 + Math.random() * 0.8) : (1.0 + Math.random() * 0.7);
+          if (this.isPeeking) this.leanDir = Math.random() < 0.5 ? -1 : 1;
+          this.coverPeekTimer = this.isPeeking ? (1.25 + Math.random() * 0.8) : (0.85 + Math.random() * 0.65);
         }
         const goal = this.isPeeking ? this.coverSpot.peekPos : this.coverSpot.coverPos;
-        if (Math.hypot(goal.x - this.position.x, goal.z - this.position.z) > 0.45) {
-          this._moveToward(goal, this.speed * (this.isPeeking ? 0.80 : 1.05), dt, tPos);
+        const distGoal = Math.hypot(goal.x - this.position.x, goal.z - this.position.z);
+        if (distGoal > 0.45) {
+          const useTac = this.isOperator && !this.isPeeking && distGoal > 3.5 && this.tacStamina > 18;
+          this.isTacSprinting = useTac;
+          if (useTac) this.tacStamina = Math.max(0, this.tacStamina - 24 * dt);
+          else this.tacStamina = Math.min(100, (this.tacStamina || 0) + 18 * dt);
+          this._moveToward(goal, this.speed * (useTac ? 1.58 : (this.isPeeking ? 0.90 : 1.15)), dt, tPos);
+          if (this.isOperator && this.isPeeking && distGoal < 3.0 && this.slideCooldown <= 0 && Math.random() < 0.08) {
+            this._startOperatorSlide(goal.clone().sub(this.position));
+          }
+        } else {
+          this.isTacSprinting = false;
+          if (this.isOperator && this.isPeeking) targetLean = this.leanDir * 0.24;
         }
-      } else if (target.dist > 22) {
-        this._moveToward(tPos, this.speed * 0.85, dt, tPos);
+      } else if (target.dist > 18) {
+        this.isTacSprinting = this.isOperator && this.tacStamina > 15;
+        if (this.isTacSprinting) this.tacStamina = Math.max(0, this.tacStamina - 24 * dt);
+        else this.tacStamina = Math.min(100, (this.tacStamina || 0) + 18 * dt);
+        this._moveToward(tPos, this.speed * (this.isTacSprinting ? 1.60 : 1.05), dt, tPos);
+        if (this.isTacSprinting && target.dist < 22 && this.slideCooldown <= 0 && Math.random() < 0.04) {
+          this._startOperatorSlide(tPos.clone().sub(this.position));
+        }
+      } else if (this.isOperator) {
+        this.isTacSprinting = false;
+        this.tacStamina = Math.min(100, (this.tacStamina || 0) + 20 * dt);
+        targetLean = this.leanDir * 0.18;
+      }
+
+      if (this.isOperator) {
+        this.leanAngle = THREE.MathUtils.lerp(this.leanAngle || 0, targetLean, Math.min(1, dt * 10));
+        this.group.rotation.z = this.leanAngle;
+        this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, 0, Math.min(1, dt * 12));
+        this.group.rotation.x = THREE.MathUtils.lerp(this.group.rotation.x, 0, Math.min(1, dt * 12));
       }
 
       this.fireTimer -= dt;
