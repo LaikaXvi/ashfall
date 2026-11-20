@@ -491,23 +491,6 @@
     btnCloseContainer.addEventListener('click', () => closeLootAndResume());
   }
 
-  document.getElementById('btn-take-all').addEventListener('click', () => {
-    if (!ui.activeLootSource || !player) return;
-    const remaining = [];
-    for (const item of ui.activeLootSource.items) {
-      if (item.revealed === false) {
-        remaining.push(item);
-        continue;
-      }
-      if (!player.addToBackpack(item.id, item.qty)) {
-        remaining.push(item);
-      }
-    }
-    ui.activeLootSource.items.length = 0;
-    ui.activeLootSource.items.push(...remaining);
-    ui.renderLootModal(player);
-  });
-
   function closeLootAndResume() {
     isModalOpen = false;
     ui.closeLootModal();
@@ -1920,7 +1903,6 @@
             if (!isModalOpen) toggleFullMapMode(forceState);
           },
           closeModal: () => closeLootAndResume(),
-          takeAll: () => document.getElementById('btn-take-all')?.click(),
           fire: () => firePlayerWeapon(),
           onThrowableHit,
           interact: () => openNearbyInteractable(),
