@@ -1,7 +1,7 @@
 // Game Item Database, 5-Tier Loot Rarity, Logical POI Tables, Workbench & Attachments
 // IMPORTANT: Update GAME_DATA.VERSION (and ?v= cache-busters in index.html) with EVERY new commit!
 window.GAME_DATA = {
-  VERSION: 'v1.06',
+  VERSION: 'v1.07',
   SQUAD_COLORS: ['#69f0ae', '#42a5f5', '#ffeb3b', '#ff69b4'], // Green, Blue, Yellow, Pink
 
   RARITIES: {
@@ -616,7 +616,7 @@ window.GAME_DATA = {
     outpost: {
       id: 'outpost',
       name: 'Dustline Outpost',
-      raidDuration: 420, // 7 minutes
+      raidDuration: 600, // 10 minutes
       enemyCount: 6,
       raiderChance: 0.35,
       heavyChance: 0.05,
@@ -627,7 +627,7 @@ window.GAME_DATA = {
     industrial: {
       id: 'industrial',
       name: 'Rustyard Compound',
-      raidDuration: 480, // 8 minutes
+      raidDuration: 660, // 11 minutes
       enemyCount: 10,
       raiderChance: 0.5,
       heavyChance: 0.2,

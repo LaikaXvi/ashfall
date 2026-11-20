@@ -11,7 +11,8 @@ class WastelandWorld {
     this.pois = [];           // { name, x, z, color } for minimap & logical looting
     this.activeSmokes = [];
     this.spawnPoints = [];    // Enemy patrol/spawn positions
-    this.playerSpawn = new THREE.Vector3(0, 1.7, 64);
+    this.operatorSpawns = []; // Far-spaced perimeter & outer-sector Operator Squad infil points
+    this.playerSpawn = new THREE.Vector3(0, 1.7, 162);
 
     this._materials = this._createMaterials();
     this._buildEnvironment();
@@ -39,7 +40,7 @@ class WastelandWorld {
     const tex = new THREE.CanvasTexture(canvas);
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(24, 24);
+    tex.repeat.set(56, 56);
     return tex;
   }
 
@@ -81,24 +82,45 @@ class WastelandWorld {
   }
 
   _buildEnvironment() {
-    // Ground plane
-    const groundGeo = new THREE.PlaneGeometry(200, 200);
+    // Expanded Ground plane (460x460m wasteland floor for 380x380m playable sector)
+    const groundGeo = new THREE.PlaneGeometry(460, 460);
     const ground = new THREE.Mesh(groundGeo, this._materials.ground);
     ground.rotation.x = -Math.PI / 2;
     ground.receiveShadow = true;
     this.scene.add(ground);
     this.shootableMeshes.push(ground);
 
-    // Cracked asphalt road running N-S and E-W
-    const roadNS = new THREE.Mesh(new THREE.PlaneGeometry(10, 160), this._materials.road);
+    // Main cracked asphalt highways running N-S and E-W across the entire 380m sector
+    const roadNS = new THREE.Mesh(new THREE.PlaneGeometry(11, 380), this._materials.road);
     roadNS.rotation.x = -Math.PI / 2;
     roadNS.position.y = 0.02;
     this.scene.add(roadNS);
 
-    const roadEW = new THREE.Mesh(new THREE.PlaneGeometry(160, 10), this._materials.road);
+    const roadEW = new THREE.Mesh(new THREE.PlaneGeometry(380, 11), this._materials.road);
     roadEW.rotation.x = -Math.PI / 2;
-    roadEW.position.set(0, 0.025, -10);
+    roadEW.position.set(0, 0.025, -12);
     this.scene.add(roadEW);
+
+    // Secondary outer perimeter service roads connecting outer POIs
+    const ringN = new THREE.Mesh(new THREE.PlaneGeometry(240, 7), this._materials.road);
+    ringN.rotation.x = -Math.PI / 2;
+    ringN.position.set(0, 0.022, -108);
+    this.scene.add(ringN);
+
+    const ringS = new THREE.Mesh(new THREE.PlaneGeometry(240, 7), this._materials.road);
+    ringS.rotation.x = -Math.PI / 2;
+    ringS.position.set(0, 0.022, 86);
+    this.scene.add(ringS);
+
+    const ringW = new THREE.Mesh(new THREE.PlaneGeometry(7, 200), this._materials.road);
+    ringW.rotation.x = -Math.PI / 2;
+    ringW.position.set(-112, 0.023, -12);
+    this.scene.add(ringW);
+
+    const ringE = new THREE.Mesh(new THREE.PlaneGeometry(7, 200), this._materials.road);
+    ringE.rotation.x = -Math.PI / 2;
+    ringE.position.set(112, 0.023, -12);
+    this.scene.add(ringE);
   }
 
   _addBox(x, y, z, w, h, d, material, addCollider = true) {
@@ -310,135 +332,225 @@ class WastelandWorld {
   }
 
   _buildMapLayout() {
-    // Perimeter walls (160x160 arena: -80 to +80)
-    const wallH = 5.5;
-    this._addBox(0, wallH / 2, -80, 160, wallH, 1.5, this._materials.darkConcrete);
-    this._addBox(0, wallH / 2, 80, 160, wallH, 1.5, this._materials.darkConcrete);
-    this._addBox(-80, wallH / 2, 0, 1.5, wallH, 160, this._materials.darkConcrete);
-    this._addBox(80, wallH / 2, 0, 1.5, wallH, 160, this._materials.darkConcrete);
+    // Expanded Perimeter Walls (380x380m arena: -190 to +190 — nearly 6x the playable area!)
+    const wallH = 6.0;
+    this._addBox(0, wallH / 2, -190, 380, wallH, 1.8, this._materials.darkConcrete);
+    this._addBox(0, wallH / 2, 190, 380, wallH, 1.8, this._materials.darkConcrete);
+    this._addBox(-190, wallH / 2, 0, 1.8, wallH, 380, this._materials.darkConcrete);
+    this._addBox(190, wallH / 2, 0, 1.8, wallH, 380, this._materials.darkConcrete);
 
-    // === LOGICAL POI BUILDINGS ===
-    // 1. Military Compound (north-west of crossroads) -> Gun Lockers, Armory Shelves, Workbench & Wall First Aid
-    this._addBuilding(-24, -26, 16, 14, 5.0, 'east');
-    this.pois.push({ name: 'COMPOUND', x: -24, z: -26, color: '#ab47bc' });
-    this._addGunLocker(-31.1, -28.5, Math.PI / 2, 'military', 'Compound Rifle Locker');
-    this._addGunLocker(-31.1, -24.0, Math.PI / 2, 'military', 'Compound Armory Locker');
-    this._addLootContainer(-28.5, 0.16, -21.2, 'supply', 'Compound Materials Crate');
-    this._addWallFirstAidKit(-20.5, -19.55, 'south', 'Compound Wall First Aid Kit');
-    this._addMetalShelf(-25.5, -31.9, 0, [
+    // === 8 SPREAD-OUT TACTICAL POI BUILDINGS & LANDMARKS ===
+
+    // 1. Military Compound (North-West Sector) -> Gun Lockers, Armory Shelves, Workbench & Wall First Aid
+    this._addBuilding(-88, -86, 18, 16, 5.0, 'east');
+    this.pois.push({ name: 'COMPOUND', x: -88, z: -86, color: '#ab47bc' });
+    this._addGunLocker(-96.1, -89.0, Math.PI / 2, 'military', 'Compound Rifle Locker');
+    this._addGunLocker(-96.1, -83.5, Math.PI / 2, 'military', 'Compound Armory Locker');
+    this._addLootContainer(-93.2, 0.16, -79.8, 'supply', 'Compound Materials Crate');
+    this._addWallFirstAidKit(-84.0, -78.55, 'south', 'Compound Wall First Aid Kit');
+    this._addMetalShelf(-90.0, -92.9, 0, [
       { id: 'ammo_545', qty: 30 },
       { id: 'armor_plate', qty: 2 },
       { id: 'frag_grenade', qty: 1 }
     ]);
-    this._addMetalShelf(-21.0, -31.9, 0, [
+    this._addMetalShelf(-85.0, -92.9, 0, [
       { id: 'ammo_762', qty: 20 },
       { id: 'gunpowder', qty: 2 },
       { id: 'polymer_parts', qty: 2 }
     ]);
-    this._addWorkbenchTable(-23.5, -26.0, 0, [
+    this._addWorkbenchTable(-87.5, -86.0, 0, [
       { id: 'armor_plate', qty: 2 },
       { id: 'scrap_metal', qty: 3 }
     ]);
 
-    // 2. Field Hospital & Clinic (east of crossroads) -> Wall First Aid Kits, Bathroom Medicine Cabinet, Medical Shelves & Triage Table
-    this._addBuilding(24, -18, 12, 10, 4.2, 'west');
-    this.pois.push({ name: 'CLINIC', x: 24, z: -18, color: '#69f0ae' });
-    this._addWallFirstAidKit(21.5, -22.55, 'north', 'Clinic Wall First Aid Kit');
-    this._addWallFirstAidKit(29.55, -19.5, 'east', 'Trauma Room First Aid Kit');
-    // Clinic restroom partition + wall-mounted Bathroom Medicine Cabinet
-    this._addBox(26.2, 1.7, -14.8, 0.22, 3.2, 2.8, this._materials.concrete);
-    this._addMedicineCabinet(28.0, -13.45, 'south', 'Clinic Bathroom Medicine Cabinet');
-    this._addLootContainer(28.6, 0.16, -21.6, 'hospital', 'Hospital Trauma Crate');
-    this._addMetalShelf(25.2, -22.2, 0, [
+    // 2. Field Hospital & Clinic (East Sector) -> Wall First Aid Kits, Bathroom Medicine Cabinet, Medical Shelves & Triage Table
+    this._addBuilding(94, -56, 14, 12, 4.4, 'west');
+    this.pois.push({ name: 'CLINIC', x: 94, z: -56, color: '#69f0ae' });
+    this._addWallFirstAidKit(91.5, -61.55, 'north', 'Clinic Wall First Aid Kit');
+    this._addWallFirstAidKit(100.55, -57.5, 'east', 'Trauma Room First Aid Kit');
+    this._addBox(96.8, 1.7, -52.2, 0.22, 3.2, 3.2, this._materials.concrete);
+    this._addMedicineCabinet(98.6, -50.45, 'south', 'Clinic Bathroom Medicine Cabinet');
+    this._addLootContainer(99.2, 0.16, -60.2, 'hospital', 'Hospital Trauma Crate');
+    this._addMetalShelf(95.2, -61.1, 0, [
       { id: 'bandage', qty: 2 },
       { id: 'painkillers', qty: 1 },
       { id: 'cloth_roll', qty: 2 }
     ]);
-    this._addWorkbenchTable(23.5, -17.5, 0, [
+    this._addWorkbenchTable(93.5, -55.5, 0, [
       { id: 'medkit', qty: 1 },
       { id: 'water_filter', qty: 1 }
     ]);
 
-    // 3. Police & Fire Station (south-west) -> Police Gun Lockers, Bathroom Medicine Cabinet, Wall First Aid & Evidence Shelves
-    this._addBuilding(-28, 22, 14, 10, 4.2, 'east');
-    this.pois.push({ name: 'POLICE/FIRE', x: -28, z: 22, color: '#42a5f5' });
-    this._addGunLocker(-34.1, 20.5, Math.PI / 2, 'police_fire', 'Police Gun Locker');
-    this._addGunLocker(-34.1, 23.5, Math.PI / 2, 'police_fire', 'Fire & Rescue Gear Locker');
-    this._addWallFirstAidKit(-24.2, 17.45, 'north', 'Station Wall First Aid Kit');
-    // Station restroom partition + Bathroom Medicine Cabinet
-    this._addBox(-26.8, 1.7, 25.2, 0.22, 3.2, 2.6, this._materials.concrete);
-    this._addMedicineCabinet(-24.5, 26.55, 'south', 'Station Bathroom Medicine Cabinet');
-    this._addMetalShelf(-29.2, 17.8, 0, [
+    // 3. Police & Fire Station (South-West Sector) -> Police Gun Lockers, Bathroom Medicine Cabinet, Wall First Aid & Evidence Shelves
+    this._addBuilding(-96, 74, 16, 12, 4.4, 'east');
+    this.pois.push({ name: 'POLICE/FIRE', x: -96, z: 74, color: '#42a5f5' });
+    this._addGunLocker(-103.1, 71.8, Math.PI / 2, 'police_fire', 'Police Gun Locker');
+    this._addGunLocker(-103.1, 75.8, Math.PI / 2, 'police_fire', 'Fire & Rescue Gear Locker');
+    this._addWallFirstAidKit(-92.0, 68.45, 'north', 'Station Wall First Aid Kit');
+    this._addBox(-94.2, 1.7, 77.6, 0.22, 3.2, 3.0, this._materials.concrete);
+    this._addMedicineCabinet(-92.0, 79.55, 'south', 'Station Bathroom Medicine Cabinet');
+    this._addMetalShelf(-97.5, 68.9, 0, [
       { id: 'armor_plate', qty: 2 },
       { id: 'ammo_9x19', qty: 24 },
       { id: 'ammo_12g', qty: 12 }
     ]);
-    this._addWorkbenchTable(-28.0, 22.0, 0, [
+    this._addWorkbenchTable(-96.0, 74.0, 0, [
       { id: 'smoke_grenade', qty: 1 },
       { id: 'armor_plate', qty: 1 }
     ]);
 
-    // 4. Boss Encampment & Armory Key Room (north-east) -> Vault, Guard Gun Locker, Wall First Aid & Command Table
-    this._addBuilding(34, -48, 12, 12, 4.5, 'south');
-    this.pois.push({ name: 'BOSS CAMP', x: 34, z: -48, color: '#ffc107' });
-    this._addLootContainer(34, 0.16, -51.8, 'boss_key_room', 'Boss Encampment Key Room', 'boss_key');
-    this._addGunLocker(39.1, -48.5, -Math.PI / 2, 'military', 'Boss Guard Gun Locker');
-    this._addWallFirstAidKit(28.45, -46.2, 'west', 'Encampment Wall First Aid Kit');
-    this._addWorkbenchTable(34.0, -47.2, 0, [
+    // 4. Boss Encampment & Armory Key Room (Far North-East Fortress)
+    this._addBuilding(116, -126, 14, 14, 4.8, 'south');
+    this.pois.push({ name: 'BOSS CAMP', x: 116, z: -126, color: '#ffc107' });
+    this._addLootContainer(116, 0.16, -130.8, 'boss_key_room', 'Boss Encampment Key Room', 'boss_key');
+    this._addGunLocker(122.1, -126.5, -Math.PI / 2, 'military', 'Boss Guard Gun Locker');
+    this._addWallFirstAidKit(109.45, -124.2, 'west', 'Encampment Wall First Aid Kit');
+    this._addWorkbenchTable(116.0, -125.2, 0, [
       { id: 'ammo_762', qty: 20 },
       { id: 'gold_watch', qty: 1 }
     ]);
+    // Outer defensive sandbag/concrete perimeter around Boss Camp
+    this._addBarrier(105, -116, true);
+    this._addBarrier(126, -116, true);
+    this._addContainer(102, -130, 0, this._materials.rustOlive);
 
-    // === SHIPPING CONTAINERS & COVER ===
-    this._addContainer(-8, 12, 0, this._materials.rustRed);
-    this._addContainer(-4.5, 12, 0, this._materials.rustOlive);
-    this._addContainer(12, 8, 1, this._materials.rustBlue);
-    this._addContainer(14, -36, 0, this._materials.rustRed);
-    this._addContainer(-44, -4, 1, this._materials.rustOlive);
-    this._addContainer(44, 24, 0, this._materials.rustRed);
+    // 5. Central Logistics Warehouse (Mid-Sector Crossroads Hub)
+    this._addBuilding(-24, -22, 20, 14, 5.2, 'south');
+    this.pois.push({ name: 'WAREHOUSE', x: -24, z: -22, color: '#ff9800' });
+    this._addLootContainer(-31.8, 0.16, -26.8, 'military', 'Warehouse Armory Case');
+    this._addLootContainer(-16.2, 0.16, -26.8, 'supply', 'Logistics Cargo Crate');
+    this._addMetalShelf(-27.0, -28.0, 0, [
+      { id: 'scrap_metal', qty: 3 },
+      { id: 'polymer_parts', qty: 2 },
+      { id: 'ammo_545', qty: 24 }
+    ]);
+    this._addMetalShelf(-21.0, -28.0, 0, [
+      { id: 'cloth_roll', qty: 2 },
+      { id: 'gunpowder', qty: 2 },
+      { id: 'fuel_can', qty: 1 }
+    ]);
+    this._addWorkbenchTable(-24.0, -21.5, 0, [
+      { id: 'medkit', qty: 1 },
+      { id: 'armor_plate', qty: 2 }
+    ]);
 
-    // Concrete Barriers along roads
-    this._addBarrier(-6, 36, true);
-    this._addBarrier(6, 28, true);
-    this._addBarrier(-6, -14, false);
-    this._addBarrier(6, -22, false);
-    this._addBarrier(16, 4, true);
-    this._addBarrier(-18, -8, true);
+    // 6. Fuel & Radio Outpost (South-East Sector)
+    this._addBuilding(104, 82, 14, 12, 4.4, 'west');
+    this.pois.push({ name: 'RADIO OUTPOST', x: 104, z: 82, color: '#26c6da' });
+    this._addGunLocker(110.1, 80.2, -Math.PI / 2, 'military', 'Outpost Comms Locker');
+    this._addLootContainer(109.2, 0.16, 85.8, 'supply', 'Fuel & Parts Supply Crate');
+    this._addWallFirstAidKit(101.5, 76.45, 'north', 'Outpost First Aid Kit');
+    this._addWorkbenchTable(104.0, 82.0, 0, [
+      { id: 'intel_drive', qty: 1 },
+      { id: 'fuel_can', qty: 1 }
+    ]);
+    this._addContainer(92, 92, 1, this._materials.rustRed);
 
-    // Scattered outdoor loot crates
-    this._addLootContainer(-6, 0, 15, 'supply');
-    this._addLootContainer(12, 0, -34, 'supply');
-    this._addLootContainer(42, 0, 26, 'military');
-    this._addLootContainer(2, 0, -55, 'medical');
+    // 7. Rail Yard / Container Depot (Far West Sector)
+    this.pois.push({ name: 'RAIL YARD', x: -126, z: -8, color: '#ef5350' });
+    this._addContainer(-126, -16, 1, this._materials.rustRed);
+    this._addContainer(-126, -4, 1, this._materials.rustBlue);
+    this._addContainer(-134, 4, 0, this._materials.rustOlive);
+    this._addContainer(-118, 6, 0, this._materials.rustRed);
+    this._addLootContainer(-126, 0, -10, 'military', 'Rail Yard Weapon Case');
+    this._addLootContainer(-122, 0, 8, 'supply', 'Freight Cargo Crate');
+    this._addWorkbenchTable(-130, 2, 0, [
+      { id: 'armor_plate', qty: 2 },
+      { id: 'ammo_762', qty: 20 }
+    ], 0);
 
-    // === LOGICAL LOOSE LOOT SPAWNS ACROSS POIs & COVER ===
+    // 8. Northern Watchtower Bunker (Far North Sector)
+    this._addBuilding(-22, -138, 12, 10, 4.5, 'south');
+    this.pois.push({ name: 'NORTH BUNKER', x: -22, z: -138, color: '#ec407a' });
+    this._addGunLocker(-27.1, -138.5, Math.PI / 2, 'military', 'Bunker Marksman Locker');
+    this._addLootContainer(-17.8, 0.16, -141.2, 'military', 'Bunker Munitions Case');
+    this._addWallFirstAidKit(-22.0, -142.55, 'north', 'Bunker First Aid Kit');
+
+    // === MID-FIELD COVER, CHECKPOINTS & SHIPPING CONTAINERS (Sightline Breaks Across Wasteland) ===
+    // South Highway Checkpoint (safe first loot stop north of player spawn)
+    this._addBarrier(-8, 134, true);
+    this._addBarrier(8, 126, true);
+    this._addContainer(-16, 122, 0, this._materials.rustOlive);
+    this._addLootContainer(-13, 0, 124, 'supply', 'Highway Checkpoint Crate');
+
+    // Central Crossroads & Mid-Road Cover
+    this._addContainer(18, 22, 0, this._materials.rustRed);
+    this._addContainer(22, 22, 0, this._materials.rustOlive);
+    this._addContainer(34, -18, 1, this._materials.rustBlue);
+    this._addContainer(28, -68, 0, this._materials.rustRed);
+    this._addContainer(-54, -46, 1, this._materials.rustOlive);
+    this._addContainer(-48, 36, 0, this._materials.rustBlue);
+    this._addContainer(52, 46, 1, this._materials.rustRed);
+    this._addContainer(56, -96, 1, this._materials.rustOlive);
+    this._addContainer(-58, -118, 0, this._materials.rustRed);
+    this._addContainer(142, 16, 0, this._materials.rustBlue);
+    this._addContainer(-142, 124, 1, this._materials.rustOlive);
+
+    // Concrete Barriers along highways & flanks
+    const barriers = [
+      [-7, 74, true], [7, 58, true], [-7, 14, false], [7, -42, false],
+      [-7, -76, true], [7, -112, true], [48, -18, false], [-52, -6, false],
+      [62, 18, true], [-64, 52, true], [82, -92, true], [-76, -124, true],
+      [42, 108, true], [-46, 118, true], [136, -42, false], [-136, -64, false]
+    ];
+    for (const [bx, bz, horiz] of barriers) {
+      this._addBarrier(bx, bz, horiz);
+    }
+
+    // Scattered outdoor loot crates along routes
+    this._addLootContainer(20, 0, 26, 'supply');
+    this._addLootContainer(26, 0, -64, 'supply');
+    this._addLootContainer(54, 0, 48, 'military');
+    this._addLootContainer(4, 0, -104, 'medical');
+    this._addLootContainer(-52, 0, 38, 'supply');
+    this._addLootContainer(140, 0, 18, 'military');
+    this._addLootContainer(-56, 0, -116, 'supply');
+
+    // === LOGICAL LOOSE LOOT SPAWNS ACROSS CHECKPOINTS & COVER ===
     this._spawnLogicalLooseLoot();
 
-    // Dead trees & wasteland props
+    // Dead trees & wasteland groves for mid-range cover & landmarks
     const treeCoords = [
-      [-55, -55], [-60, 15], [-48, 52], [52, -12],
-      [60, 48], [45, -62], [-18, -62], [22, 54]
+      [-148, -148], [-152, 34], [-138, 142], [148, -28], [154, 132], [138, -158],
+      [-48, -162], [58, 144], [-34, 88], [44, -44], [-68, 12], [68, -22],
+      [-112, -138], [122, 34], [-82, 124], [86, 136], [-156, -78], [158, -86],
+      [18, -146], [-12, 96], [76, 48], [-74, -48], [32, 68], [-38, -68]
     ];
     for (const [tx, tz] of treeCoords) {
       this._addDeadTree(tx, tz);
     }
 
-    // === EXTRACTION ZONES ===
-    this._addExtractZone('NORTH HELIPAD', -4, -68, 5.5);
-    this._addExtractZone('EAST BUNKER GATE', 68, -10, 5.5);
+    // === 3 SPREAD-OUT EXTRACTION ZONES (OUTER RIM) ===
+    this._addExtractZone('NORTH HELIPAD', -14, -172, 6.0);
+    this._addExtractZone('EAST BUNKER GATE', 172, -18, 6.0);
+    this._addExtractZone('WEST CONVOY EXIT', -172, 118, 6.0);
 
-    // === ENEMY SPAWN / PATROL POINTS ===
+    // === FAR-SPACED OPERATOR SQUAD INFIL POINTS (Every squad starts >= 90m from player & spread around the 380m perimeter!) ===
+    this.operatorSpawns = [
+      new THREE.Vector3(-156, 0, -152), // Far NW
+      new THREE.Vector3(156, 0, -156),  // Far NE
+      new THREE.Vector3(-160, 0, 26),   // Far West
+      new THREE.Vector3(158, 0, 142),   // Far SE
+      new THREE.Vector3(158, 0, -68),   // Far East
+      new THREE.Vector3(-148, 0, 148),  // Far SW
+      new THREE.Vector3(38, 0, -162),   // Far North
+      new THREE.Vector3(-68, 0, -156)   // North-NW
+    ];
+
+    // === GENERAL PATROL / SPAWN POINTS ACROSS ALL SECTORS ===
     this.spawnPoints = [
-      new THREE.Vector3(-14, 0, -24),
-      new THREE.Vector3(16, 0, -16),
-      new THREE.Vector3(-20, 0, 20),
-      new THREE.Vector3(28, 0, -42),
-      new THREE.Vector3(0, 0, -48),
-      new THREE.Vector3(38, 0, 18),
-      new THREE.Vector3(-42, 0, -10),
-      new THREE.Vector3(14, 0, 12),
-      new THREE.Vector3(-12, 0, -56),
-      new THREE.Vector3(52, 0, -20)
+      new THREE.Vector3(-76, 0, -82),
+      new THREE.Vector3(84, 0, -54),
+      new THREE.Vector3(-84, 0, 72),
+      new THREE.Vector3(106, 0, -118),
+      new THREE.Vector3(-14, 0, -16),
+      new THREE.Vector3(94, 0, 80),
+      new THREE.Vector3(-118, 0, -6),
+      new THREE.Vector3(-18, 0, -130),
+      new THREE.Vector3(46, 0, 38),
+      new THREE.Vector3(-48, 0, 32),
+      new THREE.Vector3(48, 0, -78),
+      new THREE.Vector3(-56, 0, -114)
     ];
   }
 
@@ -793,21 +905,25 @@ class WastelandWorld {
 
   _spawnLogicalLooseLoot() {
     // Outdoor field tables & crate tops near shipping containers & roadblock checkpoints (never dumped on bare dirt!)
-    this._addWorkbenchTable(-6.2, 16.5, 0, [
+    this._addWorkbenchTable(-12.5, 126.5, 0, [
       { id: 'scrap_metal', qty: 2 },
       { id: 'bandage', qty: 1 }
     ], 0);
-    this._addWorkbenchTable(14.8, 9.2, Math.PI / 2, [
+    this._addWorkbenchTable(24.5, 22.8, Math.PI / 2, [
       { id: 'gunpowder', qty: 2 },
       { id: 'ammo_9x18', qty: 20 }
     ], 0);
-    this._addWorkbenchTable(15.2, -34.2, 0, [
+    this._addWorkbenchTable(31.2, -66.5, 0, [
       { id: 'ammo_545', qty: 24 },
       { id: 'polymer_parts', qty: 2 }
     ], 0);
-    this._addWorkbenchTable(-41.5, -3.2, Math.PI / 2, [
+    this._addWorkbenchTable(-51.5, -43.2, Math.PI / 2, [
       { id: 'armor_plate', qty: 1 },
       { id: 'frag_grenade', qty: 1 }
+    ], 0);
+    this._addWorkbenchTable(54.2, 49.5, 0, [
+      { id: 'medkit', qty: 1 },
+      { id: 'ammo_9x19', qty: 24 }
     ], 0);
   }
 

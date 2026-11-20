@@ -986,13 +986,16 @@ class EnemyManager {
       'KODIAK', 'TALON', 'ZERO', 'ORION', 'BISHOP', 'BLITZ'
     ];
     const styles = ['rusher', 'flanker', 'tactical', 'marksman'];
-    const anchorPts = [...world.spawnPoints].sort(() => Math.random() - 0.5);
+    const anchorSource = (world.operatorSpawns && world.operatorSpawns.length > 0)
+      ? world.operatorSpawns
+      : world.spawnPoints;
+    const anchorPts = [...anchorSource].sort(() => Math.random() - 0.5);
     const worldPois = (world.pois && world.pois.length > 0)
       ? world.pois.map(p => new THREE.Vector3(p.x, 0, p.z))
-      : [new THREE.Vector3(-20, 0, -20), new THREE.Vector3(20, 0, -20), new THREE.Vector3(0, 0, 15)];
+      : [new THREE.Vector3(-88, 0, -86), new THREE.Vector3(94, 0, -56), new THREE.Vector3(-96, 0, 74)];
     const extracts = (world.extractZones && world.extractZones.length > 0)
       ? world.extractZones
-      : [{ position: new THREE.Vector3(0, 0, -55), radius: 5.5 }];
+      : [{ position: new THREE.Vector3(-14, 0, -172), radius: 6.0 }];
 
     let nameIdx = 0;
     for (let s = 0; s < 6; s++) {
@@ -1029,13 +1032,15 @@ class EnemyManager {
       }
     }
 
-    // 2. Spawn Scavengers & Raiders patrolling POIs (drop gun-in-hand + occasional plates/ammo up to 60)
+    // 2. Spawn Scavengers & Raiders guarding distinct POIs across the expanded 380m sector
     const aiSpawns = [
-      { pos: new THREE.Vector3(-24, 0, -14), tier: 'scav' },
-      { pos: new THREE.Vector3(-18, 0, -28), tier: 'scav' },
-      { pos: new THREE.Vector3(20, 0, -12), tier: 'raider' },
-      { pos: new THREE.Vector3(14, 0, 18), tier: 'scav' },
-      { pos: new THREE.Vector3(-14, 0, 22), tier: 'raider' }
+      { pos: new THREE.Vector3(-74, 0, -84), tier: 'raider' },  // Military Compound
+      { pos: new THREE.Vector3(82, 0, -54), tier: 'scav' },     // Field Clinic
+      { pos: new THREE.Vector3(-82, 0, 72), tier: 'raider' },   // Police / Fire Station
+      { pos: new THREE.Vector3(-16, 0, -10), tier: 'scav' },    // Central Warehouse
+      { pos: new THREE.Vector3(92, 0, 82), tier: 'scav' },      // Radio Outpost
+      { pos: new THREE.Vector3(-118, 0, -6), tier: 'raider' },  // Rail Yard
+      { pos: new THREE.Vector3(-18, 0, -128), tier: 'raider' }  // North Bunker
     ];
     for (const sp of aiSpawns) {
       this.enemies.push(new Enemy(scene, world, sp.pos, sp.tier, null, weaponSystem));

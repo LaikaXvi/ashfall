@@ -2177,7 +2177,7 @@ class GameUI {
     const H = canvas.height;
     const cx = W * 0.5;
     const cy = H * 0.5;
-    const scale = 0.85; // world meters -> px
+    const scale = 0.42; // world meters -> px (covers ~340m across expanded 380x380m sector)
 
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = 'rgba(10, 14, 16, 0.92)';
