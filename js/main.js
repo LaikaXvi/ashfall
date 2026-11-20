@@ -1294,32 +1294,43 @@
     const screenMat = new THREE.MeshBasicMaterial({ color: 0x2fd678 });
     const skinMat = new THREE.MeshLambertMaterial({ color: 0xc99c7a });
     const gloveMat = new THREE.MeshLambertMaterial({ color: 0x2c302b });
+    const sleeveMat = new THREE.MeshLambertMaterial({ color: 0x3b4237 });
 
-    // Rugged military phone body held in left hand
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.19, 0.022), caseMat);
-    const bumperTop = new THREE.Mesh(new THREE.BoxGeometry(0.118, 0.018, 0.026), bumperMat);
-    bumperTop.position.y = 0.095;
-    const bumperBot = new THREE.Mesh(new THREE.BoxGeometry(0.118, 0.018, 0.026), bumperMat);
-    bumperBot.position.y = -0.095;
-    const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.008, 0.075, 6), bumperMat);
-    antenna.position.set(0.038, 0.132, 0);
-    const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.092, 0.145), screenMat);
+    // Rugged military phone held exclusively in the right hand
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.108, 0.188, 0.022), caseMat);
+    const bumperTop = new THREE.Mesh(new THREE.BoxGeometry(0.116, 0.018, 0.026), bumperMat);
+    bumperTop.position.y = 0.094;
+    const bumperBot = new THREE.Mesh(new THREE.BoxGeometry(0.116, 0.018, 0.026), bumperMat);
+    bumperBot.position.y = -0.094;
+    const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.008, 0.072, 6), bumperMat);
+    antenna.position.set(0.036, 0.130, 0);
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.090, 0.144), screenMat);
     screen.position.z = 0.012;
 
-    // Left hand cradling phone
-    const lHand = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.09, 0.045), gloveMat);
-    lHand.position.set(-0.045, -0.04, -0.012);
+    // Right forearm + gloved palm gripping the right/back edge of the phone
+    const rForearm = new THREE.Mesh(new THREE.BoxGeometry(0.078, 0.28, 0.078), sleeveMat);
+    rForearm.position.set(0.055, -0.21, -0.045);
+    rForearm.rotation.set(0.32, 0, -0.18);
 
-    // Right hand & tapping index finger
-    const tapHand = new THREE.Group();
-    tapHand.position.set(0.14, -0.08, 0.08);
-    const rPalm = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.075, 0.045), gloveMat);
-    const rFinger = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.018, 0.075), skinMat);
-    rFinger.position.set(-0.028, 0.02, -0.045);
-    tapHand.add(rPalm, rFinger);
+    const rPalm = new THREE.Mesh(new THREE.BoxGeometry(0.052, 0.105, 0.046), gloveMat);
+    rPalm.position.set(0.052, -0.045, -0.018);
 
-    g.add(body, bumperTop, bumperBot, antenna, screen, lHand, tapHand);
-    g.userData.tapHand = tapHand;
+    // Curled fingers wrapping behind left edge
+    const fingersBack = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.088, 0.032), gloveMat);
+    fingersBack.position.set(-0.052, -0.030, -0.012);
+
+    // Articulated Right Thumb pivoting from the right edge to tap the screen
+    const thumbPivot = new THREE.Group();
+    thumbPivot.position.set(0.056, -0.035, 0.014);
+    const thumbSeg = new THREE.Mesh(new THREE.BoxGeometry(0.058, 0.024, 0.022), gloveMat);
+    thumbSeg.position.set(-0.024, 0.012, 0.008);
+    thumbSeg.rotation.z = -0.35;
+    const thumbTip = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.021, 0.020), skinMat);
+    thumbTip.position.set(-0.052, 0.022, 0.006);
+    thumbPivot.add(thumbSeg, thumbTip);
+
+    g.add(body, bumperTop, bumperBot, antenna, screen, rForearm, rPalm, fingersBack, thumbPivot);
+    g.userData.thumbPivot = thumbPivot;
     g.userData.screenMat = screenMat;
     g.visible = false;
     return g;
@@ -1449,19 +1460,22 @@
   function updateKillstreaks(dt) {
     if (ksCooldown > 0) ksCooldown = Math.max(0, ksCooldown - dt);
 
-    // 1. Rugged Army Phone Tap 3D Animation (UAV activation -> 30s 2D 150m pulsing radar)
+    // 1. One-Handed Right-Hand Rugged Army Phone Raise & Thumb-Tap Animation (UAV -> 30s 2D 150m radar)
     if (uavPhoneAnim && uavPhoneAnim.active && uavPhoneAnim.mesh) {
       uavPhoneAnim.t += dt;
       const p = Math.min(1, uavPhoneAnim.t / uavPhoneAnim.dur);
       const rig = uavPhoneAnim.mesh;
       const lift = p < 0.28 ? (p / 0.28) : (p > 0.78 ? Math.max(0, (1 - p) / 0.22) : 1);
-      rig.position.set(-0.04, -0.34 + lift * 0.26, -0.38);
-      rig.rotation.set(-0.18 * lift, 0.12 * lift, 0.04);
+      // Raised exclusively with the right hand from bottom-right toward eye level
+      rig.position.set(0.16 - lift * 0.09, -0.36 + lift * 0.28, -0.37);
+      rig.rotation.set(-0.16 * lift, -0.22 * lift, 0.08 * lift);
 
-      const tapHand = rig.userData.tapHand;
-      if (tapHand) {
+      const thumbPivot = rig.userData.thumbPivot;
+      if (thumbPivot) {
+        // Right thumb reaches across and presses down onto the screen at p ~ 0.48
         const tapP = Math.max(0, Math.min(1, 1 - Math.abs(p - 0.50) / 0.16));
-        tapHand.position.set(0.14 - tapP * 0.11, -0.07 + tapP * 0.06, 0.09 - tapP * 0.06);
+        thumbPivot.rotation.set(tapP * 0.34, -tapP * 0.42, -tapP * 0.22);
+        thumbPivot.position.set(0.056 - tapP * 0.012, -0.035 + tapP * 0.014, 0.014 - tapP * 0.008);
       }
       if (!uavPhoneAnim.triggered && p >= 0.48) {
         uavPhoneAnim.triggered = true;
