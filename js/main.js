@@ -1280,6 +1280,7 @@
   }
 
   let designatorActive = false;
+  let designatorFireHeld = false;
   let designatorRig = null;
   let designatorAimBlend = 0;
   let designatorLaserLine = null;
@@ -1394,6 +1395,7 @@
 
   function setDesignatorActive(active) {
     designatorActive = !!active;
+    designatorFireHeld = false;
     designatorAimBlend = 0;
     if (designatorActive && viewmodelCamera && !designatorRig) {
       designatorRig = _createDesignatorRig();
@@ -1552,64 +1554,71 @@
       }
     }
 
-    // 2. Binocular Laser Designator (Hip-held by default -> Hold RMB / LT to raise to eye level & zoom 4x!)
+    // 2. Binocular Laser Designator (Hip-held by default -> Hold RMB/LT or LMB/RT to aim 4x; release LMB/RT to call strike!)
     if (designatorActive && player && camera) {
       if (player.isDowned || player.dead || isModalOpen) {
         setDesignatorActive(false);
       } else {
-        const aiming = !!player.isADS;
-        designatorAimBlend = THREE.MathUtils.lerp(designatorAimBlend, aiming ? 1 : 0, Math.min(1, dt * 14));
+        // Release of Fire (LMB / RT) after holding sets the airstrike target at the laser endpoint!
+        if (designatorFireHeld && !player.isFiring) {
+          const targetPos = _getKillstreakTargetPoint();
+          setDesignatorActive(false);
+          _deployPrecisionAirstrike(targetPos);
+        } else {
+          const aiming = !!(player.isADS || player.isFiring || designatorFireHeld);
+          designatorAimBlend = THREE.MathUtils.lerp(designatorAimBlend, aiming ? 1 : 0, Math.min(1, dt * 14));
 
-        // Only zoom when aiming the designator!
-        const baseFov = window.BASE_FOV || 75;
-        const targetFov = THREE.MathUtils.lerp(baseFov, baseFov / 4, designatorAimBlend);
-        camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, Math.min(1, dt * 16));
-        camera.updateProjectionMatrix();
+          // Only zoom when aiming the designator!
+          const baseFov = window.BASE_FOV || 75;
+          const targetFov = THREE.MathUtils.lerp(baseFov, baseFov / 4, designatorAimBlend);
+          camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, Math.min(1, dt * 16));
+          camera.updateProjectionMatrix();
 
-        // Position 3D binocular rig: hip-held in hand vs raised to eye level
-        const fullyAimed = designatorAimBlend > 0.72;
-        if (designatorRig) {
-          designatorRig.visible = !player.isThirdPerson && !fullyAimed;
-          designatorRig.position.set(
-            THREE.MathUtils.lerp(0.14, 0.0, designatorAimBlend),
-            THREE.MathUtils.lerp(-0.18, -0.02, designatorAimBlend),
-            THREE.MathUtils.lerp(-0.40, -0.15, designatorAimBlend)
-          );
-          designatorRig.rotation.set(
-            THREE.MathUtils.lerp(-0.12, 0, designatorAimBlend),
-            THREE.MathUtils.lerp(-0.18, 0, designatorAimBlend),
-            0
-          );
-        }
-
-        const ov = document.getElementById('designator-overlay');
-        if (ov) ov.classList.toggle('hidden', !fullyAimed);
-        const ch = document.getElementById('crosshair');
-        if (ch) ch.classList.toggle('hidden', fullyAimed);
-
-        if (aiming) {
-          const targetPt = _getKillstreakTargetPoint();
-          const origin = new THREE.Vector3();
-          camera.getWorldPosition(origin);
-          const startPt = origin.clone().add(new THREE.Vector3(0, -0.08, 0));
-          const rangeM = Math.round(origin.distanceTo(targetPt));
-          const rangeEl = document.getElementById('desig-range');
-          if (rangeEl) rangeEl.textContent = `RANGE: ${rangeM}m`;
-
-          if (!designatorLaserLine && scene) {
-            const geo = new THREE.BufferGeometry().setFromPoints([startPt, targetPt]);
-            const mat = new THREE.LineBasicMaterial({ color: 0xff3d3d, transparent: true, opacity: 0.78 });
-            designatorLaserLine = new THREE.Line(geo, mat);
-            scene.add(designatorLaserLine);
-          } else if (designatorLaserLine) {
-            const posArr = designatorLaserLine.geometry.attributes.position.array;
-            posArr[0] = startPt.x; posArr[1] = startPt.y; posArr[2] = startPt.z;
-            posArr[3] = targetPt.x; posArr[4] = targetPt.y; posArr[5] = targetPt.z;
-            designatorLaserLine.geometry.attributes.position.needsUpdate = true;
+          // Position 3D binocular rig: hip-held in hand vs raised to eye level
+          const fullyAimed = designatorAimBlend > 0.72;
+          if (designatorRig) {
+            designatorRig.visible = !player.isThirdPerson && !fullyAimed;
+            designatorRig.position.set(
+              THREE.MathUtils.lerp(0.14, 0.0, designatorAimBlend),
+              THREE.MathUtils.lerp(-0.18, -0.02, designatorAimBlend),
+              THREE.MathUtils.lerp(-0.40, -0.15, designatorAimBlend)
+            );
+            designatorRig.rotation.set(
+              THREE.MathUtils.lerp(-0.12, 0, designatorAimBlend),
+              THREE.MathUtils.lerp(-0.18, 0, designatorAimBlend),
+              0
+            );
           }
-        } else if (designatorLaserLine && scene) {
-          scene.remove(designatorLaserLine);
-          designatorLaserLine = null;
+
+          const ov = document.getElementById('designator-overlay');
+          if (ov) ov.classList.toggle('hidden', !fullyAimed);
+          const ch = document.getElementById('crosshair');
+          if (ch) ch.classList.toggle('hidden', fullyAimed);
+
+          if (aiming) {
+            const targetPt = _getKillstreakTargetPoint();
+            const origin = new THREE.Vector3();
+            camera.getWorldPosition(origin);
+            const startPt = origin.clone().add(new THREE.Vector3(0, -0.08, 0));
+            const rangeM = Math.round(origin.distanceTo(targetPt));
+            const rangeEl = document.getElementById('desig-range');
+            if (rangeEl) rangeEl.textContent = `RANGE: ${rangeM}m`;
+
+            if (!designatorLaserLine && scene) {
+              const geo = new THREE.BufferGeometry().setFromPoints([startPt, targetPt]);
+              const mat = new THREE.LineBasicMaterial({ color: 0xff3d3d, transparent: true, opacity: 0.78 });
+              designatorLaserLine = new THREE.Line(geo, mat);
+              scene.add(designatorLaserLine);
+            } else if (designatorLaserLine) {
+              const posArr = designatorLaserLine.geometry.attributes.position.array;
+              posArr[0] = startPt.x; posArr[1] = startPt.y; posArr[2] = startPt.z;
+              posArr[3] = targetPt.x; posArr[4] = targetPt.y; posArr[5] = targetPt.z;
+              designatorLaserLine.geometry.attributes.position.needsUpdate = true;
+            }
+          } else if (designatorLaserLine && scene) {
+            scene.remove(designatorLaserLine);
+            designatorLaserLine = null;
+          }
         }
       }
     }
@@ -1754,9 +1763,8 @@
     if (player.isDowned || player.dead || player.isRevivingAlly || player.ledgeState || player.mantleState) return;
     if (uavPhoneAnim && uavPhoneAnim.active) return;
     if (designatorActive) {
-      const targetPos = _getKillstreakTargetPoint();
-      setDesignatorActive(false);
-      _deployPrecisionAirstrike(targetPos);
+      // Holding Fire (LMB / RT) aims the designator; releasing Fire sets the airstrike location!
+      designatorFireHeld = true;
       return;
     }
     if (player.activeSlot === 'melee') {
