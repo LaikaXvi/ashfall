@@ -3783,10 +3783,46 @@ class GameUI {
     if (cPanel) {
       cPanel.classList.toggle('hidden', !this.activeLootSource);
     }
+    if (this.activeLootSource) {
+      this.autoLootExistingStacks(player);
+    }
     this.renderLootModal(player);
     if (this.activeLootSource && camera) {
       this.positionContainerPanel(camera);
     }
+  }
+
+  autoLootExistingStacks(player) {
+    if (!this.activeLootSource || !player || !Array.isArray(player.backpack)) return false;
+    const items = this.activeLootSource.items;
+    if (!Array.isArray(items) || items.length === 0) return false;
+
+    let movedAny = false;
+    for (let i = items.length - 1; i >= 0; i--) {
+      const src = items[i];
+      if (!src || src.revealed === false || src.qty <= 0) continue;
+      const def = GAME_DATA.ITEMS[src.id];
+      if (!def || !def.stackable) continue;
+
+      const maxStack = def.maxStack || Infinity;
+      for (const bagItem of player.backpack) {
+        if (!bagItem || bagItem.id !== src.id) continue;
+        const room = maxStack === Infinity ? src.qty : Math.max(0, maxStack - bagItem.qty);
+        if (room <= 0) continue;
+        const move = Math.min(room, src.qty);
+        bagItem.qty += move;
+        src.qty -= move;
+        movedAny = true;
+        if (src.qty <= 0) break;
+      }
+      if (src.qty <= 0) {
+        items.splice(i, 1);
+      }
+    }
+    if (movedAny && window.soundEngine && window.soundEngine.playClick) {
+      try { window.soundEngine.playClick(); } catch (e) {}
+    }
+    return movedAny;
   }
 
   positionContainerPanel(camera) {
@@ -4027,6 +4063,7 @@ class GameUI {
       if (this._searchRevealProgress >= 1) {
         item.revealed = true;
         this._searchRevealProgress = 0;
+        this.autoLootExistingStacks(this._lootPlayer);
         if (window.soundEngine && window.soundEngine.playClick) {
           try { window.soundEngine.playClick(); } catch (e) {}
         }
@@ -4663,7 +4700,6 @@ class GameUI {
     const cList = document.getElementById('loot-container-items');
     const bList = document.getElementById('loot-backpack-items');
     const cTitle = document.getElementById('loot-container-title');
-    const btnTakeAll = document.getElementById('btn-take-all');
     const opSlotsEl = document.getElementById('inv-op-slots');
 
     // 1. Player Operator Equipment — Exact 5-Column Tactical Grid
@@ -4900,7 +4936,6 @@ class GameUI {
       cList.innerHTML = '';
       if (this.activeLootSource) {
         if (cTitle) cTitle.textContent = this.activeLootSource.title.toUpperCase();
-        if (btnTakeAll) btnTakeAll.style.display = 'inline-block';
         const items = this.activeLootSource.items;
         const firstUnrevealed = items.findIndex(it => it && it.revealed === false);
 
