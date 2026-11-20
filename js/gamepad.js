@@ -220,6 +220,14 @@ class GamepadController {
     // Back / Select (8): Toggle Full-Size Tactical Map
     if (this._justPressed(pad, 8) && actions.toggleTacMap) {
       actions.toggleTacMap();
+      this._snapshot(pad);
+      return;
+    }
+    // B (1): Close Full-Size Tactical Map if open
+    if (ui && ui.isTacMapOpen && !ctx.isModalOpen && this._justPressed(pad, 1) && actions.toggleTacMap) {
+      actions.toggleTacMap(false);
+      this._snapshot(pad);
+      return;
     }
     // D-Pad Down (13): Hold while looking at a ground weapon (with Weapon Backpack) to stow; tap to toggle Backpack Modal
     const dpadDown = this._isDown(pad, 13);
