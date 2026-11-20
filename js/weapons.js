@@ -3075,7 +3075,7 @@ class WeaponSystem {
     this._resetReloadParts();
   }
 
-  tryFire(player, weaponSlotState, world, enemyManager, onHitCallback) {
+  tryFire(player, weaponSlotState, world, enemyManager, onHitCallback, squadManager = null, onAllyHitCallback = null) {
     const def = player.getActiveWeaponDef ? player.getActiveWeaponDef() : GAME_DATA.ITEMS[weaponSlotState.id];
     if (!def) return false;
     this.cancelInspect();
@@ -3144,6 +3144,7 @@ class WeaponSystem {
     this._spawnSmoke(muzzleWorld, 2);
 
     const enemyMeshes = enemyManager.getHitboxMeshes();
+    const allyMeshes = (window.SQUAD_PVP && squadManager && squadManager.getHitboxMeshes) ? squadManager.getHitboxMeshes() : [];
 
     for (let p = 0; p < def.pellets; p++) {
       const dir = new THREE.Vector3(0, 0, -1);
@@ -3158,9 +3159,22 @@ class WeaponSystem {
       const worldDist = worldHits.length > 0 ? worldHits[0].distance : def.range;
 
       const enemyHits = raycaster.intersectObjects(enemyMeshes, false);
+      const allyHits = allyMeshes.length > 0 ? raycaster.intersectObjects(allyMeshes, false) : [];
+      const enemyDist = enemyHits.length > 0 ? enemyHits[0].distance : Infinity;
+      const allyDist = allyHits.length > 0 ? allyHits[0].distance : Infinity;
+
       let hitPoint = origin.clone().addScaledVector(dir, worldDist);
 
-      if (enemyHits.length > 0 && enemyHits[0].distance < worldDist) {
+      if (allyDist < worldDist && allyDist < enemyDist) {
+        const hit = allyHits[0];
+        hitPoint = hit.point;
+        const { ally, part } = hit.object.userData;
+        const isHead = part === 'head';
+        const dmg = Math.round(def.damage * (isHead ? 1.8 : 1.0));
+        const attackerInfo = { name: 'YOU', isPlayer: true, weaponId: weaponSlotState.id, weaponName: def.name };
+        this._spawnImpact(hitPoint, 0x991111, 5);
+        if (onAllyHitCallback) onAllyHitCallback(isHead, dmg, ally, attackerInfo);
+      } else if (enemyDist < worldDist) {
         const hit = enemyHits[0];
         hitPoint = hit.point;
         const { enemy, part } = hit.object.userData;
@@ -3169,7 +3183,7 @@ class WeaponSystem {
         const attackerInfo = { name: 'YOU', isPlayer: true, weaponId: weaponSlotState.id, weaponName: def.name };
         const killed = enemy.takeDamage(dmg, origin, attackerInfo);
         this._spawnImpact(hitPoint, 0x991111, 5);
-        onHitCallback(isHead, killed, enemy, attackerInfo);
+        onHitCallback(isHead, killed, enemy, attackerInfo, dmg);
       } else if (worldHits.length > 0) {
         this._spawnImpact(hitPoint, 0xc8b898, 4);
       }

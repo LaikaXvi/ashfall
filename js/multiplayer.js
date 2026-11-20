@@ -11,6 +11,8 @@ class MultiplayerSession {
     this.remoteStates = new Map(); // peerClientId -> latest state object
     this._sendAccum = 0;
     this._fallbackAccum = 0;
+    this._enemySyncAccum = 0;
+    this._enemyFallbackAccum = 0;
     this._onRemoteEvent = null;
     this._seenSignalIds = new Set();
   }
@@ -242,7 +244,12 @@ class MultiplayerSession {
     }
 
     // Fallback state / event packets over ntfy.sh if WebRTC hasn't connected yet
-    if (pkt.type === 'state' || pkt.type === 'shot' || pkt.type === 'ping' || pkt.type === 'enemy_hit' || pkt.type === 'revive_ping') {
+    if (
+      pkt.type === 'state' || pkt.type === 'shot' || pkt.type === 'ping' ||
+      pkt.type === 'enemy_hit' || pkt.type === 'enemies_sync' || pkt.type === 'enemy_shot' ||
+      pkt.type === 'ground_drop' || pkt.type === 'ground_pickup' ||
+      pkt.type === 'pvp_hit' || pkt.type === 'pvp_toggle' || pkt.type === 'revive_ping'
+    ) {
       this._handleDataPacket(peerId, pkt);
     }
   }
@@ -282,6 +289,29 @@ class MultiplayerSession {
     }
     if (!sentViaRtc) {
       this._postSignal(payload);
+    }
+  }
+
+  sendEnemiesSync(dt, enemyManager, isHost) {
+    if (!this.active || !isHost || !enemyManager || this.partyMembers.length === 0) return;
+    const hasRtc = this._hasAnyWebRTCConnected();
+    if (hasRtc) {
+      this._enemySyncAccum += dt;
+      if (this._enemySyncAccum < 0.125) return; // 8Hz over direct P2P WebRTC
+      this._enemySyncAccum = 0;
+      const list = enemyManager.serializeSnapshot();
+      const json = JSON.stringify({ type: 'enemies_sync', fromId: this.myClientId, list });
+      for (const [, p] of this.peers.entries()) {
+        if (p.dc && p.dc.readyState === 'open') {
+          try { p.dc.send(json); } catch (e) {}
+        }
+      }
+    } else {
+      this._enemyFallbackAccum += dt;
+      if (this._enemyFallbackAccum < 1.8) return; // Fallback over ntfy.sh until WebRTC opens
+      this._enemyFallbackAccum = 0;
+      const list = enemyManager.serializeSnapshot();
+      this._postSignal({ type: 'enemies_sync', list });
     }
   }
 

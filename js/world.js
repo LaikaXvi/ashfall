@@ -684,7 +684,7 @@ class WastelandWorld {
 
     this.scene.add(g);
     const entry = {
-      uid: 'gi_' + Math.random().toString(36).slice(2, 9),
+      uid: opts.uid || ('gi_' + Math.random().toString(36).slice(2, 9)),
       id,
       qty,
       mods: opts.mods || null,
@@ -695,6 +695,12 @@ class WastelandWorld {
     };
     this.groundItems.push(entry);
     return entry;
+  }
+
+  removeGroundItemByUid(uid) {
+    if (!uid) return;
+    const entry = this.groundItems.find(g => g && g.uid === uid);
+    if (entry) this.removeGroundItem(entry);
   }
 
   removeGroundItem(entry) {

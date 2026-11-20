@@ -18,6 +18,7 @@
   let squadManager = null;
 
   let inRaid = false;
+  let isMatchHost = true;
   let isModalOpen = false;
   let raidTimeLeft = 0;
   let raidElapsed = 0;
@@ -113,12 +114,19 @@
       }
       ui.profile.loadout.backpackItems = [];
     }
-    enemyManager = new EnemyManager(scene, world, zone, weaponSystem);
-    squadManager = new SquadManager(scene, world, ui.partyMembers || []);
-
     // Start real-time co-op multiplayer sync when deploying with party members into the SAME match!
     const activeMatchId = matchId || (ui.partyId + '_' + zoneId);
     const hasRemoteParty = (ui.partyMembers || []).some(m => !m.isSelf && m.isRemoteHuman);
+    isMatchHost = !hasRemoteParty || (typeof ui.isPartyLeader === 'function' ? ui.isPartyLeader() : true);
+    enemyManager = new EnemyManager(scene, world, zone, weaponSystem, hasRemoteParty && !isMatchHost);
+    squadManager = new SquadManager(scene, world, ui.partyMembers || []);
+
+    window.onSquadPvpToggle = (enabled) => {
+      if (mpSession && mpSession.active) {
+        mpSession.sendEvent({ type: 'pvp_toggle', enabled: !!enabled });
+      }
+    };
+
     if (mpSession && hasRemoteParty) {
       mpSession.start({
         matchId: activeMatchId,
@@ -139,7 +147,23 @@
             }
           } else if (pkt.type === 'ping') {
             _placePing(pkt.pingType || 'location', new THREE.Vector3(pkt.x || 0, pkt.y || 0.1, pkt.z || 0), null, false, pkt.fromName || 'SQUAD');
-          } else if (pkt.type === 'enemy_hit' && enemyManager && enemyManager.enemies && typeof pkt.enemyIdx === 'number') {
+          } else if (pkt.type === 'enemies_sync') {
+            if (!isMatchHost && enemyManager && Array.isArray(pkt.list)) {
+              enemyManager.applyHostSnapshot(pkt.list);
+            }
+          } else if (pkt.type === 'enemy_shot') {
+            if (!isMatchHost && enemyManager && enemyManager.enemies && typeof pkt.enemyIdx === 'number') {
+              const e = enemyManager.enemies[pkt.enemyIdx];
+              if (e && !e.dead) {
+                if (e.triggerRemoteMuzzleFlash) e.triggerRemoteMuzzleFlash();
+                if (weaponSystem && weaponSystem.spawnEnemyShot && pkt.tx !== undefined) {
+                  const startPos = e.position.clone().add(new THREE.Vector3(0, 1.35, 0));
+                  const endPos = new THREE.Vector3(pkt.tx, pkt.ty, pkt.tz);
+                  weaponSystem.spawnEnemyShot(startPos, endPos, false, world);
+                }
+              }
+            }
+          } else if (pkt.type === 'enemy_hit' && isMatchHost && enemyManager && enemyManager.enemies && typeof pkt.enemyIdx === 'number') {
             const target = enemyManager.enemies[pkt.enemyIdx];
             if (target && !target.dead) {
               const killed = target.takeDamage(pkt.dmg || 25, null, {
@@ -159,6 +183,58 @@
                   victimIsEnemy: true,
                   action: 'eliminated'
                 });
+              }
+            }
+          } else if (pkt.type === 'ground_drop' && world && pkt.id) {
+            if (!pkt.uid || !world.groundItems.some(g => g.uid === pkt.uid)) {
+              world.spawnGroundItem(
+                pkt.id,
+                pkt.qty || 1,
+                new THREE.Vector3(pkt.x || 0, pkt.y != null ? pkt.y : 0.02, pkt.z || 0),
+                { uid: pkt.uid, mods: pkt.mods || null, mag: pkt.mag }
+              );
+            }
+          } else if (pkt.type === 'ground_pickup' && world && pkt.uid) {
+            world.removeGroundItemByUid(pkt.uid);
+          } else if (pkt.type === 'pvp_toggle') {
+            window.SQUAD_PVP = !!pkt.enabled;
+            if (ui.syncSettingsUI) ui.syncSettingsUI();
+            ui.addFeedMessage(`SQUAD PVP: ${window.SQUAD_PVP ? 'ON' : 'OFF'}`, window.SQUAD_PVP ? '#ff5252' : '#69f0ae');
+          } else if (pkt.type === 'pvp_hit') {
+            if (pkt.targetClientId === ui._clientId && window.SQUAD_PVP && player && !player.dead) {
+              ui.triggerDamageFlash();
+              if (pkt.ax !== undefined) {
+                ui.triggerDirectionalDamage(player, new THREE.Vector3(pkt.ax, pkt.ay || 0, pkt.az));
+              }
+              const attackerInfo = {
+                name: pkt.fromName || 'SQUAD',
+                weaponId: pkt.weaponId || 'ak74m',
+                weaponName: pkt.weaponName || 'AK-74M'
+              };
+              const res = player.takeDamage(pkt.dmg || 20, attackerInfo);
+              if (res === 'downed') {
+                ui.addKillFeedEntry({
+                  killerName: attackerInfo.name,
+                  killerIsEnemy: false,
+                  weaponId: attackerInfo.weaponId,
+                  weaponName: attackerInfo.weaponName,
+                  victimName: getPlayerCallsign(),
+                  victimIsEnemy: false,
+                  action: 'downed'
+                });
+              } else if (res === 'eliminated') {
+                ui.addKillFeedEntry({
+                  killerName: attackerInfo.name,
+                  killerIsEnemy: false,
+                  weaponId: attackerInfo.weaponId,
+                  weaponName: attackerInfo.weaponName,
+                  victimName: getPlayerCallsign(),
+                  victimIsEnemy: false,
+                  action: 'eliminated'
+                });
+                if (!squadManager || !squadManager.hasLivingAlly()) {
+                  endRaid(false);
+                }
               }
             }
           }
@@ -213,10 +289,23 @@
       const jitter = (Math.random() - 0.5) * 0.35;
       const dropX = player.position.x - sinY * 1.05 + cosY * jitter;
       const dropZ = player.position.z - cosY * 1.05 - sinY * jitter;
-      world.spawnGroundItem(droppedItem.id, droppedItem.qty || 1, new THREE.Vector3(dropX, 0.02, dropZ), {
+      const gi = world.spawnGroundItem(droppedItem.id, droppedItem.qty || 1, new THREE.Vector3(dropX, 0.02, dropZ), {
         mods: droppedItem.mods || null,
         mag: droppedItem.mag
       });
+      if (mpSession && mpSession.active && gi) {
+        mpSession.sendEvent({
+          type: 'ground_drop',
+          uid: gi.uid,
+          id: gi.id,
+          qty: gi.qty || 1,
+          x: Math.round(gi.position.x * 100) / 100,
+          y: Math.round(gi.position.y * 100) / 100,
+          z: Math.round(gi.position.z * 100) / 100,
+          mods: gi.mods || null,
+          mag: gi.mag
+        });
+      }
     };
     ui.addFeedMessage(`Deployed to ${zone.name}`, '#69f0ae');
     canvas.requestPointerLock();
@@ -568,12 +657,29 @@
         ui.openRaidWeaponStaging(player, { id: gi.id, mods: gi.mods || {}, mag: gi.mag }, {
           sourceLabel: 'GROUND WEAPON',
           onComplete: (res) => {
+            const pickedUid = gi.uid;
             world.removeGroundItem(gi);
+            if (mpSession && mpSession.active && pickedUid) {
+              mpSession.sendEvent({ type: 'ground_pickup', uid: pickedUid });
+            }
             if (res.prevId) {
-              world.spawnGroundItem(res.prevId, 1, dropPos, {
+              const swapped = world.spawnGroundItem(res.prevId, 1, dropPos, {
                 mods: (res.prevSlotObj && res.prevSlotObj.mods) || null,
                 mag: res.prevSlotObj && res.prevSlotObj.mag
               });
+              if (mpSession && mpSession.active && swapped) {
+                mpSession.sendEvent({
+                  type: 'ground_drop',
+                  uid: swapped.uid,
+                  id: swapped.id,
+                  qty: 1,
+                  x: Math.round(swapped.position.x * 100) / 100,
+                  y: Math.round(swapped.position.y * 100) / 100,
+                  z: Math.round(swapped.position.z * 100) / 100,
+                  mods: swapped.mods || null,
+                  mag: swapped.mag
+                });
+              }
             }
             nearbyInteractable = null;
             isModalOpen = false;
@@ -587,7 +693,11 @@
         return true;
       }
       if (player.addToBackpack(gi.id, gi.qty)) {
+        const pickedUid = gi.uid;
         world.removeGroundItem(gi);
+        if (mpSession && mpSession.active && pickedUid) {
+          mpSession.sendEvent({ type: 'ground_pickup', uid: pickedUid });
+        }
         if (window.soundEngine && window.soundEngine.playClick) {
           try { window.soundEngine.playClick(); } catch (e) {}
         }
@@ -1310,10 +1420,38 @@
     }
     const slotObj = player.getActiveWeaponSlot();
     if (!slotObj) return;
-    const fired = weaponSystem.tryFire(player, slotObj, world, enemyManager, (isHead, killed, enemy, attackerInfo) => {
+    const fired = weaponSystem.tryFire(player, slotObj, world, enemyManager, (isHead, killed, enemy, attackerInfo, dmg) => {
       window.soundEngine.playHitmarker(isHead);
       ui.triggerHitmarker(isHead);
       handleOperatorHitResult(isHead, killed, enemy, attackerInfo);
+      if (enemy && enemy.isRemoteReplicated && mpSession && mpSession.active && typeof enemy.netIdx === 'number') {
+        mpSession.sendEvent({
+          type: 'enemy_hit',
+          enemyIdx: enemy.netIdx,
+          dmg: dmg || 25,
+          isHead: !!isHead,
+          weaponId: (attackerInfo && attackerInfo.weaponId) || slotObj.id,
+          weaponName: (attackerInfo && attackerInfo.weaponName) || ''
+        });
+      }
+    }, squadManager, (isHead, dmg, ally, attackerInfo) => {
+      window.soundEngine.playHitmarker(isHead);
+      ui.triggerHitmarker(isHead);
+      if (ally && ally.isRemoteHuman && mpSession && mpSession.active && ally.clientId) {
+        mpSession.sendEvent({
+          type: 'pvp_hit',
+          targetClientId: ally.clientId,
+          dmg: dmg || 20,
+          isHead: !!isHead,
+          weaponId: (attackerInfo && attackerInfo.weaponId) || slotObj.id,
+          weaponName: (attackerInfo && attackerInfo.weaponName) || '',
+          ax: Math.round(player.position.x * 10) / 10,
+          ay: Math.round(player.position.y * 10) / 10,
+          az: Math.round(player.position.z * 10) / 10
+        });
+      } else if (ally && !ally.isRemoteHuman && typeof ally.takeDamage === 'function') {
+        ally.takeDamage(dmg || 20, attackerInfo);
+      }
     });
     if (fired && gamepad && gamepad.connected) {
       gamepad.rumbleFire(slotObj.id);
@@ -1636,6 +1774,9 @@
         if (mpSession && mpSession.active) {
           mpSession.update(dt, player);
           if (squadManager) squadManager.syncRemotePlayers(mpSession);
+          if (isMatchHost && enemyManager) {
+            mpSession.sendEnemiesSync(dt, enemyManager, true);
+          }
         }
         weaponSystem.update(dt, player, wDef);
         if (throwableSystem) {
@@ -1646,6 +1787,15 @@
         enemyManager.update(dt, player, (enemy, hit, dmg, muzzleWorld) => {
           if (muzzleWorld) {
             weaponSystem.spawnEnemyShot(muzzleWorld, player.position, hit, world);
+            if (mpSession && mpSession.active && isMatchHost && enemy && typeof enemy.netIdx === 'number') {
+              mpSession.sendEvent({
+                type: 'enemy_shot',
+                enemyIdx: enemy.netIdx,
+                tx: Math.round(player.position.x * 10) / 10,
+                ty: Math.round(player.position.y * 10) / 10,
+                tz: Math.round(player.position.z * 10) / 10
+              });
+            }
           }
           if (hit && !player.dead) {
             ui.triggerDamageFlash();

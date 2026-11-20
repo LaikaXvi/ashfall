@@ -977,17 +977,93 @@ class Enemy {
       }
     }
   }
+
+  triggerRemoteMuzzleFlash() {
+    this.muzzleTimer = 0.07;
+    if (this.muzzleMesh) this.muzzleMesh.material.opacity = 1;
+    if (this.muzzleLight) this.muzzleLight.intensity = 2.6;
+  }
+
+  updateReplicated(dt) {
+    if (this.extracted) {
+      if (this.group) this.group.visible = false;
+      return;
+    }
+    if (this.muzzleTimer > 0) {
+      this.muzzleTimer -= dt;
+      if (this.muzzleTimer <= 0) {
+        if (this.muzzleMesh) this.muzzleMesh.material.opacity = 0;
+        if (this.muzzleLight) this.muzzleLight.intensity = 0;
+      }
+    }
+    if (this.dead) return;
+
+    const lerpRate = Math.min(1, dt * 12);
+    const prevX = this.position.x;
+    const prevZ = this.position.z;
+    if (this._netTargetX !== undefined) {
+      this.position.x = THREE.MathUtils.lerp(this.position.x, this._netTargetX, lerpRate);
+      this.position.z = THREE.MathUtils.lerp(this.position.z, this._netTargetZ, lerpRate);
+      this.group.position.x = this.position.x;
+      this.group.position.z = this.position.z;
+    }
+    if (this._netTargetRotY !== undefined) {
+      let dY = this._netTargetRotY - this.group.rotation.y;
+      while (dY > Math.PI) dY -= Math.PI * 2;
+      while (dY < -Math.PI) dY += Math.PI * 2;
+      this.group.rotation.y += dY * lerpRate;
+    }
+
+    const moveSpeed = Math.hypot(this.position.x - prevX, this.position.z - prevZ) / Math.max(0.001, dt);
+    const moving = moveSpeed > 0.25;
+
+    if (this.isDowned) {
+      if (this.bleedSprite) {
+        this.bleedSprite.visible = true;
+        this._bleedDrawAccum = (this._bleedDrawAccum || 0) + dt;
+        if (this._bleedDrawAccum >= 0.15) {
+          this._bleedDrawAccum = 0;
+          if (window.drawDownedBleedoutCanvas && this.bleedCanvas) {
+            window.drawDownedBleedoutCanvas(this.bleedCanvas, this.downedBleedTimer / (this.downedBleedMax || 25));
+            if (this.bleedTex) this.bleedTex.needsUpdate = true;
+          }
+        }
+      }
+      this._scootCycle = (this._scootCycle || 0) + dt * (moving ? 4.4 : 0);
+      const phase = moving ? Math.sin(this._scootCycle) : 0;
+      const heave = Math.max(0, phase);
+      this.group.position.y = -0.50 + heave * 0.035;
+      this.group.rotation.x = -0.22 - heave * 0.04;
+      if (this.leftHip) this.leftHip.rotation.x = -1.38 - heave * 0.14;
+      if (this.rightHip) this.rightHip.rotation.x = -1.38 - Math.max(0, -phase) * 0.10;
+      return;
+    }
+
+    if (this.bleedSprite) this.bleedSprite.visible = false;
+    this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, 0, lerpRate);
+    this.group.rotation.x = THREE.MathUtils.lerp(this.group.rotation.x, 0, lerpRate);
+    if (moving) {
+      this._walkCycle = (this._walkCycle || 0) + dt * Math.min(11, moveSpeed * 2.1);
+      if (this.leftHip) this.leftHip.rotation.x = Math.sin(this._walkCycle) * 0.45;
+      if (this.rightHip) this.rightHip.rotation.x = -Math.sin(this._walkCycle) * 0.45;
+    } else {
+      if (this.leftHip) this.leftHip.rotation.x = THREE.MathUtils.lerp(this.leftHip.rotation.x, 0, dt * 10);
+      if (this.rightHip) this.rightHip.rotation.x = THREE.MathUtils.lerp(this.rightHip.rotation.x, 0, dt * 10);
+    }
+  }
 }
 
 class EnemyManager {
-  constructor(scene, world, zoneConfig, weaponSystem = null) {
+  constructor(scene, world, zoneConfig, weaponSystem = null, isRemoteClient = false) {
     this.scene = scene;
     this.world = world;
     this.weaponSystem = weaponSystem;
+    this.isRemoteClient = !!isRemoteClient;
     this.enemies = [];
-
-    // 1. Spawn 6 AI Operator Squads (1-3 operators each, shared POI objectives -> Extraction, tight cohesion!)
     this.squadPlans = {};
+
+    // Remote non-host party clients receive authoritative enemy spawns & transforms from the Host!
+    if (this.isRemoteClient) return;
     const squadPrefixes = ['ALPHA', 'BRAVO', 'CHARLIE', 'DELTA', 'ECHO', 'FOXTROT'];
     const callsigns = [
       'VIPER', 'PHANTOM', 'REAPER', 'COBALT', 'STRYKER', 'WRAITH',
@@ -1061,6 +1137,71 @@ class EnemyManager {
       ? new THREE.Vector3(bossPoi.x + 2.5, 0, bossPoi.z + 3.5)
       : new THREE.Vector3(28, 0, -28);
     this.enemies.push(new Enemy(scene, world, bossPos, 'boss', null, weaponSystem));
+
+    this.enemies.forEach((e, idx) => { e.netIdx = idx; });
+  }
+
+  serializeSnapshot() {
+    const out = [];
+    for (let i = 0; i < this.enemies.length; i++) {
+      const e = this.enemies[i];
+      if (!e) continue;
+      out.push({
+        i,
+        x: Math.round(e.position.x * 10) / 10,
+        z: Math.round(e.position.z * 10) / 10,
+        y: Math.round((e.group ? e.group.rotation.y : 0) * 100) / 100,
+        hp: Math.ceil(e.hp || 0),
+        mh: Math.ceil(e.maxHp || 100),
+        dn: e.isDowned ? 1 : 0,
+        dd: e.dead ? 1 : 0,
+        ex: e.extracted ? 1 : 0,
+        t: e.tier || 'scav',
+        op: e.isOperator ? 1 : 0,
+        n: e.name || 'HOSTILE',
+        w: e.weaponId || 'ak74m',
+        sq: e.squadName || ''
+      });
+    }
+    return out;
+  }
+
+  applyHostSnapshot(list) {
+    if (!Array.isArray(list)) return;
+    for (const s of list) {
+      if (!s || typeof s.i !== 'number') continue;
+      let e = this.enemies[s.i];
+      if (!e) {
+        const spawnPos = new THREE.Vector3(s.x || 0, 0, s.z || 0);
+        const opMeta = s.op ? { isOperator: true, squadName: s.sq || 'ALPHA', callsign: s.n || 'OPERATOR', playstyle: 'tactical' } : null;
+        e = new Enemy(this.scene, this.world, spawnPos, s.t || 'scav', opMeta, this.weaponSystem);
+        e.isRemoteReplicated = true;
+        e.netIdx = s.i;
+        e.name = s.n || e.name;
+        e.weaponId = s.w || e.weaponId;
+        this.enemies[s.i] = e;
+      }
+      e._netTargetX = s.x;
+      e._netTargetZ = s.z;
+      e._netTargetRotY = s.y;
+      e.hp = s.hp;
+      e.maxHp = s.mh;
+
+      if (s.ex && !e.extracted) {
+        e.extracted = true;
+        if (e.group) e.group.visible = false;
+      }
+      if (s.dd && !e.dead) {
+        e.die();
+      } else if (s.dn && !e.isDowned && !e.dead) {
+        e.isDowned = true;
+        e.downedBleedTimer = e.downedBleedMax || 25;
+        if (e.weaponMeshGroup) e.weaponMeshGroup.visible = false;
+      } else if (!s.dn && e.isDowned && !s.dd) {
+        e.isDowned = false;
+        if (e.weaponMeshGroup) e.weaponMeshGroup.visible = true;
+      }
+    }
   }
 
   getHitboxMeshes() {
@@ -1155,6 +1296,12 @@ class EnemyManager {
   }
 
   update(dt, player, onEnemyFire, onEnemyBleedout, raidTimeLeft = 300, onAiVsAiEvent = null) {
+    if (this.isRemoteClient) {
+      for (const e of this.enemies) {
+        if (e) e.updateReplicated(dt);
+      }
+      return;
+    }
     this._updateSquadPlans(dt, raidTimeLeft);
     for (const e of this.enemies) {
       const goal = e.isOperator ? this._getSquadGoalFor(e) : null;

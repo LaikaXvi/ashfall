@@ -1,5 +1,6 @@
 // Hideout Persistence, Trader, Stash, Loadout, In-Raid HUD & Loot Modals
 window.DEV_MODE = true;
+window.SQUAD_PVP = false;
 window.MOUSE_SENS = 1.0;
 window.BASE_FOV = 75;
 window.DEFAULT_KEYBINDS = {
@@ -511,6 +512,14 @@ class GameUI {
           this.matchmakingStage.start(zoneId, matchId);
         }
         this._showSocialToast(`Leader selected ${(GAME_DATA.ZONES[zoneId] || { name: zoneId }).name} — Click READY UP to start countdown!`);
+        return;
+      }
+
+      if (msg.type === 'party_pvp' && msg.partyId && msg.partyId === this.partyId) {
+        if (now - effectiveTs > 30000) return;
+        window.SQUAD_PVP = !!msg.enabled;
+        if (this.syncSettingsUI) this.syncSettingsUI();
+        this._showSocialToast(`Squad PvP (Friendly Fire): ${window.SQUAD_PVP ? 'ON' : 'OFF'}`);
         return;
       }
 
@@ -1453,6 +1462,14 @@ class GameUI {
         pDev.style.borderColor = window.DEV_MODE ? '#69f0ae' : '';
         pDev.style.color = window.DEV_MODE ? '#69f0ae' : '';
       }
+      ['btn-pvp-mode', 'btn-pause-pvp'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) {
+          el.textContent = window.SQUAD_PVP ? 'SQUAD PVP: ON' : 'SQUAD PVP: OFF';
+          el.style.borderColor = window.SQUAD_PVP ? '#ff5252' : '';
+          el.style.color = window.SQUAD_PVP ? '#ff6b6b' : '';
+        }
+      });
     };
     this.syncSettingsUI = syncSettingsUI;
 
@@ -1513,6 +1530,28 @@ class GameUI {
         syncSettingsUI();
       });
     }
+    ['btn-pvp-mode', 'btn-pause-pvp'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.addEventListener('click', () => {
+          window.SQUAD_PVP = !window.SQUAD_PVP;
+          syncSettingsUI();
+          if (this._sendSocialPacket) {
+            this._sendSocialPacket({
+              type: 'party_pvp',
+              clientId: this._clientId,
+              partyId: this.partyId,
+              enabled: window.SQUAD_PVP,
+              ts: Date.now()
+            });
+          }
+          if (typeof window.onSquadPvpToggle === 'function') {
+            window.onSquadPvpToggle(window.SQUAD_PVP);
+          }
+          this._showSocialToast(`Squad PvP (Friendly Fire): ${window.SQUAD_PVP ? 'ON' : 'OFF'}`);
+        });
+      }
+    });
     const pauseSettingsBtn = document.getElementById('btn-pause-settings');
     const pauseSettingsPanel = document.getElementById('pause-settings-panel');
     if (pauseSettingsBtn && pauseSettingsPanel) {
@@ -3687,7 +3726,13 @@ class GameUI {
 
     let actionsHtml = '';
     const hasWpnBag = !!(this._lootPlayer && this._lootPlayer.hasWeaponBackpack && this._lootPlayer.hasWeaponBackpack());
-    if (def.type === 'weapon') {
+    if (context === 'player_op') {
+      actionsHtml += `<button class="pop-act" data-act="stow_op">Stow in Backpack</button>`;
+      if (hasContainer) {
+        actionsHtml += `<button class="pop-act" data-act="op_to_container">Transfer to Container</button>`;
+      }
+      actionsHtml += `<button class="pop-act danger" data-act="drop_op">Drop to Ground</button>`;
+    } else if (def.type === 'weapon') {
       actionsHtml += `<button class="pop-act" data-act="stage_weapon">${badge('A')}Select Weapon Slot...</button>`;
       actionsHtml += `<button class="pop-act" data-act="equip_primary">Equip Primary</button>`;
       actionsHtml += `<button class="pop-act" data-act="equip_secondary">Equip Secondary</button>`;
@@ -3764,7 +3809,7 @@ class GameUI {
       document.addEventListener('mousedown', (e) => {
         const popEl = document.getElementById('item-action-popout');
         if (!popEl || popEl.classList.contains('hidden')) return;
-        if (popEl.contains(e.target) || (e.target.closest && e.target.closest('.inv-slot'))) return;
+        if (popEl.contains(e.target) || (e.target.closest && (e.target.closest('.inv-slot') || e.target.closest('.op-slot-card')))) return;
         this.hideItemPopout();
       });
     }
@@ -3861,10 +3906,107 @@ class GameUI {
     };
   }
 
+  _getPlayerOperatorSlotItem(player, k) {
+    if (!player) return null;
+    if (k === 'killstreak' && player.killstreak) return { id: player.killstreak, qty: 1 };
+    if (k === 'armor' && player.armorId) return { id: player.armorId, qty: 1 };
+    if (k === 'backpack' && player.backpackId) return { id: player.backpackId, qty: 1 };
+    if (k === 'fieldUpgrade' && player.fieldUpgrade) return { id: player.fieldUpgrade, qty: 1 };
+    if (k === 'selfRevive' && player.selfRevive) return { id: player.selfRevive, qty: 1 };
+    if (k === 'headgear' && player.headgear) return { id: player.headgear, qty: 1 };
+    if (k === 'melee' && player.melee) return { id: player.melee, qty: 1 };
+    if (k === 'tactical' && player.tactical && (player.tacticalQty || 0) > 0) return { id: player.tactical, qty: player.tacticalQty };
+    if (k === 'lethal' && player.lethal && (player.lethalQty || 0) > 0) return { id: player.lethal, qty: player.lethalQty };
+    if (k === 'plates' && (player.plates || 0) > 0) return { id: 'armor_plate', qty: player.plates };
+    return null;
+  }
+
+  _stowPlayerOperatorSlot(player, k, dest = 'backpack') {
+    const slotItem = this._getPlayerOperatorSlotItem(player, k);
+    if (!slotItem) return false;
+
+    const placeItem = (itemObj) => {
+      if (dest === 'container' && this.activeLootSource && Array.isArray(this.activeLootSource.items)) {
+        this.activeLootSource.items.push({ id: itemObj.id, qty: itemObj.qty || 1, revealed: true });
+        return true;
+      }
+      if (dest === 'ground') {
+        if (typeof this.onDropItem === 'function') this.onDropItem({ id: itemObj.id, qty: itemObj.qty || 1 });
+        return true;
+      }
+      // dest === 'backpack'
+      return !!player.addToBackpack(itemObj.id, itemObj.qty || 1, { forceBag: true });
+    };
+
+    if (k === 'backpack') {
+      // Unequipping your equipped backpack shrinks capacity to 4 pocket slots.
+      // If stowing the bag itself into pockets, require at least 1 free pocket slot (< 4 items).
+      if (dest === 'backpack' && player.backpack.length >= 4) {
+        this._showSocialToast('Free a pocket slot (need < 4 items) before stowing your equipped backpack.');
+        return false;
+      }
+      const oldBagId = player.backpackId;
+      player.backpackId = null;
+      player.backpackMaxSlots = 4;
+      if (player.backpackWeapon) {
+        if (typeof this.onDropItem === 'function') this.onDropItem(player.backpackWeapon);
+        player.backpackWeapon = null;
+      }
+      while (player.backpack.length > 4) {
+        const extra = player.backpack.pop();
+        if (extra && typeof this.onDropItem === 'function') this.onDropItem(extra);
+      }
+      placeItem({ id: oldBagId, qty: 1 });
+      return true;
+    }
+
+    if (!placeItem(slotItem)) return false;
+
+    if (k === 'killstreak') {
+      player.killstreak = null;
+    } else if (k === 'armor') {
+      player.armorId = null;
+      player.plateSlots = 0;
+      player.maxArmor = 0;
+      player.armor = 0;
+    } else if (k === 'fieldUpgrade') {
+      player.fieldUpgrade = null;
+    } else if (k === 'selfRevive') {
+      player.selfRevive = null;
+    } else if (k === 'headgear') {
+      player.headgear = null;
+    } else if (k === 'melee') {
+      player.melee = null;
+      if (player.activeSlot === 'melee') {
+        player.activeSlot = player.slots.primary ? 'primary' : (player.slots.secondary ? 'secondary' : 'melee');
+        if (player._equipCurrentWeapon) player._equipCurrentWeapon();
+      }
+    } else if (k === 'tactical') {
+      player.tactical = null;
+      player.tacticalQty = 0;
+    } else if (k === 'lethal') {
+      player.lethal = null;
+      player.lethalQty = 0;
+    } else if (k === 'plates') {
+      player.plates = 0;
+    }
+    return true;
+  }
+
   handleSlotAction(action) {
     if (!this._hoveredSlot || !this._lootPlayer) return;
     const { context, item, idx } = this._hoveredSlot;
     const player = this._lootPlayer;
+
+    if (context === 'player_op') {
+      if (action === 'stow_op') this._stowPlayerOperatorSlot(player, idx, 'backpack');
+      else if (action === 'op_to_container') this._stowPlayerOperatorSlot(player, idx, 'container');
+      else if (action === 'drop_op') this._stowPlayerOperatorSlot(player, idx, 'ground');
+      this.hideItemPopout();
+      this.renderLootModal(player);
+      return;
+    }
+
     const def = GAME_DATA.ITEMS[item.id];
     if (!def) return;
 
@@ -4184,7 +4326,7 @@ class GameUI {
         fieldUpgrade: player.fieldUpgrade,
         killstreak: player.killstreak,
         melee: player.melee
-      }, (k) => {
+      }, (k, el) => {
         // Clicking player's own Primary or Secondary weapon slot opens Weapon Slot Staging UI (move to Backpack Weapon Slot or swap!)
         if (k === 'primary' || k === 'secondary') {
           const wObj = player.slots && player.slots[k];
@@ -4205,8 +4347,14 @@ class GameUI {
               }
             }
           });
+          return;
         }
-      }, 'Click Weapon to Move / Stage · Right-Click Weapon to Drop', null, (k) => {
+        // Clicking any equipped gear/killstreak/vest/bag/throwable/plate opens stow/transfer/drop popout
+        const opItem = this._getPlayerOperatorSlotItem(player, k);
+        if (opItem && el) {
+          this.showItemPopout(el, 'player_op', opItem, k, { inputMode: 'mouse', mode: 'all' });
+        }
+      }, 'Click for Options / Stage · Right-Click to Stow (Weapon: Drop)', null, (k) => {
         // Right-clicking player's own Primary or Secondary weapon drops the physical 3D weapon to the ground!
         if (k === 'primary' || k === 'secondary') {
           const wObj = player.slots && player.slots[k];
@@ -4219,6 +4367,12 @@ class GameUI {
           if (typeof this.onDropItem === 'function') {
             this.onDropItem({ id: wObj.id, qty: 1, mods: wObj.mods, mag: wObj.mag });
           }
+          this.renderLootModal(player);
+          return;
+        }
+        // Right-clicking any equipped killstreak, plate carrier, backpack, upgrade, etc. stows it straight into backpack!
+        if (this._stowPlayerOperatorSlot(player, k, 'backpack')) {
+          this.hideItemPopout();
           this.renderLootModal(player);
         }
       });

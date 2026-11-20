@@ -1087,7 +1087,7 @@ class Player {
 
     const maxSlots = this.backpackMaxSlots || 8;
 
-    if (id === 'armor_plate') {
+    if (id === 'armor_plate' && !extra.forceBag) {
       if (this.plates < 6) {
         const room = Math.min(qty, 6 - this.plates);
         this.plates += room;

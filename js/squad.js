@@ -74,8 +74,11 @@ class SquadMate {
     const skinMat = new THREE.MeshLambertMaterial({ color: 0xd1a483 });
     const accentMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(this.squadColor || '#69f0ae') });
 
+    this.hitboxes = [];
     const torso = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.56, 0.25), uniformMat);
     torso.position.set(0, 1.18, 0);
+    torso.userData = { ally: this, part: 'torso' };
+    this.hitboxes.push(torso);
     const vest = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.40, 0.29), vestMat);
     vest.position.set(0, 1.20, 0);
     const patchL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.08, 0.08), accentMat);
@@ -85,6 +88,8 @@ class SquadMate {
 
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.23, 0.22), skinMat);
     head.position.set(0, 1.58, 0);
+    head.userData = { ally: this, part: 'head' };
+    this.hitboxes.push(head);
     const helmet = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.14, 0.26), gearMat);
     helmet.position.set(0, 1.66, 0);
 
@@ -924,6 +929,16 @@ class SquadManager {
 
   getAllyByClientId(clientId) {
     return this.allies.find(a => a.clientId === clientId) || null;
+  }
+
+  getHitboxMeshes() {
+    const list = [];
+    for (const a of this.allies) {
+      if (!a.dead && !a.extracted && a.hitboxes) {
+        list.push(...a.hitboxes);
+      }
+    }
+    return list;
   }
 
   update(dt, player, enemyManager, weaponSystem, raidTimeLeft, onComms, onAllyKill, onAllyEvent) {
