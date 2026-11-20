@@ -70,6 +70,7 @@ class GameUI {
     window.GAMEPAD_BINDS = { ...window.DEFAULT_GAMEPAD_BINDS, ...(this.profile.gamepadBinds || {}) };
     this.keybindsTab = 'kbm';
     this._initSocial();
+    this._initLiveUpdateTracker();
     this._bindHideoutEvents();
     this._bindWeaponStagingModal();
     this._bindSpatialKeyboardNav();
@@ -995,6 +996,57 @@ class GameUI {
     const multi = (this.partyMembers || []).length > 1;
     (this.partyMembers || []).forEach((m, idx) => {
       m.squadColor = multi ? palette[idx % palette.length] : '#69f0ae';
+    });
+  }
+
+  _initLiveUpdateTracker() {
+    const badge = document.getElementById('menu-update-badge');
+    if (!badge) return;
+    if (window.location.protocol === 'file:') return; // only poll when hosted on web/GitHub Pages
+
+    let latestAvailable = null;
+    const parseVer = (v) => String(v || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0);
+    const isNewer = (remote, local) => {
+      if (!remote || !local || remote === local) return false;
+      const r = parseVer(remote);
+      const l = parseVer(local);
+      for (let i = 0; i < Math.max(r.length, l.length); i++) {
+        const rv = r[i] || 0;
+        const lv = l[i] || 0;
+        if (rv > lv) return true;
+        if (rv < lv) return false;
+      }
+      return remote !== local;
+    };
+
+    badge.addEventListener('click', () => {
+      const bust = latestAvailable ? encodeURIComponent(latestAvailable) : Date.now();
+      const base = window.location.origin + window.location.pathname;
+      window.location.replace(`${base}?v=${bust}&t=${Date.now()}`);
+    });
+
+    const checkForUpdate = () => {
+      const localVer = (window.GAME_DATA && GAME_DATA.VERSION) || '';
+      if (!localVer) return;
+      fetch(`./js/data.js?nocache=${Date.now()}`, { cache: 'no-store' })
+        .then(r => (r.ok ? r.text() : ''))
+        .then((txt) => {
+          if (!txt) return;
+          const m = txt.match(/VERSION\s*:\s*['"]([^'"]+)['"]/);
+          const remoteVer = m && m[1];
+          if (remoteVer && isNewer(remoteVer, localVer)) {
+            latestAvailable = remoteVer;
+            badge.textContent = `NEW VERSION AVAILABLE (${remoteVer})`;
+            badge.classList.remove('hidden');
+          }
+        })
+        .catch(() => {});
+    };
+
+    setTimeout(checkForUpdate, 4000);
+    this._updateCheckInterval = setInterval(checkForUpdate, 25000);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') checkForUpdate();
     });
   }
 
