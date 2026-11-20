@@ -3795,30 +3795,61 @@ class GameUI {
   autoLootExistingStacks(player) {
     if (!this.activeLootSource || !player || !Array.isArray(player.backpack)) return false;
     const items = this.activeLootSource.items;
-    if (!Array.isArray(items) || items.length === 0) return false;
-
     let movedAny = false;
-    for (let i = items.length - 1; i >= 0; i--) {
-      const src = items[i];
-      if (!src || src.revealed === false || src.qty <= 0) continue;
-      const def = GAME_DATA.ITEMS[src.id];
-      if (!def || !def.stackable) continue;
 
-      const maxStack = def.maxStack || Infinity;
-      for (const bagItem of player.backpack) {
-        if (!bagItem || bagItem.id !== src.id) continue;
-        const room = maxStack === Infinity ? src.qty : Math.max(0, maxStack - bagItem.qty);
-        if (room <= 0) continue;
-        const move = Math.min(room, src.qty);
-        bagItem.qty += move;
-        src.qty -= move;
+    // 1. Auto-stack revealed armor plates from enemy operator equipment plate slot into player's plate slot (max 6)
+    const eq = this.activeLootSource.operatorEquipment;
+    if (eq && eq.plates > 0 && eq.revealedSlots && eq.revealedSlots.plates) {
+      const curPlates = player.plates || 0;
+      const room = Math.max(0, 6 - curPlates);
+      if (room > 0) {
+        const move = Math.min(room, eq.plates);
+        player.plates = curPlates + move;
+        eq.plates -= move;
         movedAny = true;
-        if (src.qty <= 0) break;
-      }
-      if (src.qty <= 0) {
-        items.splice(i, 1);
       }
     }
+
+    // 2. Auto-stack revealed container items: plates into operator plate slot (max 6) + stackables into existing backpack stacks
+    if (Array.isArray(items) && items.length > 0) {
+      for (let i = items.length - 1; i >= 0; i--) {
+        const src = items[i];
+        if (!src || src.revealed === false || src.qty <= 0) continue;
+        const def = GAME_DATA.ITEMS[src.id];
+        if (!def) continue;
+
+        // Armor plates fill the operator's plate slot first (up to 6)
+        if (src.id === 'armor_plate' || def.type === 'plate') {
+          const curPlates = player.plates || 0;
+          const plateRoom = Math.max(0, 6 - curPlates);
+          if (plateRoom > 0) {
+            const move = Math.min(plateRoom, src.qty);
+            player.plates = curPlates + move;
+            src.qty -= move;
+            movedAny = true;
+          }
+        }
+
+        if (src.qty > 0 && def.stackable) {
+          const maxStack = def.maxStack || Infinity;
+          for (const bagItem of player.backpack) {
+            if (!bagItem || bagItem.id !== src.id) continue;
+            const room = maxStack === Infinity ? src.qty : Math.max(0, maxStack - bagItem.qty);
+            if (room <= 0) continue;
+            const move = Math.min(room, src.qty);
+            bagItem.qty += move;
+            src.qty -= move;
+            movedAny = true;
+            if (src.qty <= 0) break;
+          }
+        }
+
+        if (src.qty <= 0) {
+          items.splice(i, 1);
+        }
+      }
+    }
+
     if (movedAny && window.soundEngine && window.soundEngine.playClick) {
       try { window.soundEngine.playClick(); } catch (e) {}
     }
@@ -4092,6 +4123,7 @@ class GameUI {
     if (this._searchRevealProgress >= 1) {
       eq.revealedSlots[nextKey] = true;
       this._searchRevealProgress = 0;
+      this.autoLootExistingStacks(this._lootPlayer);
       if (window.soundEngine && window.soundEngine.playClick) {
         try { window.soundEngine.playClick(); } catch (e) {}
       }
