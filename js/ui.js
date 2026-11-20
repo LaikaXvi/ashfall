@@ -3769,9 +3769,11 @@ class GameUI {
   }
 
   // ==================== NON-BLOCKING LOOT & BACKPACK UI ====================
-  openLootModal(player, title, containerItems, operatorEquipment = null) {
+  openLootModal(player, title, containerItems, operatorEquipment = null, worldPos = null, camera = null) {
     this._lootPlayer = player;
-    this.activeLootSource = containerItems ? { title, items: containerItems, operatorEquipment } : null;
+    this.activeLootSource = containerItems
+      ? { title, items: containerItems, operatorEquipment, worldPos: worldPos ? worldPos.clone() : null }
+      : null;
     this._searchRevealProgress = 0;
     this.hideItemPopout();
 
@@ -3782,6 +3784,122 @@ class GameUI {
       cPanel.classList.toggle('hidden', !this.activeLootSource);
     }
     this.renderLootModal(player);
+    if (this.activeLootSource && camera) {
+      this.positionContainerPanel(camera);
+    }
+  }
+
+  positionContainerPanel(camera) {
+    const cPanel = document.getElementById('inv-container-panel');
+    if (!cPanel || cPanel.classList.contains('hidden') || !this.activeLootSource) return;
+
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    const pw = cPanel.offsetWidth || 358;
+    const ph = cPanel.offsetHeight || 220;
+    const margin = 10;
+
+    // 1. Project active container's 3D world position onto screen
+    let targetCx = W * 0.36;
+    let targetCy = H * 0.48;
+    if (camera && this.activeLootSource.worldPos && typeof THREE !== 'undefined') {
+      const p3 = this.activeLootSource.worldPos.clone();
+      p3.y += 0.32;
+      p3.project(camera);
+      if (p3.z < 1) {
+        targetCx = (p3.x * 0.5 + 0.5) * W;
+        targetCy = (-p3.y * 0.5 + 0.5) * H;
+      }
+    }
+
+    const clampX = (x) => Math.max(margin, Math.min(W - pw - margin, x));
+    const clampY = (y) => Math.max(margin, Math.min(H - ph - margin, y));
+    const idealX = clampX(targetCx - pw / 2);
+    const idealY = clampY(targetCy - ph / 2);
+
+    // 2. Gather bounding rects of all visible HUD / UI elements to avoid overlapping
+    const pad = 10;
+    const obstacleSelectors = [
+      '#inv-operator-panel',
+      '.hud-top-left',
+      '.hud-top-center',
+      '.hud-bottom-left',
+      '.hud-bottom-right-cluster',
+      '#hud-kill-feed',
+      '#hud-feed',
+      '#extract-banner',
+      '#revive-banner',
+      '#redzone-banner'
+    ];
+    const obstacles = [];
+    for (const sel of obstacleSelectors) {
+      const el = document.querySelector(sel);
+      if (!el || el.classList.contains('hidden')) continue;
+      const r = el.getBoundingClientRect();
+      if (r.width <= 2 || r.height <= 2) continue;
+      obstacles.push({
+        left: r.left - pad,
+        right: r.right + pad,
+        top: r.top - pad,
+        bottom: r.bottom + pad
+      });
+    }
+
+    const overlapArea = (x, y) => {
+      let area = 0;
+      const r2 = x + pw;
+      const b2 = y + ph;
+      for (const o of obstacles) {
+        const ox = Math.max(0, Math.min(r2, o.right) - Math.max(x, o.left));
+        const oy = Math.max(0, Math.min(b2, o.bottom) - Math.max(y, o.top));
+        area += ox * oy;
+      }
+      return area;
+    };
+
+    // 3. If ideal position is already clear, use it directly
+    let bestX = idealX;
+    let bestY = idealY;
+    let bestOverlap = overlapArea(idealX, idealY);
+
+    if (bestOverlap > 0) {
+      // Build candidate positions pushed cleanly outside each obstacle + local grid around ideal point
+      const candidates = [[idealX, idealY]];
+      for (const o of obstacles) {
+        candidates.push(
+          [clampX(o.left - pw), idealY],
+          [clampX(o.right), idealY],
+          [idealX, clampY(o.top - ph)],
+          [idealX, clampY(o.bottom)]
+        );
+      }
+      for (let gx = 0; gx <= 6; gx++) {
+        for (let gy = 0; gy <= 5; gy++) {
+          const cx = margin + ((W - pw - margin * 2) * gx) / 6;
+          const cy = margin + ((H - ph - margin * 2) * gy) / 5;
+          candidates.push([clampX(cx), clampY(cy)]);
+        }
+      }
+
+      let bestDistSq = Infinity;
+      for (const [cx, cy] of candidates) {
+        const ov = overlapArea(cx, cy);
+        const dx = (cx + pw / 2) - targetCx;
+        const dy = (cy + ph / 2) - targetCy;
+        const dSq = dx * dx + dy * dy;
+        if (ov < bestOverlap - 1 || (Math.abs(ov - bestOverlap) <= 1 && dSq < bestDistSq)) {
+          bestOverlap = ov;
+          bestDistSq = dSq;
+          bestX = cx;
+          bestY = cy;
+        }
+      }
+    }
+
+    cPanel.style.left = `${Math.round(bestX)}px`;
+    cPanel.style.top = `${Math.round(bestY)}px`;
+    cPanel.style.bottom = 'auto';
+    cPanel.style.transform = 'none';
   }
 
   closeLootModal() {
