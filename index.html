@@ -51,7 +51,7 @@
     <!-- VIEW 0: CLEAN MAIN MENU TITLE CARD & OPTIONS -->
     <section id="menu-view-home" class="menu-home-stage">
       <!-- IMPORTANT: Update version in GAME_DATA.VERSION (js/data.js) and here with EVERY new commit -->
-      <div id="menu-version-badge" class="menu-version-badge">v1.28</div>
+      <div id="menu-version-badge" class="menu-version-badge">v1.29</div>
       <div class="menu-home-card">
         <div class="title-card">
           <span class="brand-tag">SECTOR 7 // TACTICAL EXTRACTION</span>
@@ -309,14 +309,15 @@
       </div>
     </main>
 
-    <!-- VIEW 4: SETTINGS & CONTROLS TAB -->
-    <main id="menu-view-settings" class="menu-tab-view two-col-grid hidden">
-      <section class="panel">
-        <div class="panel-header">
-          <h2>GAME SETTINGS</h2>
-          <span class="sub">PREFERENCES &amp; TOOLS</span>
-        </div>
-        <div class="settings-list">
+    <!-- VIEW 4: SETTINGS MENU -->
+    <main id="menu-view-settings" class="menu-tab-view hidden">
+      <div class="single-panel-wrap">
+        <section class="panel">
+          <div class="panel-header">
+            <h2>GAME SETTINGS</h2>
+            <span class="sub">PREFERENCES &amp; TOOLS</span>
+          </div>
+          <div class="settings-list">
           <div class="setting-row">
             <div>
               <div class="setting-title">OPERATOR USERNAME</div>
@@ -439,40 +440,39 @@
             </div>
             <button id="btn-reset-save" class="btn-small btn-danger">RESET SAVE</button>
           </div>
-        </div>
-      </section>
 
-      <section class="panel">
-        <div class="panel-header">
-          <h2>KEYBINDINGS &amp; CONTROLS</h2>
-          <span class="sub">REFERENCE</span>
-        </div>
-        <div class="controls-grid">
-          <div class="ctrl-row"><b>WASD</b><span>Move</span></div>
-          <div class="ctrl-row"><b>SHIFT / 2x SHIFT</b><span>Sprint (Infinite) / Tactical Sprint</span></div>
-          <div class="ctrl-row"><b>C / CTRL (Tap)</b><span>Toggle Crouch / Slide (while sprinting)</span></div>
-          <div class="ctrl-row"><b>C / CTRL (Hold)</b><span>Go Prone</span></div>
-          <div class="ctrl-row"><b>SPACE</b><span>Jump / Stand Up / Slide Cancel</span></div>
-          <div class="ctrl-row"><b>LMB / RMB</b><span>Fire / Aim Down Sights (Auto Corner-Lean)</span></div>
-          <div class="ctrl-row"><b>R / I</b><span>Reload / Inspect Weapon</span></div>
-          <div class="ctrl-row"><b>G / 4</b><span>Insert Armor Plates</span></div>
-          <div class="ctrl-row"><b>H</b><span>Use Field Medkit</span></div>
-          <div class="ctrl-row"><b>F (Tap / Hold)</b><span>Lethal: Quick Throw / Cook Frag or Aim Knife</span></div>
-          <div class="ctrl-row"><b>Q (Tap / Hold)</b><span>Tactical: Quick Throw / Aim Smoke or Concussion</span></div>
-          <div class="ctrl-row"><b>1 / 2</b><span>Primary / Sidearm</span></div>
-          <div class="ctrl-row"><b>E / TAB</b><span>Use-Loot / Backpack</span></div>
-          <div class="ctrl-row"><b>V</b><span>Toggle 3rd-Person Camera</span></div>
-          <div class="ctrl-row"><b>F9</b><span>Toggle Dev Mode</span></div>
-          <div class="ctrl-row" style="border-color:rgba(105,240,174,0.35);margin-top:6px;"><b>GAMEPAD (Xbox / PS)</b><span>Full Controller Support</span></div>
-          <div class="ctrl-row"><b>LS / RS</b><span>Move / Look (Rotational Aim Assist)</span></div>
-          <div class="ctrl-row"><b>RT / LT</b><span>Fire / ADS</span></div>
-          <div class="ctrl-row"><b>L3 (Tap / 2x)</b><span>Sprint / Tactical Sprint</span></div>
-          <div class="ctrl-row"><b>A / B (Tap / Hold)</b><span>Jump / Crouch-Slide / Prone</span></div>
-          <div class="ctrl-row"><b>X / Y (Tap / Hold)</b><span>Loot-Reload / Swap-Armor Plates</span></div>
-          <div class="ctrl-row"><b>RB / LB</b><span>Lethal / Tactical Throwable</span></div>
-          <div class="ctrl-row"><b>D-Pad ↑ / ← / →</b><span>Medkit / Inspect / 3rd-Person</span></div>
+          <div class="setting-row">
+            <div>
+              <div class="setting-title">KEYBINDS</div>
+              <div class="setting-desc">Configure Keyboard &amp; Mouse controls and Controller button bindings</div>
+            </div>
+            <button id="btn-open-keybinds" class="btn-small" style="border-color:var(--accent-bright);color:var(--accent-bright);">OPEN KEYBINDS →</button>
+          </div>
         </div>
       </section>
+      </div>
+    </main>
+
+    <!-- VIEW 4B: DEDICATED KEYBINDS MENU (KEYBOARD & MOUSE / CONTROLLER TABS) -->
+    <main id="menu-view-keybinds" class="menu-tab-view hidden">
+      <div class="single-panel-wrap">
+        <section class="panel">
+          <div class="panel-header">
+            <h2>KEYBINDS</h2>
+            <div class="panel-actions">
+              <button id="btn-keybinds-back" class="btn-small">← BACK TO SETTINGS</button>
+            </div>
+          </div>
+
+          <div id="keybinds-tabs" class="trader-tabs" style="margin-bottom:10px;">
+            <button class="tab-btn active" data-kb-tab="kbm">KEYBOARD &amp; MOUSE</button>
+            <button class="tab-btn" data-kb-tab="controller">CONTROLLER</button>
+          </div>
+
+          <div id="keybinds-kbm-pane" class="controls-grid"></div>
+          <div id="keybinds-controller-pane" class="controls-grid hidden"></div>
+        </section>
+      </div>
     </main>
   </div>
 
@@ -872,7 +872,7 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION with every new commit) -->
-  <script src="js/data.js?v=128"></script>
+  <script src="js/data.js?v=129"></script>
   <script src="js/net.js?v=123"></script>
   <script src="js/sfx_samples.js?v=21"></script>
   <script src="js/audio.js?v=78"></script>
@@ -884,10 +884,10 @@
   <script src="js/squad.js?v=124"></script>
   <script src="js/multiplayer.js?v=123"></script>
   <script src="js/player.js?v=127"></script>
-  <script src="js/gamepad.js?v=128"></script>
+  <script src="js/gamepad.js?v=129"></script>
   <script src="js/gunsmith.js?v=41"></script>
   <script src="js/matchmaking.js?v=114"></script>
-  <script src="js/ui.js?v=127"></script>
+  <script src="js/ui.js?v=129"></script>
   <script src="js/console.js?v=117"></script>
   <script src="js/main.js?v=128"></script>
 </body>
