@@ -1619,8 +1619,10 @@ class Player {
     const feetY = eyeY - eh;
     const headY = eyeY + 0.18;
     const r = this.radius;
+    const list = this.world.getNearbyColliders ? this.world.getNearbyColliders(x, z, r + 0.6) : this.world.colliders;
 
-    for (const c of this.world.colliders) {
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i];
       if (headY > c.minY + 0.02 && feetY < c.maxY - 0.05) {
         if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) {
           return true;
@@ -1632,7 +1634,9 @@ class Player {
 
   _hasTallWallAt(x, eyeY, z) {
     const r = this.radius;
-    for (const c of this.world.colliders) {
+    const list = this.world.getNearbyColliders ? this.world.getNearbyColliders(x, z, r + 0.6) : this.world.colliders;
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i];
       // Only full-height walls/pillars extending above eye level (ignores hip-height tables, boxes, crates, sandbags)
       if (c.maxY >= eyeY + 0.12 && c.minY < eyeY) {
         if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) {
@@ -1646,7 +1650,9 @@ class Player {
   _getSupportHeightAt(x, z, feetY) {
     const r = this.radius * 0.92;
     let bestY = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(x, z) : 0;
-    for (const c of this.world.colliders) {
+    const list = this.world.getNearbyColliders ? this.world.getNearbyColliders(x, z, r + 0.6) : this.world.colliders;
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i];
       if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) {
         if (c.maxY <= feetY + 0.36 && c.maxY > bestY) {
           bestY = c.maxY;
@@ -1659,7 +1665,9 @@ class Player {
   _getCeilingHeightAt(x, z, feetY) {
     const r = this.radius * 0.85;
     let ceilY = Infinity;
-    for (const c of this.world.colliders) {
+    const list = this.world.getNearbyColliders ? this.world.getNearbyColliders(x, z, r + 0.6) : this.world.colliders;
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i];
       if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) {
         if (c.minY >= feetY + 0.45 && c.minY < ceilY) {
           ceilY = c.minY;
@@ -1680,7 +1688,9 @@ class Player {
     for (const d of [0.48, 0.78, 1.12]) {
       const px = this.position.x + fwdX * d;
       const pz = this.position.z + fwdZ * d;
-      for (const c of this.world.colliders) {
+      const list = this.world.getNearbyColliders ? this.world.getNearbyColliders(px, pz, probeR + 0.8) : this.world.colliders;
+      for (let i = 0; i < list.length; i++) {
+        const c = list[i];
         if (px + probeR <= c.minX || px - probeR >= c.maxX || pz + probeR <= c.minZ || pz - probeR >= c.maxZ) {
           continue;
         }

@@ -5315,22 +5315,63 @@ class GameUI {
   }
 
   updateHUD(player, world, raidTimeLeft, weaponSystem, throwableSystem = null, enemyManager = null, squadManager = null, raidXp = 0) {
-    // Timer
+    // Cached DOM refs + dirty-value tracking to eliminate 60Hz layout/paint thrashing
+    if (!this._hudCache) {
+      this._hudCache = {
+        timer: document.getElementById('hud-timer'),
+        devBadge: document.getElementById('hud-dev-badge'),
+        hpBar: document.getElementById('hud-hp-bar'),
+        hpVal: document.getElementById('hud-hp-val'),
+        segContainer: document.getElementById('hud-plate-segments'),
+        armorVal: document.getElementById('hud-armor-val'),
+        stamBar: document.getElementById('hud-stam-bar'),
+        stamVal: document.getElementById('hud-stam-val'),
+        medkits: document.getElementById('hud-medkits'),
+        plates: document.getElementById('hud-plates'),
+        lethal: document.getElementById('hud-lethal'),
+        tactical: document.getElementById('hud-tactical'),
+        fuRing: document.getElementById('hud-fu-ring'),
+        ksWrap: document.getElementById('hud-ks-wrap'),
+        ksKey: document.getElementById('hud-ks-key'),
+        ksStatus: document.getElementById('hud-ks-status')
+      };
+      this._hudPrev = {};
+    }
+    const hc = this._hudCache;
+    const hpv = this._hudPrev;
+
+    // Timer (dirty-checked per second)
     const mins = Math.floor(raidTimeLeft / 60);
     const secs = Math.floor(raidTimeLeft % 60);
-    document.getElementById('hud-timer').textContent =
-      `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-    const devBadge = document.getElementById('hud-dev-badge');
-    if (devBadge) devBadge.classList.toggle('hidden', !window.DEV_MODE);
+    const timerStr = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    if (hc.timer && hpv.timer !== timerStr) {
+      hpv.timer = timerStr;
+      hc.timer.textContent = timerStr;
+    }
+    const devFlag = !!window.DEV_MODE;
+    if (hc.devBadge && hpv.dev !== devFlag) {
+      hpv.dev = devFlag;
+      hc.devBadge.classList.toggle('hidden', !devFlag);
+    }
 
-    // Vitals (with DMZ 1-3 segmented armor plates)
-    document.getElementById('hud-hp-bar').style.width = `${(player.hp / player.maxHp) * 100}%`;
-    document.getElementById('hud-hp-val').textContent = Math.ceil(player.hp);
+    // Vitals (dirty-checked to prevent 60Hz DOM reflows)
+    const hpPct = ((player.hp / player.maxHp) * 100).toFixed(1);
+    if (hc.hpBar && hpv.hpPct !== hpPct) {
+      hpv.hpPct = hpPct;
+      hc.hpBar.style.width = `${hpPct}%`;
+    }
+    const hpCeil = Math.ceil(player.hp);
+    if (hc.hpVal && hpv.hpCeil !== hpCeil) {
+      hpv.hpCeil = hpCeil;
+      hc.hpVal.textContent = hpCeil;
+    }
 
-    const segContainer = document.getElementById('hud-plate-segments');
-    if (segContainer) {
+    const armorCeil = Math.ceil(player.armor);
+    const plateKey = `${player.plateSlots}|${armorCeil}`;
+    if (hc.segContainer && hpv.plateKey !== plateKey) {
+      hpv.plateKey = plateKey;
       if (player.plateSlots === 0) {
-        segContainer.innerHTML = '<span style="font-size:10px;color:#8f968e;">NO VEST</span>';
+        hc.segContainer.innerHTML = '<span style="font-size:10px;color:#8f968e;">NO VEST</span>';
       } else {
         let html = '';
         for (let i = 0; i < player.plateSlots; i++) {
@@ -5338,17 +5379,23 @@ class GameUI {
           const pct = (plateVal / 50) * 100;
           html += `<div class="plate-seg"><div class="plate-seg-fill" style="width:${pct}%"></div></div>`;
         }
-        segContainer.innerHTML = html;
+        hc.segContainer.innerHTML = html;
       }
     }
-    document.getElementById('hud-armor-val').textContent = Math.ceil(player.armor);
-    const stamBar = document.getElementById('hud-stam-bar');
-    if (stamBar) {
-      stamBar.style.width = `${player.stamina}%`;
-      stamBar.style.background = player.isTacSprinting ? '#f5a623' : '';
+    if (hc.armorVal && hpv.armorCeil !== armorCeil) {
+      hpv.armorCeil = armorCeil;
+      hc.armorVal.textContent = armorCeil;
     }
-    const stamVal = document.getElementById('hud-stam-val');
-    if (stamVal) stamVal.textContent = Math.ceil(player.stamina);
+
+    const stamCeil = Math.ceil(player.stamina);
+    const stamBg = player.isTacSprinting ? '#f5a623' : '';
+    if (hc.stamBar && (hpv.stamCeil !== stamCeil || hpv.stamBg !== stamBg)) {
+      hpv.stamCeil = stamCeil;
+      hpv.stamBg = stamBg;
+      hc.stamBar.style.width = `${stamCeil}%`;
+      hc.stamBar.style.background = stamBg;
+      if (hc.stamVal) hc.stamVal.textContent = stamCeil;
+    }
 
     // Dynamic Operator Stance Silhouette SVG
     const stanceKey = player.isSliding
@@ -5362,15 +5409,15 @@ class GameUI {
         iconEl.innerHTML = this._getStanceSVG(stanceKey);
       }
     }
-    document.getElementById('hud-medkits').textContent = window.DEV_MODE ? '∞' : player.getMedkitCount();
-    const platesEl = document.getElementById('hud-plates');
-    if (platesEl) platesEl.textContent = window.DEV_MODE ? '∞' : player.plates;
 
-    // Bottom-Right Ordnance, Melee & Field Upgrade Silhouettes
-    const lethalHud = document.getElementById('hud-lethal');
-    if (lethalHud) lethalHud.textContent = window.DEV_MODE ? '∞' : player.lethalQty;
-    const tacHud = document.getElementById('hud-tactical');
-    if (tacHud) tacHud.textContent = window.DEV_MODE ? '∞' : player.tacticalQty;
+    const medStr = devFlag ? '∞' : String(player.getMedkitCount());
+    if (hc.medkits && hpv.medStr !== medStr) { hpv.medStr = medStr; hc.medkits.textContent = medStr; }
+    const platesStr = devFlag ? '∞' : String(player.plates);
+    if (hc.plates && hpv.platesStr !== platesStr) { hpv.platesStr = platesStr; hc.plates.textContent = platesStr; }
+    const lethStr = devFlag ? '∞' : String(player.lethalQty);
+    if (hc.lethal && hpv.lethStr !== lethStr) { hpv.lethStr = lethStr; hc.lethal.textContent = lethStr; }
+    const tacStr = devFlag ? '∞' : String(player.tacticalQty);
+    if (hc.tactical && hpv.tacStr !== tacStr) { hpv.tacStr = tacStr; hc.tactical.textContent = tacStr; }
 
     const ordKey = `${player.tactical}|${player.lethal}|${player.melee}|${player.fieldUpgrade}`;
     if (this._lastOrdKey !== ordKey) {

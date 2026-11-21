@@ -373,7 +373,9 @@ class ThrowableSystem {
 
   _pointHitsCollider(p, r = 0.08) {
     if (!this.world || !this.world.colliders) return false;
-    for (const c of this.world.colliders) {
+    const list = this.world.getNearbyColliders ? this.world.getNearbyColliders(p.x, p.z, r + 0.5) : this.world.colliders;
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i];
       if (p.y + r > c.minY && p.y - r < c.maxY &&
           p.x + r > c.minX && p.x - r < c.maxX &&
           p.z + r > c.minZ && p.z - r < c.maxZ) {

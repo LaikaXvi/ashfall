@@ -216,7 +216,9 @@ class SquadMate {
   }
 
   _collides(x, z, r = 0.42) {
-    for (const c of this.world.colliders) {
+    const list = this.world.getNearbyColliders ? this.world.getNearbyColliders(x, z, r + 0.5) : this.world.colliders;
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i];
       if (c.maxY < 0.2) continue;
       if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) return true;
     }
@@ -275,7 +277,11 @@ class SquadMate {
     let best = null;
     let bestScore = Infinity;
 
-    for (const c of this.world.colliders) {
+    const list = this.world.getNearbyColliders
+      ? this.world.getNearbyColliders(this.position.x, this.position.z, maxRadius)
+      : this.world.colliders;
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i];
       if (c.maxY < 1.0) continue;
       const cx = (c.minX + c.maxX) * 0.5;
       const cz = (c.minZ + c.maxZ) * 0.5;

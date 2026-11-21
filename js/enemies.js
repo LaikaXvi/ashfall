@@ -665,7 +665,9 @@ class Enemy {
   }
 
   _collides(x, z, r) {
-    for (const c of this.world.colliders) {
+    const list = this.world.getNearbyColliders ? this.world.getNearbyColliders(x, z, r + 0.5) : this.world.colliders;
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i];
       if (c.maxY < 0.2) continue;
       if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) {
         return true;
@@ -733,7 +735,11 @@ class Enemy {
     let best = null;
     let bestScore = Infinity;
 
-    for (const c of this.world.colliders) {
+    const list = this.world.getNearbyColliders
+      ? this.world.getNearbyColliders(this.position.x, this.position.z, maxRadius)
+      : this.world.colliders;
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i];
       if (c.maxY < 1.0) continue; // need waist/chest-high or taller cover
       const cx = (c.minX + c.maxX) * 0.5;
       const cz = (c.minZ + c.maxZ) * 0.5;
@@ -1703,15 +1709,50 @@ class EnemyManager {
 
   update(dt, player, onEnemyFire, onEnemyBleedout, raidTimeLeft = 300, onAiVsAiEvent = null) {
     if (this.isRemoteClient) {
-      for (const e of this.enemies) {
+      for (let i = 0; i < this.enemies.length; i++) {
+        const e = this.enemies[i];
         if (e) e.updateReplicated(dt);
       }
       return;
     }
+    this._lodFrame = ((this._lodFrame || 0) + 1) | 0;
     this._updateSquadPlans(dt, raidTimeLeft);
-    for (const e of this.enemies) {
-      const goal = e.isOperator ? this._getSquadGoalFor(e) : null;
-      e.update(dt, player, onEnemyFire, onEnemyBleedout, this.enemies, goal, onAiVsAiEvent);
+    const px = player && player.position ? player.position.x : 0;
+    const pz = player && player.position ? player.position.z : 0;
+    const f = this._lodFrame;
+
+    for (let i = 0; i < this.enemies.length; i++) {
+      const e = this.enemies[i];
+      if (!e) continue;
+      if (e.dead) {
+        // Dead bodies only need occasional fade/settle ticks
+        if ((i + f) % 6 !== 0) continue;
+        e.update(dt * 6, player, onEnemyFire, onEnemyBleedout, this.enemies, null, onAiVsAiEvent);
+        continue;
+      }
+      // Distance-based staggered AI tick LOD (accumulates dt so movement & combat speed stay 100% identical!)
+      const dx = e.position.x - px;
+      const dz = e.position.z - pz;
+      const distSq = dx * dx + dz * dz;
+      const inCombat = e.state === 'COMBAT' || e.isDowned;
+      let stride = 1;
+      if (!inCombat) {
+        if (distSq > 19600) stride = 6;       // > 140m: 10Hz
+        else if (distSq > 4900) stride = 3;   // 70m–140m: 20Hz
+      }
+      if (stride > 1) {
+        e._lodDtAcc = (e._lodDtAcc || 0) + dt;
+        if ((i + f) % stride !== 0) continue;
+        const stepDt = Math.min(0.2, e._lodDtAcc);
+        e._lodDtAcc = 0;
+        const goal = e.isOperator ? this._getSquadGoalFor(e) : null;
+        e.update(stepDt, player, onEnemyFire, onEnemyBleedout, this.enemies, goal, onAiVsAiEvent);
+      } else {
+        const stepDt = Math.min(0.15, (e._lodDtAcc || 0) + dt);
+        e._lodDtAcc = 0;
+        const goal = e.isOperator ? this._getSquadGoalFor(e) : null;
+        e.update(stepDt, player, onEnemyFire, onEnemyBleedout, this.enemies, goal, onAiVsAiEvent);
+      }
     }
   }
 }

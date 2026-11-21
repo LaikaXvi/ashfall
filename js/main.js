@@ -3154,7 +3154,10 @@
             _pickupGroundWeapon(gw, 'backpackWeapon');
           }
         }
-        checkInteractions();
+        if (!window._lastInteractCheckMs || now - window._lastInteractCheckMs >= 55) {
+          window._lastInteractCheckMs = now;
+          checkInteractions();
+        }
         checkExtraction(dt);
         ui.updateSearchReveal(dt);
         if (isModalOpen && ui.activeLootSource && ui.positionContainerPanel) {

@@ -2780,6 +2780,7 @@ class WeaponSystem {
       }
       if (p.life <= 0) {
         this.scene.remove(p.mesh);
+        if (p.isSmoke && p.mesh.material) p.mesh.material.dispose();
         this.particles.splice(i, 1);
       }
     }
@@ -2790,6 +2791,8 @@ class WeaponSystem {
       t.line.material.opacity = Math.max(0, t.life / 0.08);
       if (t.life <= 0) {
         this.scene.remove(t.line);
+        if (t.line.geometry) t.line.geometry.dispose();
+        if (t.line.material) t.line.material.dispose();
         this.tracers.splice(i, 1);
       }
     }
@@ -4765,8 +4768,15 @@ class WeaponSystem {
   }
 
   _spawnImpact(pos, color, count) {
-    const geo = new THREE.BoxGeometry(0.06, 0.06, 0.06);
-    const mat = new THREE.MeshBasicMaterial({ color });
+    if (this.particles.length > 72) return;
+    if (!this._sharedImpactGeo) this._sharedImpactGeo = new THREE.BoxGeometry(0.06, 0.06, 0.06);
+    if (!this._impactMatCache) this._impactMatCache = {};
+    let mat = this._impactMatCache[color];
+    if (!mat) {
+      mat = new THREE.MeshBasicMaterial({ color });
+      this._impactMatCache[color] = mat;
+    }
+    const geo = this._sharedImpactGeo;
     for (let i = 0; i < count; i++) {
       const m = new THREE.Mesh(geo, mat);
       m.position.copy(pos);
@@ -4786,7 +4796,9 @@ class WeaponSystem {
   }
 
   _spawnSmoke(pos, count = 2) {
-    const geo = new THREE.SphereGeometry(0.08, 6, 6);
+    if (this.particles.length > 72) return;
+    if (!this._sharedSmokeGeo) this._sharedSmokeGeo = new THREE.SphereGeometry(0.08, 5, 5);
+    const geo = this._sharedSmokeGeo;
     for (let i = 0; i < count; i++) {
       const mat = new THREE.MeshBasicMaterial({
         color: 0xbab6ae,

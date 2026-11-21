@@ -36,15 +36,71 @@ class WastelandWorld {
       { x: 0, z: 320, r: 22, h: 2.0 }
     ];
 
+    this._colliderCellSize = 18;
+    this._colliderGrid = new Map();
+    this._queryBuf = [];
+    this._queryStamp = 0;
+
     this._materials = this._createMaterials();
     this._buildSkybox();
     this._buildEnvironment();
     this._buildVolumetricFogLayers();
     this._buildMapLayout();
     this._buildForestAndFoliage();
+    this.buildColliderGrid();
 
     const spawnY = this.getTerrainHeight(0, 485);
     this.playerSpawn = new THREE.Vector3(0, spawnY + 1.7, 485);
+  }
+
+  buildColliderGrid() {
+    this._colliderGrid.clear();
+    const cs = this._colliderCellSize;
+    for (let i = 0; i < this.colliders.length; i++) {
+      const c = this.colliders[i];
+      const cx0 = Math.floor(c.minX / cs);
+      const cx1 = Math.floor(c.maxX / cs);
+      const cz0 = Math.floor(c.minZ / cs);
+      const cz1 = Math.floor(c.maxZ / cs);
+      for (let cx = cx0; cx <= cx1; cx++) {
+        for (let cz = cz0; cz <= cz1; cz++) {
+          const key = (cx << 16) ^ cz;
+          let bucket = this._colliderGrid.get(key);
+          if (!bucket) {
+            bucket = [];
+            this._colliderGrid.set(key, bucket);
+          }
+          bucket.push(c);
+        }
+      }
+    }
+  }
+
+  // Zero-allocation spatial hash lookup returning ONLY nearby colliders in O(1)
+  getNearbyColliders(x, z, radius = 2.5) {
+    const buf = this._queryBuf;
+    buf.length = 0;
+    const cs = this._colliderCellSize;
+    const cx0 = Math.floor((x - radius) / cs);
+    const cx1 = Math.floor((x + radius) / cs);
+    const cz0 = Math.floor((z - radius) / cs);
+    const cz1 = Math.floor((z + radius) / cs);
+    const stamp = ++this._queryStamp;
+    const grid = this._colliderGrid;
+    for (let cx = cx0; cx <= cx1; cx++) {
+      for (let cz = cz0; cz <= cz1; cz++) {
+        const bucket = grid.get((cx << 16) ^ cz);
+        if (!bucket) continue;
+        for (let i = 0; i < bucket.length; i++) {
+          const c = bucket[i];
+          if (c._qStamp !== stamp) {
+            c._qStamp = stamp;
+            buf.push(c);
+          }
+        }
+      }
+    }
+    return buf;
   }
 
   // Deterministic rolling terrain heightfield with hills, ridges, creek valley & smooth POI plateaus
@@ -503,7 +559,9 @@ class WastelandWorld {
     const geo = new THREE.BoxGeometry(w, h, d);
     const mesh = new THREE.Mesh(geo, material);
     mesh.position.set(x, y, z);
-    mesh.castShadow = true;
+    mesh.updateMatrix();
+    mesh.matrixAutoUpdate = false;
+    mesh.castShadow = h > 1.2 && w > 1.0;
     mesh.receiveShadow = true;
     this.scene.add(mesh);
     this.shootableMeshes.push(mesh);
