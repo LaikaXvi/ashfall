@@ -957,18 +957,51 @@
       if (eHits.length > 0 && eHits[0].object && eHits[0].object.userData && eHits[0].object.userData.enemy) {
         const enemy = eHits[0].object.userData.enemy;
         if (!enemy.dead && !enemy.extracted) {
-          // Verify no solid wall blocks LOS to the enemy
-          const wHits = world && world.shootableMeshes ? ray.intersectObjects(world.shootableMeshes, false) : [];
-          if (wHits.length === 0 || wHits[0].distance >= eHits[0].distance - 0.5) {
-            return { pos: enemy.position.clone().add(new THREE.Vector3(0, 1.95, 0)), enemy };
+          const wHits = world && world.shootableMeshes ? ray.intersectObjects(world.shootableMeshes, true) : [];
+          if (wHits.length === 0 || wHits[0].distance >= eHits[0].distance - 0.8) {
+            const ey = (world && world.getTerrainHeight) ? Math.max(enemy.position.y, world.getTerrainHeight(enemy.position.x, enemy.position.z)) : enemy.position.y;
+            return { pos: new THREE.Vector3(enemy.position.x, ey + 2.25, enemy.position.z), enemy };
           }
         }
+      }
+
+      // Generous angular + lateral proximity cone lock so live-pinging moving or distant enemies is super reliable!
+      let bestConeEnemy = null;
+      let bestConeScore = Infinity;
+      const maxPingDist = 420;
+      const enemies = enemyManager.enemies || [];
+      for (let i = 0; i < enemies.length; i++) {
+        const e = enemies[i];
+        if (!e || e.dead || e.extracted) continue;
+        const ey = (world && world.getTerrainHeight) ? Math.max(e.position.y, world.getTerrainHeight(e.position.x, e.position.z)) : e.position.y;
+        const center = new THREE.Vector3(e.position.x, ey + (e.isDowned ? 0.55 : 1.15), e.position.z);
+        const toE = center.clone().sub(origin);
+        const along = toE.dot(dir);
+        if (along < 1.5 || along > maxPingDist) continue;
+        const perpDist = toE.clone().addScaledVector(dir, -along).length();
+        // Generous ping cylinder/cone: >= 2.2m radius up close, widening to ~5.2° cone at range!
+        const allowedRadius = Math.max(2.2, along * 0.092);
+        if (perpDist > allowedRadius) continue;
+        // Verify line-of-sight isn't blocked by a solid wall/hill
+        const losDir = toE.clone().normalize();
+        const losRay = new THREE.Raycaster(origin, losDir, 0.5, along - 0.9);
+        const wHits = (world && world.shootableMeshes) ? losRay.intersectObjects(world.shootableMeshes, true) : [];
+        if (wHits.length > 0) continue;
+        const score = perpDist / allowedRadius;
+        if (score < bestConeScore) {
+          bestConeScore = score;
+          bestConeEnemy = e;
+        }
+      }
+      if (bestConeEnemy) {
+        const ey = (world && world.getTerrainHeight) ? Math.max(bestConeEnemy.position.y, world.getTerrainHeight(bestConeEnemy.position.x, bestConeEnemy.position.z)) : bestConeEnemy.position.y;
+        return { pos: new THREE.Vector3(bestConeEnemy.position.x, ey + (bestConeEnemy.isDowned ? 1.15 : 2.25), bestConeEnemy.position.z), enemy: bestConeEnemy };
       }
     }
 
     // 2. Otherwise hit world geometry / ground
     if (world && world.shootableMeshes) {
-      const wHits = ray.intersectObjects(world.shootableMeshes, false);
+      const wHits = ray.intersectObjects(world.shootableMeshes, true);
       if (wHits.length > 0) {
         return { pos: wHits[0].point.clone(), enemy: null };
       }
@@ -1117,7 +1150,10 @@
           activePings.splice(i, 1);
           continue;
         }
-        pg.position.set(pg.targetEnemy.position.x, (pg.targetEnemy.isDowned ? 0.95 : 2.15), pg.targetEnemy.position.z);
+        const ey = (world && world.getTerrainHeight)
+          ? Math.max(pg.targetEnemy.position.y, world.getTerrainHeight(pg.targetEnemy.position.x, pg.targetEnemy.position.z))
+          : pg.targetEnemy.position.y;
+        pg.position.set(pg.targetEnemy.position.x, ey + (pg.targetEnemy.isDowned ? 1.15 : 2.25), pg.targetEnemy.position.z);
       }
       if (pg.age >= pg.duration) {
         if (pg.beamMesh && scene) scene.remove(pg.beamMesh);
@@ -2197,7 +2233,10 @@
     for (const e of enemyManager.enemies) {
       if (!e.dead || !e.isOperator) continue;
       const d = Math.hypot(player.position.x - e.position.x, player.position.z - e.position.z);
-      const corpsePos = new THREE.Vector3(e.position.x, 0.45, e.position.z);
+      const corpseY = (world && world.getTerrainHeight)
+        ? Math.max(e.position.y, world.getTerrainHeight(e.position.x, e.position.z)) + 0.52
+        : (e.position.y + 0.52);
+      const corpsePos = new THREE.Vector3(e.position.x, corpseY, e.position.z);
       if (d < bestDist && hasInteractLineOfSight(corpsePos)) {
         bestDist = d;
         nearbyInteractable = {

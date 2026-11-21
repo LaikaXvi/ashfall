@@ -36,6 +36,8 @@ class WeaponSystem {
     this.lookSwayRotX = 0;
     this.lookSwayRotZ = 0;
     this.boltKick = 0;
+    this.boltCycleTimer = 0;
+    this.boltCycleDuration = 0.085;
     this.currentSpread = 0.022;
     this.fireBloom = 0;
     this.wallPush = 0;
@@ -1458,33 +1460,49 @@ class WeaponSystem {
     g.add(this.rightArm, this.leftArm, this.leftFist);
 
     if (withHands && !this.plateRig) {
-      // Camera-space Warzone/DMZ Plating Rig (hand + ceramic plate only; vest is worn off-bottom of screen)
+      // Camera-space Warzone/DMZ Plating Rig: ceramic plate is parented directly to the gloved hand (no fingers visible behind plate!)
       const rig = new THREE.Group();
       rig.visible = false;
 
+      const plateHand = new THREE.Group();
+      const gloveMat = new THREE.MeshLambertMaterial({ color: 0x454b3e });
+      const knuckleMat = new THREE.MeshLambertMaterial({ color: 0x22251f });
+      const skinMat = new THREE.MeshLambertMaterial({ color: 0xd1a483 });
+      // Top-edge pinch grip: gloved palm + knuckle guard + thumb gripping top rim of plate (nothing protruding behind!)
+      const palm = new THREE.Mesh(new THREE.BoxGeometry(0.068, 0.042, 0.048), gloveMat);
+      palm.position.set(0, 0.006, 0.004);
+      const knuckle = new THREE.Mesh(new THREE.BoxGeometry(0.064, 0.016, 0.022), knuckleMat);
+      knuckle.position.set(0, 0.022, -0.008);
+      const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.016, 0.018), gloveMat);
+      thumb.position.set(0.022, -0.012, 0.018);
+      const thumbTip = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.014, 0.016), skinMat);
+      thumbTip.position.set(0.002, -0.014, 0.019);
+      plateHand.add(palm, knuckle, thumb, thumbTip);
+      plateHand.scale.setScalar(1.22);
+
+      // Ceramic armor plate parented directly to plateHand so it moves 100% locked to the hand!
       const plateGroup = new THREE.Group();
       const plateBody = new THREE.Mesh(
-        new THREE.BoxGeometry(0.135, 0.165, 0.016),
+        new THREE.BoxGeometry(0.138, 0.168, 0.022),
         new THREE.MeshLambertMaterial({ color: 0x222c36 })
       );
       const plateTop = new THREE.Mesh(
-        new THREE.BoxGeometry(0.085, 0.026, 0.017),
+        new THREE.BoxGeometry(0.088, 0.028, 0.023),
         new THREE.MeshLambertMaterial({ color: 0x364859 })
       );
-      plateTop.position.set(0, 0.092, 0);
+      plateTop.position.set(0, 0.094, 0);
       const plateStripe = new THREE.Mesh(
-        new THREE.BoxGeometry(0.115, 0.015, 0.018),
+        new THREE.BoxGeometry(0.118, 0.016, 0.024),
         new THREE.MeshBasicMaterial({ color: 0x4a90e2 })
       );
       plateStripe.position.set(0, 0.032, 0);
       plateGroup.add(plateBody, plateTop, plateStripe);
-      plateGroup.scale.setScalar(1.22);
+      // Seated cleanly underneath the top-pinch grip with zero finger clipping behind the plate
+      plateGroup.position.set(0.0, -0.098, -0.004);
       plateGroup.visible = false;
-      rig.add(plateGroup);
+      plateHand.add(plateGroup);
       this.plateMesh = plateGroup;
 
-      const plateHand = this._createHand(false, 'supportPistol');
-      plateHand.scale.setScalar(1.25);
       const plateArm = this._createForearm();
       plateArm.scale.set(1.22, 1.22, 1.0);
       rig.add(plateHand, plateArm);
@@ -1951,7 +1969,22 @@ class WeaponSystem {
 
     // Recoil & blowback / pump-action recovery + live dynamic spread (drives both crosshair & hipfire accuracy)
     this.recoilOffset = THREE.MathUtils.lerp(this.recoilOffset, 0, Math.min(1, dt * 14));
-    this.boltKick = THREE.MathUtils.lerp(this.boltKick, 0, Math.min(1, dt * 28));
+    // Deterministic cyclic bolt reciprocation (gives AK-74M & rifles crisp, consistent mechanical blowback every single shot!)
+    if (this.boltCycleTimer > 0) {
+      this.boltCycleTimer = Math.max(0, this.boltCycleTimer - dt);
+      const cp = 1 - (this.boltCycleTimer / Math.max(0.01, this.boltCycleDuration));
+      const stroke = (weaponDef && weaponDef.id === 'ak74m') ? 0.078 : (weaponDef && weaponDef.slot === 'secondary' ? 0.052 : 0.058);
+      if (cp < 0.30) {
+        // Fast rearward gas-piston / blowback stroke
+        this.boltKick = (cp / 0.30) * stroke;
+      } else {
+        // Crisp spring-driven return to battery
+        const ret = (cp - 0.30) / 0.70;
+        this.boltKick = (1 - ret * ret) * stroke;
+      }
+    } else {
+      this.boltKick = THREE.MathUtils.lerp(this.boltKick, 0, Math.min(1, dt * 32));
+    }
     this.fireBloom = THREE.MathUtils.lerp(this.fireBloom, 0, Math.min(1, dt * 7.5));
 
     if (weaponDef) {
@@ -2513,7 +2546,9 @@ class WeaponSystem {
             THREE.MathUtils.lerp(this.magRestPos.z + 0.12, this.magRestPos.z + 0.08, t)
           );
           this.spareMagMesh.rotation.x = THREE.MathUtils.lerp(-0.35, -0.45, t);
-          moveLeftHand(this.spareMagMesh.position.x - 0.01, this.spareMagMesh.position.y - 0.04, this.spareMagMesh.position.z + 0.02);
+          // Grip exterior lower-left side of banana mag without clipping through the mag body
+          moveLeftHand(this.spareMagMesh.position.x - 0.042, this.spareMagMesh.position.y - 0.088, this.spareMagMesh.position.z - 0.012);
+          if (this.leftHand) this.leftHand.rotation.set(this.spareMagMesh.rotation.x * 0.45, 0.25, -0.85);
         }
       } else if (p < 0.38) {
         // 2. Strike paddle & flick old mag forward and out of its seat!
@@ -2533,7 +2568,8 @@ class WeaponSystem {
             this.magRestPos.z + 0.08 - strike * 0.055
           );
           this.spareMagMesh.rotation.x = THREE.MathUtils.lerp(-0.45, -0.78, t);
-          moveLeftHand(this.spareMagMesh.position.x - 0.01, this.spareMagMesh.position.y - 0.04, this.spareMagMesh.position.z + 0.02);
+          moveLeftHand(this.spareMagMesh.position.x - 0.042, this.spareMagMesh.position.y - 0.088, this.spareMagMesh.position.z - 0.012);
+          if (this.leftHand) this.leftHand.rotation.set(this.spareMagMesh.rotation.x * 0.45, 0.25, -0.85);
         }
         if (this.magMesh) {
           // Old mag rotates forward (-1.25 rad) and tumbles forward/down out of frame
@@ -2564,7 +2600,8 @@ class WeaponSystem {
             THREE.MathUtils.lerp(this.magRestPos.z + 0.02, this.magRestPos.z, rockInT)
           );
           this.spareMagMesh.rotation.x = THREE.MathUtils.lerp(-0.78, this.magRestRot.x, rockInT);
-          moveLeftHand(this.spareMagMesh.position.x - 0.01, this.spareMagMesh.position.y - 0.04, this.spareMagMesh.position.z + 0.02);
+          moveLeftHand(this.spareMagMesh.position.x - 0.042, this.spareMagMesh.position.y - 0.088, this.spareMagMesh.position.z - 0.012);
+          if (this.leftHand) this.leftHand.rotation.set(this.spareMagMesh.rotation.x * 0.45, 0.25, -0.85);
         }
       } else if (this.wasEmptyReload && p < 0.90) {
         const rawT = (p - 0.60) / 0.30;
@@ -3111,38 +3148,29 @@ class WeaponSystem {
           // Beat A: Dip hand down-left to grab fresh ceramic plate from top edge
           this.plateMesh.visible = false;
           handTarget.set(-0.20, -0.22, -0.25);
-          handRotTarget.set(-0.25, 0.25, -1.52);
+          handRotTarget.set(-0.25, 0.25, -0.15);
         } else if (pt < 0.44) {
-          // Beat B: Lift & align plate upright right over the chest carrier slot
+          // Beat B: Lift & align hand (with parented plate locked cleanly underneath!) over chest carrier slot
           const t = smooth((pt - 0.14) / 0.30);
           this.plateMesh.visible = true;
-          this.plateMesh.position.set(
-            THREE.MathUtils.lerp(-0.20, 0.0, t),
-            THREE.MathUtils.lerp(-0.26, -0.075, t),
-            THREE.MathUtils.lerp(-0.27, -0.26, t)
-          );
-          this.plateMesh.rotation.set(
-            THREE.MathUtils.lerp(0.20, -0.18, t),
-            THREE.MathUtils.lerp(0.45, 0.04, t),
-            THREE.MathUtils.lerp(-0.25, 0.0, t)
-          );
           handTarget.set(
-            this.plateMesh.position.x,
-            this.plateMesh.position.y + 0.112,
-            this.plateMesh.position.z + 0.015
+            THREE.MathUtils.lerp(-0.20, 0.0, t),
+            THREE.MathUtils.lerp(-0.14, 0.04, t),
+            THREE.MathUtils.lerp(-0.26, -0.25, t)
           );
-          handRotTarget.set(-0.18, 0.04, -Math.PI / 2);
+          handRotTarget.set(
+            THREE.MathUtils.lerp(0.18, -0.18, t),
+            THREE.MathUtils.lerp(0.42, 0.04, t),
+            THREE.MathUtils.lerp(-0.22, 0.0, t)
+          );
         } else if (pt < 0.54) {
           // Beat C: Brief alignment beat right at the lip of the pouch
           this.plateMesh.visible = true;
-          this.plateMesh.position.set(0.0, -0.075, -0.26);
-          this.plateMesh.rotation.set(-0.18, 0.04, 0.0);
-          handTarget.set(0.0, 0.037, -0.245);
-          handRotTarget.set(-0.18, 0.04, -Math.PI / 2);
+          handTarget.set(0.0, 0.04, -0.25);
+          handRotTarget.set(-0.18, 0.04, 0.0);
         } else if (pt < 0.86) {
           // Beat D: Two-stage vertical slide straight down into the tight carrier slot
           const raw = (pt - 0.54) / 0.32;
-          // Slight snug resistance catch halfway down, then firm final push to seat
           let slideT;
           if (raw < 0.45) {
             slideT = smooth(raw / 0.45) * 0.44;
@@ -3152,23 +3180,17 @@ class WeaponSystem {
             slideT = 0.48 + smooth((raw - 0.60) / 0.40) * 0.52;
           }
           this.plateMesh.visible = slideT < 0.96;
-          this.plateMesh.position.set(
-            0.0,
-            THREE.MathUtils.lerp(-0.075, -0.30, slideT),
-            THREE.MathUtils.lerp(-0.26, -0.295, slideT)
-          );
-          this.plateMesh.rotation.set(-0.18, 0.04, 0.0);
           handTarget.set(
             0.0,
-            this.plateMesh.position.y + 0.112,
-            this.plateMesh.position.z + 0.015
+            THREE.MathUtils.lerp(0.04, -0.19, slideT),
+            THREE.MathUtils.lerp(-0.25, -0.285, slideT)
           );
-          handRotTarget.set(-0.22 - slideT * 0.15, 0.04, -Math.PI / 2);
+          handRotTarget.set(-0.18 - slideT * 0.14, 0.04, 0.0);
         } else {
           // Beat E: Brief settle pause before next plate or zipping up
           this.plateMesh.visible = false;
           handTarget.set(-0.04, -0.20, -0.24);
-          handRotTarget.set(-0.35, 0.08, -1.48);
+          handRotTarget.set(-0.35, 0.08, -0.12);
         }
       }
     } else if (p < grabCloseEnd) {
@@ -3673,7 +3695,9 @@ class WeaponSystem {
     this.recoilRoll = THREE.MathUtils.clamp(this.recoilRoll + (Math.random() - 0.5) * 0.062 * kickScale, -0.055, 0.055);
     this.recoilX = THREE.MathUtils.clamp(this.recoilX + hSign * hRec * 0.32 * kickScale, -0.012, 0.012);
     if (def.slot === 'secondary' || def.id === 'mp5k' || def.id === 'ak74m') {
-      this.boltKick = def.slot === 'secondary' ? 0.052 : 0.058;
+      this.boltCycleDuration = def.id === 'ak74m' ? 0.085 : 0.075;
+      this.boltCycleTimer = this.boltCycleDuration;
+      this.boltKick = def.id === 'ak74m' ? 0.078 : (def.slot === 'secondary' ? 0.052 : 0.058);
     } else if (def.id === 'm870' && weaponSlotState.mag > 0) {
       this.pumpDelayTimer = 0.16;
     }

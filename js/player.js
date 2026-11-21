@@ -1,3 +1,231 @@
+// Shared Global Articulated Low-Poly Tactical Operator Character Model Factory
+// Used by Player 3rd-person, Pre-Match Deployment Countdown, Squadmates, and Enemy Operators!
+window.buildTacticalOperatorModel = function buildTacticalOperatorModel(opts = {}) {
+  const root = new THREE.Group();
+  const rigPivot = new THREE.Group();
+  if (opts.faceForwardZ) {
+    rigPivot.rotation.y = Math.PI; // native rig faces -Z; rotate PI to face +Z for squad/enemies/stage
+  }
+  root.add(rigPivot);
+
+  const uniformCol = opts.uniformColor !== undefined ? opts.uniformColor : 0x3b4437;
+  const uniformMat = new THREE.MeshLambertMaterial({ color: uniformCol });
+  const uniformDarkMat = new THREE.MeshLambertMaterial({ color: new THREE.Color(uniformCol).multiplyScalar(0.76) });
+  const pantsMat = new THREE.MeshLambertMaterial({ color: opts.pantsColor !== undefined ? opts.pantsColor : 0x2f342d });
+  const gearMat = new THREE.MeshLambertMaterial({ color: 0x1e2124 });
+  const strapMat = new THREE.MeshLambertMaterial({ color: 0x272a25 });
+  const padMat = new THREE.MeshLambertMaterial({ color: 0x181b1a });
+  const helmetMat = new THREE.MeshLambertMaterial({ color: opts.helmetColor !== undefined ? opts.helmetColor : 0x2d332b });
+  const skinMat = new THREE.MeshLambertMaterial({ color: 0xd1a483 });
+  const balaclavaMat = new THREE.MeshLambertMaterial({ color: 0x222522 });
+  const visorMat = new THREE.MeshLambertMaterial({ color: 0x16222c });
+
+  // 1. Pelvis + Tactical Belt
+  const pelvis = new THREE.Group();
+  pelvis.position.set(0, 0.92, 0);
+  const hipMesh = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.16, 0.21), pantsMat);
+  const belt = new THREE.Mesh(new THREE.BoxGeometry(0.37, 0.055, 0.23), gearMat);
+  belt.position.set(0, 0.05, 0);
+  const dumpPouch = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.12, 0.06), strapMat);
+  dumpPouch.position.set(-0.14, -0.02, 0.12);
+  pelvis.add(hipMesh, belt, dumpPouch);
+  rigPivot.add(pelvis);
+
+  // 2. Spine -> Torso
+  const spine = new THREE.Group();
+  spine.position.set(0, 0.08, 0);
+  pelvis.add(spine);
+
+  const torso = new THREE.Group();
+  const waist = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.16, 0.20), uniformDarkMat);
+  waist.position.set(0, 0.08, 0);
+  const chest = new THREE.Mesh(new THREE.BoxGeometry(0.41, 0.34, 0.24), uniformMat);
+  chest.position.set(0, 0.31, 0);
+  const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.10, 0.07, 8), balaclavaMat);
+  collar.position.set(0, 0.49, 0);
+  torso.add(waist, chest, collar);
+  spine.add(torso);
+
+  // Optional Squad Shoulder Patches
+  if (opts.squadColor) {
+    const patchMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(opts.squadColor) });
+    const pL = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.075, 0.075), patchMat);
+    pL.position.set(-0.22, 0.38, 0);
+    const pR = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.075, 0.075), patchMat);
+    pR.position.set(0.22, 0.38, 0);
+    torso.add(pL, pR);
+  }
+
+  // Dynamic Vest / Plate Carrier
+  const vestGroup = new THREE.Group();
+  const vestId = opts.vestId !== undefined ? opts.vestId : 'vest_2';
+  const isHeavyVest = vestId && (vestId.includes('3') || vestId.includes('heavy') || vestId.includes('4'));
+  const isMedVest = vestId && vestId.includes('2');
+  const vestCol = opts.vestColor !== undefined ? opts.vestColor : (isHeavyVest ? 0x3b4036 : (isMedVest ? 0x4b5342 : 0x5c5847));
+  const vestMat = new THREE.MeshLambertMaterial({ color: vestCol });
+  const plateFront = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.055), vestMat);
+  plateFront.position.set(0, 0.28, -0.13);
+  const plateBack = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.055), vestMat);
+  plateBack.position.set(0, 0.28, 0.13);
+  const cummerbund = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.17, 0.26), vestMat);
+  cummerbund.position.set(0, 0.18, 0);
+  const strapL = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.24), strapMat);
+  strapL.position.set(-0.13, 0.47, 0);
+  const strapR = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.06, 0.24), strapMat);
+  strapR.position.set(0.13, 0.47, 0);
+  for (let i = -1; i <= 1; i++) {
+    const pouch = new THREE.Mesh(new THREE.BoxGeometry(0.082, 0.14, 0.055), gearMat);
+    pouch.position.set(i * 0.102, 0.20, -0.17);
+    vestGroup.add(pouch);
+  }
+  const radio = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.11, 0.04), gearMat);
+  radio.position.set(-0.17, 0.35, -0.12);
+  const antenna = new THREE.Mesh(new THREE.CylinderGeometry(0.005, 0.006, 0.22, 6), gearMat);
+  antenna.position.set(-0.18, 0.49, -0.12);
+  const heavyExtras = new THREE.Group();
+  const pauldronL = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.16, 0.18), vestMat);
+  pauldronL.position.set(-0.24, 0.39, 0);
+  const pauldronR = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.16, 0.18), vestMat);
+  pauldronR.position.set(0.24, 0.39, 0);
+  const groinFlap = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.14, 0.045), vestMat);
+  groinFlap.position.set(0, 0.04, -0.145);
+  heavyExtras.add(pauldronL, pauldronR, groinFlap);
+  heavyExtras.visible = !!isHeavyVest;
+  vestGroup.add(plateFront, plateBack, cummerbund, strapL, strapR, radio, antenna, heavyExtras);
+  vestGroup.visible = !!vestId;
+  torso.add(vestGroup);
+
+  // Dynamic Backpack
+  const packGroup = new THREE.Group();
+  const bagId = opts.bagId !== undefined ? opts.bagId : 'bag_medium';
+  const isLargeBag = bagId && (bagId.includes('large') || bagId.includes('weapon') || bagId.includes('scav'));
+  const isMedBag = bagId && bagId.includes('med');
+  const packMat = new THREE.MeshLambertMaterial({ color: isLargeBag ? 0x4b4232 : (isMedBag ? 0x3c4338 : 0x2f3430) });
+  const packMain = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.38, 0.14), packMat);
+  packMain.position.set(0, 0.28, 0.21);
+  const packTopPouch = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.11, 0.08), strapMat);
+  packTopPouch.position.set(0, 0.38, 0.29);
+  const packBotPouch = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.13, 0.07), strapMat);
+  packBotPouch.position.set(0, 0.18, 0.285);
+  const packLargeExtras = new THREE.Group();
+  const packRoll = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.052, 0.32, 8), gearMat);
+  packRoll.rotation.z = Math.PI / 2;
+  packRoll.position.set(0, 0.49, 0.22);
+  const sidePouchL = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.22, 0.11), strapMat);
+  sidePouchL.position.set(-0.18, 0.25, 0.21);
+  const sidePouchR = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.22, 0.11), strapMat);
+  sidePouchR.position.set(0.18, 0.25, 0.21);
+  packLargeExtras.add(sidePouchL, sidePouchR, packRoll);
+  packLargeExtras.visible = !!isLargeBag;
+  packGroup.add(packMain, packTopPouch, packBotPouch, packLargeExtras);
+  const bagScale = isLargeBag ? 1.16 : (isMedBag ? 1.0 : 0.78);
+  packGroup.scale.setScalar(bagScale);
+  packGroup.visible = !!bagId;
+  torso.add(packGroup);
+
+  // 3. Neck -> Head + FAST Helmet + Visor + Comms
+  const neck = new THREE.Group();
+  neck.position.set(0, 0.50, 0);
+  torso.add(neck);
+  const head = new THREE.Group();
+  head.position.set(0, 0.04, 0);
+  const skull = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.22, 0.21), skinMat);
+  skull.position.set(0, 0.11, 0);
+  const mask = new THREE.Mesh(new THREE.BoxGeometry(0.206, 0.11, 0.216), balaclavaMat);
+  mask.position.set(0, 0.055, 0);
+  const helmetDome = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.14, 0.25), helmetMat);
+  helmetDome.position.set(0, 0.185, 0.005);
+  const nvgMount = new THREE.Mesh(new THREE.BoxGeometry(0.055, 0.055, 0.04), gearMat);
+  nvgMount.position.set(0, 0.20, -0.13);
+  const goggles = new THREE.Mesh(new THREE.BoxGeometry(0.195, 0.058, 0.042), visorMat);
+  goggles.position.set(0, 0.135, -0.105);
+  const earCupL = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.085, 0.075), gearMat);
+  earCupL.position.set(-0.125, 0.12, 0.01);
+  const earCupR = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.085, 0.075), gearMat);
+  earCupR.position.set(0.125, 0.12, 0.01);
+  head.add(skull, mask, helmetDome, nvgMount, goggles, earCupL, earCupR);
+  neck.add(head);
+
+  // 4. Articulated Legs (Hip -> Thigh -> Knee + Pad -> Shin -> Ankle -> Boot)
+  const makeLeg = (xOff, isRight) => {
+    const hip = new THREE.Group();
+    hip.position.set(xOff, -0.04, 0);
+    const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.145, 0.42, 0.155), pantsMat);
+    thigh.position.set(0, -0.21, 0);
+    const legRig = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.16, 0.10), gearMat);
+    legRig.position.set(isRight ? 0.085 : -0.085, -0.18, -0.01);
+    hip.add(thigh, legRig);
+
+    const knee = new THREE.Group();
+    knee.position.set(0, -0.42, 0);
+    const kneePad = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.11, 0.045), padMat);
+    kneePad.position.set(0, -0.02, -0.075);
+    const shin = new THREE.Mesh(new THREE.BoxGeometry(0.122, 0.38, 0.132), pantsMat);
+    shin.position.set(0, -0.19, 0);
+    const ankle = new THREE.Group();
+    ankle.position.set(0, -0.38, 0);
+    const bootUpper = new THREE.Mesh(new THREE.BoxGeometry(0.128, 0.09, 0.14), gearMat);
+    bootUpper.position.set(0, -0.025, 0);
+    const bootSole = new THREE.Mesh(new THREE.BoxGeometry(0.134, 0.06, 0.24), padMat);
+    bootSole.position.set(0, -0.055, -0.045);
+    ankle.add(bootUpper, bootSole);
+    knee.add(kneePad, shin, ankle);
+    hip.add(knee);
+    pelvis.add(hip);
+    return { hip, knee, ankle };
+  };
+  const leftLeg = makeLeg(-0.112, false);
+  const rightLeg = makeLeg(0.112, true);
+
+  // 5. Articulated Arms (Shoulder -> Elbow + Pad -> Invisible Wrist Pivot -> Glove + WeaponMount)
+  let weaponMount = null;
+  const makeArm = (xOff, isRight) => {
+    const shoulder = new THREE.Group();
+    shoulder.position.set(xOff, 0.43, 0);
+    const upper = new THREE.Mesh(new THREE.BoxGeometry(0.118, 0.29, 0.118), uniformMat);
+    upper.position.set(0, -0.14, 0);
+    shoulder.add(upper);
+
+    const elbow = new THREE.Group();
+    elbow.position.set(0, -0.28, 0);
+    const elbowPad = new THREE.Mesh(new THREE.BoxGeometry(0.085, 0.085, 0.035), padMat);
+    elbowPad.position.set(0, -0.02, 0.062);
+    const forearm = new THREE.Mesh(new THREE.BoxGeometry(0.098, 0.26, 0.098), uniformDarkMat);
+    forearm.position.set(0, -0.13, 0);
+
+    const wrist = new THREE.Group();
+    wrist.position.set(0, -0.26, 0);
+    const glove = new THREE.Mesh(new THREE.BoxGeometry(0.084, 0.095, 0.076), gearMat);
+    glove.position.set(0, -0.042, -0.005);
+    wrist.add(glove);
+
+    if (isRight) {
+      weaponMount = new THREE.Group();
+      weaponMount.position.set(0, -0.04, -0.02);
+      weaponMount.rotation.x = -Math.PI / 2;
+      wrist.add(weaponMount);
+    }
+    elbow.add(elbowPad, forearm, wrist);
+    shoulder.add(elbow);
+    torso.add(shoulder);
+    return { shoulder, elbow, wrist };
+  };
+  const leftArm = makeArm(-0.26, false);
+  const rightArm = makeArm(0.26, true);
+
+  // Default tactical two-handed ready-to-fire pose!
+  leftArm.shoulder.rotation.set(0.92, 0, -0.34);
+  leftArm.elbow.rotation.set(0.78, 0, 0);
+  rightArm.shoulder.rotation.set(0.96, 0, 0.12);
+  rightArm.elbow.rotation.set(0.68, 0, 0);
+
+  return {
+    root, rigPivot, pelvis, spine, torso, chest, neck, head, skull,
+    leftLeg, rightLeg, leftArm, rightArm, weaponMount,
+    vestGroup, packGroup
+  };
+};
+
 // First-Person Player Controller, Vitals, Weapons & Backpack
 class Player {
   constructor(camera, world, weaponSystem, loadoutState) {

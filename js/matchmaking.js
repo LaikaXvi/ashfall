@@ -75,6 +75,39 @@ class MatchmakingStage {
   }
 
   _buildOperatorMesh(loadout, weaponMods, isAlly = false, displayName = '', squadColor = '#69f0ae') {
+    if (typeof window.buildTacticalOperatorModel === 'function') {
+      const built = window.buildTacticalOperatorModel({
+        uniformColor: isAlly ? 0x2f434a : 0x3b4437,
+        squadColor,
+        vestId: loadout.armor || null,
+        bagId: loadout.backpack || null,
+        faceForwardZ: true
+      });
+      // Slight bladed ready stance on the pre-match deployment stage
+      built.pelvis.rotation.y = 0.18;
+      built.torso.rotation.y = -0.14;
+      built.leftLeg.hip.rotation.x = 0.12;
+      built.leftLeg.knee.rotation.x = -0.18;
+      built.rightLeg.hip.rotation.x = -0.08;
+      built.rightLeg.knee.rotation.x = -0.12;
+      // Hold equipped 3D weapon across chest in ready-to-fire stance
+      const wId = loadout.primary || loadout.secondary || 'mp5k';
+      const wDef = GAME_DATA.ITEMS[wId];
+      if (wDef && this.wpnBuilder) {
+        const mods = (weaponMods && weaponMods[wId]) || {};
+        const wpn = this.wpnBuilder.buildThirdPersonWeapon(wDef, mods);
+        if (wpn && wpn.group && built.weaponMount) {
+          wpn.group.scale.setScalar(wpn.isPistol ? 1.25 : 1.38);
+          wpn.group.position.set(0.0, 0.04, wpn.isPistol ? -0.06 : -0.18);
+          built.weaponMount.add(wpn.group);
+        }
+      }
+      if (displayName) {
+        built.root.add(this._makeOverheadNameSprite(displayName, squadColor));
+      }
+      built.root.userData.upper = built.torso;
+      return built.root;
+    }
     const root = new THREE.Group();
     const uniformMat = new THREE.MeshLambertMaterial({ color: isAlly ? 0x2f434a : 0x3b4237 });
     const pantsMat = new THREE.MeshLambertMaterial({ color: 0x2a2e28 });

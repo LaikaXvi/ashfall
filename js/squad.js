@@ -68,55 +68,62 @@ class SquadMate {
   _buildMesh() {
     const g = new THREE.Group();
     g.rotation.order = 'YXZ';
-    const uniformMat = new THREE.MeshLambertMaterial({ color: 0x2f434a });
-    const vestMat = new THREE.MeshLambertMaterial({ color: 0x3b4d3e });
-    const gearMat = new THREE.MeshLambertMaterial({ color: 0x1a1d20 });
-    const skinMat = new THREE.MeshLambertMaterial({ color: 0xd1a483 });
-    const accentMat = new THREE.MeshBasicMaterial({ color: new THREE.Color(this.squadColor || '#69f0ae') });
-
     this.hitboxes = [];
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.56, 0.25), uniformMat);
-    torso.position.set(0, 1.18, 0);
-    torso.userData = { ally: this, part: 'torso' };
-    this.hitboxes.push(torso);
-    const vest = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.40, 0.29), vestMat);
-    vest.position.set(0, 1.20, 0);
-    const patchL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.08, 0.08), accentMat);
-    patchL.position.set(-0.24, 1.36, 0);
-    const patchR = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.08, 0.08), accentMat);
-    patchR.position.set(0.24, 1.36, 0);
 
-    const head = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.23, 0.22), skinMat);
-    head.position.set(0, 1.58, 0);
-    head.userData = { ally: this, part: 'head' };
-    this.hitboxes.push(head);
-    const helmet = new THREE.Mesh(new THREE.BoxGeometry(0.25, 0.14, 0.26), gearMat);
-    helmet.position.set(0, 1.66, 0);
+    if (typeof window.buildTacticalOperatorModel === 'function') {
+      const built = window.buildTacticalOperatorModel({
+        uniformColor: 0x2f434a,
+        squadColor: this.squadColor || '#69f0ae',
+        vestId: 'vest_2',
+        bagId: 'bag_medium',
+        faceForwardZ: true
+      });
+      g.add(built.root);
+      this.leftHip = built.leftLeg.hip;
+      this.rightHip = built.rightLeg.hip;
+      this.leftArm = built.leftArm.shoulder;
+      this.rightArm = built.rightArm.shoulder;
+      this.opModel = built;
 
-    const makeLeg = (xOff) => {
-      const hip = new THREE.Group();
-      hip.position.set(xOff, 0.88, 0);
-      const leg = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.84, 0.16), uniformMat);
-      leg.position.set(0, -0.42, 0);
-      const boot = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.10, 0.22), gearMat);
-      boot.position.set(0, -0.83, 0.03);
-      hip.add(leg, boot);
-      g.add(hip);
-      return hip;
-    };
-    this.leftHip = makeLeg(-0.12);
-    this.rightHip = makeLeg(0.12);
+      built.chest.userData = { ally: this, part: 'torso' };
+      built.skull.userData = { ally: this, part: 'head' };
+      this.hitboxes.push(built.chest, built.skull);
 
-    const rifle = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.09, 0.62), gearMat);
-    rifle.position.set(0.24, 1.24, 0.30);
-    this.rifleMesh = rifle;
-    this.muzzleMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(0.055, 6, 6),
-      new THREE.MeshBasicMaterial({ color: 0xffdd77, transparent: true, opacity: 0 })
-    );
-    this.muzzleMesh.position.set(0.24, 1.25, 0.64);
-    this.muzzleLight = new THREE.PointLight(0xffaa44, 0, 7);
-    this.muzzleLight.position.copy(this.muzzleMesh.position);
+      // Attach actual 3D weapon or fallback rifle to right-hand weaponMount
+      const gearMat = new THREE.MeshLambertMaterial({ color: 0x1a1d20 });
+      const rifle = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.09, 0.62), gearMat);
+      rifle.position.set(0, 0.04, -0.22);
+      this.rifleMesh = rifle;
+      if (built.weaponMount) built.weaponMount.add(rifle);
+
+      this.muzzleMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(0.055, 6, 6),
+        new THREE.MeshBasicMaterial({ color: 0xffdd77, transparent: true, opacity: 0 })
+      );
+      this.muzzleMesh.position.set(0.20, 1.32, 0.68);
+      this.muzzleLight = new THREE.PointLight(0xffaa44, 0, 7);
+      this.muzzleLight.position.copy(this.muzzleMesh.position);
+    } else {
+      const uniformMat = new THREE.MeshLambertMaterial({ color: 0x2f434a });
+      const vestMat = new THREE.MeshLambertMaterial({ color: 0x3b4d3e });
+      const gearMat = new THREE.MeshLambertMaterial({ color: 0x1a1d20 });
+      const skinMat = new THREE.MeshLambertMaterial({ color: 0xd1a483 });
+      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.56, 0.25), uniformMat);
+      torso.position.set(0, 1.18, 0);
+      torso.userData = { ally: this, part: 'torso' };
+      this.hitboxes.push(torso);
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.23, 0.22), skinMat);
+      head.position.set(0, 1.58, 0);
+      head.userData = { ally: this, part: 'head' };
+      this.hitboxes.push(head);
+      const rifle = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.09, 0.62), gearMat);
+      rifle.position.set(0.24, 1.24, 0.30);
+      this.rifleMesh = rifle;
+      this.muzzleMesh = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 6), new THREE.MeshBasicMaterial({ color: 0xffdd77, transparent: true, opacity: 0 }));
+      this.muzzleMesh.position.set(0.24, 1.25, 0.64);
+      this.muzzleLight = new THREE.PointLight(0xffaa44, 0, 7);
+      g.add(torso, head, rifle);
+    }
 
     // Dynamic Overhead Callsign & Live AI Status Tag
     this.tagCanvas = document.createElement('canvas');
@@ -144,7 +151,7 @@ class SquadMate {
     this.bleedSprite.scale.set(0.80, 0.80, 1);
     this.bleedSprite.visible = false;
 
-    g.add(torso, vest, patchL, patchR, head, helmet, rifle, this.muzzleMesh, this.muzzleLight, this.tagSprite, this.bleedSprite);
+    g.add(this.muzzleMesh, this.muzzleLight, this.tagSprite, this.bleedSprite);
     g.position.copy(this.position);
     this.scene.add(g);
     this.group = g;

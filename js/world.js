@@ -925,7 +925,13 @@ class WastelandWorld {
   }
 
   getSurfaceHeightAt(x, z, referenceY = null) {
-    const terrainY = this.getTerrainHeight(x, z);
+    // Sample a small 4-corner footprint so items on sloped hills never clip one end into the terrain!
+    const t0 = this.getTerrainHeight(x, z);
+    const t1 = this.getTerrainHeight(x + 0.20, z);
+    const t2 = this.getTerrainHeight(x - 0.20, z);
+    const t3 = this.getTerrainHeight(x, z + 0.20);
+    const t4 = this.getTerrainHeight(x, z - 0.20);
+    const terrainY = Math.max(t0, t1, t2, t3, t4);
     let bestY = terrainY;
     for (let i = 0; i < this.colliders.length; i++) {
       const c = this.colliders[i];

@@ -262,6 +262,54 @@ class Enemy {
   }
 
   _buildModel() {
+    // Use the global articulated low-poly tactical operator model for all Enemy Operators (with equipped vest, backpack & 3D weapon!)
+    if (this.isOperator && typeof window.buildTacticalOperatorModel === 'function') {
+      const built = window.buildTacticalOperatorModel({
+        uniformColor: this.armorColor || 0x3b4437,
+        vestId: (this.operatorEquipment && this.operatorEquipment.armor) || 'vest_2',
+        bagId: (this.operatorEquipment && this.operatorEquipment.backpack) || 'bag_medium',
+        faceForwardZ: true
+      });
+      this.group.add(built.root);
+      this.leftHip = built.leftLeg.hip;
+      this.rightHip = built.rightLeg.hip;
+      this.leftArm = built.leftArm.shoulder;
+      this.rightArm = built.rightArm.shoulder;
+      this.opModel = built;
+
+      built.chest.userData = { enemy: this, part: 'torso' };
+      built.skull.userData = { enemy: this, part: 'head' };
+      this.hitboxes.push(built.chest, built.skull);
+
+      const wDef = GAME_DATA.ITEMS[this.weaponId];
+      let weaponObj = null;
+      if (this.weaponSystem && wDef && this.weaponSystem.buildThirdPersonWeapon) {
+        const builtWpn = this.weaponSystem.buildThirdPersonWeapon(wDef, {});
+        if (builtWpn && builtWpn.group) {
+          weaponObj = builtWpn.group;
+          weaponObj.scale.setScalar(builtWpn.isPistol ? 1.25 : 1.38);
+          weaponObj.position.set(0, 0.04, builtWpn.isPistol ? -0.06 : -0.18);
+        }
+      }
+      if (!weaponObj) {
+        weaponObj = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.09, 0.62), new THREE.MeshLambertMaterial({ color: 0x1a1c1e }));
+        weaponObj.position.set(0, 0.04, -0.22);
+      }
+      if (built.weaponMount) built.weaponMount.add(weaponObj);
+      this.weaponMeshGroup = weaponObj;
+
+      this.muzzleMesh = new THREE.Mesh(
+        new THREE.SphereGeometry(0.07, 6, 6),
+        new THREE.MeshBasicMaterial({ color: 0xffcc55, transparent: true, opacity: 0 })
+      );
+      this.muzzleMesh.position.set(0.20, 1.32, 0.72);
+      this.muzzleLight = new THREE.PointLight(0xffaa33, 0, 6);
+      this.muzzleLight.position.copy(this.muzzleMesh.position);
+      this.muzzleTimer = 0;
+      this.group.add(this.muzzleMesh, this.muzzleLight);
+      return;
+    }
+
     const bodyMat = new THREE.MeshLambertMaterial({ color: this.armorColor });
     const headMat = new THREE.MeshLambertMaterial({ color: this.headColor });
     const limbMat = new THREE.MeshLambertMaterial({ color: 0x2c2b29 });
