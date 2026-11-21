@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ASHFALL // 3D Extraction Looter-Shooter</title>
-  <link rel="stylesheet" href="css/style.css?v=183" />
+  <link rel="stylesheet" href="css/style.css?v=184" />
   <!-- Three.js r128 UMD for zero-build compatibility (works on both http:// and file://) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
@@ -22,7 +22,7 @@
     <!-- IMPORTANT: Update version in GAME_DATA.VERSION (js/data.js) and here with EVERY new commit -->
     <div class="menu-version-stack">
       <button id="menu-update-badge" class="menu-update-badge hidden" title="Click to reload into the latest version">NEW VERSION AVAILABLE</button>
-      <div id="menu-version-badge" class="menu-version-badge">v1.83</div>
+      <div id="menu-version-badge" class="menu-version-badge">v1.84</div>
     </div>
     <!-- Top Bar (visible inside utility tabs; hidden on clean Main Menu title card) -->
     <header id="menu-topbar" class="hideout-header hidden">
@@ -772,7 +772,7 @@
         </div>
       </div>
 
-      <!-- Adjacent Compact Armor Plate + Medkit + Killstreak Quick Tiles -->
+      <!-- Adjacent Compact Armor Plate + Medkit Quick Tiles -->
       <div class="hud-left-quick-tiles">
         <div class="hud-q-tile" title="Insert Armor Plate [G]">
           <svg class="hud-q-svg" viewBox="0 0 24 26" aria-hidden="true"><path d="M5 6 L9 2 H15 L19 6 V22 H5 Z" fill="rgba(255,255,255,0.88)"/></svg>
@@ -784,11 +784,6 @@
           <b id="hud-medkits" class="hud-q-count">0</b>
           <span class="hud-q-key">H</span>
         </div>
-        <div id="hud-ks-wrap" class="ks-hud-wrap empty" title="Killstreak [K]">
-          <div id="hud-ks-icon" class="ks-icon-center"></div>
-          <span id="hud-ks-status" class="ks-status-tag hidden">25s</span>
-          <span id="hud-ks-key" class="fu-key-tag">K</span>
-        </div>
       </div>
     </div>
 
@@ -799,8 +794,24 @@
       <span id="hud-xp-val" class="hidden">0 XP</span>
     </div>
 
-    <!-- Bottom Right: Exact DMZ Ammo + Weapon Silhouettes + Melee + Grenades + Top-Right Field Upgrade Ring -->
+    <!-- Bottom Right: Killstreak Green Square (Above Field Upgrade Ring) + Weapon/Ammo/Ordnance -->
     <div class="hud-bottom-right-cluster">
+      <!-- Killstreak Green Square + D-Pad Right Silhouette on Right Side -->
+      <div class="ks-right-row">
+        <div id="hud-ks-wrap" class="ks-hud-wrap dmz-ks-square empty" title="Killstreak [K / D-Pad Right]">
+          <div id="hud-ks-icon" class="ks-icon-center"></div>
+          <span id="hud-ks-status" class="ks-status-tag hidden">25s</span>
+          <span id="hud-ks-key" class="fu-key-tag hidden">K</span>
+        </div>
+        <svg class="dmz-dpad-right-svg" viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M9 2 H15 V8 H9 Z" fill="rgba(255,255,255,0.26)"/>
+          <path d="M9 16 H15 V22 H9 Z" fill="rgba(255,255,255,0.26)"/>
+          <path d="M2 9 H8 V15 H2 Z" fill="rgba(255,255,255,0.26)"/>
+          <path d="M15 9 H22 V15 H15 Z" fill="#69f0ae" stroke="#ffffff" stroke-width="0.8"/>
+          <rect x="9" y="9" width="6" height="6" fill="rgba(255,255,255,0.22)"/>
+        </svg>
+      </div>
+
       <!-- Floating Field Upgrade Circular Ring above far-right -->
       <div class="field-upgrade-ring-wrap" title="Field Upgrade [Z]">
         <svg class="fu-ring-svg" viewBox="0 0 56 56">
@@ -1015,7 +1026,7 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION with every new commit) -->
-  <script src="js/data.js?v=183"></script>
+  <script src="js/data.js?v=184"></script>
   <script src="js/net.js?v=123"></script>
   <script src="js/sfx_samples.js?v=21"></script>
   <script src="js/audio.js?v=179"></script>

@@ -3902,6 +3902,38 @@ button:disabled {
   gap: 8px;
 }
 
+.ks-right-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-right: 2px;
+}
+
+#hud-screen .dmz-ks-square {
+  width: 46px;
+  height: 46px;
+  border-radius: 3px;
+  background: rgba(42, 168, 96, 0.44);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1.5px solid #69f0ae;
+  box-shadow: 0 0 14px rgba(105, 240, 174, 0.32), 0 4px 12px rgba(0, 0, 0, 0.45);
+}
+
+#hud-screen .dmz-ks-square.empty {
+  background: rgba(30, 88, 56, 0.24);
+  border-color: rgba(105, 240, 174, 0.40);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+  opacity: 0.72;
+}
+
+.dmz-dpad-right-svg {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.85));
+}
+
 #hud-screen .field-upgrade-ring-wrap {
   width: 48px;
   height: 48px;
