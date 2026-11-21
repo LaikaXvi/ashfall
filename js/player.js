@@ -1671,6 +1671,7 @@ class Player {
 
     for (let i = 0; i < list.length; i++) {
       const c = list[i];
+      if (c.doorRef && c.doorRef.passable) continue;
       if (headY > c.minY + 0.02 && feetY < c.maxY - 0.05) {
         if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) {
           return true;
@@ -1685,6 +1686,7 @@ class Player {
     const list = this.world.getNearbyColliders ? this.world.getNearbyColliders(x, z, r + 0.6) : this.world.colliders;
     for (let i = 0; i < list.length; i++) {
       const c = list[i];
+      if (c.doorRef && c.doorRef.passable) continue;
       // Only full-height walls/pillars extending above eye level (ignores hip-height tables, boxes, crates, sandbags)
       if (c.maxY >= eyeY + 0.12 && c.minY < eyeY) {
         if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) {
@@ -2441,6 +2443,31 @@ class Player {
         const edgeOff = rightOpen ? rightClearOffset : leftClearOffset;
         const edgeFactor = THREE.MathUtils.clamp(1.22 - (edgeOff - 0.36) / 0.95, 0.40, 1.0);
         targetLean = (rightOpen ? 1 : -1) * Math.min(1.0, forwardProx * 0.55 + edgeFactor * 0.55);
+      } else if (this.world && this.world.doors && this.world.doors.length > 0) {
+        // Continuing to ADS close to the edge/jamb of an open or peeked door triggers tactical lean around it!
+        const feetY = this.position.y - this.currentEyeHeight;
+        for (let i = 0; i < this.world.doors.length; i++) {
+          const d = this.world.doors[i];
+          if (d.state === 'closed') continue;
+          if (Math.abs(feetY - d.hingePos.y) > 2.2) continue;
+          const distCenter = Math.hypot(this.position.x - d.center.x, this.position.z - d.center.z);
+          if (distCenter > 2.35) continue;
+          const dHinge = Math.hypot(this.position.x - d.hingePos.x, this.position.z - d.hingePos.z);
+          const dJambR = Math.hypot(this.position.x - d.jambRightPos.x, this.position.z - d.jambRightPos.z);
+          const nearestJamb = dHinge < dJambR ? d.hingePos : d.jambRightPos;
+          const nearDist = Math.min(dHinge, dJambR);
+          if (nearDist < 1.35) {
+            // Lean TOWARD the open doorway center (away from the jamb edge!)
+            const toCenterX = d.center.x - nearestJamb.x;
+            const toCenterZ = d.center.z - nearestJamb.z;
+            const lat = toCenterX * rX + toCenterZ * rZ;
+            if (Math.abs(lat) > 0.15) {
+              const strength = THREE.MathUtils.clamp((1.35 - nearDist) / 0.85, 0.45, 0.95);
+              targetLean = (lat > 0 ? 1 : -1) * strength;
+              break;
+            }
+          }
+        }
       }
     }
     this.lean = THREE.MathUtils.lerp(this.lean, targetLean, Math.min(1, dt * 6.5));

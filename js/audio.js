@@ -1159,6 +1159,83 @@ class SoundEngine {
     lp.connect(g);
     g.connect(this._bus('sfx'));
   }
+
+  playDoorOpen(isPeek = false) {
+    if (this.muted || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    const vol = isPeek ? 0.22 : 0.42;
+    // Metallic latch click
+    const osc = this.ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(isPeek ? 640 : 520, now);
+    osc.frequency.exponentialRampToValueAtTime(190, now + 0.045);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(vol, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.055);
+    osc.connect(g);
+    g.connect(this._bus('sfx'));
+    osc.start(now);
+    osc.stop(now + 0.06);
+
+    // Subtle hinge creak / wood whoosh
+    const n = this._makeNoise(now + 0.02, isPeek ? 0.14 : 0.22);
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(isPeek ? 420 : 280, now + 0.02);
+    bp.Q.value = 3.0;
+    const ng = this.ctx.createGain();
+    ng.gain.setValueAtTime(vol * 0.45, now + 0.02);
+    ng.gain.exponentialRampToValueAtTime(0.001, now + (isPeek ? 0.16 : 0.24));
+    n.connect(bp);
+    bp.connect(ng);
+    ng.connect(this._bus('sfx'));
+  }
+
+  playDoorClose() {
+    if (this.muted || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    // Wood thump into frame + latch click
+    const osc = this.ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(135, now);
+    osc.frequency.exponentialRampToValueAtTime(48, now + 0.09);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.55, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+    osc.connect(g);
+    g.connect(this._bus('sfx'));
+    osc.start(now);
+    osc.stop(now + 0.12);
+  }
+
+  playDoorBash() {
+    if (this.muted || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    // Heavy tactical shoulder-bash THUD (sub-bass punch + splintering frame slap!)
+    const sub = this.ctx.createOscillator();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(128, now);
+    sub.frequency.exponentialRampToValueAtTime(34, now + 0.18);
+    const subG = this.ctx.createGain();
+    subG.gain.setValueAtTime(0.95, now);
+    subG.gain.exponentialRampToValueAtTime(0.001, now + 0.22);
+    sub.connect(subG);
+    subG.connect(this._bus('sfx'));
+    sub.start(now);
+    sub.stop(now + 0.23);
+
+    const slap = this._makeNoise(now, 0.16);
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(1400, now);
+    lp.frequency.exponentialRampToValueAtTime(180, now + 0.16);
+    const slapG = this.ctx.createGain();
+    slapG.gain.setValueAtTime(0.85, now);
+    slapG.gain.exponentialRampToValueAtTime(0.001, now + 0.17);
+    slap.connect(lp);
+    lp.connect(slapG);
+    slapG.connect(this._bus('sfx'));
+  }
 }
 
 window.soundEngine = new SoundEngine();

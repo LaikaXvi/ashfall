@@ -1073,6 +1073,12 @@
 
   function openNearbyInteractable() {
     if (!nearbyInteractable) return false;
+    if (nearbyInteractable.type === 'door' && nearbyInteractable.door && world && world.interactDoor) {
+      world.interactDoor(nearbyInteractable.door, player.position, !!player.isADS);
+      window._lastInteractCheckMs = 0;
+      checkInteractions();
+      return true;
+    }
     if (nearbyInteractable.type === 'ground') {
       const gi = nearbyInteractable.groundItem;
       if (!gi) return false;
@@ -2765,6 +2771,21 @@
     }
 
     let bestDist = 3.2;
+    if (world && world.doors) {
+      const feetY = player.position.y - player.currentEyeHeight;
+      for (let i = 0; i < world.doors.length; i++) {
+        const door = world.doors[i];
+        if (Math.abs(feetY - door.hingePos.y) > 2.2) continue;
+        const d = Math.hypot(player.position.x - door.center.x, player.position.z - door.center.z);
+        if (d < 2.85 && d < bestDist) {
+          bestDist = d;
+          const verb = (door.state === 'open' || door.state === 'peek')
+            ? 'CLOSE'
+            : (player.isADS ? 'PEEK' : 'OPEN');
+          nearbyInteractable = { type: 'door', door, label: `${verb} ${door.label.toUpperCase()}` };
+        }
+      }
+    }
     for (const c of world.lootContainers) {
       const d = player.position.distanceTo(c.position);
       if (d < bestDist && hasInteractLineOfSight(c.position, c.mesh)) {
@@ -2806,7 +2827,9 @@
     }
 
     if (nearbyInteractable) {
-      if (nearbyInteractable.type === 'ground') {
+      if (nearbyInteractable.type === 'door') {
+        textEl.textContent = `[E] ${nearbyInteractable.label}`;
+      } else if (nearbyInteractable.type === 'ground') {
         const gw = _getLookedAtGroundWeapon();
         if (gw) {
           const canStow = !!(player && player.hasWeaponBackpack && player.hasWeaponBackpack());
@@ -3153,6 +3176,9 @@
             tabStowHoldStart = 0;
             _pickupGroundWeapon(gw, 'backpackWeapon');
           }
+        }
+        if (world && world.updateDoors) {
+          world.updateDoors(dt, player, weaponSystem);
         }
         if (!window._lastInteractCheckMs || now - window._lastInteractCheckMs >= 55) {
           window._lastInteractCheckMs = now;

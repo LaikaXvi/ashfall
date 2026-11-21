@@ -2246,6 +2246,19 @@ class WeaponSystem {
     // Weapon Inspect progress
     let inspectPosOffset = { x: 0, y: 0, z: 0 };
     let inspectRotOffset = { x: 0, y: 0, z: 0 };
+    if (this.doorBashTimer > 0) {
+      this.doorBashTimer = Math.max(0, this.doorBashTimer - dt);
+      const bp = 1 - (this.doorBashTimer / (this.doorBashDuration || 0.36));
+      // Fast impact brace then smooth recovery: operator braces arms against door with weapon raised slightly!
+      const brace = bp < 0.28 ? (bp / 0.28) : Math.max(0, 1 - (bp - 0.28) / 0.72);
+      const ease = brace * brace * (3 - 2 * brace);
+      inspectPosOffset.x += -0.09 * ease;
+      inspectPosOffset.y += 0.085 * ease;
+      inspectPosOffset.z += -0.14 * ease;
+      inspectRotOffset.x += 0.34 * ease;   // weapon raised slightly
+      inspectRotOffset.y += 0.42 * ease;   // angled across body as forearm braces door
+      inspectRotOffset.z += -0.32 * ease;
+    }
     if (this.meleeSwingTimer > 0) {
       this.meleeSwingTimer = Math.max(0, this.meleeSwingTimer - dt);
       if (!this.isFistsMode) {
@@ -4568,6 +4581,12 @@ class WeaponSystem {
     this.sightHeight = 0.12;
     this.adsZ = -0.34;
     this.viewmodelGroup.visible = !this.isThirdPerson;
+  }
+
+  triggerDoorBash() {
+    this.doorBashDuration = 0.36;
+    this.doorBashTimer = this.doorBashDuration;
+    this.recoilPitch = Math.max(this.recoilPitch || 0, 0.045);
   }
 
   tryMeleeSlash(player, world, enemyManager, onHitCallback, isQuick = false, squadManager = null, onAllyHitCallback = null) {
