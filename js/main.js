@@ -467,6 +467,7 @@
   }
 
   // ==================== INPUT & POINTER LOCK ====================
+  let escClosedUiUntil = 0;
   document.addEventListener('pointerlockchange', () => {
     if (!inRaid) return;
     const locked = document.pointerLockElement === canvas;
@@ -475,7 +476,8 @@
       player.isFiring = false;
       player.isADS = false;
     }
-    if (!locked && !isModalOpen && !ui.isTacMapOpen && !(devConsole && devConsole.isOpen)) {
+    const suppressPause = performance.now() < escClosedUiUntil;
+    if (!locked && !suppressPause && !isModalOpen && !ui.isTacMapOpen && !(ui && ui.isInGameSettingsOpen) && !(devConsole && devConsole.isOpen)) {
       document.getElementById('pointer-lock-overlay').classList.remove('hidden');
     } else if (locked) {
       document.getElementById('pointer-lock-overlay').classList.add('hidden');
@@ -506,10 +508,17 @@
     btnCloseContainer.addEventListener('click', () => closeLootAndResume());
   }
 
-  function closeLootAndResume() {
+  function closeLootAndResume(fromEscape = false) {
     isModalOpen = false;
     ui.closeLootModal();
-    if (inRaid) canvas.requestPointerLock();
+    const pauseOv = document.getElementById('pointer-lock-overlay');
+    if (pauseOv) pauseOv.classList.add('hidden');
+    if (fromEscape) {
+      escClosedUiUntil = performance.now() + 350;
+    }
+    if (inRaid) {
+      try { canvas.requestPointerLock(); } catch (e) {}
+    }
   }
 
   window.addEventListener('mousemove', (e) => {
@@ -645,6 +654,7 @@
     if (ui && ui.isInGameSettingsOpen) {
       if (e.code === 'Escape') {
         e.preventDefault();
+        escClosedUiUntil = performance.now() + 350;
         ui.closeInGameSettings(true);
       }
       return;
@@ -652,10 +662,12 @@
 
     if (isModalOpen) {
       if (e.code === 'Escape') {
+        e.preventDefault();
+        escClosedUiUntil = performance.now() + 350;
         if (ui && ui._raidWeaponPick && ui.closeRaidWeaponPickMode) {
           ui.closeRaidWeaponPickMode();
         } else {
-          closeLootAndResume();
+          closeLootAndResume(true);
         }
       }
       return;
@@ -717,10 +729,24 @@
       if (!e.repeat) toggleFullMapMode();
     } else if (e.code === 'Escape' && designatorActive) {
       e.preventDefault();
+      escClosedUiUntil = performance.now() + 350;
       setDesignatorActive(false);
     } else if (e.code === 'Escape' && ui.isTacMapOpen) {
       e.preventDefault();
+      escClosedUiUntil = performance.now() + 350;
       toggleFullMapMode(false);
+      const pauseOv = document.getElementById('pointer-lock-overlay');
+      if (pauseOv) pauseOv.classList.add('hidden');
+    } else if (e.code === 'Escape') {
+      const pauseOv = document.getElementById('pointer-lock-overlay');
+      if (pauseOv) {
+        if (pauseOv.classList.contains('hidden')) {
+          pauseOv.classList.remove('hidden');
+        } else {
+          pauseOv.classList.add('hidden');
+          try { canvas.requestPointerLock(); } catch (err) {}
+        }
+      }
     } else if (e.code === (kb.interact || 'KeyE') && nearbyInteractable) {
       openNearbyInteractable();
     }

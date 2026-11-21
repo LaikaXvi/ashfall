@@ -4943,17 +4943,28 @@ class GameUI {
     if (this.activeLootSource && camera) {
       this.positionContainerPanel(camera);
     }
-    requestAnimationFrame(() => this.ensureInitialSelection());
+    requestAnimationFrame(() => {
+      // Default selection: top-leftmost slot in the container being searched (or top-leftmost backpack slot if no container)
+      const firstTarget = this.activeLootSource
+        ? (document.querySelector('#loot-container-items .inv-slot') || document.querySelector('#loot-backpack-items .inv-slot'))
+        : document.querySelector('#loot-backpack-items .inv-slot');
+      if (firstTarget && this.setSelectedElement) {
+        this.setSelectedElement(firstTarget, { inputMode: 'gamepad' });
+      } else {
+        this.ensureInitialSelection();
+      }
+    });
   }
 
   autoLootExistingStacks(player) {
     if (!this.activeLootSource || !player || !Array.isArray(player.backpack)) return false;
     const items = this.activeLootSource.items;
+    const now = performance.now();
     let movedAny = false;
 
     // 1. Auto-stack revealed armor plates from enemy operator equipment plate slot into player's plate slot (max 6)
     const eq = this.activeLootSource.operatorEquipment;
-    if (eq && eq.plates > 0 && eq.revealedSlots && eq.revealedSlots.plates) {
+    if (eq && eq.plates > 0 && eq.revealedSlots && eq.revealedSlots.plates && (!eq._platesAutoLootAt || now >= eq._platesAutoLootAt)) {
       const curPlates = player.plates || 0;
       const room = Math.max(0, 6 - curPlates);
       if (room > 0) {
@@ -4964,11 +4975,12 @@ class GameUI {
       }
     }
 
-    // 2. Auto-stack revealed container items: plates into operator plate slot (max 6) + stackables into existing backpack stacks
+    // 2. Auto-stack revealed container items after their 0.5s post-reveal delay
     if (Array.isArray(items) && items.length > 0) {
       for (let i = items.length - 1; i >= 0; i--) {
         const src = items[i];
         if (!src || src.revealed === false || src.qty <= 0) continue;
+        if (src._autoLootAt && now < src._autoLootAt) continue;
         const def = GAME_DATA.ITEMS[src.id];
         if (!def) continue;
 
@@ -5429,8 +5441,29 @@ class GameUI {
     const modal = document.getElementById('loot-modal');
     if (!modal || modal.classList.contains('hidden')) return;
 
-    // 1. Reveal container / backpack grid items one at a time
+    // 0. Process any revealed items whose 0.5s post-reveal delay has elapsed for auto-looting!
+    const now = performance.now();
     const items = this.activeLootSource.items;
+    const eq = this.activeLootSource.operatorEquipment;
+    let readyForAutoLoot = false;
+    if (Array.isArray(items)) {
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        if (it && it.revealed !== false && it._autoLootAt && now >= it._autoLootAt) {
+          delete it._autoLootAt;
+          readyForAutoLoot = true;
+        }
+      }
+    }
+    if (eq && eq._platesAutoLootAt && now >= eq._platesAutoLootAt) {
+      delete eq._platesAutoLootAt;
+      readyForAutoLoot = true;
+    }
+    if (readyForAutoLoot && this.autoLootExistingStacks(this._lootPlayer)) {
+      this.renderLootModal(this._lootPlayer);
+    }
+
+    // 1. Reveal container / backpack grid items one at a time
     const nextIdx = items.findIndex(it => it && it.revealed === false);
     if (nextIdx !== -1) {
       const item = items[nextIdx];
@@ -5449,8 +5482,8 @@ class GameUI {
 
       if (this._searchRevealProgress >= 1) {
         item.revealed = true;
+        item._autoLootAt = performance.now() + 500; // 0.5s delay before auto-looting newly revealed item
         this._searchRevealProgress = 0;
-        this.autoLootExistingStacks(this._lootPlayer);
         if (window.soundEngine && window.soundEngine.playClick) {
           try { window.soundEngine.playClick(); } catch (e) {}
         }
@@ -5460,7 +5493,6 @@ class GameUI {
     }
 
     // 2. Reveal unsearched Enemy Operator Equipment slots one at a time!
-    const eq = this.activeLootSource.operatorEquipment;
     const nextKey = this._getNextUnrevealedOperatorSlot(eq);
     if (!nextKey) return;
 
@@ -5478,8 +5510,8 @@ class GameUI {
 
     if (this._searchRevealProgress >= 1) {
       eq.revealedSlots[nextKey] = true;
+      if (nextKey === 'plates') eq._platesAutoLootAt = performance.now() + 500;
       this._searchRevealProgress = 0;
-      this.autoLootExistingStacks(this._lootPlayer);
       if (window.soundEngine && window.soundEngine.playClick) {
         try { window.soundEngine.playClick(); } catch (e) {}
       }

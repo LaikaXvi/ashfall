@@ -247,31 +247,37 @@ class GamepadController {
       this._snapshot(pad);
       return;
     }
-    // D-Pad Down (13): Hold while looking at a ground weapon (with Weapon Backpack) to stow; tap to toggle Backpack Modal
-    const dpadDown = this._isDown(pad, bBackpack);
-    const canStow = !ctx.isModalOpen && actions.canStowGroundWeapon && actions.canStowGroundWeapon();
-    if (dpadDown) {
-      if (canStow) {
-        this._dpadDownHoldTime = (this._dpadDownHoldTime || 0) + dt;
-        if (!this._dpadDownStowed && this._dpadDownHoldTime >= 0.32 && actions.stowGroundWeapon) {
-          actions.stowGroundWeapon();
+    // D-Pad Down (13): Only opens Backpack (or stows ground weapon on hold) when NOT already inside the bag/container!
+    // Once the bag/container is open, D-Pad Down is used exclusively for spatial inventory navigation.
+    if (!ctx.isModalOpen) {
+      const dpadDown = this._isDown(pad, bBackpack);
+      const canStow = actions.canStowGroundWeapon && actions.canStowGroundWeapon();
+      if (dpadDown) {
+        if (canStow) {
+          this._dpadDownHoldTime = (this._dpadDownHoldTime || 0) + dt;
+          if (!this._dpadDownStowed && this._dpadDownHoldTime >= 0.32 && actions.stowGroundWeapon) {
+            actions.stowGroundWeapon();
+            this._dpadDownStowed = true;
+          }
+        } else if (this._justPressed(pad, bBackpack) && actions.toggleBackpack) {
+          actions.toggleBackpack();
+          this._dpadDownHoldTime = 0;
           this._dpadDownStowed = true;
+          this._snapshot(pad);
+          return;
         }
-      } else if (this._justPressed(pad, bBackpack) && actions.toggleBackpack) {
-        actions.toggleBackpack();
-        this._dpadDownHoldTime = 0;
-        this._dpadDownStowed = true;
-        this._snapshot(pad);
-        return;
-      }
-    } else if (this.prevButtons[bBackpack]) {
-      if (!this._dpadDownStowed && (this._dpadDownHoldTime || 0) > 0 && actions.toggleBackpack) {
-        actions.toggleBackpack();
+      } else if (this.prevButtons[bBackpack]) {
+        if (!this._dpadDownStowed && (this._dpadDownHoldTime || 0) > 0 && actions.toggleBackpack) {
+          actions.toggleBackpack();
+          this._dpadDownHoldTime = 0;
+          this._dpadDownStowed = false;
+          this._snapshot(pad);
+          return;
+        }
         this._dpadDownHoldTime = 0;
         this._dpadDownStowed = false;
-        this._snapshot(pad);
-        return;
       }
+    } else {
       this._dpadDownHoldTime = 0;
       this._dpadDownStowed = false;
     }
@@ -337,21 +343,29 @@ class GamepadController {
         if (ui && ui.finishDragToSelected) ui.finishDragToSelected();
       }
 
-      // A (0): Activate / Quick-Move selected slot, operator card, or button (unless dragging with RT)
+      // A (0) / Cross: Confirm highlighted weapon-switch slot, drop weapon (on Primary/Secondary/BagWeapon), or activate slot
       if (this._justPressed(pad, 0) && ui && !this._modalRtDragging) {
-        ui.activateSelectedElement({ inputMode: 'gamepad' });
+        const handledInv = ui.handleGamepadInventoryAction ? ui.handleGamepadInventoryAction('a_cross') : false;
+        if (!handledInv) {
+          ui.activateSelectedElement({ inputMode: 'gamepad' });
+        }
       }
-      // Y (3): Split Stack
+      // Y (3) / Triangle: Split Stack
       if (this._justPressed(pad, 3) && ui && ui._hoveredSlot && !this._modalRtDragging) {
         ui.handleSlotAction('split');
       }
-      // X (2): Drop selected backpack item
-      if (this._justPressed(pad, 2) && ui && ui._hoveredSlot && ui._hoveredSlot.context === 'backpack' && !this._modalRtDragging) {
-        ui.handleSlotAction('drop');
+      // X (2) / Square: Quick-equip weapon to active slot, stow Primary/Secondary to bag weapon slot, or drop backpack item
+      if (this._justPressed(pad, 2) && ui && !this._modalRtDragging) {
+        const handledWpn = ui.handleGamepadInventoryAction ? ui.handleGamepadInventoryAction('x_square') : false;
+        if (!handledWpn && ui._hoveredSlot && ui._hoveredSlot.context === 'backpack') {
+          ui.handleSlotAction('drop');
+        }
       }
-      // B (1): Cancel drag or close modal
+      // B (1) / Circle: Cancel weapon-switch picker -> Cancel drag -> Close Backpack/Container menu
       if (this._justPressed(pad, 1)) {
-        if (this._modalRtDragging) {
+        if (ui && ui._raidWeaponPick && ui.closeRaidWeaponPickMode) {
+          ui.closeRaidWeaponPickMode();
+        } else if (this._modalRtDragging) {
           this._modalRtDragging = false;
           if (ui && ui.cancelDrag) ui.cancelDrag();
         } else if (actions.closeModal) {
@@ -366,7 +380,12 @@ class GamepadController {
     }
 
     if (ctx.isPaused || !player) {
-      if (this._justPressed(pad, 0) && actions.resume) actions.resume();
+      if (this._justPressed(pad, 1) && !(ui && ui.isInGameSettingsOpen) && actions.resume) {
+        actions.resume();
+        this._snapshot(pad);
+        return;
+      }
+      if (this._justPressed(pad, 0) && !(ui && ui.isInGameSettingsOpen) && actions.resume) actions.resume();
       this._snapshot(pad);
       return;
     }
