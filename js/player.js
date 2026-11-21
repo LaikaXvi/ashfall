@@ -764,6 +764,22 @@ class Player {
         // Right arm bent cleanly across injured chest/abdomen (empty hand, weapon hidden)
         rShX = 0.50; rElbX = 1.42; rShZ = -0.45;
       }
+    } else if (this.isRevivingAlly) {
+      // === ARTICULATED KNEELING TACTICAL REVIVE: ONE KNEE PLANTED, LEANED FORWARD, RHYTHMIC CHEST/STIM MOTIONS ===
+      const revCyc = this.idleTime * 5.2;
+      const push = Math.sin(revCyc);
+      pelvisY = 0.54;
+      torsoPitch = -0.44 + push * 0.05;
+      torsoYaw = Math.sin(revCyc * 0.5) * 0.06;
+      // Left foot planted forward, right knee dropped down into tactical kneel
+      lHipX = 1.08; lHipZ = -0.10; lKneeX = -1.48; lAnkX = 0.42;
+      rHipX = 0.24; rHipZ = 0.12;  rKneeX = -1.68; rAnkX = 0.55;
+      // Both arms reaching down & working rhythmically on teammate's chest/tourniquet
+      lShX = 1.05 + push * 0.16; lElbX = 0.92 - push * 0.18; lShZ = -0.26;
+      rShX = 1.12 - push * 0.14; rElbX = 0.88 + push * 0.20; rShZ = 0.26;
+      wpnRotX = -Math.PI / 2 - 0.72; // weapon slung cleanly downward
+      wpnRotY = 0.42;
+      customHeadPitch = -0.58 + push * 0.04;
     } else if (this.isSliding) {
       // === LOW, FOCUSED COMBAT SLIDE: SKIMMING GROUND, LEAD LEG FLAT OUT, TRAILING KNEE TUCKED HORIZONTALLY, ARMS LOW STABILIZING GUN ===
       autoClampFeet = false;
@@ -797,19 +813,21 @@ class Player {
       wpnRotY = 0.10 * entry;
       wpnRotZ = -0.12 * entry;
     } else if (this.isProne) {
-      // === PRONE & CRAWL: Arms tucked underneath chest holding weapon upright, head down & gun raised to line eyes up with optics/iron sights! ===
+      // === ARTICULATED PRONE & CRAWL: SPLAYED BOOT PUSH-OFF, PLANTED ELBOWS, CHEEK-WELD SIGHT ALIGNMENT ===
       autoClampFeet = false;
       rigPitch = -1.36;
       rigY = 0.28;
       pelvisY = 0.90;
-      torsoPitch = 0.22 + breathe * 0.012;
-      lHipX = -0.06 - Math.max(0, stride) * 0.16;  lKneeX = -0.10 - Math.max(0, -stride) * 0.20; lAnkX = 0.65;
-      rHipX = -0.06 - Math.max(0, -stride) * 0.16; rKneeX = -0.10 - Math.max(0, stride) * 0.20;  rAnkX = 0.65;
-      // Both elbows tucked underneath chest supporting weapon upright; gun raised to meet lowered cheek/eye line
-      lShX = 1.14 + (moving ? stride * 0.16 : 0); lElbX = 1.36; lShZ = 0.36;
-      rShX = 1.18 - (moving ? stride * 0.16 : 0); rElbX = 1.32; rShZ = -0.18;
-      wpnRotX = -Math.PI / 2 + 0.44;
-      wpnRotY = 0.08;
+      const crawlPhase = moving ? stride : 0;
+      torsoPitch = 0.22 + breathe * 0.012 + (this.isADS ? 0.06 : 0);
+      torsoYaw = moving ? crawlPhase * 0.10 : (this.isADS ? 0.12 : 0);
+      lHipX = -0.06 - Math.max(0, crawlPhase) * 0.22;  lHipZ = -0.14 - Math.max(0, crawlPhase) * 0.12; lKneeX = -0.14 - Math.max(0, -crawlPhase) * 0.28; lAnkX = 0.68;
+      rHipX = -0.06 - Math.max(0, -crawlPhase) * 0.22; rHipZ = 0.14 + Math.max(0, -crawlPhase) * 0.12; rKneeX = -0.14 - Math.max(0, crawlPhase) * 0.28;  rAnkX = 0.68;
+      // Elbows planted under chest supporting weapon upright; tighter tuck when focusing ADS
+      lShX = (this.isADS ? 1.24 : 1.14) + (moving ? crawlPhase * 0.22 : 0); lElbX = this.isADS ? 1.44 : 1.36; lShZ = 0.36;
+      rShX = (this.isADS ? 1.26 : 1.18) - (moving ? crawlPhase * 0.22 : 0); rElbX = this.isADS ? 1.38 : 1.32; rShZ = -0.18;
+      wpnRotX = -Math.PI / 2 + (this.isADS ? 0.48 : 0.44);
+      wpnRotY = this.isADS ? 0.04 : 0.08;
       wpnRotZ = 0.0;
     } else if (!this.onGround) {
       // === AIRBORNE / JUMP ===
@@ -821,24 +839,26 @@ class Player {
       lShX = 0.78; lElbX = 0.72;
       rShX = 0.92; rElbX = 0.62;
     } else if (this.stance === 'crouch') {
-      // === CROUCH & CROUCH-WALK (AUTO-CLAMPED FEET -> ZERO GROUND CLIPPING) ===
-      const crouchStride = stride * 0.42;
-      lHipX = 0.86 + crouchStride;
-      lKneeX = -1.32 - Math.max(0, -strideCos) * 0.24;
-      lAnkX = -(lHipX + lKneeX) * 0.75; // keep boots flat on ground!
+      // === ARTICULATED CROUCH & TACTICAL CROUCH-WALK (ASYMMETRIC STANCE + CHEEK-WELD ADS) ===
+      const crouchStride = stride * 0.46;
+      lHipX = 0.92 + crouchStride;
+      lHipZ = -0.08;
+      lKneeX = -1.36 - Math.max(0, -strideCos) * 0.26;
+      lAnkX = -(lHipX + lKneeX) * 0.75;
 
-      rHipX = 0.86 - crouchStride;
-      rKneeX = -1.32 - Math.max(0, strideCos) * 0.24;
+      rHipX = 0.78 - crouchStride;
+      rHipZ = 0.10;
+      rKneeX = -1.28 - Math.max(0, strideCos) * 0.26;
       rAnkX = -(rHipX + rKneeX) * 0.75;
 
-      pelvisY = 0.68; // ground clamp below lifts smoothly to exact foot contact!
-      pelvisYaw = stride * 0.10;
-      torsoYaw = -stride * 0.08;
-      torsoPitch = -0.22 + breathe * 0.015;
-      rigRoll = -strafeInput * 0.05;
+      pelvisY = 0.66;
+      pelvisYaw = moving ? (stride * 0.12) : 0.22;
+      torsoYaw = moving ? (-stride * 0.10) : (this.isADS ? -0.14 : -0.18);
+      torsoPitch = (this.isADS ? -0.28 : -0.22) + breathe * 0.014;
+      rigRoll = -strafeInput * 0.055;
 
-      lShX = 0.86; lElbX = 0.90; lShZ = 0.44;
-      rShX = 0.90; rElbX = 0.74; rShZ = -0.14;
+      lShX = this.isADS ? 1.04 : 0.86; lElbX = this.isADS ? 1.02 : 0.90; lShZ = this.isADS ? 0.36 : 0.44;
+      rShX = this.isADS ? 1.08 : 0.90; rElbX = this.isADS ? 0.92 : 0.74; rShZ = -0.14;
     } else {
       // === FORWARD COMBAT-STANCE: IDLE / WALKING / SPRINTING / TACTICAL SPRINT ===
       const amp = this.isTacSprinting ? 0.92 : (this.isSprinting ? 0.78 : 0.48);
@@ -947,13 +967,41 @@ class Player {
       }
 
       if (ws.isPlating) {
-        // Left hand reaches to chest carrier; right hand lowers rifle
-        lShX = 1.05; lElbX = 1.32; lShZ = -0.45;
-        rShX = 0.35; rElbX = 0.52; rShZ = 0.14;
+        // Articulated 3-phase mocap Armor Plate Insertion: reach pouch -> lift plate to carrier -> seat firmly down!
+        const pp = ws.plateDuration > 0 ? THREE.MathUtils.clamp(1 - (ws.plateTimer / ws.plateDuration), 0, 1) : ((this.idleTime * 0.7) % 1);
+        torsoPitch -= 0.12;
+        torsoYaw += 0.18;
+        rShX = 0.32; rElbX = 0.56; rShZ = 0.16;
+        wpnRotX = -Math.PI / 2 - 0.55;
+        if (pp < 0.28) {
+          const t = smooth(pp / 0.28);
+          lShX = THREE.MathUtils.lerp(0.55, 0.25, t);
+          lElbX = THREE.MathUtils.lerp(0.85, 1.38, t);
+          lShZ = THREE.MathUtils.lerp(-0.18, -0.58, t);
+        } else if (pp < 0.68) {
+          const t = smooth((pp - 0.28) / 0.40);
+          lShX = THREE.MathUtils.lerp(0.25, 1.38, t);
+          lElbX = THREE.MathUtils.lerp(1.38, 1.48, t);
+          lShZ = THREE.MathUtils.lerp(-0.58, -0.44, t);
+          customHeadPitch = -0.32 * t;
+        } else {
+          const t = smooth((pp - 0.68) / 0.32);
+          lShX = THREE.MathUtils.lerp(1.38, 0.88, t);
+          lElbX = THREE.MathUtils.lerp(1.48, 1.18, t);
+          lShZ = -0.46;
+          torsoPitch -= Math.sin(t * Math.PI) * 0.08;
+          customHeadPitch = -0.32 * (1 - t);
+        }
       } else if (ws.isHealing) {
-        // Both hands in front of chest operating Field Medkit
-        lShX = 0.95; lElbX = 1.22; lShZ = -0.35;
-        rShX = 0.95; rElbX = 1.22; rShZ = 0.35;
+        // Articulated Field Medkit / Bandaging mocap cycle: active wrapping motion around forearm/chest!
+        const hp = ws.healDuration > 0 ? THREE.MathUtils.clamp(1 - (ws.healTimer / ws.healDuration), 0, 1) : ((this.idleTime * 0.5) % 1);
+        const wrap = Math.sin(hp * Math.PI * 6);
+        const wrapCos = Math.cos(hp * Math.PI * 6);
+        torsoPitch -= 0.18 + wrap * 0.03;
+        customHeadPitch = -0.42;
+        lShX = 0.92 + wrap * 0.08; lElbX = 1.34; lShZ = -0.36;
+        rShX = 0.96 + wrapCos * 0.22; rElbX = 1.24 + wrap * 0.26; rShZ = 0.34 + wrap * 0.16;
+        wpnRotX = -Math.PI / 2 - 0.68;
       } else if (ws.isReloading && this.tpWeapon) {
         const rp = THREE.MathUtils.clamp(1 - (ws.reloadTimer / ws.reloadDuration), 0, 1);
         const wId = ws.reloadWeaponId;

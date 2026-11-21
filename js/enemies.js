@@ -185,14 +185,30 @@ class Enemy {
     } else if (tier === 'boss') {
       this.name = 'COMMANDER VULTURE';
       this.maxHp = 260;
+      this.maxArmor = 150;
+      this.armor = 150;
       this.damage = 18;
       this.fireInterval = 0.20;
       this.accuracy = 0.06;
       this.speed = 3.0;
       this.armorColor = 0x3b1e22;
       this.headColor = 0x1d1e22;
-      const bossWpns = ['ak74m', 'm24', 'm870'];
+      const bossWpns = ['ak74m', 'm24', 'awm338', 'm870'];
       this.weaponId = bossWpns[Math.floor(Math.random() * bossWpns.length)];
+    } else if (tier === 'boss_guard') {
+      this.name = 'Armored Command Guard';
+      this.maxHp = 145;
+      this.maxArmor = 125;
+      this.armor = 125;
+      this.damage = 15;
+      this.fireInterval = 0.23;
+      this.accuracy = 0.068;
+      this.speed = 3.4;
+      this.armorColor = 0x222830;
+      this.headColor = 0x1a1e24;
+      // Armored Boss Guards carry higher-tier weapons than standard raiders!
+      const guardWpns = ['ak74m', 'm24', 'awm338', 'mp5k', 'm870'];
+      this.weaponId = guardWpns[Math.floor(Math.random() * guardWpns.length)];
     } else if (tier === 'heavy') {
       this.name = 'Armored Juggernaut';
       this.maxHp = 190;
@@ -273,8 +289,14 @@ class Enemy {
       this.group.add(built.root);
       this.leftHip = built.leftLeg.hip;
       this.rightHip = built.rightLeg.hip;
+      this.leftKnee = built.leftLeg.knee || null;
+      this.rightKnee = built.rightLeg.knee || null;
       this.leftArm = built.leftArm.shoulder;
       this.rightArm = built.rightArm.shoulder;
+      this.leftElbow = built.leftArm.elbow || null;
+      this.rightElbow = built.rightArm.elbow || null;
+      this.torsoGroup = built.torso || null;
+      this.headGroup = built.head || null;
       this.opModel = built;
 
       built.chest.userData = { enemy: this, part: 'torso' };
@@ -561,7 +583,7 @@ class Enemy {
 
       // 1. Always drop the gun they were holding (with randomized attachments matching its tier rarity)
       if (this.weaponId && GAME_DATA.ITEMS[this.weaponId]) {
-        const dropRar = this.tier === 'boss' ? 'legendary' : (this.tier === 'raider' ? 'rare' : 'common');
+        const dropRar = this.tier === 'boss' ? 'legendary' : (this.tier === 'boss_guard' ? 'epic' : (this.tier === 'raider' ? 'rare' : 'common'));
         const rolled = GAME_DATA.rollRandomAttachmentsForRarity
           ? GAME_DATA.rollRandomAttachmentsForRarity(this.weaponId, dropRar)
           : { mods: {}, rarity: dropRar };
@@ -571,7 +593,7 @@ class Enemy {
         });
       }
       // 2. Occasionally drop 1-2 armor plates
-      const plateChance = this.tier === 'boss' ? 0.90 : (this.tier === 'raider' ? 0.55 : 0.35);
+      const plateChance = this.tier === 'boss' ? 0.90 : (this.tier === 'boss_guard' ? 0.85 : (this.tier === 'raider' ? 0.55 : 0.35));
       if (Math.random() < plateChance) {
         const plateQty = 1 + (Math.random() < 0.45 ? 1 : 0);
         this.world.spawnGroundItem('armor_plate', plateQty, dropNear(-0.45, 0.35));
@@ -657,11 +679,96 @@ class Enemy {
       this.group.rotation.y = Math.atan2(dx, dz);
     }
 
-    // Leg walk animation around hip pivots
-    const t = performance.now() * 0.0045;
-    this.leftHip.rotation.x = Math.sin(t) * 0.38;
-    this.rightHip.rotation.x = -Math.sin(t) * 0.38;
+    // Leg walk animation around hip pivots + articulated knee/arm/torso motion
+    this._animMoving = true;
+    this._animSpeed = speed;
+    this.updateVisualAnim(dt, true, speed);
     return true;
+  }
+
+  // Articulated motion-capture-adjacent 3rd-person animation (also runs smoothly at long sniper scope distances!)
+  updateVisualAnim(dt, movingOverride = null, speedOverride = null) {
+    if (this.dead || this.isDowned) return;
+    const isMoving = movingOverride !== null ? movingOverride : !!this._animMoving;
+    const spd = speedOverride !== null ? speedOverride : (this._animSpeed || this.speed || 3.4);
+    const isSprinting = isMoving && (this.isTacSprinting || spd >= 4.6);
+    const isCrouching = !isMoving && (this.state === 'COMBAT' && this.coverTarget != null);
+    const isFocusing = this.state === 'COMBAT' && !isSprinting;
+    const isPlating = (this.platingTimer || 0) > 0;
+    const isReloading = (this.reloadTimer || 0) > 0;
+
+    if (isMoving) {
+      this._walkPhase = (this._walkPhase || 0) + dt * (isSprinting ? 10.5 : 7.2);
+    }
+    const ph = this._walkPhase || 0;
+    const strideAmp = isMoving ? (isSprinting ? 0.72 : 0.46) : 0;
+    const lSwing = Math.sin(ph) * strideAmp;
+    const rSwing = -Math.sin(ph) * strideAmp;
+
+    // Articulated Hip & Knee kinematics
+    if (this.leftHip && this.rightHip) {
+      const targetLHip = isCrouching ? -0.78 : lSwing;
+      const targetRHip = isCrouching ? -0.58 : rSwing;
+      this.leftHip.rotation.x = THREE.MathUtils.lerp(this.leftHip.rotation.x, targetLHip, Math.min(1, dt * 12));
+      this.rightHip.rotation.x = THREE.MathUtils.lerp(this.rightHip.rotation.x, targetRHip, Math.min(1, dt * 12));
+    }
+    if (this.leftKnee && this.rightKnee) {
+      const targetLKnee = isCrouching ? 1.38 : (isMoving ? Math.max(0.08, -lSwing * 0.95 + 0.22) : 0.08);
+      const targetRKnee = isCrouching ? 1.15 : (isMoving ? Math.max(0.08, -rSwing * 0.95 + 0.22) : 0.08);
+      this.leftKnee.rotation.x = THREE.MathUtils.lerp(this.leftKnee.rotation.x, targetLKnee, Math.min(1, dt * 12));
+      this.rightKnee.rotation.x = THREE.MathUtils.lerp(this.rightKnee.rotation.x, targetRKnee, Math.min(1, dt * 12));
+    }
+
+    // Articulated Torso lean & crouch drop
+    if (this.torsoGroup) {
+      const targetTorsoX = isCrouching ? 0.24 : (isSprinting ? 0.16 : (isFocusing ? 0.08 : 0.02));
+      this.torsoGroup.rotation.x = THREE.MathUtils.lerp(this.torsoGroup.rotation.x, targetTorsoX, Math.min(1, dt * 10));
+    }
+
+    // Articulated Arms & Elbows (Focusing ADS, Reloading, Plating, Sprinting)
+    const nowS = (this._animTime = (this._animTime || 0) + dt);
+    if (this.leftArm && this.rightArm) {
+      let lX = -0.82, rX = -1.02, lZ = 0.14, rZ = -0.10;
+      let lElb = -0.75, rElb = -0.85;
+      if (isPlating) {
+        const cyc = (nowS * 2.2) % 1;
+        lX = -1.15 - Math.sin(cyc * Math.PI) * 0.45;
+        lZ = 0.48;
+        rX = -0.45;
+        lElb = -1.25;
+      } else if (isReloading) {
+        const cyc = (nowS * 2.6) % 1;
+        lX = -0.65 - Math.sin(cyc * Math.PI) * 0.65;
+        lZ = 0.35;
+        rX = -0.95;
+        rZ = 0.18;
+        lElb = -1.3;
+      } else if (isFocusing) {
+        lX = -1.28;
+        rX = -1.36;
+        lZ = 0.22;
+        rZ = -0.06;
+        lElb = -0.92;
+        rElb = -1.05;
+      } else if (isSprinting) {
+        lX = -1.15 + Math.sin(ph) * 0.22;
+        rX = -1.25 - Math.sin(ph) * 0.22;
+        lZ = 0.28;
+        rZ = -0.22;
+      }
+      this.leftArm.rotation.x = THREE.MathUtils.lerp(this.leftArm.rotation.x, lX, Math.min(1, dt * 11));
+      this.rightArm.rotation.x = THREE.MathUtils.lerp(this.rightArm.rotation.x, rX, Math.min(1, dt * 11));
+      this.leftArm.rotation.z = THREE.MathUtils.lerp(this.leftArm.rotation.z, lZ, Math.min(1, dt * 11));
+      this.rightArm.rotation.z = THREE.MathUtils.lerp(this.rightArm.rotation.z, rZ, Math.min(1, dt * 11));
+      if (this.leftElbow) this.leftElbow.rotation.x = THREE.MathUtils.lerp(this.leftElbow.rotation.x, lElb, Math.min(1, dt * 11));
+      if (this.rightElbow) this.rightElbow.rotation.x = THREE.MathUtils.lerp(this.rightElbow.rotation.x, rElb, Math.min(1, dt * 11));
+    }
+
+    // Cheek-weld head tilt when focusing weapon
+    if (this.headGroup) {
+      const targetHeadZ = isFocusing ? -0.10 : 0;
+      this.headGroup.rotation.z = THREE.MathUtils.lerp(this.headGroup.rotation.z, targetHeadZ, Math.min(1, dt * 10));
+    }
   }
 
   _collides(x, z, r) {
@@ -1543,12 +1650,22 @@ class EnemyManager {
       this.enemies.push(new Enemy(scene, world, sp.pos, sp.tier, null, weaponSystem));
     }
 
-    // 3. Spawn Sector Boss at the Boss Encampment POI (drops gun + plates/ammo + Boss Small Pack w/ Boss Key & Legendary Weapon!)
+    // 3. Spawn Sector Boss INSIDE the Boss Encampment's Multi-Floor Central Command Center
     const bossPoi = (world.pois || []).find(p => (p.name || '').toLowerCase().includes('boss'));
     const bx = bossPoi ? bossPoi.x + 2.5 : 312.5;
     const bz = bossPoi ? bossPoi.z + 3.5 : -266.5;
-    const bossPos = new THREE.Vector3(bx, world.getTerrainHeight ? world.getTerrainHeight(bx, bz) : 0, bz);
+    const bossPos = (world.bossSpawnPos && world.bossSpawnPos.clone)
+      ? world.bossSpawnPos.clone()
+      : new THREE.Vector3(bx, world.getTerrainHeight ? world.getTerrainHeight(bx, bz) : 0, bz);
     this.enemies.push(new Enemy(scene, world, bossPos, 'boss', null, weaponSystem));
+
+    // 4. Spawn Armored Boss Guards inside/around the Command Center & Compound (drop higher-tier weapons!)
+    const guardSpawns = (world.bossGuardSpawns && world.bossGuardSpawns.length > 0)
+      ? world.bossGuardSpawns
+      : [new THREE.Vector3(bx - 5, bossPos.y, bz + 5), new THREE.Vector3(bx + 5, bossPos.y, bz + 5)];
+    for (const gp of guardSpawns) {
+      this.enemies.push(new Enemy(scene, world, gp.clone(), 'boss_guard', null, weaponSystem));
+    }
 
     this.enemies.forEach((e, idx) => { e.netIdx = idx; });
   }
@@ -1742,6 +1859,8 @@ class EnemyManager {
       }
       if (stride > 1) {
         e._lodDtAcc = (e._lodDtAcc || 0) + dt;
+        // Keep distant enemies smoothly animated every frame so sniper scope tracking is fluid!
+        if (e.updateVisualAnim) e.updateVisualAnim(dt);
         if ((i + f) % stride !== 0) continue;
         const stepDt = Math.min(0.2, e._lodDtAcc);
         e._lodDtAcc = 0;

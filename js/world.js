@@ -21,9 +21,9 @@ class WastelandWorld {
     this._poiPads = [
       { x: 0, z: 0, r: 28, h: 1.5 },          // WAREHOUSE (Central Hub)
       { x: -320, z: -240, r: 30, h: 6.5 },    // COMPOUND (NW Military Base)
-      { x: 340, z: 20, r: 26, h: 3.0 },       // CLINIC (East Meadow)
-      { x: -260, z: 310, r: 26, h: 2.0 },     // POLICE/FIRE (SW Low-Threat Outpost)
-      { x: 310, z: -270, r: 32, h: 9.5 },     // BOSS CAMP (NE Highland Fortress)
+      { x: 340, z: 20, r: 32, h: 3.0 },       // CLINIC (East Meadow - Multi-Room Hospital)
+      { x: -258, z: 312, r: 38, h: 2.0 },     // POLICE (2-Story) & FIRE STATION + TOWER
+      { x: 310, z: -270, r: 46, h: 9.5 },     // BOSS CAMP (NE Walled Compound & Command Center)
       { x: 270, z: 290, r: 26, h: 5.5 },      // RADIO OUTPOST (SE Low-Threat Hilltop)
       { x: -370, z: 50, r: 32, h: 0.5 },      // RAIL YARD (West Valley Depot)
       { x: -60, z: -340, r: 26, h: 10.0 },    // NORTH BUNKER (Northern Ridge)
@@ -256,22 +256,120 @@ class WastelandWorld {
     canvas.height = 512;
     const ctx = canvas.getContext('2d');
 
-    ctx.fillStyle = '#4a4337';
+    // Rich lush green grass meadow base
+    ctx.fillStyle = '#3b5929';
     ctx.fillRect(0, 0, 512, 512);
 
-    // Dusty patches & rubble noise
-    for (let i = 0; i < 4500; i++) {
+    // Soft organic meadow patches (sunlit grass + deep moss)
+    for (let i = 0; i < 260; i++) {
       const x = Math.random() * 512;
       const y = Math.random() * 512;
-      const s = Math.random() * 4 + 1;
-      ctx.fillStyle = Math.random() > 0.5 ? 'rgba(95,85,68,0.35)' : 'rgba(38,34,28,0.35)';
-      ctx.fillRect(x, y, s, s);
+      const r = 14 + Math.random() * 34;
+      ctx.fillStyle = Math.random() > 0.45 ? 'rgba(92, 134, 52, 0.22)' : 'rgba(34, 56, 22, 0.24)';
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Crisp grass blade strokes & clover texture
+    const bladeCols = ['rgba(104,148,58,0.52)', 'rgba(72,112,42,0.55)', 'rgba(42,68,26,0.48)', 'rgba(130,164,74,0.34)'];
+    for (let i = 0; i < 9000; i++) {
+      const x = Math.random() * 512;
+      const y = Math.random() * 512;
+      const len = 3 + Math.random() * 6;
+      ctx.fillStyle = bladeCols[i % bladeCols.length];
+      ctx.fillRect(x, y, 1.5, len);
     }
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(110, 110);
+    return tex;
+  }
+
+  _createBushFoliageTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, 256, 256);
+
+    // Subtle dark inner twigs
+    ctx.strokeStyle = '#3a2d1e';
+    ctx.lineWidth = 4;
+    for (let i = 0; i < 9; i++) {
+      const ang = -Math.PI * 0.85 + (i / 8) * Math.PI * 0.7;
+      ctx.beginPath();
+      ctx.moveTo(128, 242);
+      ctx.lineTo(128 + Math.cos(ang) * 95, 242 + Math.sin(ang) * 145);
+      ctx.stroke();
+    }
+
+    // Layered see-through leaf clusters with natural air gaps around perimeter
+    const leafCols = ['#24421d', '#315925', '#3f6e2e', '#528538', '#2a4d20'];
+    for (let i = 0; i < 210; i++) {
+      const t = Math.random() * Math.PI * 2;
+      const rad = Math.pow(Math.random(), 0.65) * 98;
+      const lx = 128 + Math.cos(t) * rad * 1.05;
+      const ly = 136 + Math.sin(t) * rad * 0.88;
+      if (ly > 246 || ly < 16 || lx < 12 || lx > 244) continue;
+      // Leave small see-through perforations
+      if (rad > 72 && Math.random() < 0.32) continue;
+      ctx.save();
+      ctx.translate(lx, ly);
+      ctx.rotate(Math.random() * Math.PI * 2);
+      ctx.fillStyle = leafCols[i % leafCols.length];
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 6 + Math.random() * 9, 3.2 + Math.random() * 4.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
+    return tex;
+  }
+
+  _createTreeCanopyTexture() {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, 256, 256);
+
+    // Conifer pine bough silhouette with jagged needle fronds and see-through gaps between tiers
+    const pineCols = ['#1e381d', '#284a25', '#345e2e', '#407036', '#182e18'];
+    for (let tier = 0; tier < 7; tier++) {
+      const ty = 32 + tier * 31;
+      const spread = 24 + tier * 17;
+      // Branch stems
+      ctx.strokeStyle = '#3b2c1d';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(128, ty - 6);
+      ctx.lineTo(128 - spread * 0.9, ty + 14);
+      ctx.moveTo(128, ty - 6);
+      ctx.lineTo(128 + spread * 0.9, ty + 14);
+      ctx.stroke();
+
+      // Pine needle clusters along each bough
+      const clusterCount = 18 + tier * 7;
+      for (let c = 0; c < clusterCount; c++) {
+        const frac = (Math.random() * 2 - 1);
+        const nx = 128 + frac * spread;
+        const ny = ty + Math.abs(frac) * 14 + (Math.random() - 0.5) * 16;
+        ctx.save();
+        ctx.translate(nx, ny);
+        ctx.rotate(frac * 0.65 + (Math.random() - 0.5) * 0.5);
+        ctx.fillStyle = pineCols[(tier + c) % pineCols.length];
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 9 + Math.random() * 9, 3.2 + Math.random() * 3.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    const tex = new THREE.CanvasTexture(canvas);
     return tex;
   }
 
@@ -321,10 +419,10 @@ class WastelandWorld {
 
     const posAttr = groundGeo.attributes.position;
     const colors = new Float32Array(posAttr.count * 3);
-    const colLow = new THREE.Color(0x6e624d);     // Dry creek gravel / ochre earth
-    const colMid = new THREE.Color(0x6f7356);     // Dry wasteland scrub grass
-    const colHigh = new THREE.Color(0x7c786c);    // Highland rocky ridge
-    const colSlope = new THREE.Color(0x655c4e);   // Exposed dirt hillside
+    const colLow = new THREE.Color(0x5a7c3c);     // Lush valley meadow grass
+    const colMid = new THREE.Color(0x6b9246);     // Sunlit green pasture grass
+    const colHigh = new THREE.Color(0x7c9658);    // Highland alpine grass
+    const colSlope = new THREE.Color(0x5e6e48);   // Mossy hillside grass
     const tmpCol = new THREE.Color();
 
     for (let i = 0; i < posAttr.count; i++) {
@@ -426,94 +524,124 @@ class WastelandWorld {
 
     const dummy = new THREE.Object3D();
 
-    // 1. Instanced Pine / Spruce Forest Trees (480 trees -> only 3 draw calls!)
-    const pineCount = 480;
-    const trunkGeo = new THREE.CylinderGeometry(0.22, 0.36, 4.2, 6);
-    trunkGeo.translate(0, 2.1, 0);
-    const foliageLowGeo = new THREE.ConeGeometry(2.4, 5.4, 7);
-    foliageLowGeo.translate(0, 5.6, 0);
-    const foliageTopGeo = new THREE.ConeGeometry(1.65, 4.4, 7);
-    foliageTopGeo.translate(0, 8.6, 0);
+    // Helper: Build a crossed 3-plane star geometry for crisp see-through foliage clusters (1 draw call via InstancedMesh!)
+    const buildCrossedPlanesGeo = (w, h, yOffset = 0, count = 3) => {
+      const positions = [];
+      const normals = [];
+      const uvs = [];
+      const indices = [];
+      let vOff = 0;
+      for (let i = 0; i < count; i++) {
+        const ang = (i / count) * Math.PI;
+        const c = Math.cos(ang) * (w * 0.5);
+        const s = Math.sin(ang) * (w * 0.5);
+        positions.push(
+          -c, yOffset, -s,
+           c, yOffset,  s,
+           c, yOffset + h,  s,
+          -c, yOffset + h, -s
+        );
+        normals.push(0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0);
+        uvs.push(0, 0, 1, 0, 1, 1, 0, 1);
+        indices.push(vOff, vOff + 1, vOff + 2, vOff, vOff + 2, vOff + 3);
+        vOff += 4;
+      }
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+      g.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+      g.setIndex(indices);
+      return g;
+    };
+
+    // 1. Instanced Alpha-Tested See-Through Conifer / Pine Forest Trees (760 trees -> only 2 draw calls!)
+    const pineCount = 760;
+    const trunkGeo = new THREE.CylinderGeometry(0.18, 0.34, 5.0, 6);
+    trunkGeo.translate(0, 2.5, 0);
+    const treeCanopyGeo = buildCrossedPlanesGeo(6.4, 9.6, 2.0, 3);
 
     const trunkMat = new THREE.MeshLambertMaterial({ color: 0x4b3827 });
-    const pineMatA = new THREE.MeshLambertMaterial({ color: 0x2d4329 });
-    const pineMatB = new THREE.MeshLambertMaterial({ color: 0x375231 });
+    const treeCanopyMat = new THREE.MeshLambertMaterial({
+      map: this._createTreeCanopyTexture(),
+      alphaTest: 0.38,
+      side: THREE.DoubleSide
+    });
 
     const trunkInst = new THREE.InstancedMesh(trunkGeo, trunkMat, pineCount);
-    const coneLowInst = new THREE.InstancedMesh(foliageLowGeo, pineMatA, pineCount);
-    const coneTopInst = new THREE.InstancedMesh(foliageTopGeo, pineMatB, pineCount);
+    const canopyInst = new THREE.InstancedMesh(treeCanopyGeo, treeCanopyMat, pineCount);
     trunkInst.castShadow = false;
-    coneLowInst.castShadow = false;
-    coneTopInst.castShadow = false;
-    coneLowInst.receiveShadow = false;
+    canopyInst.castShadow = false;
+    canopyInst.receiveShadow = false;
 
     let placedPines = 0;
-    for (let tries = 0; tries < 2400 && placedPines < pineCount; tries++) {
-      // Cluster trees into natural groves across the 1240m map
+    for (let tries = 0; tries < 3600 && placedPines < pineCount; tries++) {
+      // Cluster trees into lush natural groves across the 1240m map
       const x = (rand() * 2 - 1) * (this.mapHalfSize + 70);
       const z = (rand() * 2 - 1) * (this.mapHalfSize + 70);
       if (!isClearForNature(x, z, 6)) continue;
-      // Favor natural forest density bands using low-frequency noise
       const grove = Math.sin(x * 0.009) * Math.cos(z * 0.009) + Math.sin((x - z) * 0.006) * 0.5;
-      if (grove < -0.25 && rand() < 0.72) continue;
+      if (grove < -0.35 && rand() < 0.62) continue;
 
       const y = this.getTerrainHeight(x, z);
-      const s = 0.78 + rand() * 0.68;
+      const s = 0.78 + rand() * 0.72;
       dummy.position.set(x, y - 0.15, z);
-      dummy.rotation.set((rand() - 0.5) * 0.06, rand() * Math.PI * 2, (rand() - 0.5) * 0.06);
-      dummy.scale.set(s, s * (0.9 + rand() * 0.25), s);
+      dummy.rotation.set((rand() - 0.5) * 0.05, rand() * Math.PI * 2, (rand() - 0.5) * 0.05);
+      dummy.scale.set(s, s * (0.9 + rand() * 0.28), s);
       dummy.updateMatrix();
 
       trunkInst.setMatrixAt(placedPines, dummy.matrix);
-      coneLowInst.setMatrixAt(placedPines, dummy.matrix);
-      coneTopInst.setMatrixAt(placedPines, dummy.matrix);
+      canopyInst.setMatrixAt(placedPines, dummy.matrix);
 
       // Add trunk collider for playable interior trees
       if (Math.abs(x) <= this.mapHalfSize && Math.abs(z) <= this.mapHalfSize) {
-        const cr = 0.38 * s;
+        const cr = 0.36 * s;
         this.colliders.push({
           minX: x - cr, maxX: x + cr,
-          minY: y - 0.5, maxY: y + 4.5 * s,
+          minY: y - 0.5, maxY: y + 4.8 * s,
           minZ: z - cr, maxZ: z + cr
         });
       }
       placedPines++;
     }
     trunkInst.count = placedPines;
-    coneLowInst.count = placedPines;
-    coneTopInst.count = placedPines;
+    canopyInst.count = placedPines;
     trunkInst.instanceMatrix.needsUpdate = true;
-    coneLowInst.instanceMatrix.needsUpdate = true;
-    coneTopInst.instanceMatrix.needsUpdate = true;
-    this._pineMeshes = [trunkInst, coneLowInst, coneTopInst];
+    canopyInst.instanceMatrix.needsUpdate = true;
+    trunkInst.matrixAutoUpdate = false;
+    canopyInst.matrixAutoUpdate = false;
+    this._pineMeshes = [trunkInst, canopyInst];
     this._maxPines = placedPines;
-    this.scene.add(trunkInst, coneLowInst, coneTopInst);
+    this.scene.add(trunkInst, canopyInst);
 
-    // 2. Instanced Tactical Bushes & Foliage Shrubs (750 clusters -> 1 draw call!)
-    const bushCount = 750;
-    const bushGeo = new THREE.DodecahedronGeometry(1.15, 0);
-    bushGeo.scale(1.15, 0.72, 1.15);
-    bushGeo.translate(0, 0.55, 0);
-    const bushMat = new THREE.MeshLambertMaterial({ color: 0x3d5131 });
+    // 2. Instanced See-Through Leaf-Textured Tactical Bushes (1,600 dense bushes -> 1 draw call!)
+    const bushCount = 1600;
+    const bushGeo = buildCrossedPlanesGeo(2.5, 1.85, -0.08, 3);
+    const bushMat = new THREE.MeshLambertMaterial({
+      map: this._createBushFoliageTexture(),
+      alphaTest: 0.42,
+      side: THREE.DoubleSide
+    });
     const bushInst = new THREE.InstancedMesh(bushGeo, bushMat, bushCount);
-    bushInst.receiveShadow = true;
+    bushInst.receiveShadow = false;
+    bushInst.castShadow = false;
 
     let placedBushes = 0;
-    for (let tries = 0; tries < 2200 && placedBushes < bushCount; tries++) {
+    for (let tries = 0; tries < 4800 && placedBushes < bushCount; tries++) {
       const x = (rand() * 2 - 1) * this.mapHalfSize;
       const z = (rand() * 2 - 1) * this.mapHalfSize;
       if (!isClearForNature(x, z, 2)) continue;
       const y = this.getTerrainHeight(x, z);
       const s = 0.65 + rand() * 0.95;
-      dummy.position.set(x, y - 0.1, z);
+      dummy.position.set(x, y - 0.05, z);
       dummy.rotation.set(0, rand() * Math.PI * 2, 0);
-      dummy.scale.set(s, s * (0.75 + rand() * 0.45), s);
+      dummy.scale.set(s, s * (0.78 + rand() * 0.42), s);
       dummy.updateMatrix();
       bushInst.setMatrixAt(placedBushes, dummy.matrix);
       placedBushes++;
     }
     bushInst.count = placedBushes;
     bushInst.instanceMatrix.needsUpdate = true;
+    bushInst.matrixAutoUpdate = false;
     this._bushInst = bushInst;
     this._maxBushes = placedBushes;
     this.scene.add(bushInst);
@@ -814,59 +942,300 @@ class WastelandWorld {
       this._addBarrier(cx + 15, cz + 9, true);
     }
 
-    // 2. Field Hospital & Clinic (East Meadow: 340, 20)
+    // Helper: Walkable staircase (stepH <= 0.30m so player._getSupportHeightAt walks smoothly up!)
+    const addStaircase = (startX, baseY, startZ, steps, stepW, totalH, totalRun, dir = 'north') => {
+      const stepH = totalH / steps;
+      const stepD = totalRun / steps;
+      for (let i = 0; i < steps; i++) {
+        const curH = stepH * (i + 1);
+        const offset = stepD * (i + 0.5);
+        let sx = startX, sz = startZ, sw = stepW, sd = stepD + 0.08;
+        if (dir === 'north') sz = startZ - offset;
+        else if (dir === 'south') sz = startZ + offset;
+        else if (dir === 'east') { sx = startX + offset; sw = stepD + 0.08; sd = stepW; }
+        else if (dir === 'west') { sx = startX - offset; sw = stepD + 0.08; sd = stepW; }
+        this._addBox(sx, baseY + curH * 0.5, sz, sw, curH, sd, this._materials.metal, true);
+      }
+    };
+
+    // Helper: Hospital Bed prop (steel frame + white mattress + pillow)
+    const addHospitalBed = (bx, by, bz, rotY = 0) => {
+      const horiz = Math.abs(Math.sin(rotY)) > 0.5;
+      const w = horiz ? 2.1 : 1.05;
+      const d = horiz ? 1.05 : 2.1;
+      this._addBox(bx, by + 0.32, bz, w, 0.32, d, this._materials.metal, true);
+      this._addBox(bx, by + 0.56, bz, w - 0.08, 0.18, d - 0.08, this._materials.crateMed, false);
+      const px = horiz ? bx - 0.65 : bx;
+      const pz = horiz ? bz : bz - 0.65;
+      this._addBox(px, by + 0.70, pz, horiz ? 0.42 : 0.72, 0.12, horiz ? 0.72 : 0.42, this._materials.crateMed, false);
+    };
+
+    // Helper: Office / Detective Desk + Monitor prop
+    const addDeskProp = (dx, by, dz) => {
+      this._addBox(dx, by + 0.42, dz, 1.8, 0.82, 0.9, this._materials.wood, true);
+      this._addBox(dx - 0.35, by + 1.05, dz - 0.2, 0.55, 0.38, 0.08, this._materials.metal, false);
+    };
+
+    // Helper: Military Canvas Tent with pitched roof & open front/back for lockers & crates
+    const addMilitaryTent = (tx, by, tz, w = 8.5, d = 6.2) => {
+      const h = 3.2;
+      // Corner & ridge support poles
+      for (const sx of [-w / 2 + 0.2, w / 2 - 0.2]) {
+        for (const sz of [-d / 2 + 0.2, d / 2 - 0.2]) {
+          this._addBox(tx + sx, by + h * 0.42, tz + sz, 0.16, h * 0.84, 0.16, this._materials.metal, false);
+        }
+      }
+      // Side canvas walls (left & right)
+      this._addBox(tx - w / 2, by + h * 0.38, tz, 0.14, h * 0.76, d, this._materials.rustOlive, true);
+      this._addBox(tx + w / 2, by + h * 0.38, tz, 0.14, h * 0.76, d, this._materials.rustOlive, true);
+      // Pitched canvas roof (two stepped ridge slabs)
+      this._addBox(tx - w * 0.25, by + h * 0.85, tz, w * 0.56, 0.14, d + 0.3, this._materials.rustOlive, false);
+      this._addBox(tx + w * 0.25, by + h * 0.85, tz, w * 0.56, 0.14, d + 0.3, this._materials.rustOlive, false);
+      this._addBox(tx, by + h * 0.98, tz, w * 0.42, 0.18, d + 0.3, this._materials.crateMil, false);
+    };
+
+    // 2. Multi-Room Field Hospital & Clinic (East Meadow: 340, 20)
     {
       const cx = 340, cz = 20;
       const by = this.getTerrainHeight(cx, cz);
-      this._addBuilding(cx, cz, 14, 12, 4.4, 'west');
+      this._addBuilding(cx, cz, 22, 16, 4.5, 'west');
       this.pois.push({ name: 'CLINIC', x: cx, z: cz, color: '#69f0ae', threat: 'medium' });
-      this._addWallFirstAidKit(cx - 2.5, cz - 5.55, 'north', 'Clinic Wall First Aid Kit');
-      this._addWallFirstAidKit(cx + 6.55, cz - 1.5, 'east', 'Trauma Room First Aid Kit');
-      this._addBox(cx + 2.8, by + 1.7, cz + 3.8, 0.22, 3.2, 3.2, this._materials.concrete);
-      this._addMedicineCabinet(cx + 4.6, cz + 5.55, 'south', 'Clinic Bathroom Medicine Cabinet');
-      this._addLootContainer(cx + 5.2, 0.16, cz - 4.2, 'hospital', 'Hospital Trauma Crate');
-      this._addMetalShelf(cx + 1.2, cz - 5.1, 0, [
+
+      // Front Triage / Reception Desk near west entrance
+      this._addBox(cx - 7.5, by + 0.55, cz - 2.6, 1.2, 1.1, 3.8, this._materials.crateMed, true);
+      this._addWallFirstAidKit(cx - 5.5, cz - 7.55, 'north', 'Clinic Lobby First Aid Kit');
+
+      // Central Corridor + 4 Partitioned Exam / Patient Rooms (2 North rooms, 2 South rooms with doorways)
+      // North Wing Partition Walls (leaving 2.4m doorways off central hallway)
+      this._addBox(cx - 2.2, by + 2.1, cz - 4.6, 0.24, 4.2, 6.2, this._materials.concrete, true);
+      this._addBox(cx + 4.4, by + 2.1, cz - 4.6, 0.24, 4.2, 6.2, this._materials.concrete, true);
+      this._addBox(cx + 1.1, by + 2.1, cz - 1.6, 4.0, 4.2, 0.24, this._materials.concrete, true);
+      this._addBox(cx + 7.7, by + 2.1, cz - 1.6, 4.0, 4.2, 0.24, this._materials.concrete, true);
+
+      // South Wing Partition Walls
+      this._addBox(cx - 2.2, by + 2.1, cz + 4.6, 0.24, 4.2, 6.2, this._materials.concrete, true);
+      this._addBox(cx + 4.4, by + 2.1, cz + 4.6, 0.24, 4.2, 6.2, this._materials.concrete, true);
+      this._addBox(cx + 1.1, by + 2.1, cz + 1.6, 4.0, 4.2, 0.24, this._materials.concrete, true);
+      this._addBox(cx + 7.7, by + 2.1, cz + 1.6, 4.0, 4.2, 0.24, this._materials.concrete, true);
+
+      // Hospital Beds inside all 4 Patient / Trauma Rooms
+      addHospitalBed(cx + 1.0, by, cz - 5.6, 0);
+      addHospitalBed(cx + 7.6, by, cz - 5.6, 0);
+      addHospitalBed(cx + 1.0, by, cz + 5.6, 0);
+      addHospitalBed(cx + 7.6, by, cz + 5.6, 0);
+      addHospitalBed(cx - 5.2, by, cz + 5.4, Math.PI / 2);
+
+      // Medical loot across the rooms
+      this._addWallFirstAidKit(cx + 10.55, cz - 4.2, 'east', 'Trauma Room First Aid Kit');
+      this._addMedicineCabinet(cx + 7.4, cz + 7.55, 'south', 'Clinic Pharmacy Cabinet');
+      this._addLootContainer(cx + 8.6, 0.16, cz - 2.8, 'hospital', 'Hospital Trauma Crate');
+      this._addLootContainer(cx - 5.5, 0.16, cz - 6.0, 'hospital', 'Triage Supply Case');
+      this._addMetalShelf(cx + 1.0, cz - 7.1, 0, [
         { id: 'bandage', qty: 2 }, { id: 'painkillers', qty: 1 }, { id: 'cloth_roll', qty: 2 }
       ]);
-      this._addWorkbenchTable(cx - 0.5, cz + 0.5, 0, [
+      this._addWorkbenchTable(cx - 4.8, cz + 1.2, 0, [
         { id: 'medkit', qty: 1 }, { id: 'water_filter', qty: 1 }
       ]);
-      this._addBarrier(cx - 14, cz - 6, false);
+      this._addBarrier(cx - 16, cz - 6, false);
     }
 
-    // 3. Police & Fire Station (SW Low-Threat Outpost: -260, 310)
+    // 3. 2-Story Police Station + Fire Station with Large Garage & Climbable Watch Tower (SW Outpost: -258, 312)
     {
-      const cx = -260, cz = 310;
-      const by = this.getTerrainHeight(cx, cz);
-      this._addBuilding(cx, cz, 16, 12, 4.4, 'east');
-      this.pois.push({ name: 'POLICE/FIRE', x: cx, z: cz, color: '#42a5f5', threat: 'low' });
-      this._addGunLocker(cx - 7.1, cz - 2.2, Math.PI / 2, 'police_fire', 'Police Gun Locker');
-      this._addGunLocker(cx - 7.1, cz + 1.8, Math.PI / 2, 'police_fire', 'Fire & Rescue Gear Locker');
-      this._addWallFirstAidKit(cx + 4.0, cz - 5.55, 'north', 'Station Wall First Aid Kit');
-      this._addBox(cx + 1.8, by + 1.7, cz + 3.6, 0.22, 3.2, 3.0, this._materials.concrete);
-      this._addMedicineCabinet(cx + 4.0, cz + 5.55, 'south', 'Station Bathroom Medicine Cabinet');
-      this._addMetalShelf(cx - 1.5, cz - 5.1, 0, [
-        { id: 'armor_plate', qty: 2 }, { id: 'ammo_9x19', qty: 24 }, { id: 'ammo_12g', qty: 12 }
+      const pcx = -270, pcz = 304;
+      const pby = this.getTerrainHeight(pcx, pcz);
+      this.pois.push({ name: 'POLICE & FIRE', x: -258, z: 312, color: '#42a5f5', threat: 'low' });
+
+      // === A. 2-STORY POLICE STATION (18m x 14m, 2 Floors) ===
+      const pw = 18, pd = 14, ph = 4.2;
+      // Ground floor slab & outer walls (east entrance)
+      this._addBox(pcx, pby - 0.5, pcz, pw + 0.6, 1.0, pd + 0.6, this._materials.darkConcrete, false);
+      this._addBox(pcx, pby + 0.08, pcz, pw, 0.16, pd, this._materials.darkConcrete, false);
+      // North, South, West solid walls (2 stories tall = 8.4m)
+      this._addBox(pcx, pby + ph, pcz - pd / 2, pw, ph * 2, 0.5, this._materials.concrete, true);
+      this._addBox(pcx, pby + ph, pcz + pd / 2, pw, ph * 2, 0.5, this._materials.concrete, true);
+      this._addBox(pcx - pw / 2, pby + ph, pcz, 0.5, ph * 2, pd, this._materials.concrete, true);
+      // East facade with ground entrance doorway + 2nd floor wall
+      this._addBox(pcx + pw / 2, pby + ph / 2, pcz - 4.4, 0.5, ph, 5.2, this._materials.concrete, true);
+      this._addBox(pcx + pw / 2, pby + ph / 2, pcz + 4.4, 0.5, ph, 5.2, this._materials.concrete, true);
+      this._addBox(pcx + pw / 2, pby + ph * 1.5, pcz, 0.5, ph, pd, this._materials.concrete, true);
+      // 2nd Floor Slab (leaving stairwell cutout on south-east corner)
+      this._addBox(pcx - 2.2, pby + ph, pcz, pw - 4.4, 0.28, pd - 0.4, this._materials.darkConcrete, true);
+      this._addBox(pcx + 6.6, pby + ph, pcz - 3.6, 4.4, 0.28, 6.4, this._materials.darkConcrete, true);
+      // Roof over 2nd floor
+      this._addBox(pcx, pby + ph * 2 + 0.15, pcz, pw + 0.5, 0.3, pd + 0.5, this._materials.darkConcrete, true);
+      // Blue Police Precinct Fascia Stripe
+      this._addBox(pcx + pw / 2 + 0.28, pby + ph * 2 - 0.35, pcz, 0.12, 0.48, pd, this._materials.rustBlue, false);
+
+      // Ground Floor: Holding / Booking Reception Counter
+      this._addBox(pcx + 2.2, pby + 0.55, pcz - 2.8, 1.0, 1.1, 4.2, this._materials.wood, true);
+      // Ground Floor: 3-Cell Cell Block along West Wall (iron bar fronts + concrete cell dividers + benches)
+      for (let cell = 0; cell < 3; cell++) {
+        const czCell = pcz - 4.2 + cell * 4.2;
+        if (cell > 0) {
+          this._addBox(pcx - 6.6, pby + 2.0, czCell - 2.1, 4.2, 4.0, 0.22, this._materials.concrete, true);
+        }
+        // Vertical iron cell bars with open cell doorway gap
+        for (let b = 0; b < 5; b++) {
+          this._addBox(pcx - 4.5, pby + 2.0, czCell - 1.5 + b * 0.48, 0.09, 4.0, 0.09, this._materials.metal, true);
+        }
+        // Cell sleeping bench
+        this._addBox(pcx - 8.1, pby + 0.42, czCell, 0.85, 0.42, 2.2, this._materials.metal, true);
+      }
+      this._addGunLocker(pcx + 0.6, pcz - 6.2, 0, 'police_fire', 'Booking Armory Locker');
+      this._addWallFirstAidKit(pcx + 5.2, pcz - 6.55, 'north', 'Precinct First Aid Kit');
+
+      // Walkable Interior Staircase (Ground -> 2nd Floor along south-east wall)
+      addStaircase(pcx + 6.6, pby + 0.16, pcz + 6.0, 15, 2.6, ph, 6.2, 'north');
+
+      // 2nd Floor: Detective Bullpen Desks
+      const f2y = pby + ph + 0.16;
+      addDeskProp(pcx + 2.8, f2y, pcz - 3.6);
+      addDeskProp(pcx + 2.8, f2y, pcz + 0.4);
+      addDeskProp(pcx + 2.8, f2y, pcz + 4.2);
+      addDeskProp(pcx - 1.4, f2y, pcz - 3.6);
+      addDeskProp(pcx - 1.4, f2y, pcz + 0.4);
+
+      // 2nd Floor: Evidence Processing Room (North-West walled room with doorway)
+      this._addBox(pcx - 4.0, f2y + 2.0, pcz - 2.6, 0.24, 4.0, 8.2, this._materials.concrete, true);
+      this._addBox(pcx - 6.8, f2y + 2.0, pcz + 1.5, 3.6, 4.0, 0.24, this._materials.concrete, true);
+      this._addLootContainer(pcx - 7.4, ph + 0.16, pcz - 4.8, 'military', 'Evidence Locker Vault');
+      this._addLootContainer(pcx - 7.4, ph + 0.16, pcz - 1.2, 'police_fire', 'Evidence Processing Case');
+      this._addWorkbenchTable(pcx - 6.0, pcz - 3.0, 0, [
+        { id: 'intel_drive', qty: 1 }, { id: 'armor_plate', qty: 2 }
       ]);
-      this._addWorkbenchTable(cx, cz, 0, [
-        { id: 'smoke_grenade', qty: 1 }, { id: 'armor_plate', qty: 1 }
+
+      // === B. FIRE STATION WITH LARGE GARAGE & CLIMBABLE WATCH TOWER (-244, 318) ===
+      const fcx = -244, fcz = 318;
+      const fby = this.getTerrainHeight(fcx, fcz);
+      const fw = 15, fd = 13, fh = 5.4;
+      // Garage Floor & Foundation
+      this._addBox(fcx, fby - 0.5, fcz, fw + 0.6, 1.0, fd + 0.6, this._materials.darkConcrete, false);
+      this._addBox(fcx, fby + 0.08, fcz, fw, 0.16, fd, this._materials.darkConcrete, false);
+      // North, West, East walls + high garage roof
+      this._addBox(fcx, fby + fh / 2, fcz - fd / 2, fw, fh, 0.5, this._materials.rustRed, true);
+      this._addBox(fcx - fw / 2, fby + fh / 2, fcz, 0.5, fh, fd, this._materials.rustRed, true);
+      this._addBox(fcx + fw / 2, fby + fh / 2, fcz, 0.5, fh, fd, this._materials.rustRed, true);
+      // South Garage Face: 2 Wide Open Fire-Truck Engine Bays (5.2m wide each!)
+      this._addBox(fcx - fw / 2 + 0.8, fby + fh / 2, fcz + fd / 2, 1.6, fh, 0.5, this._materials.rustRed, true);
+      this._addBox(fcx, fby + fh / 2, fcz + fd / 2, 1.4, fh, 0.5, this._materials.rustRed, true);
+      this._addBox(fcx + fw / 2 - 0.8, fby + fh / 2, fcz + fd / 2, 1.6, fh, 0.5, this._materials.rustRed, true);
+      this._addBox(fcx, fby + fh - 0.65, fcz + fd / 2, fw, 1.3, 0.55, this._materials.darkConcrete, true);
+      this._addBox(fcx, fby + fh + 0.15, fcz, fw + 0.4, 0.3, fd + 0.4, this._materials.darkConcrete, true);
+
+      // Garage Equipment Lockers & Workbench
+      this._addGunLocker(fcx - 6.6, fcz - 2.0, Math.PI / 2, 'police_fire', 'Fire & Rescue Gear Locker');
+      this._addLootContainer(fcx + 5.6, 0.16, fcz - 4.8, 'supply', 'Firehouse Tool & Medical Crate');
+      this._addWorkbenchTable(fcx, fcz - 4.6, 0, [
+        { id: 'smoke_grenade', qty: 1 }, { id: 'medkit', qty: 1 }, { id: 'armor_plate', qty: 1 }
       ]);
+
+      // Climbable 13.5m Hose / Watch Tower attached to East side of Fire Station!
+      const tcx = fcx + fw / 2 + 3.2, tcz = fcz - 3.2;
+      const tw = 6.2, td = 6.2, th = 13.2;
+      // Tower exterior corner columns & walls (open ground entrance on west/south)
+      this._addBox(tcx, fby + th / 2, tcz - td / 2, tw, th, 0.42, this._materials.rustRed, true);
+      this._addBox(tcx + tw / 2, fby + th / 2, tcz, 0.42, th, td, this._materials.rustRed, true);
+      this._addBox(tcx, fby + th / 2 + 2.2, tcz + td / 2, tw, th - 4.4, 0.42, this._materials.rustRed, true);
+      // 3 Switchback Walkable Stair Flights + Landings up to Rooftop Sniper Observation Deck!
+      addStaircase(tcx - 1.5, fby + 0.16, tcz + 2.2, 15, 2.2, 4.4, 4.4, 'north');
+      this._addBox(tcx, fby + 4.4, tcz - 2.0, 5.4, 0.24, 1.8, this._materials.darkConcrete, true);
+      addStaircase(tcx + 1.5, fby + 4.4, tcz - 1.2, 15, 2.2, 4.4, 4.4, 'south');
+      this._addBox(tcx, fby + 8.8, tcz + 2.0, 5.4, 0.24, 1.8, this._materials.darkConcrete, true);
+      addStaircase(tcx - 1.5, fby + 8.8, tcz + 1.2, 15, 2.2, 4.4, 4.4, 'north');
+      // Tower Top Observation Platform + Guardrails
+      const topY = fby + 13.2;
+      this._addBox(tcx + 1.1, topY, tcz, 3.8, 0.26, td, this._materials.darkConcrete, true);
+      this._addBox(tcx - 1.5, topY, tcz - 2.1, 2.4, 0.26, 2.0, this._materials.darkConcrete, true);
+      this._addBox(tcx, topY + 0.55, tcz - td / 2 + 0.2, tw, 1.1, 0.2, this._materials.metal, true);
+      this._addBox(tcx, topY + 0.55, tcz + td / 2 - 0.2, tw, 1.1, 0.2, this._materials.metal, true);
+      this._addBox(tcx - tw / 2 + 0.2, topY + 0.55, tcz, 0.2, 1.1, td, this._materials.metal, true);
+      this._addBox(tcx + tw / 2 - 0.2, topY + 0.55, tcz, 0.2, 1.1, td, this._materials.metal, true);
+      this._addLootContainer(tcx + 1.4, 13.35, tcz - 1.4, 'military', 'Fire Tower Overwatch Case');
     }
 
-    // 4. Boss Encampment & Armory Key Room (NE Highland Fortress: 310, -270)
+    // 4. Boss Encampment — Large Walled Compound, Barracks, Tents & Multi-Floor Central Command Center (NE: 310, -270)
     {
       const cx = 310, cz = -270;
-      this._addBuilding(cx, cz, 14, 14, 4.8, 'south');
+      const by = this.getTerrainHeight(cx, cz);
       this.pois.push({ name: 'BOSS CAMP', x: cx, z: cz, color: '#ffc107', threat: 'boss' });
-      this._addLootContainer(cx, 0.16, cz - 4.8, 'boss_key_room', 'Boss Encampment Key Room', 'boss_key');
-      this._addGunLocker(cx + 6.1, cz - 0.5, -Math.PI / 2, 'military', 'Boss Guard Gun Locker');
-      this._addWallFirstAidKit(cx - 6.55, cz + 1.8, 'west', 'Encampment Wall First Aid Kit');
-      this._addWorkbenchTable(cx, cz + 0.8, 0, [
-        { id: 'ammo_762', qty: 20 }, { id: 'gold_watch', qty: 1 }
+
+      // A. High Concrete Perimeter Compound Walls (60m x 56m) with South & West Fortified Gates
+      const cw = 60, cd = 56, wallH = 4.2;
+      // North & East solid walls
+      this._addBox(cx, by + wallH / 2, cz - cd / 2, cw, wallH, 0.8, this._materials.darkConcrete, true);
+      this._addBox(cx + cw / 2, by + wallH / 2, cz, 0.8, wallH, cd, this._materials.darkConcrete, true);
+      // South wall with 8m wide main vehicle gate
+      this._addBox(cx - 17, by + wallH / 2, cz + cd / 2, 26, wallH, 0.8, this._materials.darkConcrete, true);
+      this._addBox(cx + 17, by + wallH / 2, cz + cd / 2, 26, wallH, 0.8, this._materials.darkConcrete, true);
+      // West wall with 7m side gate
+      this._addBox(cx - cw / 2, by + wallH / 2, cz - 16, 0.8, wallH, 24, this._materials.darkConcrete, true);
+      this._addBox(cx - cw / 2, by + wallH / 2, cz + 16, 0.8, wallH, 24, this._materials.darkConcrete, true);
+
+      // B. Large Central Multi-Floor Command Center (18m x 16m, 2 Floors + Rooftop Deck)
+      const ccw = 18, ccd = 16, cch = 4.4;
+      this._addBox(cx, by - 0.5, cz - 2, ccw + 0.8, 1.0, ccd + 0.8, this._materials.darkConcrete, false);
+      this._addBox(cx, by + 0.08, cz - 2, ccw, 0.16, ccd, this._materials.darkConcrete, false);
+      // Outer 2-story walls (south main entrance + north rear exit)
+      this._addBox(cx - ccw / 2, by + cch, cz - 2, 0.55, cch * 2, ccd, this._materials.concrete, true);
+      this._addBox(cx + ccw / 2, by + cch, cz - 2, 0.55, cch * 2, ccd, this._materials.concrete, true);
+      this._addBox(cx - 5.6, by + cch / 2, cz - 2 + ccd / 2, 6.8, cch, 0.55, this._materials.concrete, true);
+      this._addBox(cx + 5.6, by + cch / 2, cz - 2 + ccd / 2, 6.8, cch, 0.55, this._materials.concrete, true);
+      this._addBox(cx, by + cch * 1.5, cz - 2 + ccd / 2, ccw, cch, 0.55, this._materials.concrete, true);
+      this._addBox(cx, by + cch, cz - 2 - ccd / 2, ccw, cch * 2, 0.55, this._materials.concrete, true);
+      // 2nd Floor Slab (leaving stairwell cutout on east side)
+      this._addBox(cx - 2.2, by + cch, cz - 2, ccw - 4.4, 0.3, ccd - 0.4, this._materials.darkConcrete, true);
+      this._addBox(cx + 6.6, by + cch, cz - 5.6, 4.4, 0.3, 8.0, this._materials.darkConcrete, true);
+      // Walkable Interior Staircase (Floor 1 -> Floor 2)
+      addStaircase(cx + 6.6, by + 0.16, cz + 4.4, 15, 2.6, cch, 6.4, 'north');
+      // Command Center Roof + Low Tactical Parapet
+      const roofY = by + cch * 2 + 0.15;
+      this._addBox(cx, roofY, cz - 2, ccw + 0.6, 0.32, ccd + 0.6, this._materials.darkConcrete, true);
+
+      // Ground Floor War-Room Table & Boss Key Room Vault on 2nd Floor
+      this._addWorkbenchTable(cx - 1.5, cz - 1.5, 0, [
+        { id: 'ammo_762', qty: 30 }, { id: 'gold_watch', qty: 1 }, { id: 'intel_drive', qty: 1 }
       ]);
-      this._addBarrier(cx - 11, cz + 12, true);
-      this._addBarrier(cx + 10, cz + 12, true);
-      this._addContainer(cx - 15, cz - 4, 0, this._materials.rustOlive);
+      this._addGunLocker(cx - 8.0, cz - 2.5, Math.PI / 2, 'military', 'Command Center Armory Locker');
+      this._addWallFirstAidKit(cx - 8.45, cz + 1.8, 'west', 'Command Center First Aid Kit');
+      // 2nd Floor Command Desk & Boss Key Vault
+      addDeskProp(cx - 2.0, by + cch + 0.16, cz - 5.5);
+      this._addLootContainer(cx - 5.8, cch + 0.18, cz - 7.8, 'boss_key_room', 'Boss Command Vault [KEY ROOM]', 'boss_key');
+      this._addLootContainer(cx + 3.0, cch + 0.18, cz - 7.8, 'military', 'Command Center Weapons Case');
+
+      // Record Boss Spawn inside Command Center + Armored Boss Guard Spawn Points!
+      this.bossSpawnPos = new THREE.Vector3(cx - 1.5, by + cch + 0.2, cz - 2.5);
+      this.bossGuardSpawns = [
+        new THREE.Vector3(cx - 2.0, by, cz + 2.0),   // Command Center Ground Lobby
+        new THREE.Vector3(cx + 3.5, by, cz - 3.5),   // Command Center East Interior
+        new THREE.Vector3(cx - 12.0, by, cz + 16.0), // Compound South Courtyard
+        new THREE.Vector3(cx + 12.0, by, cz + 14.0), // Compound East Tent Perimeter
+        new THREE.Vector3(cx - 16.0, by, cz - 10.0)  // Compound West Barracks Yard
+      ];
+
+      // C. Compound Barracks Building (West-South: cx - 19, cz + 13)
+      const bx = cx - 19, bz = cz + 13;
+      this._addBuilding(bx, bz, 13, 10, 4.2, 'east');
+      addHospitalBed(bx - 3.6, by, bz - 2.8, Math.PI / 2);
+      addHospitalBed(bx - 3.6, by, bz + 2.8, Math.PI / 2);
+      this._addGunLocker(bx + 2.2, bz - 4.1, 0, 'military', 'Barracks Rifle Rack');
+      this._addLootContainer(bx + 2.2, 0.16, bz + 3.6, 'supply', 'Barracks Footlocker');
+
+      // D. 3 Military Canvas Tents with Weapons Lockers & Equipment Containers
+      const tentSpots = [
+        { x: cx + 19, z: cz + 12, label: 'East Armory Tent' },
+        { x: cx + 19, z: cz - 6, label: 'Ordnance Supply Tent' },
+        { x: cx - 18, z: cz - 14, label: 'Recon Gear Tent' }
+      ];
+      for (const ts of tentSpots) {
+        addMilitaryTent(ts.x, by, ts.z, 8.6, 6.4);
+        this._addGunLocker(ts.x - 3.1, ts.z - 1.2, Math.PI / 2, 'military', `${ts.label} Weapons Locker`);
+        this._addLootContainer(ts.x + 2.6, 0.16, ts.z + 1.2, 'military', `${ts.label} Equipment Container`);
+      }
+
+      // Courtyard tactical barriers & cargo container
+      this._addBarrier(cx - 7, cz + 18, true);
+      this._addBarrier(cx + 7, cz + 18, true);
+      this._addContainer(cx + 16, cz - 20, 0, this._materials.rustOlive);
     }
 
     // 5. Central Logistics Warehouse (Crossroads Hub: 0, 0)
