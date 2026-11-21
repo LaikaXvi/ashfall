@@ -227,8 +227,9 @@ class Enemy {
     }
 
     this.hp = this.maxHp;
-    this.homePos = spawnPos.clone();
-    this.position = spawnPos.clone();
+    const initGy = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(spawnPos.x, spawnPos.z) : 0;
+    this.homePos = new THREE.Vector3(spawnPos.x, initGy, spawnPos.z);
+    this.position = new THREE.Vector3(spawnPos.x, initGy, spawnPos.z);
     this.state = 'PATROL';
     this.patrolTarget = this._pickPatrolPoint();
     this.lastKnownPlayerPos = null;
@@ -254,6 +255,10 @@ class Enemy {
     this.scene.add(this.group);
 
     this.lootItems = this._generateCorpseLoot();
+  }
+
+  _getGroundY(x = this.position.x, z = this.position.z) {
+    return (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(x, z) : 0;
   }
 
   _buildModel() {
@@ -460,7 +465,9 @@ class Enemy {
         this.state = 'DOWNED';
         // Seated downed posture: hide weapon, plant supporting arm to scoot, legs extended in front above ground
         if (this.weaponMeshGroup) this.weaponMeshGroup.visible = false;
-        this.group.position.y = -0.50;
+        const gyDown = this._getGroundY();
+        this.position.y = gyDown;
+        this.group.position.y = gyDown - 0.50;
         this.group.rotation.x = -0.22;
         this.group.rotation.z = 0;
         if (this.leftHip) this.leftHip.rotation.x = -1.38;
@@ -486,7 +493,9 @@ class Enemy {
     if (this.alertSprite) this.alertSprite.visible = false;
     if (this.bleedSprite) this.bleedSprite.visible = false;
     this.group.rotation.x = -Math.PI / 2;
-    this.group.position.y = 0.16;
+    const gyDead = this._getGroundY();
+    this.position.y = gyDead;
+    this.group.position.y = gyDead + 0.16;
     // Reset limbs flat so corpses never have legs sticking up in the air from a downed pose!
     if (this.leftHip) this.leftHip.rotation.set(0, 0, -0.06);
     if (this.rightHip) this.rightHip.rotation.set(0, 0, 0.06);
@@ -957,7 +966,9 @@ class Enemy {
           const heave = Math.max(0, phase);
           // With rotation.order = 'YXZ', group.rotation.x (-0.22) + hip.rotation.x (-1.38..-1.52) = -1.60..-1.74 rad
           // keeping feet at Y >= +0.28m (bottom of foot >= +0.16m above ground in ALL 360° directions!)
-          this.group.position.y = -0.50 + heave * 0.035;
+          const gyScoot = this._getGroundY();
+          this.position.y = gyScoot;
+          this.group.position.y = gyScoot - 0.50 + heave * 0.035;
           this.group.rotation.x = -0.22 - heave * 0.04;
           this.group.rotation.z = phase * 0.045;
           if (this.leftArm) { this.leftArm.rotation.x = 0.55 + phase * 0.28; this.leftArm.rotation.z = 0.24; }
@@ -966,7 +977,9 @@ class Enemy {
           if (this.rightHip) this.rightHip.rotation.x = -1.38 - Math.max(0, -phase) * 0.10;
         }
       } else {
-        this.group.position.y = -0.50;
+        const gyIdleDown = this._getGroundY();
+        this.position.y = gyIdleDown;
+        this.group.position.y = gyIdleDown - 0.50;
         this.group.rotation.x = -0.26;
         this.group.rotation.z = 0;
         if (this.leftHip) this.leftHip.rotation.x = -1.34;
@@ -1096,14 +1109,14 @@ class Enemy {
           this.position.z += vz;
           this.group.position.z = this.position.z;
         }
-        this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, -0.36, dt * 16);
+        const gySlide = this._getGroundY();
+        this.position.y = gySlide;
+        this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, gySlide - 0.36, dt * 16);
         this.group.rotation.x = THREE.MathUtils.lerp(this.group.rotation.x, -0.30, dt * 14);
         if (this.leftHip) this.leftHip.rotation.x = -0.95;
         if (this.rightHip) this.rightHip.rotation.x = -0.35;
         if (this.slideTimer <= 0) {
-          const gy = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(this.position.x, this.position.z) : 0;
-    this.position.y = gy;
-    this.group.position.y = gy;
+          this.group.position.y = gySlide;
           this.group.rotation.x = 0;
         }
         return;
@@ -1115,16 +1128,16 @@ class Enemy {
 
       if (this.isOperator && this.platingTimer > 0) {
         this.platingTimer -= dt;
-        this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, -0.22, dt * 10);
+        const gyPlate = this._getGroundY();
+        this.position.y = gyPlate;
+        this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, gyPlate - 0.22, dt * 10);
         this.group.rotation.z = THREE.MathUtils.lerp(this.group.rotation.z, 0, dt * 10);
         if (this.leftArm) this.leftArm.rotation.x = -1.15;
         if (this.rightArm) this.rightArm.rotation.x = -1.15;
         if (this.platingTimer <= 0) {
           this.operatorEquipment.plates = Math.max(0, (this.operatorEquipment.plates || 1) - 1);
           this.armor = Math.min(this.maxArmor, (this.armor || 0) + 50);
-          const gy = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(this.position.x, this.position.z) : 0;
-    this.position.y = gy;
-    this.group.position.y = gy;
+          this.group.position.y = gyPlate;
         }
         return;
       }
@@ -1208,9 +1221,11 @@ class Enemy {
       }
 
       if (this.isOperator) {
+        const gyStand = this._getGroundY();
+        this.position.y = gyStand;
         this.leanAngle = THREE.MathUtils.lerp(this.leanAngle || 0, targetLean, Math.min(1, dt * 10));
         this.group.rotation.z = this.leanAngle;
-        this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, 0, Math.min(1, dt * 12));
+        this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, gyStand, Math.min(1, dt * 12));
         this.group.rotation.x = THREE.MathUtils.lerp(this.group.rotation.x, 0, Math.min(1, dt * 12));
       }
 
@@ -1334,7 +1349,9 @@ class Enemy {
       this._scootCycle = (this._scootCycle || 0) + dt * (moving ? 4.4 : 0);
       const phase = moving ? Math.sin(this._scootCycle) : 0;
       const heave = Math.max(0, phase);
-      this.group.position.y = -0.50 + heave * 0.035;
+      const gyRepDown = this._getGroundY();
+      this.position.y = gyRepDown;
+      this.group.position.y = gyRepDown - 0.50 + heave * 0.035;
       this.group.rotation.x = -0.22 - heave * 0.04;
       if (this.leftHip) this.leftHip.rotation.x = -1.38 - heave * 0.14;
       if (this.rightHip) this.rightHip.rotation.x = -1.38 - Math.max(0, -phase) * 0.10;
@@ -1342,7 +1359,9 @@ class Enemy {
     }
 
     if (this.bleedSprite) this.bleedSprite.visible = false;
-    this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, 0, lerpRate);
+    const gyRep = this._getGroundY();
+    this.position.y = gyRep;
+    this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, gyRep, lerpRate);
     this.group.rotation.x = THREE.MathUtils.lerp(this.group.rotation.x, 0, lerpRate);
     if (moving) {
       this._walkCycle = (this._walkCycle || 0) + dt * Math.min(11, moveSpeed * 2.1);

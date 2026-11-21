@@ -316,7 +316,9 @@ class SquadMate {
       this.state = 'DOWNED';
       // Grounded seated downed posture: hide weapon, reclined back with legs flat on top of ground (Y_foot >= +0.16m)
       if (this.rifleMesh) this.rifleMesh.visible = false;
-      this.group.position.y = -0.56;
+      const gyD = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(this.position.x, this.position.z) : 0;
+      this.position.y = gyD;
+      this.group.position.y = gyD - 0.56;
       this.group.rotation.x = -0.22;
       this.group.rotation.z = 0;
       if (this.leftHip) this.leftHip.rotation.x = -1.38;
@@ -342,7 +344,9 @@ class SquadMate {
     this.reviveProgress = 0;
     this.beingRevivedBy = null;
     this.group.rotation.x = -Math.PI / 2;
-    this.group.position.y = 0.16;
+    const gyDead = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(this.position.x, this.position.z) : 0;
+    this.position.y = gyDead;
+    this.group.position.y = gyDead + 0.16;
     if (this.leftHip) this.leftHip.rotation.set(0, 0, -0.06);
     if (this.rightHip) this.rightHip.rotation.set(0, 0, 0.06);
     if (this.leftArm) this.leftArm.rotation.set(0, 0, 0.28);
@@ -366,7 +370,9 @@ class SquadMate {
     this._reviveGraceUntil = performance.now() + 2800;
     this.state = 'FOLLOW';
     this.group.rotation.x = 0;
-    this.group.position.y = 0;
+    const gyRev = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(this.position.x, this.position.z) : 0;
+    this.position.y = gyRev;
+    this.group.position.y = gyRev;
     if (this.rifleMesh) this.rifleMesh.visible = true;
     if (this.leftHip) this.leftHip.rotation.x = 0;
     if (this.rightHip) this.rightHip.rotation.x = 0;
@@ -574,7 +580,9 @@ class SquadMate {
           this._scootCycle = (this._scootCycle || 0) + dt * 4.4;
           const phase = Math.sin(this._scootCycle);
           const heave = Math.max(0, phase);
-          this.group.position.y = -0.56 + heave * 0.035;
+          const gyS = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(this.position.x, this.position.z) : 0;
+          this.position.y = gyS;
+          this.group.position.y = gyS - 0.56 + heave * 0.035;
           this.group.rotation.x = -0.22 - heave * 0.04;
           if (this.leftHip) this.leftHip.rotation.x = -1.38 - heave * 0.14;
           if (this.rightHip) this.rightHip.rotation.x = -1.38 - Math.max(0, -phase) * 0.10;
