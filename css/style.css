@@ -3867,3 +3867,171 @@ input[type="range"].gp-focus {
   font-family: inherit;
   font-size: 13px;
 }
+
+/* ==================== UNIFIED IN-GAME SETTINGS OVERLAY (BLURRED TRANSPARENT) ==================== */
+#ingame-settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 62;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 24px 20px;
+  background: rgba(8, 11, 10, 0.68);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  overflow-y: auto;
+}
+
+#ingame-settings-overlay.hidden {
+  display: none !important;
+}
+
+.ingame-settings-topbar {
+  width: 100%;
+  max-width: 780px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding: 8px 14px;
+  background: rgba(14, 18, 17, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+}
+
+#ingame-settings-mount {
+  width: 100%;
+  max-width: 780px;
+}
+
+#ingame-settings-mount #menu-view-settings {
+  display: block !important;
+  padding: 0 !important;
+  height: auto !important;
+  max-height: none !important;
+  overflow: visible !important;
+  background: transparent !important;
+}
+
+#ingame-settings-mount #menu-view-settings .single-panel-wrap {
+  max-width: 100%;
+  margin: 0;
+}
+
+#ingame-settings-mount #menu-view-settings .panel {
+  background: rgba(14, 18, 17, 0.76);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+
+/* ==================== DMZ-STYLE IN-PLACE WEAPON-SWITCH SLOT PICKER ==================== */
+#loot-modal.weapon-pick-active .inv-container-panel,
+#loot-modal.weapon-pick-active .inv-slot:not(.wpn-pick-target),
+#loot-modal.weapon-pick-active .op-slot-card:not(.wpn-pick-target) {
+  opacity: 0.22 !important;
+  filter: grayscale(0.85) brightness(0.65);
+  pointer-events: none !important;
+  transition: opacity 0.15s ease, filter 0.15s ease;
+}
+
+#loot-modal.weapon-pick-active .wpn-pick-target {
+  opacity: 1 !important;
+  filter: none !important;
+  pointer-events: auto !important;
+  position: relative;
+  z-index: 20 !important;
+  border: 2px solid #ffffff !important;
+  box-shadow: 0 0 0 2px rgba(245, 166, 35, 0.85), 0 0 22px rgba(245, 166, 35, 0.55) !important;
+  background: rgba(24, 28, 26, 0.96) !important;
+  cursor: pointer !important;
+  transform: scale(1.03);
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+
+#loot-modal.weapon-pick-active .wpn-pick-target:hover,
+#loot-modal.weapon-pick-active .wpn-pick-target.ui-selected,
+#loot-modal.weapon-pick-active .wpn-pick-target.gp-focus {
+  border-color: #ffca28 !important;
+  box-shadow: 0 0 0 3px rgba(255, 202, 40, 0.95), 0 0 28px rgba(255, 202, 40, 0.75) !important;
+  transform: scale(1.06);
+}
+
+.wpn-pick-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  background: linear-gradient(135deg, rgba(28, 22, 14, 0.96), rgba(14, 17, 16, 0.96));
+  border: 1.5px solid #f5a623;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.72), 0 0 16px rgba(245, 166, 35, 0.35);
+  border-radius: 3px;
+  position: relative;
+  z-index: 25;
+}
+
+.wpn-pick-banner.hidden {
+  display: none !important;
+}
+
+.wpn-pick-banner-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.wpn-pick-banner-icon {
+  width: 96px;
+  height: 48px;
+  object-fit: contain;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(245, 166, 35, 0.45);
+  border-radius: 2px;
+  padding: 2px;
+  flex-shrink: 0;
+}
+
+.wpn-pick-banner-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.wpn-pick-banner-title {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 800;
+  color: #ffca28;
+  letter-spacing: 0.6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wpn-pick-banner-sub {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: #cfd8d3;
+  letter-spacing: 0.4px;
+}
+
+.wpn-pick-slot-badge {
+  position: absolute;
+  right: 4px;
+  bottom: 3px;
+  z-index: 6;
+  padding: 1px 5px;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 800;
+  color: #111;
+  background: #ffca28;
+  border-radius: 2px;
+  pointer-events: none;
+  letter-spacing: 0.4px;
+}

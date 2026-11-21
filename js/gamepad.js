@@ -541,6 +541,8 @@ class GamepadController {
   }
 
   _getMenuScope() {
+    const inGameSettings = document.getElementById('ingame-settings-overlay');
+    if (inGameSettings && !inGameSettings.classList.contains('hidden')) return inGameSettings;
     const pauseOv = document.getElementById('pointer-lock-overlay');
     if (pauseOv && !pauseOv.classList.contains('hidden')) return pauseOv;
     const lootMod = document.getElementById('loot-modal');
@@ -637,9 +639,19 @@ class GamepadController {
         ui.ensureInitialSelection({ inputMode: 'gamepad' });
       }
 
-      // A (0): Activate / Click focused element
+      // X (2) / Square: Quick weapon equip to active slot (from bag/container/enemy) or stow to bag weapon slot (from Primary/Secondary)
+      if (this._justPressed(pad, 2) && !this._menuRtDragging) {
+        if (ui.handleGamepadInventoryAction) {
+          ui.handleGamepadInventoryAction('x_square');
+        }
+      }
+
+      // A (0) / Cross: Confirm highlighted weapon-switch slot, drop weapon (on Primary/Secondary/BagWeapon), or activate element
       if (this._justPressed(pad, 0) && !this._menuRtDragging) {
-        ui.activateSelectedElement({ inputMode: 'gamepad' });
+        const handledInv = ui.handleGamepadInventoryAction ? ui.handleGamepadInventoryAction('a_cross') : false;
+        if (!handledInv) {
+          ui.activateSelectedElement({ inputMode: 'gamepad' });
+        }
       }
     } else {
       const scope = this._getMenuScope();
@@ -663,9 +675,13 @@ class GamepadController {
       }
     }
 
-    // B (1): Back / Close
+    // B (1) / Circle: Cancel weapon-switch picker -> Close In-Game Settings -> Back / Close
     if (this._justPressed(pad, 1)) {
-      if (gunsmith && gunsmith.isOpen) {
+      if (ui && ui._raidWeaponPick && ui.closeRaidWeaponPickMode) {
+        ui.closeRaidWeaponPickMode();
+      } else if (ui && ui.isInGameSettingsOpen && ui.closeInGameSettings) {
+        ui.closeInGameSettings(true);
+      } else if (gunsmith && gunsmith.isOpen) {
         const drawer = document.getElementById('gs-drawer');
         if (gunsmith.mode === 'customize') gunsmith.setMode('attachments');
         else if (drawer && !drawer.classList.contains('hidden')) gunsmith.closeDrawer();

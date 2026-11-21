@@ -88,6 +88,8 @@ class GameUI {
   _getNavScope() {
     const wpnModal = document.getElementById('weapon-staging-modal');
     if (wpnModal && !wpnModal.classList.contains('hidden')) return wpnModal;
+    const inGameSettings = document.getElementById('ingame-settings-overlay');
+    if (inGameSettings && !inGameSettings.classList.contains('hidden')) return inGameSettings;
     const pauseOv = document.getElementById('pointer-lock-overlay');
     if (pauseOv && !pauseOv.classList.contains('hidden')) return pauseOv;
     const lootMod = document.getElementById('loot-modal');
@@ -103,6 +105,9 @@ class GameUI {
 
   _getSpatialFocusables(scope) {
     if (!scope) return [];
+    if (this._raidWeaponPick && scope.id === 'loot-modal') {
+      return Array.from(scope.querySelectorAll('.wpn-pick-target, #btn-cancel-wpn-pick')).filter(el => el.offsetParent !== null);
+    }
     const slotSel = this._dragState
       ? '.inv-slot:not(.searching)'
       : '.inv-slot:not(.empty-slot):not(.searching)';
@@ -2665,14 +2670,54 @@ class GameUI {
       }
     });
     const pauseSettingsBtn = document.getElementById('btn-pause-settings');
-    const pauseSettingsPanel = document.getElementById('pause-settings-panel');
-    if (pauseSettingsBtn && pauseSettingsPanel) {
-      pauseSettingsBtn.addEventListener('click', () => {
-        syncSettingsUI();
-        const isOpen = !pauseSettingsPanel.classList.toggle('hidden');
-        pauseSettingsBtn.style.borderColor = isOpen ? '#f5a623' : '';
-        pauseSettingsBtn.style.color = isOpen ? '#f5a623' : '';
-      });
+    const closeInGameSettingsBtn = document.getElementById('btn-close-ingame-settings');
+    this._settingsHomeParent = null;
+    this._settingsHomeNextSibling = null;
+    this.isInGameSettingsOpen = false;
+
+    this.openInGameSettings = () => {
+      const overlay = document.getElementById('ingame-settings-overlay');
+      const mount = document.getElementById('ingame-settings-mount');
+      const settingsView = document.getElementById('menu-view-settings');
+      const pauseOv = document.getElementById('pointer-lock-overlay');
+      if (!overlay || !mount || !settingsView) return;
+      if (!this._settingsHomeParent) {
+        this._settingsHomeParent = settingsView.parentNode;
+        this._settingsHomeNextSibling = settingsView.nextSibling;
+      }
+      syncSettingsUI();
+      this._syncUsernameSettingsUI();
+      mount.appendChild(settingsView);
+      settingsView.classList.remove('hidden');
+      overlay.classList.remove('hidden');
+      if (pauseOv) pauseOv.classList.add('hidden');
+      this.isInGameSettingsOpen = true;
+    };
+
+    this.closeInGameSettings = (returnToPause = true) => {
+      const overlay = document.getElementById('ingame-settings-overlay');
+      const settingsView = document.getElementById('menu-view-settings');
+      const pauseOv = document.getElementById('pointer-lock-overlay');
+      if (overlay) overlay.classList.add('hidden');
+      if (settingsView && this._settingsHomeParent) {
+        if (this._settingsHomeNextSibling && this._settingsHomeNextSibling.parentNode === this._settingsHomeParent) {
+          this._settingsHomeParent.insertBefore(settingsView, this._settingsHomeNextSibling);
+        } else {
+          this._settingsHomeParent.appendChild(settingsView);
+        }
+        settingsView.classList.toggle('hidden', this.activeMenuTab !== 'settings');
+      }
+      this.isInGameSettingsOpen = false;
+      if (returnToPause && pauseOv) {
+        pauseOv.classList.remove('hidden');
+      }
+    };
+
+    if (pauseSettingsBtn) {
+      pauseSettingsBtn.addEventListener('click', () => this.openInGameSettings());
+    }
+    if (closeInGameSettingsBtn) {
+      closeInGameSettingsBtn.addEventListener('click', () => this.closeInGameSettings(true));
     }
     syncSettingsUI();
     this._syncUsernameSettingsUI();
@@ -5082,70 +5127,272 @@ class GameUI {
     const modal = document.getElementById('loot-modal');
     if (modal) modal.classList.add('hidden');
     this.hideItemPopout();
+    this.closeRaidWeaponPickMode();
     this.closeWeaponStagingModal();
     this.activeLootSource = null;
     this._lootPlayer = null;
   }
 
-  openRaidWeaponStaging(player, weaponItem, { sourceLabel = 'OPERATOR WEAPON', onComplete = null, onCancel = null } = {}) {
-    if (!player || !weaponItem || !GAME_DATA.ITEMS[weaponItem.id]) return;
-    const pSlot = player.slots && player.slots.primary;
-    const sSlot = player.slots && player.slots.secondary;
-    const bwSlot = player.backpackWeapon;
-    const hasWpnBag = player.hasWeaponBackpack();
+  closeRaidWeaponPickMode() {
+    this._raidWeaponPick = null;
+    const modal = document.getElementById('loot-modal');
+    if (modal) modal.classList.remove('weapon-pick-active');
+    const banner = document.getElementById('raid-wpn-pick-banner');
+    if (banner) banner.remove();
+    document.querySelectorAll('.wpn-pick-target').forEach(el => el.classList.remove('wpn-pick-target'));
+    document.querySelectorAll('.wpn-pick-slot-badge').forEach(el => el.remove());
+  }
 
-    this.openWeaponStagingModal({
-      weaponId: weaponItem.id,
-      mods: weaponItem.mods || null,
+  _confirmRaidWeaponPickSlot(targetSlotKey) {
+    const ctx = this._raidWeaponPick;
+    if (!ctx) return false;
+    const { player, weaponItem, onComplete } = ctx;
+    if (targetSlotKey === 'backpackWeapon' && !(player && player.hasWeaponBackpack && player.hasWeaponBackpack())) {
+      this._showSocialToast('Requires a Weapon Backpack to stow in Bag Weapon Slot.');
+      return false;
+    }
+    const res = player.equipWeaponInRaid(weaponItem.id, targetSlotKey, {
+      mods: weaponItem.mods || {},
       mag: weaponItem.mag,
-      rarityOverride: weaponItem.rarityOverride || null,
-      sourceLabel,
-      onCancel,
-      slots: [
-        {
-          key: 'primary',
-          title: '[1] PRIMARY WEAPON',
-          currentId: pSlot ? pSlot.id : null,
-          currentMods: pSlot ? pSlot.mods : null,
-          currentRarity: pSlot ? pSlot.rarityOverride : null,
-          available: true
-        },
-        {
-          key: 'secondary',
-          title: '[2] SECONDARY WEAPON',
-          currentId: sSlot ? sSlot.id : null,
-          currentMods: sSlot ? sSlot.mods : null,
-          currentRarity: sSlot ? sSlot.rarityOverride : null,
-          available: true
-        },
-        {
-          key: 'backpackWeapon',
-          title: '[PACK] BACKPACK WEAPON SLOT',
-          currentId: bwSlot ? bwSlot.id : null,
-          currentMods: bwSlot ? bwSlot.mods : null,
-          currentRarity: bwSlot ? bwSlot.rarityOverride : null,
-          available: hasWpnBag,
-          lockReason: 'REQUIRES WEAPON BACKPACK (16 SLOTS + 1 WPN)'
-        }
-      ],
-      onSelectSlot: (targetSlotKey) => {
-        const res = player.equipWeaponInRaid(weaponItem.id, targetSlotKey, {
-          mods: weaponItem.mods || {},
-          mag: weaponItem.mag,
-          rarityOverride: weaponItem.rarityOverride || null
-        });
-        if (res.equipped) {
-          if (onComplete) onComplete(res, targetSlotKey);
-          if (window.soundEngine && window.soundEngine.playMagIn) {
-            try { window.soundEngine.playMagIn(); } catch (e) {}
-          }
-          const modal = document.getElementById('loot-modal');
-          if (modal && !modal.classList.contains('hidden')) {
-            this.renderLootModal(player);
-          }
+      rarityOverride: weaponItem.rarityOverride || null
+    });
+    this.closeRaidWeaponPickMode();
+    if (res && res.equipped) {
+      if (onComplete) onComplete(res, targetSlotKey);
+      if (window.soundEngine && window.soundEngine.playMagIn) {
+        try { window.soundEngine.playMagIn(); } catch (e) {}
+      }
+      const modal = document.getElementById('loot-modal');
+      if (modal && !modal.classList.contains('hidden')) {
+        this.renderLootModal(player);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  openRaidWeaponStaging(player, weaponItem, { sourceLabel = 'OPERATOR WEAPON', excludeSlotKey = null, onComplete = null, onCancel = null } = {}) {
+    if (!player || !weaponItem || !GAME_DATA.ITEMS[weaponItem.id]) return;
+    const modal = document.getElementById('loot-modal');
+    const opPanel = document.getElementById('inv-operator-panel');
+    if (!modal || modal.classList.contains('hidden') || !opPanel) return;
+
+    this.closeRaidWeaponPickMode();
+    this.hideItemPopout();
+
+    const wDef = GAME_DATA.ITEMS[weaponItem.id];
+    const hasWpnBag = !!(player.hasWeaponBackpack && player.hasWeaponBackpack());
+    const validTargets = [];
+    if (excludeSlotKey !== 'primary') validTargets.push('primary');
+    if (excludeSlotKey !== 'secondary') validTargets.push('secondary');
+    if (hasWpnBag && excludeSlotKey !== 'backpackWeapon') validTargets.push('backpackWeapon');
+
+    if (validTargets.length === 0) return;
+
+    this._raidWeaponPick = { player, weaponItem, sourceLabel, excludeSlotKey, validTargets, onComplete, onCancel };
+    modal.classList.add('weapon-pick-active');
+
+    // Floating selected-weapon card at top of the backpack/loadout panel (matches reference image!)
+    const banner = document.createElement('div');
+    banner.id = 'raid-wpn-pick-banner';
+    banner.className = 'wpn-pick-banner';
+    const iconUrl = (window.itemIconRenderer && window.itemIconRenderer.getIcon)
+      ? window.itemIconRenderer.getIcon(weaponItem.id, { wide: true, mods: weaponItem.mods || {} })
+      : '';
+    banner.innerHTML = `
+      <div class="wpn-pick-banner-left">
+        ${iconUrl ? `<img class="wpn-pick-banner-icon" src="${iconUrl}" alt="${wDef.name}" />` : ''}
+        <div class="wpn-pick-banner-info">
+          <div class="wpn-pick-banner-title">${wDef.name.toUpperCase()}</div>
+          <div class="wpn-pick-banner-sub">${sourceLabel} · SELECT HIGHLIGHTED WEAPON SLOT</div>
+        </div>
+      </div>
+      <button id="btn-cancel-wpn-pick" class="btn-small" style="padding:4px 8px;flex-shrink:0;">CANCEL</button>
+    `;
+    opPanel.insertBefore(banner, opPanel.firstChild);
+    const cancelBtn = banner.querySelector('#btn-cancel-wpn-pick');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const cb = this._raidWeaponPick && this._raidWeaponPick.onCancel;
+        this.closeRaidWeaponPickMode();
+        if (cb) cb();
+      });
+    }
+
+    // Highlight ONLY the valid destination weapon slots & bind one-click confirmation
+    let firstTargetEl = null;
+    const highlightTarget = (el, slotKey, labelText) => {
+      if (!el) return;
+      el.classList.add('wpn-pick-target');
+      el.dataset.wpnPickKey = slotKey;
+      const badge = document.createElement('span');
+      badge.className = 'wpn-pick-slot-badge';
+      badge.textContent = labelText;
+      el.appendChild(badge);
+      if (!firstTargetEl) firstTargetEl = el;
+    };
+
+    if (validTargets.includes('primary')) {
+      const el = document.querySelector('#inv-op-slots .op-slot-card[data-key="primary"]');
+      highlightTarget(el, 'primary', player.slots && player.slots.primary ? 'SWAP [1]' : 'EQUIP [1]');
+    }
+    if (validTargets.includes('secondary')) {
+      const el = document.querySelector('#inv-op-slots .op-slot-card[data-key="secondary"]');
+      highlightTarget(el, 'secondary', player.slots && player.slots.secondary ? 'SWAP [2]' : 'EQUIP [2]');
+    }
+    if (validTargets.includes('backpackWeapon')) {
+      const el = document.querySelector('#loot-backpack-items .backpack-weapon-slot');
+      highlightTarget(el, 'backpackWeapon', player.backpackWeapon ? 'SWAP BAG' : 'STOW BAG');
+    }
+
+    if (firstTargetEl && this.setSelectedElement) {
+      this.setSelectedElement(firstTargetEl, { inputMode: 'gamepad' });
+    }
+  }
+
+  handleGamepadInventoryAction(actionType) {
+    const modal = document.getElementById('loot-modal');
+    if (!modal || modal.classList.contains('hidden') || !this._lootPlayer) return false;
+    const player = this._lootPlayer;
+
+    // Resolve currently focused / hovered slot element
+    const sel = (this._selectedEl && modal.contains(this._selectedEl))
+      ? this._selectedEl
+      : (this._hoveredSlot && this._hoveredSlot.el && modal.contains(this._hoveredSlot.el) ? this._hoveredSlot.el : null);
+
+    // 1. If weapon-switch picker is active: A/Cross confirms highlighted slot!
+    if (this._raidWeaponPick) {
+      if (actionType === 'a_cross') {
+        const targetEl = (sel && sel.classList.contains('wpn-pick-target'))
+          ? sel
+          : modal.querySelector('.wpn-pick-target');
+        if (targetEl && targetEl.dataset.wpnPickKey) {
+          this._confirmRaidWeaponPickSlot(targetEl.dataset.wpnPickKey);
+          return true;
         }
       }
-    });
+      return false;
+    }
+
+    if (!sel) return false;
+
+    const isPlayerOpCard = !!sel.closest('#inv-op-slots');
+    const isEnemyOpCard = !!sel.closest('#loot-enemy-op-slots');
+    const isBagWpnSlot = sel.classList.contains('backpack-weapon-slot') && !!sel.closest('#loot-backpack-items');
+    const isContainerSlot = !!sel.closest('#loot-container-items');
+    const opKey = sel.dataset ? sel.dataset.key : null;
+
+    // 2. X (Xbox) / Square (PlayStation):
+    //    - On bag/container/enemy weapon -> equip straight into currently active (in-hands) weapon slot!
+    //    - On player Primary or Secondary -> stow into available Backpack Weapon Slot if present!
+    if (actionType === 'x_square') {
+      const activeTargetSlot = (player.activeSlot === 'secondary') ? 'secondary' : 'primary';
+
+      // Player Primary or Secondary -> stow into Backpack Weapon Slot
+      if (isPlayerOpCard && (opKey === 'primary' || opKey === 'secondary')) {
+        const wObj = player.slots && player.slots[opKey];
+        if (!wObj) return true;
+        if (!player.hasWeaponBackpack()) {
+          this._showSocialToast('No Weapon Backpack slot available to stow weapon.');
+          return true;
+        }
+        const prevBagWpn = player.backpackWeapon
+          ? { id: player.backpackWeapon.id, mods: player.backpackWeapon.mods || {}, mag: player.backpackWeapon.mag, rarityOverride: player.backpackWeapon.rarityOverride || null }
+          : null;
+        player.backpackWeapon = { id: wObj.id, mods: wObj.mods || {}, mag: wObj.mag, rarityOverride: wObj.rarityOverride || null };
+        player.slots[opKey] = prevBagWpn;
+        if (player.activeSlot === opKey) player._equipCurrentWeapon();
+        if (window.soundEngine && window.soundEngine.playMagIn) { try { window.soundEngine.playMagIn(); } catch (e) {} }
+        this.renderLootModal(player);
+        return true;
+      }
+
+      // Player Backpack Weapon Slot -> equip into currently active (in-hands) slot!
+      if (isBagWpnSlot && player.backpackWeapon) {
+        const bw = player.backpackWeapon;
+        const res = player.equipWeaponInRaid(bw.id, activeTargetSlot, { mods: bw.mods || {}, mag: bw.mag, rarityOverride: bw.rarityOverride || null });
+        if (res && res.equipped) {
+          player.backpackWeapon = res.prevId
+            ? { id: res.prevId, mods: (res.prevSlotObj && res.prevSlotObj.mods) || {}, mag: res.prevSlotObj && res.prevSlotObj.mag, rarityOverride: (res.prevSlotObj && res.prevSlotObj.rarityOverride) || null }
+            : null;
+          if (window.soundEngine && window.soundEngine.playMagIn) { try { window.soundEngine.playMagIn(); } catch (e) {} }
+          this.renderLootModal(player);
+        }
+        return true;
+      }
+
+      // Container / Enemy Bag weapon -> equip into currently active (in-hands) slot!
+      if (isContainerSlot && this.activeLootSource) {
+        const idx = parseInt(sel.dataset.idx, 10);
+        const item = this.activeLootSource.items[idx];
+        const def = item && GAME_DATA.ITEMS[item.id];
+        if (item && item.revealed !== false && def && def.type === 'weapon') {
+          const res = player.equipWeaponInRaid(item.id, activeTargetSlot, { mods: item.mods || {}, mag: item.mag, rarityOverride: item.rarityOverride || null });
+          if (res && res.equipped) {
+            this.activeLootSource.items.splice(idx, 1);
+            if (res.prevId) {
+              this.activeLootSource.items.splice(idx, 0, {
+                id: res.prevId, qty: 1,
+                mods: (res.prevSlotObj && res.prevSlotObj.mods) || {},
+                mag: res.prevSlotObj && res.prevSlotObj.mag,
+                rarityOverride: (res.prevSlotObj && res.prevSlotObj.rarityOverride) || null,
+                revealed: true
+              });
+            }
+            if (window.soundEngine && window.soundEngine.playMagIn) { try { window.soundEngine.playMagIn(); } catch (e) {} }
+            this.renderLootModal(player);
+          }
+          return true;
+        }
+      }
+
+      // Enemy Operator Primary / Secondary -> equip into currently active (in-hands) slot!
+      if (isEnemyOpCard && (opKey === 'primary' || opKey === 'secondary') && this.activeLootSource && this.activeLootSource.operatorEquipment) {
+        const eq = this.activeLootSource.operatorEquipment;
+        const itemId = eq[opKey];
+        if (itemId && eq.revealedSlots && eq.revealedSlots[opKey]) {
+          const res = player.equipWeaponInRaid(itemId, activeTargetSlot, { mods: eq[opKey + 'Mods'] || {}, rarityOverride: eq[opKey + 'Rarity'] || null });
+          if (res && res.equipped) {
+            eq[opKey] = res.prevId || null;
+            eq[opKey + 'Mods'] = (res.prevSlotObj && res.prevSlotObj.mods) || {};
+            eq[opKey + 'Rarity'] = (res.prevSlotObj && res.prevSlotObj.rarityOverride) || null;
+            if (window.soundEngine && window.soundEngine.playMagIn) { try { window.soundEngine.playMagIn(); } catch (e) {} }
+            this.renderLootModal(player);
+          }
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // 3. A (Xbox) / Cross (PlayStation):
+    //    - On Player Primary, Secondary, or Backpack Weapon Slot -> drop weapon onto the ground!
+    if (actionType === 'a_cross') {
+      if (isPlayerOpCard && (opKey === 'primary' || opKey === 'secondary')) {
+        const wObj = player.slots && player.slots[opKey];
+        if (wObj) {
+          player.slots[opKey] = null;
+          if (player.activeSlot === opKey) player._equipCurrentWeapon();
+          if (typeof this.onDropItem === 'function') {
+            this.onDropItem({ id: wObj.id, qty: 1, mods: wObj.mods, mag: wObj.mag, rarityOverride: wObj.rarityOverride || null });
+          }
+          this.renderLootModal(player);
+          return true;
+        }
+      }
+      if (isBagWpnSlot && player.backpackWeapon) {
+        const removed = player.backpackWeapon;
+        player.backpackWeapon = null;
+        if (typeof this.onDropItem === 'function') {
+          this.onDropItem({ id: removed.id, qty: 1, mods: removed.mods, mag: removed.mag, rarityOverride: removed.rarityOverride || null });
+        }
+        this.renderLootModal(player);
+        return true;
+      }
+    }
+
+    return false;
   }
 
   _getOperatorSlotOrder() {
@@ -5871,12 +6118,20 @@ class GameUI {
         killstreak: player.killstreak,
         melee: player.melee
       }, (k, el) => {
-        // Clicking player's own Primary or Secondary weapon slot opens Weapon Slot Staging UI (move to Backpack Weapon Slot or swap!)
+        // If in-place weapon-switch picker is active, clicking a highlighted Primary/Secondary confirms that target slot!
+        if (this._raidWeaponPick) {
+          if ((k === 'primary' || k === 'secondary') && this._raidWeaponPick.validTargets.includes(k)) {
+            this._confirmRaidWeaponPickSlot(k);
+          }
+          return;
+        }
+        // Left-clicking player's own Primary or Secondary weapon slot opens the dimmed-bag weapon-switch popup!
         if (k === 'primary' || k === 'secondary') {
           const wObj = player.slots && player.slots[k];
           if (!wObj) return;
           this.openRaidWeaponStaging(player, wObj, {
             sourceLabel: `EQUIPPED ${k.toUpperCase()}`,
+            excludeSlotKey: k,
             onComplete: (res, targetSlotKey) => {
               if (targetSlotKey !== k) {
                 player.slots[k] = res.prevId
@@ -6171,14 +6426,26 @@ class GameUI {
           const wItem = { id: bw.id, qty: 1, mods: bw.mods, mag: bw.mag, rarityOverride: bw.rarityOverride || null };
           wSlot.classList.add(`rarity-${bw.rarityOverride || wDef.rarity || 'common'}`);
           wSlot.innerHTML = this._renderInvSlotInner(wItem, wDef, { wide: true, typeLabel: 'WPN SLOT' });
-          wSlot.title = `${wDef.name} (Backpack Weapon Slot) — Left-Click: Equip/Stage · Right-Click: Options / Drop to Ground`;
+          wSlot.title = `${wDef.name} (Backpack Weapon Slot) — Left-Click: Switch Slot · [X/Square]: Equip Active · [A/Cross]: Drop`;
           wSlot.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (this._hoveredSlot && this._hoveredSlot.el === wSlot && this._hoveredSlot.mode === 'details') {
-              this.hideItemPopout();
-            } else {
-              this.showItemPopout(wSlot, 'backpack_weapon', wItem, -1, { inputMode: 'mouse', mode: 'details' });
+            if (this._raidWeaponPick) {
+              if (this._raidWeaponPick.validTargets.includes('backpackWeapon')) {
+                this._confirmRaidWeaponPickSlot('backpackWeapon');
+              }
+              return;
             }
+            this.openRaidWeaponStaging(player, wItem, {
+              sourceLabel: 'BACKPACK WEAPON SLOT',
+              excludeSlotKey: 'backpackWeapon',
+              onComplete: (res, targetSlotKey) => {
+                if (targetSlotKey !== 'backpackWeapon') {
+                  player.backpackWeapon = res.prevId
+                    ? { id: res.prevId, mods: (res.prevSlotObj && res.prevSlotObj.mods) || {}, mag: res.prevSlotObj && res.prevSlotObj.mag, rarityOverride: (res.prevSlotObj && res.prevSlotObj.rarityOverride) || null }
+                    : null;
+                }
+              }
+            });
           });
           wSlot.addEventListener('contextmenu', (e) => {
             e.preventDefault();
@@ -6188,6 +6455,12 @@ class GameUI {
         } else {
           wSlot.classList.add('empty-slot');
           wSlot.innerHTML = `<div class="slot-top-bar"><span class="slot-type">WPN SLOT</span></div><span class="empty-wpn-hint">WEAPON SLOT</span>`;
+          wSlot.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (this._raidWeaponPick && this._raidWeaponPick.validTargets.includes('backpackWeapon')) {
+              this._confirmRaidWeaponPickSlot('backpackWeapon');
+            }
+          });
         }
         bList.appendChild(wSlot);
       }

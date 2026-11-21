@@ -399,6 +399,7 @@
     if (mpSession) mpSession.stop();
     if (ui && ui.setSelfPartyReady) ui.setSelfPartyReady(false);
     if (inRaid) {
+      if (ui && ui.closeInGameSettings) ui.closeInGameSettings(false);
       ui.toggleTacMap(false);
       const rzEl = document.getElementById('redzone-banner');
       if (rzEl) rzEl.classList.add('hidden');
@@ -640,8 +641,22 @@
       return;
     }
 
+    if (ui && ui.isInGameSettingsOpen) {
+      if (e.code === 'Escape') {
+        e.preventDefault();
+        ui.closeInGameSettings(true);
+      }
+      return;
+    }
+
     if (isModalOpen) {
-      if (e.code === 'Escape') closeLootAndResume();
+      if (e.code === 'Escape') {
+        if (ui && ui._raidWeaponPick && ui.closeRaidWeaponPickMode) {
+          ui.closeRaidWeaponPickMode();
+        } else {
+          closeLootAndResume();
+        }
+      }
       return;
     }
 
