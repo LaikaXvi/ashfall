@@ -5234,11 +5234,11 @@ class GameUI {
     };
 
     if (validTargets.includes('primary')) {
-      const el = document.querySelector('#inv-op-slots .op-slot-card[data-key="primary"]');
+      const el = document.querySelector('#inv-op-slots .op-slot-card[data-op-key="primary"]');
       highlightTarget(el, 'primary', player.slots && player.slots.primary ? 'SWAP [1]' : 'EQUIP [1]');
     }
     if (validTargets.includes('secondary')) {
-      const el = document.querySelector('#inv-op-slots .op-slot-card[data-key="secondary"]');
+      const el = document.querySelector('#inv-op-slots .op-slot-card[data-op-key="secondary"]');
       highlightTarget(el, 'secondary', player.slots && player.slots.secondary ? 'SWAP [2]' : 'EQUIP [2]');
     }
     if (validTargets.includes('backpackWeapon')) {
@@ -5281,7 +5281,7 @@ class GameUI {
     const isEnemyOpCard = !!sel.closest('#loot-enemy-op-slots');
     const isBagWpnSlot = sel.classList.contains('backpack-weapon-slot') && !!sel.closest('#loot-backpack-items');
     const isContainerSlot = !!sel.closest('#loot-container-items');
-    const opKey = sel.dataset ? sel.dataset.key : null;
+    const opKey = sel.dataset ? (sel.dataset.opKey || sel.dataset.key) : null;
 
     // 2. X (Xbox) / Square (PlayStation):
     //    - On bag/container/enemy weapon -> equip straight into currently active (in-hands) weapon slot!
@@ -6479,6 +6479,24 @@ class GameUI {
           slot.title = `${def.name}${item.qty > 1 ? ' x' + item.qty : ''} (₽${(def.value * item.qty).toLocaleString()}) — Left-Click: Details/Equip · Right-Click: Drop to Ground / Split`;
           slot.addEventListener('click', (e) => {
             e.stopPropagation();
+            if (def.type === 'weapon') {
+              this.openRaidWeaponStaging(player, item, {
+                sourceLabel: 'BACKPACK',
+                onComplete: (res) => {
+                  player.backpack.splice(idx, 1);
+                  if (res.prevId) {
+                    player.backpack.splice(idx, 0, {
+                      id: res.prevId,
+                      qty: 1,
+                      mods: (res.prevSlotObj && res.prevSlotObj.mods) || {},
+                      mag: res.prevSlotObj && res.prevSlotObj.mag,
+                      rarityOverride: (res.prevSlotObj && res.prevSlotObj.rarityOverride) || null
+                    });
+                  }
+                }
+              });
+              return;
+            }
             if (this._hoveredSlot && this._hoveredSlot.el === slot && this._hoveredSlot.mode === 'details') {
               this.hideItemPopout();
             } else {
