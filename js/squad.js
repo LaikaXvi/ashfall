@@ -219,9 +219,14 @@ class SquadMate {
     const list = this.world.getNearbyColliders ? this.world.getNearbyColliders(x, z, r + 0.5) : this.world.colliders;
     for (let i = 0; i < list.length; i++) {
       const c = list[i];
-      if (c.doorRef) continue;
+      if (c.doorRef && c.doorRef.passable) continue;
       if (c.maxY < 0.2) continue;
-      if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) return true;
+      if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) {
+        if (c.doorRef && !c.doorRef.passable && this.world && this.world.interactDoor && c.doorRef.state === 'closed') {
+          this.world.interactDoor(c.doorRef, this.position, false);
+        }
+        return true;
+      }
     }
     return false;
   }

@@ -501,8 +501,9 @@ class Enemy {
       return false;
     }
 
-    // Operators absorb incoming fire with their vest armor just like players!
-    if (this.isOperator && this.armor > 0) {
+    // Operators & Armored Boss Guards absorb incoming fire with their vest armor just like players!
+    this.timeSinceDamaged = 0;
+    if ((this.isOperator || this.tier === 'boss_guard' || this.tier === 'boss') && this.armor > 0) {
       this.lastHitArmor = true;
       const absorbed = Math.min(this.armor, Math.round(amount * 0.78));
       this.armor = Math.max(0, this.armor - absorbed);
@@ -515,17 +516,32 @@ class Enemy {
     if (this.isOperator && attackerInfo && attackerInfo.isPlayer) {
       this.targetLockTimer = 5.5;
     }
-    if (attackerPos && this.state !== 'COMBAT') {
+    if (attackerPos) {
       this.lastKnownPlayerPos = attackerPos.clone();
-      this.state = 'COMBAT';
-      this.loseSightTimer = 5.0;
-      this.alertTimer = 4.5;
-      this.fireTimer = 0.55;
-      this._showAlertIndicator('!', 2.2);
-    } else if (attackerPos) {
-      this.lastKnownPlayerPos = attackerPos.clone();
-      this.loseSightTimer = 5.0;
-      this.alertTimer = 4.5;
+      this.loseSightTimer = 5.5;
+      this.alertTimer = 5.0;
+      if (this.state !== 'COMBAT') {
+        this.state = 'COMBAT';
+        this.fireTimer = 0.32;
+        this._showAlertIndicator('!', 2.2);
+      }
+      // Immediately turn toward the attacker damaging them & seek cover (or drop prone if no cover exists!)
+      const dxA = attackerPos.x - this.position.x;
+      const dzA = attackerPos.z - this.position.z;
+      if (this.group && (dxA * dxA + dzA * dzA) > 0.01) {
+        this.group.rotation.y = Math.atan2(dxA, dzA);
+      }
+      if (this.isOperator && this.hp > 0) {
+        const cov = this._findBestCoverSpot(attackerPos, 18);
+        if (cov) {
+          this.coverTarget = cov;
+          this.isProne = false;
+        } else {
+          // No nearby cover: drop prone immediately and fight back!
+          this.isProne = true;
+          this.proneTimer = 4.5;
+        }
+      }
     }
     if (this.hp <= 0) {
       this.hp = 0;
@@ -719,9 +735,16 @@ class Enemy {
       this.rightKnee.rotation.x = THREE.MathUtils.lerp(this.rightKnee.rotation.x, targetRKnee, Math.min(1, dt * 12));
     }
 
-    // Articulated Torso lean & crouch drop
+    // Articulated Torso lean, crouch drop & PRONE combat fighting posture when no cover is available!
+    if (this.group) {
+      const baseGy = this._getGroundY();
+      const targetRotX = this.isProne ? 1.28 : 0;
+      const targetY = this.isProne ? (baseGy + 0.26) : baseGy;
+      this.group.rotation.x = THREE.MathUtils.lerp(this.group.rotation.x, targetRotX, Math.min(1, dt * 9));
+      this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, targetY, Math.min(1, dt * 9));
+    }
     if (this.torsoGroup) {
-      const targetTorsoX = isCrouching ? 0.24 : (isSprinting ? 0.16 : (isFocusing ? 0.08 : 0.02));
+      const targetTorsoX = this.isProne ? -0.35 : (isCrouching ? 0.24 : (isSprinting ? 0.16 : (isFocusing ? 0.08 : 0.02)));
       this.torsoGroup.rotation.x = THREE.MathUtils.lerp(this.torsoGroup.rotation.x, targetTorsoX, Math.min(1, dt * 10));
     }
 
@@ -775,9 +798,13 @@ class Enemy {
     const list = this.world.getNearbyColliders ? this.world.getNearbyColliders(x, z, r + 0.5) : this.world.colliders;
     for (let i = 0; i < list.length; i++) {
       const c = list[i];
-      if (c.doorRef) continue;
+      if (c.doorRef && c.doorRef.passable) continue;
       if (c.maxY < 0.2) continue;
       if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) {
+        // AI operator walking up to a closed door automatically pushes it open instead of phasing through!
+        if (c.doorRef && !c.doorRef.passable && this.world && this.world.interactDoor && c.doorRef.state === 'closed') {
+          this.world.interactDoor(c.doorRef, this.position, false);
+        }
         return true;
       }
     }
@@ -1071,6 +1098,86 @@ class Enemy {
       if (this.slideCooldown > 0) this.slideCooldown = Math.max(0, this.slideCooldown - dt);
       if (this.grenadeCooldown > 0) this.grenadeCooldown = Math.max(0, this.grenadeCooldown - dt);
       if (this.targetLockTimer > 0) this.targetLockTimer = Math.max(0, this.targetLockTimer - dt);
+      if (this.proneTimer > 0) {
+        this.proneTimer -= dt;
+        if (this.proneTimer <= 0 || this.state !== 'COMBAT') this.isProne = false;
+      }
+      if (!this.dead && !this.isDowned) {
+        this.timeSinceDamaged = (this.timeSinceDamaged || 10) + dt;
+        // 1. Automatic Health Regeneration after 2.5s without taking damage!
+        if (this.timeSinceDamaged >= 2.5 && this.hp < this.maxHp) {
+          this.hp = Math.min(this.maxHp, this.hp + 24 * dt);
+        }
+        // 2. Smart Armor Plating after 1.5s without taking damage (or behind cover)
+        if (this.platingTimer > 0) {
+          this.platingTimer -= dt;
+          if (this.platingTimer <= 0 && this.operatorEquipment && this.operatorEquipment.plates > 0) {
+            this.operatorEquipment.plates -= 1;
+            this.armor = Math.min(this.maxArmor || 100, (this.armor || 0) + 50);
+          }
+        } else if (this.armor < (this.maxArmor || 100) && this.operatorEquipment && this.operatorEquipment.plates > 0 && this.timeSinceDamaged >= 1.5) {
+          this.platingTimer = 1.85;
+        }
+        // 3. In-Depth POI Looting: approach & pick up loose ground items or loot nearby POI containers when not in combat!
+        if (this.state === 'PATROL' && this.world) {
+          this._lootScanCd = (this._lootScanCd || 0) - dt;
+          if (this._lootScanCd <= 0) {
+            this._lootScanCd = 2.0;
+            // Pick up nearby loose ground items (plates, medkits, ammo, valuables)
+            if (Array.isArray(this.world.groundItems)) {
+              for (let giIdx = this.world.groundItems.length - 1; giIdx >= 0; giIdx--) {
+                const gi = this.world.groundItems[giIdx];
+                if (!gi || !gi.position) continue;
+                const gd = Math.hypot(this.position.x - gi.position.x, this.position.z - gi.position.z);
+                if (gd < 2.8) {
+                  if (gi.id === 'armor_plate' && this.operatorEquipment) {
+                    this.operatorEquipment.plates = Math.min(6, (this.operatorEquipment.plates || 0) + (gi.qty || 1));
+                  } else if (this.lootItems && this.lootItems.length < 10) {
+                    this.lootItems.push({ id: gi.id, qty: gi.qty || 1, revealed: false });
+                  }
+                  if (this.world.removeGroundItem) this.world.removeGroundItem(gi);
+                  break;
+                } else if (gd < 11.0 && !this._activeLootGoal) {
+                  this._activeLootGoal = gi.position.clone();
+                  break;
+                }
+              }
+            }
+            // Loot nearby unsearched POI containers
+            if (!this._activeLootGoal && Array.isArray(this.world.lootContainers)) {
+              for (let cIdx = 0; cIdx < this.world.lootContainers.length; cIdx++) {
+                const ct = this.world.lootContainers[cIdx];
+                if (!ct || ct.requiresKey || !Array.isArray(ct.items) || ct.items.length === 0) continue;
+                const cd = Math.hypot(this.position.x - ct.position.x, this.position.z - ct.position.z);
+                if (cd < 3.0) {
+                  const taken = ct.items.shift();
+                  if (taken) {
+                    if (taken.id === 'armor_plate' && this.operatorEquipment) {
+                      this.operatorEquipment.plates = Math.min(6, (this.operatorEquipment.plates || 0) + (taken.qty || 1));
+                    } else if (this.lootItems && this.lootItems.length < 10) {
+                      this.lootItems.push({ id: taken.id, qty: taken.qty || 1, revealed: false });
+                    }
+                  }
+                  break;
+                } else if (cd < 14.0) {
+                  this._activeLootGoal = ct.position.clone();
+                  break;
+                }
+              }
+            }
+          }
+          if (this._activeLootGoal) {
+            const ld = Math.hypot(this.position.x - this._activeLootGoal.x, this.position.z - this._activeLootGoal.z);
+            if (ld < 2.2) {
+              this._activeLootGoal = null;
+            } else {
+              this._moveToward(this._activeLootGoal.x, this._activeLootGoal.z, this.speed * 0.85, dt);
+            }
+          }
+        } else {
+          this._activeLootGoal = null;
+        }
+      }
     }
     if (this.extracted) return;
     if (this.dead) {

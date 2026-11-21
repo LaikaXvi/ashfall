@@ -5228,20 +5228,28 @@ class GameUI {
       banner.classList.toggle('reviving', beingRevived);
       if (beingRevived) {
         const pct = Math.round((player.reviveProgress || 0) * 100);
-        titleEl.textContent = player.beingDragged
-          ? `DRAGGED TO COVER BY ${player.beingRevivedBy}`
-          : `BEING REVIVED BY ${player.beingRevivedBy}`;
+        if (player.beingRevivedBy === 'TOURNIQUET') {
+          titleEl.textContent = 'APPLYING TOURNIQUET (-25 MAX HP)';
+          subEl.textContent = 'Hold [E] — Sacrifices 25 Max HP (use Medkit to restore permanently)';
+        } else {
+          titleEl.textContent = player.beingDragged
+            ? `DRAGGED TO COVER BY ${player.beingRevivedBy}`
+            : `BEING REVIVED BY ${player.beingRevivedBy}`;
+          subEl.textContent = 'Bleedout paused while being revived';
+        }
         timerEl.textContent = `${pct}%`;
         fillEl.style.width = `${pct}%`;
-        subEl.textContent = 'Bleedout paused while being revived';
       } else {
         const pct = Math.max(0, Math.min(100, (player.downedBleedTimer / player.downedBleedMax) * 100));
         titleEl.textContent = 'DOWNED — CRAWL TO COVER';
         timerEl.textContent = `${Math.max(0, player.downedBleedTimer).toFixed(1)}s`;
         fillEl.style.width = `${pct}%`;
+        const canTourniquet = (player.disabledHp || 0) < (player.maxHp - 25);
         subEl.textContent = player.selfRevive
           ? 'Hold [E] to Self-Revive · WASD to crawl to cover'
-          : 'Use WASD to crawl · Ally must revive before bleedout expires';
+          : (canTourniquet
+            ? 'Hold [E] Apply Tourniquet (-25 Max HP) · WASD to crawl to cover'
+            : 'Use WASD to crawl · Ally must revive before bleedout expires');
       }
       return;
     }
@@ -5321,6 +5329,8 @@ class GameUI {
         timer: document.getElementById('hud-timer'),
         devBadge: document.getElementById('hud-dev-badge'),
         hpBar: document.getElementById('hud-hp-bar'),
+        hpTempBar: document.getElementById('hud-hp-temp-bar'),
+        hpDisabledBar: document.getElementById('hud-hp-disabled-bar'),
         hpVal: document.getElementById('hud-hp-val'),
         segContainer: document.getElementById('hud-plate-segments'),
         armorVal: document.getElementById('hud-armor-val'),
@@ -5354,11 +5364,26 @@ class GameUI {
       hc.devBadge.classList.toggle('hidden', !devFlag);
     }
 
-    // Vitals (dirty-checked to prevent 60Hz DOM reflows)
-    const hpPct = ((player.hp / player.maxHp) * 100).toFixed(1);
-    if (hc.hpBar && hpv.hpPct !== hpPct) {
-      hpv.hpPct = hpPct;
-      hc.hpBar.style.width = `${hpPct}%`;
+    // Vitals (dirty-checked: Active HP + Yellow Temporary Restored HP + Red Disabled HP from Tourniquet!)
+    const maxHp = Math.max(1, player.maxHp || 100);
+    const disabledHp = Math.max(0, player.disabledHp || 0);
+    const tempHp = Math.max(0, Math.min(disabledHp, player.tempHealthRestored || 0));
+    const permDisabledHp = Math.max(0, disabledHp - tempHp);
+    const permMaxHp = Math.max(0, maxHp - disabledHp);
+    const normalHp = Math.min(player.hp, permMaxHp);
+    const activeTempHp = Math.max(0, Math.min(player.hp - permMaxHp, tempHp));
+
+    const hpStateKey = `${normalHp.toFixed(1)}|${activeTempHp.toFixed(1)}|${tempHp.toFixed(1)}|${permDisabledHp.toFixed(1)}`;
+    if (hpv.hpStateKey !== hpStateKey) {
+      hpv.hpStateKey = hpStateKey;
+      if (hc.hpBar) hc.hpBar.style.width = `${((normalHp / maxHp) * 100).toFixed(1)}%`;
+      if (hc.hpTempBar) {
+        hc.hpTempBar.style.left = `${((permMaxHp / maxHp) * 100).toFixed(1)}%`;
+        hc.hpTempBar.style.width = `${((activeTempHp / maxHp) * 100).toFixed(1)}%`;
+      }
+      if (hc.hpDisabledBar) {
+        hc.hpDisabledBar.style.width = `${((permDisabledHp / maxHp) * 100).toFixed(1)}%`;
+      }
     }
     const hpCeil = Math.ceil(player.hp);
     if (hc.hpVal && hpv.hpCeil !== hpCeil) {
@@ -6607,7 +6632,12 @@ class GameUI {
       const def = GAME_DATA.ITEMS[item.id];
       const rarKey = item.rarityOverride || (def && def.rarity) || 'common';
       const rarInfo = (GAME_DATA.RARITIES && GAME_DATA.RARITIES[rarKey]) || { revealTime: 0.45 };
-      const duration = rarInfo.revealTime || 0.45;
+      // Common & Rare weapons reveal noticeably faster!
+      let duration = rarInfo.revealTime || 0.45;
+      if (def && def.type === 'weapon') {
+        if (rarKey === 'common') duration = 0.35;
+        else if (rarKey === 'rare') duration = 0.52;
+      }
 
       this._searchRevealProgress += dt / duration;
 
@@ -6635,7 +6665,14 @@ class GameUI {
 
     const rarKey = this._getOperatorSlotRarity(eq, nextKey);
     const rarInfo = (GAME_DATA.RARITIES && GAME_DATA.RARITIES[rarKey]) || { revealTime: 0.45 };
-    const duration = rarInfo.revealTime || 0.45;
+    // Operator Cash slot & common/rare equipped weapons reveal much faster!
+    let duration = rarInfo.revealTime || 0.45;
+    if (nextKey === 'cash') {
+      duration = 0.25;
+    } else if (nextKey === 'primary' || nextKey === 'secondary') {
+      if (rarKey === 'common') duration = 0.35;
+      else if (rarKey === 'rare') duration = 0.52;
+    }
 
     this._searchRevealProgress += dt / duration;
 
@@ -7050,6 +7087,15 @@ class GameUI {
           this.closeLootModal();
           return;
         }
+      } else if (def.type === 'med' && (item.id === 'bandage' || item.id === 'painkillers')) {
+        if (player.useTemporaryMed && player.useTemporaryMed(item.id)) {
+          this.showCenterToast(
+            item.id === 'painkillers' ? 'PAINKILLERS ACTIVE (45s TEMP HP)' : 'BANDAGE APPLIED (25s TEMP HP)',
+            '#ffd54f'
+          );
+          this.renderLootModal(player);
+          return;
+        }
       }
     } else if (action === 'quick') {
       if (context === 'container' && this.activeLootSource) {
@@ -7101,6 +7147,15 @@ class GameUI {
         } else if (def.type === 'med' && item.id === 'medkit') {
           if (player.startMedkit()) {
             this.closeLootModal();
+            return;
+          }
+        } else if (def.type === 'med' && (item.id === 'bandage' || item.id === 'painkillers')) {
+          if (player.useTemporaryMed && player.useTemporaryMed(item.id)) {
+            this.showCenterToast(
+              item.id === 'painkillers' ? 'PAINKILLERS ACTIVE (45s TEMP HP)' : 'BANDAGE APPLIED (25s TEMP HP)',
+              '#ffd54f'
+            );
+            this.renderLootModal(player);
             return;
           }
         } else if (def.type === 'lethal' || def.type === 'tactical') {

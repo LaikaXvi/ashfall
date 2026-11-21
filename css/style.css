@@ -6408,3 +6408,38 @@ input[type="range"].gp-focus {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* ==================== v2.02 TOURNIQUET DISABLED (RED) & TEMPORARY (YELLOW) HEALTH SEGMENTS ==================== */
+.bar-bg.hp-bg {
+  position: relative;
+  overflow: hidden;
+}
+
+.hp-temp-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0%;
+  background: linear-gradient(90deg, #ffca28 0%, #ffe082 100%) !important;
+  box-shadow: 0 0 8px rgba(255, 213, 79, 0.75);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.hp-disabled-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 0%;
+  background: repeating-linear-gradient(
+    -45deg,
+    rgba(217, 45, 45, 0.92),
+    rgba(217, 45, 45, 0.92) 4px,
+    rgba(130, 18, 18, 0.95) 4px,
+    rgba(130, 18, 18, 0.95) 8px
+  ) !important;
+  border-left: 1px solid rgba(255, 110, 110, 0.85);
+  z-index: 3;
+  pointer-events: none;
+}

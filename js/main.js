@@ -2534,10 +2534,11 @@
       player.beingDragged = false;
       player._remoteReviveExpire = 0;
     }
-    // Self-Revive Kit: hold [Interact] while downed to channel Self-Revive AND pause the death/bleedout timer!
+    // Self-Revive Kit OR Tourniquet Self-Revive (sacrifices 25 max HP into disabled red segment):
     if (player && player.isDowned && !player.dead) {
-      const canSelfRevive = !player.beingRevivedBy || player.beingRevivedBy === 'SELF-REVIVE';
-      if (player.selfRevive && !isModalOpen && !(devConsole && devConsole.isOpen) && player.keys[interactKey] && canSelfRevive) {
+      const canSelfRevive = !player.beingRevivedBy || player.beingRevivedBy === 'SELF-REVIVE' || player.beingRevivedBy === 'TOURNIQUET';
+      const holdingInteract = !isModalOpen && !(devConsole && devConsole.isOpen) && player.keys[interactKey];
+      if (player.selfRevive && holdingInteract && canSelfRevive) {
         player.beingRevivedBy = 'SELF-REVIVE';
         player.reviveProgress = Math.min(1, (player.reviveProgress || 0) + dt / 4.5);
         if (player.reviveProgress >= 1) {
@@ -2547,7 +2548,16 @@
           ui.showCenterToast('SELF-REVIVE COMPLETE', '#69f0ae');
           ui.addFeedMessage('Used Self-Revive Kit', '#69f0ae');
         }
-      } else if (player.beingRevivedBy === 'SELF-REVIVE') {
+      } else if (!player.selfRevive && holdingInteract && canSelfRevive && (player.disabledHp || 0) < (player.maxHp - 25)) {
+        player.beingRevivedBy = 'TOURNIQUET';
+        player.reviveProgress = Math.min(1, (player.reviveProgress || 0) + dt / 2.6);
+        if (player.reviveProgress >= 1) {
+          player.applyTourniquet();
+          if (mpSession && mpSession.active && mpSession.sendStateNow) mpSession.sendStateNow(player);
+          ui.showCenterToast('TOURNIQUET APPLIED — MAX HP REDUCED', '#ffca28');
+          ui.addFeedMessage('Applied Tourniquet (-25 Max HP) — Use Medkit to restore permanently', '#ffca28');
+        }
+      } else if (player.beingRevivedBy === 'SELF-REVIVE' || player.beingRevivedBy === 'TOURNIQUET') {
         player.beingRevivedBy = null;
       }
       ui.updateReviveBanner(player, null, false);

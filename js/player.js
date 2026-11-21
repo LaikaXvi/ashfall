@@ -283,9 +283,15 @@ class Player {
     this.padSprint = false;
     this.padLean = 0;
 
-    // Vitals (DMZ 1-3 Plate Armor System)
+    // Vitals (DMZ 1-3 Plate Armor System + Tourniquet Disabled/Temporary Health & 2.5s Regen)
     this.maxHp = 100;
     this.hp = 100;
+    this.disabledHp = 0;           // Red disabled max HP segment from Tourniquet self-revives
+    this.tempHealthRestored = 0;   // Yellow temporarily restored HP from Bandage / Painkillers
+    this.tempHealthTimer = 0;      // Remaining duration of Bandage / Painkiller temp HP
+    this.tempHealthDuration = 0;
+    this.tempHealthSource = null;  // 'bandage' | 'painkillers' | null
+    this.timeSinceDamaged = 10;    // Auto-regenerates HP after 2.5s without taking damage
     this.isDowned = false;
     this.dead = false;
     this.downedHp = 55;
@@ -1473,9 +1479,14 @@ class Player {
     return true;
   }
 
+  getEffectiveMaxHp() {
+    return Math.max(20, this.maxHp - Math.max(0, (this.disabledHp || 0) - (this.tempHealthRestored || 0)));
+  }
+
   startMedkit() {
     if (this.isDowned || this.dead) return false;
-    if (!window.DEV_MODE && (this.getMedkitCount() <= 0 || this.hp >= this.maxHp)) return false;
+    const needsMed = this.hp < this.maxHp || (this.disabledHp || 0) > 0 || (this.tempHealthTimer || 0) > 0;
+    if (!window.DEV_MODE && (this.getMedkitCount() <= 0 || !needsMed)) return false;
     return this.weaponSystem.startMedkit();
   }
 
@@ -1483,8 +1494,53 @@ class Player {
     if (!window.DEV_MODE) {
       if (!this.consumeMedkit()) return false;
     }
+    // Medkit permanently restores disabled health & converts any temporary Bandage/Painkiller health into permanent HP!
+    this.disabledHp = 0;
+    this.tempHealthRestored = 0;
+    this.tempHealthTimer = 0;
+    this.tempHealthDuration = 0;
+    this.tempHealthSource = null;
     this.hp = Math.min(this.maxHp, this.hp + GAME_DATA.ITEMS.medkit.healAmount);
     window.soundEngine.playHeal();
+    return true;
+  }
+
+  useTemporaryMed(itemId) {
+    if (this.isDowned || this.dead) return false;
+    if (itemId !== 'bandage' && itemId !== 'painkillers') return false;
+    const idx = this.backpack.findIndex(it => it && it.id === itemId && it.qty > 0);
+    if (!window.DEV_MODE && idx === -1) return false;
+    const restoreCap = itemId === 'painkillers' ? 50 : 25;
+    const dur = itemId === 'painkillers' ? 45.0 : 25.0;
+    const canRestore = Math.min(this.disabledHp || 0, restoreCap);
+    const needsHeal = this.hp < this.getEffectiveMaxHp();
+    if (canRestore <= 0 && !needsHeal && !window.DEV_MODE) return false;
+
+    if (!window.DEV_MODE && idx !== -1) {
+      this.backpack[idx].qty -= 1;
+      if (this.backpack[idx].qty <= 0) this.backpack.splice(idx, 1);
+    }
+    if (canRestore > 0) {
+      this.tempHealthRestored = Math.max(this.tempHealthRestored || 0, canRestore);
+      this.tempHealthTimer = dur;
+      this.tempHealthDuration = dur;
+      this.tempHealthSource = itemId;
+    }
+    const healAmt = itemId === 'painkillers' ? 45 : 30;
+    this.hp = Math.min(this.getEffectiveMaxHp(), this.hp + healAmt);
+    if (window.soundEngine && window.soundEngine.playHeal) {
+      try { window.soundEngine.playHeal(); } catch (e) {}
+    }
+    return true;
+  }
+
+  applyTourniquet() {
+    if (!this.isDowned || this.dead) return false;
+    // Sacrifice 25 max HP (disabled red health bar section) to get back up immediately!
+    this.disabledHp = Math.min(this.maxHp - 25, (this.disabledHp || 0) + 25);
+    this.tempHealthRestored = Math.min(this.tempHealthRestored || 0, this.disabledHp);
+    this.revive(Math.min(40, this.getEffectiveMaxHp()));
+    this.timeSinceDamaged = 0;
     return true;
   }
 
@@ -1494,6 +1550,7 @@ class Player {
 
   takeDamage(amount, attackerInfo = null) {
     if (this.dead || this.godMode) return null;
+    this.timeSinceDamaged = 0;
     if (this.isDowned) {
       if (attackerInfo) this.downedBy = attackerInfo;
       if (!window.DEV_MODE) {
@@ -2483,6 +2540,27 @@ class Player {
         camPos.z = testZ;
       }
       camPos.y -= leanDip;
+    }
+
+    // Tick temporary Bandage/Painkiller health duration & 2.5s automatic health regeneration!
+    if (!this.dead && !this.isDowned) {
+      if (this.tempHealthTimer > 0) {
+        this.tempHealthTimer -= dt;
+        if (this.tempHealthTimer <= 0) {
+          this.tempHealthTimer = 0;
+          this.tempHealthRestored = 0;
+          this.tempHealthSource = null;
+          const effMax = this.getEffectiveMaxHp();
+          if (this.hp > effMax) this.hp = effMax;
+        }
+      }
+      this.timeSinceDamaged = (this.timeSinceDamaged || 0) + dt;
+      if (this.timeSinceDamaged >= 2.5) {
+        const effMax = this.getEffectiveMaxHp();
+        if (this.hp < effMax) {
+          this.hp = Math.min(effMax, this.hp + 28 * dt);
+        }
+      }
     }
 
     // Update 3rd-person articulated character model
