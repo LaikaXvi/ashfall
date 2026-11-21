@@ -301,12 +301,18 @@ class GameUI {
     window.addEventListener('keydown', (e) => {
       if (this._rebindCleanup) return;
       if (window.devConsole && window.devConsole.isOpen) return;
+      if (window.hideoutBunker && window.hideoutBunker.activeRoam) return;
       const tag = (document.activeElement && document.activeElement.tagName) || '';
       if (tag === 'INPUT' && document.activeElement.type !== 'range') return;
       if (tag === 'TEXTAREA' || tag === 'SELECT') return;
 
       const scope = this._getNavScope();
       if (!scope) return;
+
+      // On the Main Menu Lobby, let WASD immediately enter Walkable 3D Hideout mode (Arrows still navigate menu tiles)
+      if (this.activeMenuTab === 'home' && (e.code === 'KeyW' || e.code === 'KeyA' || e.code === 'KeyS' || e.code === 'KeyD')) {
+        return;
+      }
 
       const dirMap = {
         KeyW: 'up', ArrowUp: 'up',

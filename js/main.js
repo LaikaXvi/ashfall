@@ -94,10 +94,13 @@
   const matchmaking = new MatchmakingStage(ui, (zoneId, matchId) => startRaid(zoneId, matchId));
   ui.matchmakingStage = matchmaking;
   const hideoutBunker = (typeof HideoutBunker !== 'undefined') ? new HideoutBunker() : null;
+  window.hideoutBunker = hideoutBunker;
+  let hideoutHadPointerLock = false;
 
   function enterHideoutRoam() {
     if (!hideoutBunker || inRaid || (gunsmith && gunsmith.isOpen)) return;
     if (ui && ui.activeMenuTab !== 'home') ui.openMenuTab('home');
+    hideoutHadPointerLock = false;
     const hideoutScreen = document.getElementById('hideout-screen');
     const roamHud = document.getElementById('hideout-roam-hud');
     if (hideoutScreen) hideoutScreen.classList.add('hideout-roam-mode');
@@ -107,6 +110,7 @@
 
   function exitHideoutRoam(openMenu = true) {
     if (!hideoutBunker) return;
+    hideoutHadPointerLock = false;
     hideoutBunker.exitRoam();
     const hideoutScreen = document.getElementById('hideout-screen');
     const roamHud = document.getElementById('hideout-roam-hud');
@@ -127,8 +131,12 @@
   });
 
   document.addEventListener('pointerlockchange', () => {
-    if (!inRaid && hideoutBunker && hideoutBunker.activeRoam && document.pointerLockElement !== canvas) {
-      exitHideoutRoam(true);
+    if (!inRaid && hideoutBunker && hideoutBunker.activeRoam) {
+      if (document.pointerLockElement === canvas) {
+        hideoutHadPointerLock = true;
+      } else if (hideoutHadPointerLock) {
+        exitHideoutRoam(true);
+      }
     }
   });
   const mpSession = (typeof MultiplayerSession !== 'undefined') ? new MultiplayerSession() : null;
