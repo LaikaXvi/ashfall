@@ -3392,6 +3392,202 @@ button:disabled {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65);
 }
 
+/* ==================== ACTIVE DUTY 3-SLOT OPERATOR ROSTER ==================== */
+.operator-duty-wrap {
+  max-width: 1180px !important;
+  width: 96% !important;
+  max-height: calc(100vh - 108px);
+  overflow-y: auto;
+}
+
+.operator-duty-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.active-duty-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.duty-op-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 410px;
+  border-radius: 12px;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(20, 26, 24, 0.96) 0%, rgba(11, 15, 14, 0.98) 100%);
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.duty-op-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(255, 255, 255, 0.28);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
+}
+
+.duty-op-card.active {
+  border-color: #69f0ae;
+  box-shadow: 0 0 0 1px rgba(105, 240, 174, 0.4), 0 14px 36px rgba(0, 0, 0, 0.62);
+}
+
+.duty-title-card {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 14px 10px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.01));
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.duty-slot-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  color: #8f9b93;
+  text-transform: uppercase;
+}
+
+.duty-callsign {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 1.1px;
+  color: #f0f5f2;
+  line-height: 1.15;
+  margin-top: 2px;
+}
+
+.duty-role {
+  font-size: 11px;
+  color: #9aa79f;
+  letter-spacing: 0.6px;
+  margin-top: 2px;
+}
+
+.duty-active-pill {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.9px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: rgba(105, 240, 174, 0.16);
+  border: 1px solid #69f0ae;
+  color: #69f0ae;
+  white-space: nowrap;
+}
+
+.duty-portrait-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 215px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+  padding: 10px 10px 0;
+}
+
+.duty-portrait-svg {
+  width: 100%;
+  max-width: 210px;
+  height: 210px;
+  filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.72));
+}
+
+.duty-dogtag-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  background: rgba(7, 10, 9, 0.85);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.duty-dogtag-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.duty-dogtag-icon {
+  width: 30px;
+  height: 36px;
+  flex-shrink: 0;
+}
+
+.duty-dogtag-tier {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.9px;
+}
+
+.duty-dogtag-sub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #9ba6a0;
+  margin-top: 1px;
+}
+
+.duty-dogtag-val {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 800;
+  color: #e2ebe5;
+}
+
+.duty-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 14px 12px;
+  background: rgba(12, 16, 15, 0.92);
+}
+
+.duty-gear-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: #b5c0b9;
+}
+
+.duty-gear-chip {
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+.duty-loadout-compact {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@media (max-width: 860px) {
+  .active-duty-grid {
+    grid-template-columns: 1fr;
+  }
+  .duty-loadout-compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .hideout-header {
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);

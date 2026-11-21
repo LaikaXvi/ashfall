@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ASHFALL // 3D Extraction Looter-Shooter</title>
-  <link rel="stylesheet" href="css/style.css?v=178" />
+  <link rel="stylesheet" href="css/style.css?v=181" />
   <!-- Three.js r128 UMD for zero-build compatibility (works on both http:// and file://) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
@@ -22,7 +22,7 @@
     <!-- IMPORTANT: Update version in GAME_DATA.VERSION (js/data.js) and here with EVERY new commit -->
     <div class="menu-version-stack">
       <button id="menu-update-badge" class="menu-update-badge hidden" title="Click to reload into the latest version">NEW VERSION AVAILABLE</button>
-      <div id="menu-version-badge" class="menu-version-badge">v1.80</div>
+      <div id="menu-version-badge" class="menu-version-badge">v1.81</div>
     </div>
     <!-- Top Bar (visible inside utility tabs; hidden on clean Main Menu title card) -->
     <header id="menu-topbar" class="hideout-header hidden">
@@ -288,43 +288,52 @@
       </section>
     </main>
 
-    <!-- VIEW 3: OPERATOR LOADOUT TAB -->
+    <!-- VIEW 3: OPERATOR TAB (3 VERTICAL ACTIVE DUTY OPERATOR SLOTS + LOADOUT) -->
     <main id="menu-view-operator" class="menu-tab-view hidden">
-      <div class="single-panel-wrap">
-        <section class="panel loadout-panel">
+      <div class="single-panel-wrap operator-duty-wrap">
+        <section class="panel operator-duty-panel">
           <div class="panel-header">
-            <h2>OPERATOR LOADOUT</h2>
+            <div>
+              <h2>ACTIVE DUTY OPERATORS</h2>
+              <span class="sub">SELECT AN OPERATOR SLOT · EXTRACT TO UPGRADE DOGTAG TIER</span>
+            </div>
             <div class="panel-actions">
               <button id="btn-op-gunsmith" class="btn-small" style="border-color:#d9822b;color:#f5a623;">OPEN GUNSMITH</button>
               <button id="btn-op-stash" class="btn-small">MANAGE STASH</button>
             </div>
           </div>
-          <div class="loadout-slots">
-            <div class="equip-slot" data-slot="primary">
-              <span class="slot-label">PRIMARY WEAPON</span>
-              <div id="slot-primary" class="slot-content empty">None Equipped</div>
-            </div>
-            <div class="equip-slot" data-slot="secondary">
-              <span class="slot-label">SIDEARM</span>
-              <div id="slot-secondary" class="slot-content empty">None Equipped</div>
-            </div>
-            <div class="equip-slot" data-slot="armor">
-              <span class="slot-label">BODY ARMOR</span>
-              <div id="slot-armor" class="slot-content empty">No Armor</div>
-            </div>
-            <div class="equip-slot" data-slot="lethal">
-              <span class="slot-label">LETHAL (F)</span>
-              <div id="slot-lethal" class="slot-content">2x M67 Frag Grenade</div>
-            </div>
-            <div class="equip-slot" data-slot="tactical">
-              <span class="slot-label">TACTICAL (Q)</span>
-              <div id="slot-tactical" class="slot-content">2x M18 Smoke Grenade</div>
-            </div>
-          </div>
 
-          <div class="ammo-summary">
-            <h3>AMMO IN RIG</h3>
-            <div id="loadout-ammo-list" class="ammo-chips"></div>
+          <!-- 3 Vertical Active Duty Operator Slots -->
+          <div id="active-duty-grid" class="active-duty-grid"></div>
+
+          <!-- Active Operator Equipped Loadout Bar -->
+          <div class="duty-loadout-footer">
+            <div class="loadout-slots duty-loadout-compact">
+              <div class="equip-slot" data-slot="primary">
+                <span class="slot-label">PRIMARY WEAPON</span>
+                <div id="slot-primary" class="slot-content empty">None Equipped</div>
+              </div>
+              <div class="equip-slot" data-slot="secondary">
+                <span class="slot-label">SIDEARM</span>
+                <div id="slot-secondary" class="slot-content empty">None Equipped</div>
+              </div>
+              <div class="equip-slot" data-slot="armor">
+                <span class="slot-label">BODY ARMOR</span>
+                <div id="slot-armor" class="slot-content empty">No Armor</div>
+              </div>
+              <div class="equip-slot" data-slot="lethal">
+                <span class="slot-label">LETHAL (F)</span>
+                <div id="slot-lethal" class="slot-content">2x M67 Frag Grenade</div>
+              </div>
+              <div class="equip-slot" data-slot="tactical">
+                <span class="slot-label">TACTICAL (Q)</span>
+                <div id="slot-tactical" class="slot-content">2x M18 Smoke Grenade</div>
+              </div>
+            </div>
+            <div class="ammo-summary" style="margin-top:8px;">
+              <h3>AMMO IN RIG</h3>
+              <div id="loadout-ammo-list" class="ammo-chips"></div>
+            </div>
           </div>
         </section>
       </div>
@@ -950,7 +959,7 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION with every new commit) -->
-  <script src="js/data.js?v=180"></script>
+  <script src="js/data.js?v=181"></script>
   <script src="js/net.js?v=123"></script>
   <script src="js/sfx_samples.js?v=21"></script>
   <script src="js/audio.js?v=179"></script>
@@ -965,7 +974,7 @@
   <script src="js/gamepad.js?v=178"></script>
   <script src="js/gunsmith.js?v=41"></script>
   <script src="js/matchmaking.js?v=168"></script>
-  <script src="js/ui.js?v=180"></script>
+  <script src="js/ui.js?v=181"></script>
   <script src="js/console.js?v=117"></script>
   <script src="js/main.js?v=179"></script>
 </body>

@@ -3821,7 +3821,220 @@ class GameUI {
     }
   }
 
+  _ensureActiveDutyOperators() {
+    if (!this.profile) return [];
+    const defaults = [
+      {
+        id: 'op_1',
+        slotLabel: 'SLOT 01 // ACTIVE DUTY',
+        callsign: 'GHOST-01',
+        title: 'TACTICAL RANGER // TF-7',
+        accent: '#69f0ae',
+        helmet: '#2a332b',
+        visor: '#69f0ae',
+        rig: '#384437',
+        uniform: '#222924',
+        style: 'nvg',
+        exfilStreak: 0,
+        gear: null
+      },
+      {
+        id: 'op_2',
+        slotLabel: 'SLOT 02 // ACTIVE DUTY',
+        callsign: 'VIPER-02',
+        title: 'NIGHT RECON // SHADOW',
+        accent: '#42a5f5',
+        helmet: '#1f2836',
+        visor: '#42a5f5',
+        rig: '#283647',
+        uniform: '#19202b',
+        style: 'goggles',
+        exfilStreak: 0,
+        gear: null
+      },
+      {
+        id: 'op_3',
+        slotLabel: 'SLOT 03 // ACTIVE DUTY',
+        callsign: 'KODIAK-03',
+        title: 'HEAVY BREACHER // IRON',
+        accent: '#f5a623',
+        helmet: '#3d3528',
+        visor: '#f5a623',
+        rig: '#524634',
+        uniform: '#2c261e',
+        style: 'heavy',
+        exfilStreak: 0,
+        gear: null
+      }
+    ];
+    if (!Array.isArray(this.profile.activeDutyOperators) || this.profile.activeDutyOperators.length !== 3) {
+      this.profile.activeDutyOperators = defaults.map((d) => ({ ...d }));
+    } else {
+      this.profile.activeDutyOperators = defaults.map((d, i) => ({
+        ...d,
+        ...(this.profile.activeDutyOperators[i] || {})
+      }));
+    }
+    if (typeof this.profile.activeOperatorIdx !== 'number' || this.profile.activeOperatorIdx < 0 || this.profile.activeOperatorIdx > 2) {
+      this.profile.activeOperatorIdx = 0;
+    }
+    return this.profile.activeDutyOperators;
+  }
+
+  _getDogtagInfo(streak = 0) {
+    const s = Math.max(0, Math.floor(Number(streak) || 0));
+    if (s >= 10) return { tier: 'DAMASCUS DOGTAG', level: 'LVL 4', color: '#c48bff', stroke: '#8c52ff', value: 50000, streak: s };
+    if (s >= 5) return { tier: 'GOLD DOGTAG', level: 'LVL 3', color: '#ffd54f', stroke: '#f5a623', value: 25000, streak: s };
+    if (s >= 2) return { tier: 'SILVER DOGTAG', level: 'LVL 2', color: '#cfd8dc', stroke: '#90a4ae', value: 10000, streak: s };
+    return { tier: 'BRONZE DOGTAG', level: 'LVL 1', color: '#cd8c52', stroke: '#9c6230', value: 2500, streak: s };
+  }
+
+  _buildOperatorPortraitSVG(op) {
+    const gId = `opBg_${op.id}`;
+    const visorDetails = op.style === 'nvg'
+      ? `<rect x="78" y="45" width="14" height="10" rx="2" fill="#121614" stroke="${op.visor}" stroke-width="1.4"/>
+         <rect x="108" y="45" width="14" height="10" rx="2" fill="#121614" stroke="${op.visor}" stroke-width="1.4"/>
+         <circle cx="85" cy="50" r="2.6" fill="${op.visor}" opacity="0.9"/>
+         <circle cx="115" cy="50" r="2.6" fill="${op.visor}" opacity="0.9"/>
+         <rect x="92" y="42" width="16" height="8" rx="2" fill="#1d2220"/>`
+      : (op.style === 'heavy'
+        ? `<path d="M72 64 Q100 58 128 64 L126 84 Q100 90 74 84 Z" fill="#15181a" stroke="${op.visor}" stroke-width="1.6"/>
+           <rect x="77" y="69" width="46" height="7" rx="3" fill="${op.visor}" opacity="0.82"/>`
+        : `<path d="M76 66 Q100 62 124 66 L122 77 Q100 81 78 77 Z" fill="#11161d" stroke="${op.visor}" stroke-width="1.6"/>
+           <line x1="81" y1="71" x2="119" y2="71" stroke="${op.visor}" stroke-width="2.2" opacity="0.85"/>`);
+
+    return `
+      <svg class="duty-portrait-svg" viewBox="0 0 200 220" aria-hidden="true">
+        <defs>
+          <radialGradient id="${gId}" cx="50%" cy="42%" r="54%">
+            <stop offset="0%" stop-color="${op.accent}" stop-opacity="0.28"/>
+            <stop offset="68%" stop-color="${op.accent}" stop-opacity="0.06"/>
+            <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <rect width="200" height="220" fill="url(#${gId})"/>
+        <!-- Tactical rifle silhouette across shoulder -->
+        <path d="M138 96 L174 36 L181 40 L146 102 Z" fill="#15181a" stroke="#2c3338" stroke-width="1.2"/>
+        <!-- Shoulders & combat jacket -->
+        <path d="M28 220 L38 144 Q46 118 76 112 L124 112 Q154 118 162 144 L172 220 Z" fill="${op.uniform}" stroke="rgba(255,255,255,0.12)" stroke-width="1.4"/>
+        <!-- Plate carrier & MOLLE pouches -->
+        <path d="M62 118 L138 118 L144 214 L56 214 Z" fill="${op.rig}" stroke="rgba(255,255,255,0.14)" stroke-width="1.4"/>
+        <rect x="68" y="132" width="64" height="14" rx="2" fill="rgba(0,0,0,0.34)"/>
+        <rect x="66" y="156" width="19" height="34" rx="2" fill="#1b201e" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+        <rect x="90" y="156" width="20" height="34" rx="2" fill="#1b201e" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+        <rect x="115" y="156" width="19" height="34" rx="2" fill="#1b201e" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+        <!-- Callsign chest patch -->
+        <rect x="78" y="135" width="44" height="8" rx="1.5" fill="${op.accent}" opacity="0.85"/>
+        <!-- Neck & balaclava -->
+        <rect x="84" y="92" width="32" height="24" rx="6" fill="#191d1c"/>
+        <ellipse cx="100" cy="76" rx="26" ry="30" fill="#1f2423" stroke="rgba(255,255,255,0.1)" stroke-width="1.2"/>
+        <!-- Tactical Helmet -->
+        <path d="M68 70 Q68 32 100 30 Q132 32 132 70 L127 74 Q100 66 73 74 Z" fill="${op.helmet}" stroke="rgba(255,255,255,0.18)" stroke-width="1.5"/>
+        <!-- Headset comms ear-pro -->
+        <rect x="63" y="68" width="9" height="20" rx="4" fill="#16191b" stroke="${op.accent}" stroke-width="1"/>
+        <rect x="128" y="68" width="9" height="20" rx="4" fill="#16191b" stroke="${op.accent}" stroke-width="1"/>
+        ${visorDetails}
+      </svg>
+    `;
+  }
+
+  _buildDogtagIconSVG(dt) {
+    return `
+      <svg class="duty-dogtag-icon" viewBox="0 0 36 44" aria-hidden="true">
+        <path d="M18 2 L18 10" stroke="#9aa3a8" stroke-width="2" stroke-dasharray="2 2"/>
+        <rect x="6" y="10" width="24" height="30" rx="6" fill="${dt.color}" fill-opacity="0.22" stroke="${dt.color}" stroke-width="2"/>
+        <circle cx="18" cy="16" r="2.2" fill="${dt.color}"/>
+        <line x1="11" y1="24" x2="25" y2="24" stroke="${dt.color}" stroke-width="1.8"/>
+        <line x1="11" y1="29" x2="22" y2="29" stroke="${dt.color}" stroke-width="1.5" opacity="0.85"/>
+        <line x1="11" y1="34" x2="19" y2="34" stroke="${dt.color}" stroke-width="1.5" opacity="0.7"/>
+      </svg>
+    `;
+  }
+
+  selectActiveDutyOperator(idx) {
+    const ops = this._ensureActiveDutyOperators();
+    if (idx < 0 || idx >= ops.length || idx === this.profile.activeOperatorIdx) return;
+    const L = this.profile.loadout;
+    const prevOp = ops[this.profile.activeOperatorIdx];
+    if (prevOp) {
+      prevOp.gear = {
+        armor: L.armor || null,
+        backpack: L.backpack || null,
+        headgear: L.headgear || null,
+        selfRevive: L.selfRevive || null,
+        killstreak: L.killstreak || null
+      };
+    }
+    this.profile.activeOperatorIdx = idx;
+    const nextOp = ops[idx];
+    if (nextOp && nextOp.gear) {
+      L.armor = nextOp.gear.armor || null;
+      L.backpack = nextOp.gear.backpack || null;
+      L.headgear = nextOp.gear.headgear || null;
+      L.selfRevive = nextOp.gear.selfRevive || null;
+      L.killstreak = nextOp.gear.killstreak || null;
+    }
+    this.saveProfile();
+    this.renderHideout();
+  }
+
+  renderActiveDutyRoster() {
+    const grid = document.getElementById('active-duty-grid');
+    if (!grid) return;
+    const ops = this._ensureActiveDutyOperators();
+    const activeIdx = this.profile.activeOperatorIdx || 0;
+    const L = this.profile.loadout;
+    grid.innerHTML = '';
+
+    ops.forEach((op, idx) => {
+      const isActive = idx === activeIdx;
+      const dt = this._getDogtagInfo(op.exfilStreak || 0);
+      const gearSrc = isActive ? L : (op.gear || {});
+      const vestName = (gearSrc.armor && GAME_DATA.ITEMS[gearSrc.armor]) ? GAME_DATA.ITEMS[gearSrc.armor].name.split(' ')[0] : 'No Vest';
+      const bagName = (gearSrc.backpack && GAME_DATA.ITEMS[gearSrc.backpack]) ? GAME_DATA.ITEMS[gearSrc.backpack].name.split(' ')[0] : 'Small Bag';
+
+      const card = document.createElement('div');
+      card.className = `duty-op-card${isActive ? ' active' : ''}`;
+      card.innerHTML = `
+        <div class="duty-title-card">
+          <div>
+            <div class="duty-slot-tag">${op.slotLabel}</div>
+            <div class="duty-callsign" style="color:${isActive ? op.accent : '#f0f5f2'};">${op.callsign}</div>
+            <div class="duty-role">${op.title}</div>
+          </div>
+          ${isActive ? '<span class="duty-active-pill">ACTIVE</span>' : '<span class="duty-slot-tag">STANDBY</span>'}
+        </div>
+
+        <div class="duty-portrait-wrap">
+          ${this._buildOperatorPortraitSVG(op)}
+        </div>
+
+        <div class="duty-dogtag-bar">
+          <div class="duty-dogtag-left">
+            ${this._buildDogtagIconSVG(dt)}
+            <div>
+              <div class="duty-dogtag-tier" style="color:${dt.color};">${dt.tier} (${dt.level})</div>
+              <div class="duty-dogtag-sub">EXFIL STREAK: ${dt.streak}</div>
+            </div>
+          </div>
+          <div class="duty-dogtag-val">₽${dt.value.toLocaleString()}</div>
+        </div>
+
+        <div class="duty-card-footer">
+          <div class="duty-gear-chips">
+            <span class="duty-gear-chip">${vestName}</span>
+            <span class="duty-gear-chip">${bagName}</span>
+          </div>
+          <button class="btn-small" style="${isActive ? 'border-color:#69f0ae;color:#69f0ae;' : ''}">${isActive ? 'EQUIPPED' : 'SELECT'}</button>
+        </div>
+      `;
+      card.addEventListener('click', () => this.selectActiveDutyOperator(idx));
+      grid.appendChild(card);
+    });
+  }
+
   renderLoadout() {
+    this.renderActiveDutyRoster();
     const L = this.profile.loadout;
     const renderSlot = (elId, itemId, slotKey, emptyText) => {
       const el = document.getElementById(elId);
@@ -6725,6 +6938,14 @@ class GameUI {
     this.showScreen('summary');
     const badge = document.getElementById('summary-status-badge');
     const title = document.getElementById('summary-title');
+
+    // Update Active Duty Operator exfil streak & dogtag level on raid completion!
+    const ops = this._ensureActiveDutyOperators();
+    const curOp = ops[this.profile.activeOperatorIdx || 0];
+    if (curOp) {
+      curOp.exfilStreak = extracted ? Math.min(10, (curOp.exfilStreak || 0) + 1) : 0;
+      this.saveProfile();
+    }
 
     if (extracted) {
       badge.textContent = 'EXTRACTION SUCCESSFUL';
