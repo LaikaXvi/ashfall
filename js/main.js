@@ -5,7 +5,7 @@
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
   if (THREE.ACESFilmicToneMapping !== undefined) {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.08;
@@ -23,9 +23,9 @@
     const shadows = gfx.shadows ?? 3;
     const textures = gfx.textures ?? 3;
 
-    // 1. Texture Quality -> pixel ratio
+    // 1. Texture Quality -> pixel ratio (capped at 1.5x for smooth high-FPS rendering)
     const dpr = window.devicePixelRatio || 1;
-    const targetPr = textures === 1 ? 0.72 : (textures === 2 ? 1.0 : Math.min(dpr, 2));
+    const targetPr = textures === 1 ? 0.72 : (textures === 2 ? 1.0 : Math.min(dpr, 1.5));
     renderer.setPixelRatio(targetPr);
     renderer.setSize(window.innerWidth, window.innerHeight);
 
@@ -33,7 +33,7 @@
     renderer.shadowMap.enabled = shadows > 0;
     if (sunLight) {
       sunLight.castShadow = shadows > 0;
-      const res = shadows === 1 ? 512 : (shadows === 2 ? 1024 : 2048);
+      const res = shadows === 1 ? 512 : (shadows === 2 ? 1024 : 1536);
       if (sunLight.shadow && sunLight.shadow.mapSize && sunLight.shadow.mapSize.width !== res) {
         sunLight.shadow.mapSize.width = res;
         sunLight.shadow.mapSize.height = res;
@@ -166,12 +166,12 @@
     sunLight = new THREE.DirectionalLight(0xffe4b8, 1.35);
     sunLight.position.set(160, 210, 120);
     sunLight.castShadow = true;
-    sunLight.shadow.mapSize.width = 2048;
-    sunLight.shadow.mapSize.height = 2048;
-    sunLight.shadow.bias = -0.0004;
+    sunLight.shadow.mapSize.width = 1024;
+    sunLight.shadow.mapSize.height = 1024;
+    sunLight.shadow.bias = -0.0005;
     sunLight.shadow.camera.near = 15;
-    sunLight.shadow.camera.far = 520;
-    const d = 140;
+    sunLight.shadow.camera.far = 360;
+    const d = 85;
     sunLight.shadow.camera.left = -d;
     sunLight.shadow.camera.right = d;
     sunLight.shadow.camera.top = d;
@@ -598,7 +598,7 @@
   });
 
   window.addEventListener('mousedown', (e) => {
-    if (!inRaid || isModalOpen || (devConsole && devConsole.isOpen)) return;
+    if (!inRaid || isModalOpen || (ui && ui.isInGameSettingsOpen) || (devConsole && devConsole.isOpen)) return;
     if (ui.isTacMapOpen) return; // map canvas handles clicks when full map is open
     if (document.pointerLockElement !== canvas) {
       if (e.target === canvas) canvas.requestPointerLock();

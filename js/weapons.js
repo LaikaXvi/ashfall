@@ -2105,9 +2105,11 @@ class WeaponSystem {
       this.boltMesh.position.z = this.boltRestPos.z + offset;
     }
 
-    // === IMMERSIVE WALL-COLLISION & CORNER-LEAN GUN HANDLING ===
-    let targetWallPush = 0;
-    if (weaponDef && player.world && player.world.shootableMeshes && !this.isThirdPerson) {
+    // === IMMERSIVE WALL-COLLISION & CORNER-LEAN GUN HANDLING (Fast box-only wallMeshes @ ~30Hz for high FPS!) ===
+    this._wallCheckFrame = ((this._wallCheckFrame || 0) + 1) % 2;
+    let targetWallPush = this._lastTargetWallPush || 0;
+    if (this._wallCheckFrame === 0 && weaponDef && player.world && (player.world.wallMeshes || player.world.shootableMeshes) && !this.isThirdPerson) {
+      targetWallPush = 0;
       const baseLen = weaponDef.slot === 'secondary' ? 0.78 : (weaponDef.id === 'mp5k' ? 0.94 : 1.16);
       const barrelLen = baseLen + (weaponDef.suppressed ? 0.14 : 0);
 
@@ -2116,12 +2118,13 @@ class WeaponSystem {
       this.camera.getWorldPosition(camPosW);
       this.camera.getWorldDirection(camDirW);
       const camRightW = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion);
+      const rayTargets = (player.world.wallMeshes && player.world.wallMeshes.length > 0) ? player.world.wallMeshes : player.world.shootableMeshes;
 
       const checkRay = (origin) => {
         this._wallRay.set(origin, camDirW);
         this._wallRay.near = 0.05;
         this._wallRay.far = barrelLen;
-        const hits = this._wallRay.intersectObjects(player.world.shootableMeshes, false);
+        const hits = this._wallRay.intersectObjects(rayTargets, false);
         for (const h of hits) {
           // Ignore flat ground hits when looking down
           if (h.face && h.face.normal && h.face.normal.y > 0.85) continue;
@@ -2139,6 +2142,7 @@ class WeaponSystem {
       if (minDist < barrelLen) {
         targetWallPush = THREE.MathUtils.clamp((barrelLen - minDist) / (barrelLen * 0.65), 0, 1);
       }
+      this._lastTargetWallPush = targetWallPush;
     }
     const wallRate = targetWallPush > this.wallPush ? 16 : 10;
     this.wallPush = THREE.MathUtils.lerp(this.wallPush, targetWallPush, Math.min(1, dt * wallRate));

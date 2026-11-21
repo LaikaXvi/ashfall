@@ -663,7 +663,7 @@ class Player {
   }
 
   _updateThirdPersonModel(dt) {
-    if (!this.avatarGroup || !this.avatarParts) return;
+    if (!this.isThirdPerson || !this.avatarGroup || !this.avatarParts) return;
     const p = this.avatarParts;
     const smooth = (t) => t * t * (3 - 2 * t);
     const rate = Math.min(1, dt * 13);

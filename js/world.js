@@ -4,7 +4,8 @@ class WastelandWorld {
     this.scene = scene;
     this.zone = zoneConfig;
     this.colliders = [];      // { minX, maxX, minY, maxY, minZ, maxZ }
-    this.shootableMeshes = []; // Static geometry meshes for bullet/LOS raycasts
+    this.shootableMeshes = []; // Static geometry meshes for bullet/airstrike raycasts
+    this.wallMeshes = [];      // Fast low-poly box/structure meshes ONLY (excludes high-poly terrain for 60+ FPS LOS & wall-push!)
     this.lootContainers = []; // { id, name, mesh, position, items, searched, requiresKey }
     this.groundItems = [];    // { id, qty, mesh, position, ringMesh } physical loose & dropped loot
     this.extractZones = [];   // { name, position, radius, beaconMesh, ringMesh }
@@ -252,9 +253,9 @@ class WastelandWorld {
   }
 
   _buildEnvironment() {
-    // Subdivided Varying Wasteland Terrain Mesh (2100x2100m stretching into the Red Zone horizon)
+    // Subdivided Varying Wasteland Terrain Mesh (84x84 = 14k tris for crisp rolling hills at 60+ FPS!)
     const terrainSize = 2100;
-    const segs = 148;
+    const segs = 84;
     const groundGeo = new THREE.PlaneGeometry(terrainSize, terrainSize, segs, segs);
     groundGeo.rotateX(-Math.PI / 2);
 
@@ -382,9 +383,9 @@ class WastelandWorld {
     const coneLowInst = new THREE.InstancedMesh(foliageLowGeo, pineMatA, pineCount);
     const coneTopInst = new THREE.InstancedMesh(foliageTopGeo, pineMatB, pineCount);
     trunkInst.castShadow = true;
-    coneLowInst.castShadow = true;
-    coneTopInst.castShadow = true;
-    coneLowInst.receiveShadow = true;
+    coneLowInst.castShadow = false;
+    coneTopInst.castShadow = false;
+    coneLowInst.receiveShadow = false;
 
     let placedPines = 0;
     for (let tries = 0; tries < 2400 && placedPines < pineCount; tries++) {
@@ -502,6 +503,7 @@ class WastelandWorld {
     mesh.receiveShadow = true;
     this.scene.add(mesh);
     this.shootableMeshes.push(mesh);
+    this.wallMeshes.push(mesh);
 
     if (addCollider) {
       this.colliders.push({

@@ -615,7 +615,7 @@ class Enemy {
     }
 
     const ray = new THREE.Raycaster(eye, dir, 0.2, dist);
-    const hits = ray.intersectObjects(this.world.shootableMeshes, false);
+    const hits = ray.intersectObjects((this.world.wallMeshes && this.world.wallMeshes.length > 0) ? this.world.wallMeshes : this.world.shootableMeshes, false);
     return hits.length === 0;
   }
 
@@ -720,7 +720,7 @@ class Enemy {
     if (dist < 0.3 || dist > 48) return false;
     dir.normalize();
     const ray = new THREE.Raycaster(eye, dir, 0.2, dist - 0.3);
-    const hits = ray.intersectObjects(this.world.shootableMeshes, false);
+    const hits = ray.intersectObjects((this.world.wallMeshes && this.world.wallMeshes.length > 0) ? this.world.wallMeshes : this.world.shootableMeshes, false);
     return hits.length === 0;
   }
 
