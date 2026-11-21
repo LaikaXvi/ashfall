@@ -5,9 +5,15 @@
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  if (THREE.ACESFilmicToneMapping !== undefined) {
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.08;
+  }
 
   let scene = null;
   let camera = null;
+  let sunLight = null;
   let viewmodelScene = null;
   let viewmodelCamera = null;
   let world = null;
@@ -97,29 +103,36 @@
     const zone = GAME_DATA.ZONES[zoneId] || GAME_DATA.ZONES.outpost;
 
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(zone.skyColor);
-    scene.fog = new THREE.FogExp2(zone.fogColor, 0.0062);
+    scene.background = new THREE.Color(zone.skyColor || 0x8ea0ab);
+    // Volumetric-style distance-based atmospheric fog tuned for 1240m expanded sector
+    scene.fog = new THREE.FogExp2(zone.fogColor || 0xa7b0a8, 0.0021);
 
-    camera = new THREE.PerspectiveCamera(window.BASE_FOV || 75, window.innerWidth / window.innerHeight, 0.05, 550);
+    camera = new THREE.PerspectiveCamera(window.BASE_FOV || 75, window.innerWidth / window.innerHeight, 0.05, 1650);
     scene.add(camera);
 
-    // Lighting
-    const hemi = new THREE.HemisphereLight(0xd8cbb8, 0x3b352c, 0.75);
+    // Redux Atmospheric Lighting (Sky/Ground bounce + Golden-Hour Sun + Cool Rim Fill)
+    const hemi = new THREE.HemisphereLight(0xcbe0f5, 0x453e32, 0.92);
     scene.add(hemi);
 
-    const sun = new THREE.DirectionalLight(0xffe6c2, 0.95);
-    sun.position.set(85, 130, 60);
-    sun.castShadow = true;
-    sun.shadow.mapSize.width = 2048;
-    sun.shadow.mapSize.height = 2048;
-    sun.shadow.camera.near = 10;
-    sun.shadow.camera.far = 380;
-    const d = 200;
-    sun.shadow.camera.left = -d;
-    sun.shadow.camera.right = d;
-    sun.shadow.camera.top = d;
-    sun.shadow.camera.bottom = -d;
-    scene.add(sun);
+    sunLight = new THREE.DirectionalLight(0xffe4b8, 1.35);
+    sunLight.position.set(160, 210, 120);
+    sunLight.castShadow = true;
+    sunLight.shadow.mapSize.width = 2048;
+    sunLight.shadow.mapSize.height = 2048;
+    sunLight.shadow.bias = -0.0004;
+    sunLight.shadow.camera.near = 15;
+    sunLight.shadow.camera.far = 520;
+    const d = 140;
+    sunLight.shadow.camera.left = -d;
+    sunLight.shadow.camera.right = d;
+    sunLight.shadow.camera.top = d;
+    sunLight.shadow.camera.bottom = -d;
+    scene.add(sunLight);
+    scene.add(sunLight.target);
+
+    const rimFill = new THREE.DirectionalLight(0x88b4d8, 0.42);
+    rimFill.position.set(-140, 85, -130);
+    scene.add(rimFill);
 
     // Dedicated Viewmodel Layer (separate scene & depth pass so gun/hands NEVER clip through walls!)
     viewmodelScene = new THREE.Scene();
@@ -1265,18 +1278,25 @@
     camera.getWorldPosition(origin);
     camera.getWorldDirection(dir);
 
-    const ray = new THREE.Raycaster(origin, dir, 1.0, 165);
-    if (world && world.meshes && world.meshes.length > 0) {
-      const hits = ray.intersectObjects(world.meshes, false);
+    const ray = new THREE.Raycaster(origin, dir, 1.0, 480);
+    if (world && world.shootableMeshes && world.shootableMeshes.length > 0) {
+      const hits = ray.intersectObjects(world.shootableMeshes, true);
       if (hits.length > 0) {
-        return new THREE.Vector3(hits[0].point.x, 0.05, hits[0].point.z);
+        const pt = hits[0].point;
+        return new THREE.Vector3(pt.x, pt.y + 0.05, pt.z);
       }
     }
-    if (dir.y < -0.02) {
-      const t = Math.min(155, Math.max(8, -origin.y / dir.y));
-      return new THREE.Vector3(origin.x + dir.x * t, 0.05, origin.z + dir.z * t);
+    if (dir.y < -0.015) {
+      const t = Math.min(420, Math.max(8, -origin.y / dir.y));
+      const tx = origin.x + dir.x * t;
+      const tz = origin.z + dir.z * t;
+      const ty = (world && world.getTerrainHeight) ? world.getTerrainHeight(tx, tz) : 0;
+      return new THREE.Vector3(tx, ty + 0.05, tz);
     }
-    return new THREE.Vector3(origin.x + dir.x * 48, 0.05, origin.z + dir.z * 48);
+    const fx = origin.x + dir.x * 75;
+    const fz = origin.z + dir.z * 75;
+    const fy = (world && world.getTerrainHeight) ? world.getTerrainHeight(fx, fz) : 0;
+    return new THREE.Vector3(fx, fy + 0.05, fz);
   }
 
   let designatorActive = false;
@@ -1284,6 +1304,8 @@
   let designatorRig = null;
   let designatorAimBlend = 0;
   let designatorLaserLine = null;
+  let designatorTargetRing = null;
+  let designatorDeployAnim = { active: false, t: 0, dur: 0.38 };
   let uavPhoneAnim = { active: false, t: 0, dur: 1.15, triggered: false, mesh: null };
 
   function _createDesignatorRig() {
@@ -1292,39 +1314,84 @@
     const rubberMat = new THREE.MeshLambertMaterial({ color: 0x161918 });
     const lensMat = new THREE.MeshBasicMaterial({ color: 0x224455 });
     const laserMat = new THREE.MeshBasicMaterial({ color: 0xff3030 });
-    const gloveMat = new THREE.MeshLambertMaterial({ color: 0x2c302b });
+    const gloveMat = new THREE.MeshLambertMaterial({ color: 0x252925 });
+    const knuckleMat = new THREE.MeshLambertMaterial({ color: 0x191c1a });
+    const skinMat = new THREE.MeshLambertMaterial({ color: 0xc99c7a });
+    const sleeveMat = new THREE.MeshLambertMaterial({ color: 0x343a31 });
+    const cuffMat = new THREE.MeshLambertMaterial({ color: 0x1a1c19 });
 
-    // Dual binocular barrels + central bridge + laser emitter housing
-    const barrelL = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.044, 0.21, 10), bodyMat);
+    // Dual binocular barrels + central bridge + laser emitter housing + top lock button
+    const barrelL = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.044, 0.21, 12), bodyMat);
     barrelL.rotation.x = Math.PI / 2;
     barrelL.position.set(-0.048, 0, 0);
-    const barrelR = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.044, 0.21, 10), bodyMat);
+    const barrelR = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.044, 0.21, 12), bodyMat);
     barrelR.rotation.x = Math.PI / 2;
     barrelR.position.set(0.048, 0, 0);
     const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.048, 0.13), rubberMat);
     const laserPod = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.032, 0.12), rubberMat);
     laserPod.position.set(0, 0.042, -0.02);
+    const lockBtn = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.009, 0.012, 8), laserMat);
+    lockBtn.position.set(0.034, 0.045, 0.01);
     const laserLens = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.012, 8), laserMat);
     laserLens.rotation.x = Math.PI / 2;
     laserLens.position.set(0, 0.042, -0.084);
-    const cupL = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.036, 0.028, 10), rubberMat);
+    const cupL = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.036, 0.028, 12), rubberMat);
     cupL.rotation.x = Math.PI / 2;
     cupL.position.set(-0.048, 0, 0.11);
-    const cupR = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.036, 0.028, 10), rubberMat);
+    const cupR = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.036, 0.028, 12), rubberMat);
     cupR.rotation.x = Math.PI / 2;
     cupR.position.set(0.048, 0, 0.11);
-    const glassL = new THREE.Mesh(new THREE.CircleGeometry(0.03, 10), lensMat);
+    const glassL = new THREE.Mesh(new THREE.CircleGeometry(0.03, 12), lensMat);
     glassL.position.set(-0.048, 0, 0.125);
-    const glassR = new THREE.Mesh(new THREE.CircleGeometry(0.03, 10), lensMat);
+    const glassR = new THREE.Mesh(new THREE.CircleGeometry(0.03, 12), lensMat);
     glassR.position.set(0.048, 0, 0.125);
 
-    // Gloved hands gripping sides of binocular housing
-    const handL = new THREE.Mesh(new THREE.BoxGeometry(0.048, 0.075, 0.09), gloveMat);
-    handL.position.set(-0.105, -0.02, 0.01);
-    const handR = new THREE.Mesh(new THREE.BoxGeometry(0.048, 0.075, 0.09), gloveMat);
-    handR.position.set(0.105, -0.02, 0.01);
+    // Build detailed tactical gloved hands + forearms gripping both sides of the binocular housing
+    const buildSideHand = (side) => {
+      const hg = new THREE.Group();
+      const palm = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.068, 0.078), gloveMat);
+      palm.position.set(side * 0.098, -0.012, 0.018);
+      const knuckle = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.020, 0.072), knuckleMat);
+      knuckle.position.set(side * 0.102, 0.016, 0.012);
+      // Wrapped fingers around the binocular barrel
+      for (let f = 0; f < 3; f++) {
+        const finger = new THREE.Mesh(new THREE.BoxGeometry(0.046, 0.014, 0.016), gloveMat);
+        finger.position.set(side * 0.072, 0.028 - f * 0.018, -0.022 + f * 0.016);
+        finger.rotation.z = side * 0.35;
+        hg.add(finger);
+      }
+      // Thumb resting along bottom/rear edge
+      const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.016, 0.044), skinMat);
+      thumb.position.set(side * 0.074, -0.038, 0.038);
+      thumb.rotation.y = -side * 0.25;
+      // Cuff + cylindrical tactical forearm extending back toward shoulders
+      const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.038, 0.046, 10), cuffMat);
+      cuff.rotation.set(Math.PI / 2 - 0.35, 0, side * 0.28);
+      cuff.position.set(side * 0.126, -0.042, 0.088);
+      const forearm = new THREE.Mesh(new THREE.CylinderGeometry(0.038, 0.048, 0.34, 10), sleeveMat);
+      forearm.rotation.set(Math.PI / 2 - 0.38, 0, side * 0.32);
+      forearm.position.set(side * 0.188, -0.120, 0.238);
+      hg.add(palm, knuckle, thumb, cuff, forearm);
+      return hg;
+    };
 
-    g.add(barrelL, barrelR, bridge, laserPod, laserLens, cupL, cupR, glassL, glassR, handL, handR);
+    const leftHandGrp = buildSideHand(-1);
+    const rightHandGrp = buildSideHand(1);
+
+    // Articulated right index finger poised over the top laser-lock button
+    const triggerFingerPivot = new THREE.Group();
+    triggerFingerPivot.position.set(0.082, 0.032, 0.012);
+    const trigSeg = new THREE.Mesh(new THREE.BoxGeometry(0.048, 0.015, 0.015), gloveMat);
+    trigSeg.position.set(-0.022, 0.012, -0.002);
+    trigSeg.rotation.z = -0.25;
+    const trigTip = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.014, 0.014), skinMat);
+    trigTip.position.set(-0.046, 0.016, -0.002);
+    triggerFingerPivot.add(trigSeg, trigTip);
+    rightHandGrp.add(triggerFingerPivot);
+
+    g.add(barrelL, barrelR, bridge, laserPod, lockBtn, laserLens, cupL, cupR, glassL, glassR, leftHandGrp, rightHandGrp);
+    g.userData.triggerFingerPivot = triggerFingerPivot;
+    g.userData.lockBtn = lockBtn;
     g.visible = false;
     return g;
   }
@@ -1416,6 +1483,10 @@
       scene.remove(designatorLaserLine);
       designatorLaserLine = null;
     }
+    if (!designatorActive && designatorTargetRing && scene) {
+      scene.remove(designatorTargetRing);
+      designatorTargetRing = null;
+    }
     if (designatorActive) {
       player.isFiring = false;
       player.isADS = false;
@@ -1458,7 +1529,7 @@
         const bPos = targetPos.clone()
           .addScaledVector(strikeDir, along)
           .addScaledVector(perp, sideJitter);
-        bPos.y = 0.05;
+        bPos.y = (world && world.getTerrainHeight) ? world.getTerrainHeight(bPos.x, bPos.z) + 0.05 : targetPos.y;
         bombs.push({ pos: bPos, triggerTime: startDelay + 0.52 + b * 0.11, detonated: false });
       }
       return { mesh, startDelay, duration: 2.3, bombs, passIdx };
@@ -1558,15 +1629,45 @@
       }
     }
 
-    // 2. Binocular Laser Designator (Hip-held by default -> Hold RMB/LT or LMB/RT to aim 4x; release LMB/RT to call strike!)
+    // 1b. Brief designator deploy button-press & lower animation after locking airstrike
+    if (designatorDeployAnim.active && designatorRig) {
+      designatorDeployAnim.t += dt;
+      const dp = Math.min(1, designatorDeployAnim.t / designatorDeployAnim.dur);
+      designatorRig.visible = !player.isThirdPerson;
+      const press = Math.sin(Math.min(1, dp * 2.4) * Math.PI);
+      const lower = dp > 0.35 ? (dp - 0.35) / 0.65 : 0;
+      designatorRig.position.set(
+        THREE.MathUtils.lerp(0.02, 0.18, lower),
+        THREE.MathUtils.lerp(-0.08, -0.44, lower),
+        THREE.MathUtils.lerp(-0.28, -0.34, lower)
+      );
+      designatorRig.rotation.set(
+        THREE.MathUtils.lerp(-0.06, -0.45, lower),
+        THREE.MathUtils.lerp(-0.06, -0.22, lower),
+        0
+      );
+      if (designatorRig.userData.triggerFingerPivot) {
+        designatorRig.userData.triggerFingerPivot.rotation.z = press * 0.32;
+      }
+      if (dp >= 1) {
+        designatorDeployAnim.active = false;
+        designatorRig.visible = false;
+        if (player) player.isUsingDesignator = false;
+      }
+    }
+
+    // 2. Binocular Laser Designator (Hip-held with both hands -> Hold RMB/LT or LMB/RT to aim 4x; release LMB/RT to lock & deploy strike!)
     if (designatorActive && player && camera) {
       if (player.isDowned || player.dead || isModalOpen) {
         setDesignatorActive(false);
       } else {
-        // Release of Fire (LMB / RT) after holding sets the airstrike target at the laser endpoint!
+        // Release of Fire (LMB / RT) after holding sets the airstrike target at the exact laser endpoint!
         if (designatorFireHeld && !player.isFiring) {
           const targetPos = _getKillstreakTargetPoint();
           setDesignatorActive(false);
+          designatorDeployAnim.active = true;
+          designatorDeployAnim.t = 0;
+          if (player) player.isUsingDesignator = true;
           _deployPrecisionAirstrike(targetPos);
         } else {
           const aiming = !!(player.isADS || player.isFiring || designatorFireHeld);
@@ -1578,20 +1679,24 @@
           camera.fov = THREE.MathUtils.lerp(camera.fov, targetFov, Math.min(1, dt * 16));
           camera.updateProjectionMatrix();
 
-          // Position 3D binocular rig: hip-held in hand vs raised to eye level
+          // Position 3D binocular rig with both tactical hands & forearms clearly visible
           const fullyAimed = designatorAimBlend > 0.72;
           if (designatorRig) {
             designatorRig.visible = !player.isThirdPerson && !fullyAimed;
+            const bob = Math.sin(performance.now() * 0.0028) * 0.005 * (1 - designatorAimBlend);
             designatorRig.position.set(
-              THREE.MathUtils.lerp(0.14, 0.0, designatorAimBlend),
-              THREE.MathUtils.lerp(-0.18, -0.02, designatorAimBlend),
-              THREE.MathUtils.lerp(-0.40, -0.15, designatorAimBlend)
+              THREE.MathUtils.lerp(0.06, 0.0, designatorAimBlend),
+              THREE.MathUtils.lerp(-0.15 + bob, -0.02, designatorAimBlend),
+              THREE.MathUtils.lerp(-0.34, -0.15, designatorAimBlend)
             );
             designatorRig.rotation.set(
-              THREE.MathUtils.lerp(-0.12, 0, designatorAimBlend),
-              THREE.MathUtils.lerp(-0.18, 0, designatorAimBlend),
+              THREE.MathUtils.lerp(-0.08, 0, designatorAimBlend),
+              THREE.MathUtils.lerp(-0.10, 0, designatorAimBlend),
               0
             );
+            if (designatorRig.userData.triggerFingerPivot) {
+              designatorRig.userData.triggerFingerPivot.rotation.z = designatorFireHeld ? 0.24 : 0;
+            }
           }
 
           const ov = document.getElementById('designator-overlay');
@@ -1619,9 +1724,38 @@
               posArr[3] = targetPt.x; posArr[4] = targetPt.y; posArr[5] = targetPt.z;
               designatorLaserLine.geometry.attributes.position.needsUpdate = true;
             }
-          } else if (designatorLaserLine && scene) {
-            scene.remove(designatorLaserLine);
-            designatorLaserLine = null;
+
+            // Live 3D ground/surface target ring at the exact raycast hit point
+            if (!designatorTargetRing && scene) {
+              const rg = new THREE.Group();
+              const outerR = new THREE.Mesh(
+                new THREE.RingGeometry(1.4, 1.85, 24),
+                new THREE.MeshBasicMaterial({ color: 0xff3d3d, side: THREE.DoubleSide, transparent: true, opacity: 0.85 })
+              );
+              outerR.rotation.x = -Math.PI / 2;
+              const centerDot = new THREE.Mesh(
+                new THREE.CircleGeometry(0.28, 12),
+                new THREE.MeshBasicMaterial({ color: 0xff8a65, side: THREE.DoubleSide })
+              );
+              centerDot.rotation.x = -Math.PI / 2;
+              rg.add(outerR, centerDot);
+              designatorTargetRing = rg;
+              scene.add(designatorTargetRing);
+            }
+            if (designatorTargetRing) {
+              designatorTargetRing.position.set(targetPt.x, targetPt.y + 0.06, targetPt.z);
+              const pulse = 0.92 + Math.sin(performance.now() * 0.012) * 0.10;
+              designatorTargetRing.scale.set(pulse, 1, pulse);
+            }
+          } else {
+            if (designatorLaserLine && scene) {
+              scene.remove(designatorLaserLine);
+              designatorLaserLine = null;
+            }
+            if (designatorTargetRing && scene) {
+              scene.remove(designatorTargetRing);
+              designatorTargetRing = null;
+            }
           }
         }
       }
@@ -2172,7 +2306,15 @@
         gamepad.clearMenuFocus();
       }
 
-      if (!isPaused) {
+      // Keep client-side simulation, gravity, physics & animations running even while in-game menu is open!
+      player.isMenuBlocked = !!(isPaused || isModalOpen || ui.isTacMapOpen);
+      player.isInventoryOpen = !!isModalOpen;
+      if (isPaused) {
+        player.isFiring = false;
+        player.isADS = false;
+      }
+
+      {
         raidElapsed += dt;
         raidTimeLeft -= dt;
         if (raidTimeLeft <= 0) {
@@ -2182,7 +2324,7 @@
 
         // Auto-fire if holding LMB with automatic weapon
         const wDef = player.getActiveWeaponDef();
-        if (player.isFiring && wDef && wDef.auto && !isModalOpen && !ui.isTacMapOpen) {
+        if (player.isFiring && wDef && wDef.auto && !isPaused && !isModalOpen && !ui.isTacMapOpen) {
           firePlayerWeapon();
         }
 
@@ -2198,7 +2340,13 @@
         if (throwableSystem) {
           throwableSystem.update(dt, player, weaponSystem, enemyManager, onThrowableHit, null);
         }
-        world.update(dt, now / 1000);
+        world.update(dt, now / 1000, player.position);
+        // Keep directional sun shadow frustum centered on player across the 1240m sector
+        if (sunLight && player) {
+          sunLight.position.set(player.position.x + 140, 210, player.position.z + 105);
+          sunLight.target.position.set(player.position.x, 0, player.position.z);
+          sunLight.target.updateMatrixWorld();
+        }
 
         enemyManager.update(dt, player, (enemy, hit, dmg, muzzleWorld) => {
           if (muzzleWorld) {

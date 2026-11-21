@@ -880,9 +880,10 @@ class WeaponSystem {
       handGroup.add(thumb, thumbTip);
     }
 
-    // Articulated spherical wrist joint (connects seamlessly to forearm cuff during lean, sway, recoil & reload!)
-    const wristJoint = new THREE.Mesh(new THREE.SphereGeometry(0.031, 14, 12), cuffMat);
+    // Invisible articulated wrist pivot anchor (connects forearm to hand without a visible ball joint)
+    const wristJoint = new THREE.Object3D();
     wristJoint.position.set(isRight ? 0.008 : -0.010, -0.010, 0.034);
+    wristJoint.visible = false;
     handGroup.add(wristJoint);
 
     return handGroup;
@@ -1197,41 +1198,86 @@ class WeaponSystem {
       grip.rotation.x = 0.26;
       addTriggerGuard(0.08, -0.032);
 
-      // Smooth authentic curved 5.45 AK-74M banana magazine (continuous ExtrudeGeometry curve — zero misaligned boxes!)
+      // Classic laminated wooden AK-74M stock by default (replaced when aftermarket stock mod is equipped)
+      const hasStockMod = !!(mods.stock && mods.stock !== 'none');
+      if (!hasStockMod) {
+        const woodStockGrp = new THREE.Group();
+        const sShape = new THREE.Shape();
+        // Side profile in (X = back along +Z, Y = up/down)
+        sShape.moveTo(0.0, 0.022);
+        sShape.lineTo(0.245, -0.012);
+        sShape.lineTo(0.245, -0.108);
+        sShape.lineTo(0.055, -0.052);
+        sShape.lineTo(0.0, -0.024);
+        sShape.closePath();
+        const sGeo = new THREE.ExtrudeGeometry(sShape, {
+          depth: 0.034,
+          bevelEnabled: true,
+          bevelThickness: 0.003,
+          bevelSize: 0.0025,
+          bevelSegments: 2
+        });
+        sGeo.translate(0, 0, -0.017);
+        sGeo.rotateY(-Math.PI / 2); // +X -> +Z (rearward)
+        const woodButt = new THREE.Mesh(sGeo, woodMat);
+        const buttPlate = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.100, 0.012), darkMat);
+        buttPlate.position.set(0, -0.060, 0.250);
+        const tang = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.012, 0.044), steelMat);
+        tang.position.set(0, 0.022, 0.018);
+        const slingLoop = new THREE.Mesh(new THREE.TorusGeometry(0.010, 0.0025, 6, 12), steelMat);
+        slingLoop.position.set(-0.020, -0.052, 0.215);
+        slingLoop.rotation.y = Math.PI / 2;
+        woodStockGrp.add(woodButt, buttPlate, tang, slingLoop);
+        woodStockGrp.position.set(0, -0.002, 0.215);
+        g.add(woodStockGrp);
+      }
+
+      // Pronounced authentic curved AK-74M banana magazine (continuous cubic Bezier ExtrudeGeometry)
       const buildCurvedAkMag = (isExtended = false) => {
         const magGrp = new THREE.Group();
-        const magDepth = 0.026;
-        const magH = isExtended ? 0.225 : 0.168;
-        const curveFwd = isExtended ? 0.068 : 0.044;
+        const magDepth = 0.027;
+        const magH = isExtended ? 0.245 : 0.182;
+        const curveFwd = isExtended ? 0.122 : 0.078;
         const magThick = 0.052;
         const shape = new THREE.Shape();
-        // 2D side profile in (X = forward/back, Y = up/down), then rotated so X maps to -Z (curving forward!)
-        shape.moveTo(-magThick * 0.5, 0.045);
-        shape.lineTo(magThick * 0.5, 0.045);
-        // Front curved spine sweeping smoothly forward & down
-        shape.quadraticCurveTo(magThick * 0.5 + curveFwd * 0.38, 0.045 - magH * 0.55, magThick * 0.48 + curveFwd, 0.045 - magH);
-        // Angled floorplate bottom
-        shape.lineTo(-magThick * 0.48 + curveFwd * 0.86, 0.045 - magH - 0.012);
-        // Rear curved spine sweeping smoothly back up into magwell
-        shape.quadraticCurveTo(-magThick * 0.5 + curveFwd * 0.30, 0.045 - magH * 0.52, -magThick * 0.5, 0.045);
+        // 2D side profile in (X = forward, Y = up/down), rotated so +X maps to -Z (curving forward!)
+        shape.moveTo(-magThick * 0.5, 0.048);
+        shape.lineTo(magThick * 0.5, 0.048);
+        // Front curved spine: straight at magwell, sweeping strongly forward into classic banana arc
+        shape.bezierCurveTo(
+          magThick * 0.5 + curveFwd * 0.14, 0.048 - magH * 0.34,
+          magThick * 0.5 + curveFwd * 0.56, 0.048 - magH * 0.72,
+          magThick * 0.42 + curveFwd, 0.048 - magH
+        );
+        // Angled floorplate bottom perpendicular to the arc end
+        const tipAngle = isExtended ? 0.46 : 0.36;
+        const rearEndX = magThick * 0.42 + curveFwd - Math.cos(tipAngle) * magThick;
+        const rearEndY = 0.048 - magH - Math.sin(tipAngle) * magThick;
+        shape.lineTo(rearEndX, rearEndY);
+        // Rear curved spine sweeping cleanly back into rear locking lug
+        shape.bezierCurveTo(
+          -magThick * 0.5 + curveFwd * 0.44, 0.048 - magH * 0.68,
+          -magThick * 0.5 + curveFwd * 0.08, 0.048 - magH * 0.32,
+          -magThick * 0.5, 0.048
+        );
         const geo = new THREE.ExtrudeGeometry(shape, {
           depth: magDepth,
           bevelEnabled: true,
-          bevelThickness: 0.0022,
-          bevelSize: 0.0020,
+          bevelThickness: 0.0024,
+          bevelSize: 0.0022,
           bevelSegments: 2,
-          curveSegments: 14
+          curveSegments: 20
         });
         // Center thickness along X and orient curve forward (-Z)
         geo.translate(0, 0, -magDepth * 0.5);
         geo.rotateY(Math.PI / 2);
         const body = new THREE.Mesh(geo, bakeliteMat);
         // Steel baseplate lip + top brass rounds
-        const basePlate = new THREE.Mesh(new THREE.BoxGeometry(magDepth + 0.005, 0.008, magThick + 0.004), darkMat);
-        basePlate.position.set(0, 0.045 - magH - 0.007, -(curveFwd * 0.93));
-        basePlate.rotation.x = -0.26;
+        const basePlate = new THREE.Mesh(new THREE.BoxGeometry(magDepth + 0.006, 0.009, magThick + 0.006), darkMat);
+        basePlate.position.set(0, (0.048 - magH + rearEndY) * 0.5 - 0.003, -((magThick * 0.42 + curveFwd + rearEndX) * 0.5));
+        basePlate.rotation.x = -tipAngle;
         const magTip = new THREE.Mesh(new THREE.BoxGeometry(0.020, 0.010, 0.042), brassMat);
-        magTip.position.set(0, 0.050, 0);
+        magTip.position.set(0, 0.052, 0);
         magGrp.add(body, basePlate, magTip);
         return magGrp;
       };

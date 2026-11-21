@@ -205,7 +205,10 @@ class SquadMate {
       this.position.z += vz;
       moved = true;
     }
+    const gy = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(this.position.x, this.position.z) : 0;
+    this.position.y = gy;
     this.group.position.x = this.position.x;
+    this.group.position.y = gy;
     this.group.position.z = this.position.z;
     return moved;
   }
@@ -922,11 +925,10 @@ class SquadManager {
     const alliesOnly = (partyMembers || []).filter(m => !m.isSelf);
     alliesOnly.forEach((m, idx) => {
       const side = idx % 2 === 0 ? -1 : 1;
-      const spawn = new THREE.Vector3(
-        world.playerSpawn.x + side * (2.2 + idx * 0.6),
-        0,
-        world.playerSpawn.z + 1.8
-      );
+      const sx = world.playerSpawn.x + side * (2.2 + idx * 0.6);
+      const sz = world.playerSpawn.z + 1.8;
+      const sy = world.getTerrainHeight ? world.getTerrainHeight(sx, sz) : 0;
+      const spawn = new THREE.Vector3(sx, sy, sz);
       this.allies.push(new SquadMate(scene, world, spawn, {
         name: m.name,
         clientId: m.clientId || null,

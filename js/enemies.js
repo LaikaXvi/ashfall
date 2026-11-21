@@ -584,7 +584,10 @@ class Enemy {
       this.position.z += vz;
     }
 
+    const gy = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(this.position.x, this.position.z) : 0;
+    this.position.y = gy;
     this.group.position.x = this.position.x;
+    this.group.position.y = gy;
     this.group.position.z = this.position.z;
 
     if (faceTarget) {
@@ -637,7 +640,9 @@ class Enemy {
     this.downedBleedTimer = this.downedBleedMax;
     this.beingRevivedBy = null;
     this.reviveProgress = 0;
-    this.group.position.y = 0;
+    const gy = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(this.position.x, this.position.z) : 0;
+    this.position.y = gy;
+    this.group.position.y = gy;
     this.group.rotation.x = 0;
     if (this.weaponMeshGroup) this.weaponMeshGroup.visible = true;
     if (this.leftHip) this.leftHip.rotation.x = 0;
@@ -1096,7 +1101,9 @@ class Enemy {
         if (this.leftHip) this.leftHip.rotation.x = -0.95;
         if (this.rightHip) this.rightHip.rotation.x = -0.35;
         if (this.slideTimer <= 0) {
-          this.group.position.y = 0;
+          const gy = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(this.position.x, this.position.z) : 0;
+    this.position.y = gy;
+    this.group.position.y = gy;
           this.group.rotation.x = 0;
         }
         return;
@@ -1115,7 +1122,9 @@ class Enemy {
         if (this.platingTimer <= 0) {
           this.operatorEquipment.plates = Math.max(0, (this.operatorEquipment.plates || 1) - 1);
           this.armor = Math.min(this.maxArmor, (this.armor || 0) + 50);
-          this.group.position.y = 0;
+          const gy = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(this.position.x, this.position.z) : 0;
+    this.position.y = gy;
+    this.group.position.y = gy;
         }
         return;
       }
@@ -1410,25 +1419,27 @@ class EnemyManager {
       }
     }
 
-    // 2. Spawn Scavengers & Raiders guarding distinct POIs across the expanded 380m sector
-    const aiSpawns = [
-      { pos: new THREE.Vector3(-74, 0, -84), tier: 'raider' },  // Military Compound
-      { pos: new THREE.Vector3(82, 0, -54), tier: 'scav' },     // Field Clinic
-      { pos: new THREE.Vector3(-82, 0, 72), tier: 'raider' },   // Police / Fire Station
-      { pos: new THREE.Vector3(-16, 0, -10), tier: 'scav' },    // Central Warehouse
-      { pos: new THREE.Vector3(92, 0, 82), tier: 'scav' },      // Radio Outpost
-      { pos: new THREE.Vector3(-118, 0, -6), tier: 'raider' },  // Rail Yard
-      { pos: new THREE.Vector3(-18, 0, -128), tier: 'raider' }  // North Bunker
-    ];
+    // 2. Spawn Scavengers & Raiders guarding every non-boss POI across the expanded 1240m sector
+    const aiSpawns = (world.pois || [])
+      .filter(p => !(p.name || '').toLowerCase().includes('boss'))
+      .map(p => {
+        const sx = p.x + 12;
+        const sz = p.z + 10;
+        const sy = world.getTerrainHeight ? world.getTerrainHeight(sx, sz) : 0;
+        return {
+          pos: new THREE.Vector3(sx, sy, sz),
+          tier: (p.threat === 'high') ? 'raider' : 'scav'
+        };
+      });
     for (const sp of aiSpawns) {
       this.enemies.push(new Enemy(scene, world, sp.pos, sp.tier, null, weaponSystem));
     }
 
     // 3. Spawn Sector Boss at the Boss Encampment POI (drops gun + plates/ammo + Boss Small Pack w/ Boss Key & Legendary Weapon!)
     const bossPoi = (world.pois || []).find(p => (p.name || '').toLowerCase().includes('boss'));
-    const bossPos = bossPoi
-      ? new THREE.Vector3(bossPoi.x + 2.5, 0, bossPoi.z + 3.5)
-      : new THREE.Vector3(28, 0, -28);
+    const bx = bossPoi ? bossPoi.x + 2.5 : 312.5;
+    const bz = bossPoi ? bossPoi.z + 3.5 : -266.5;
+    const bossPos = new THREE.Vector3(bx, world.getTerrainHeight ? world.getTerrainHeight(bx, bz) : 0, bz);
     this.enemies.push(new Enemy(scene, world, bossPos, 'boss', null, weaponSystem));
 
     this.enemies.forEach((e, idx) => { e.netIdx = idx; });

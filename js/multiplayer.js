@@ -333,6 +333,10 @@ class MultiplayerSession {
       armor: Math.ceil(player.armor),
       stance: player.isDowned ? 'downed' : (player.dead ? 'dead' : (player.isSliding ? 'slide' : (player.isProne ? 'prone' : (player.isCrouching ? 'crouch' : 'stand')))),
       wpn: wSlot ? wSlot.id : 'melee',
+      inv: !!player.isInventoryOpen,
+      ads: !!player.isADS,
+      vest: player.armorVest || null,
+      bag: player.backpack || null,
       downed: !!player.isDowned,
       dead: !!player.dead,
       bleed: Math.round((player.downedBleedTimer || 0) * 10) / 10
@@ -362,6 +366,10 @@ class MultiplayerSession {
       armor: Math.ceil(player.armor),
       stance: player.isDowned ? 'downed' : (player.dead ? 'dead' : (player.isSliding ? 'slide' : (player.isProne ? 'prone' : (player.isCrouching ? 'crouch' : 'stand')))),
       wpn: wSlot ? wSlot.id : 'melee',
+      inv: !!player.isInventoryOpen,
+      ads: !!player.isADS,
+      vest: player.armorVest || null,
+      bag: player.backpack || null,
       downed: !!player.isDowned,
       dead: !!player.dead,
       bleed: Math.round((player.downedBleedTimer || 0) * 10) / 10
