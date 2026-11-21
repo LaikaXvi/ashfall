@@ -2103,22 +2103,25 @@ class Player {
 
     const busyHands = !!(this.weaponSystem && (this.weaponSystem.isReloading || this.weaponSystem.isPlating || this.weaponSystem.isHealing));
 
-    // Dead (eliminated, awaiting slow ally revive): camera stays low, no movement
+    // Dead (eliminated, awaiting slow ally revive): corpse frozen on terrain; camera spectates living ally in main.js!
     if (this.dead) {
       this.velocity.x = 0;
       this.velocity.z = 0;
       this.isFiring = false;
       this.isADS = false;
+      const gyDead = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(this.position.x, this.position.z) : 0;
       this.currentEyeHeight = THREE.MathUtils.lerp(this.currentEyeHeight, 0.38, Math.min(1, dt * 8));
-      this.position.y = this.currentEyeHeight;
-      this.camera.position.copy(this.position);
-      this.camera.rotation.order = 'YXZ';
-      this.camera.rotation.y = this.yaw;
-      this.camera.rotation.x = this.pitch;
+      this.position.y = gyDead + this.currentEyeHeight;
+      if (!this.spectatingAlly) {
+        this.camera.position.copy(this.position);
+        this.camera.rotation.order = 'YXZ';
+        this.camera.rotation.y = this.yaw;
+        this.camera.rotation.x = this.pitch;
+      }
       return;
     }
 
-    // Downed state: player can crawl slowly to safety (unless being dragged), bleeds out if not being revived
+    // Downed state: player can crawl slowly to safety (UNLESS being revived or dragged!), bleeds out if not being revived
     if (this.isDowned) {
       this.isFiring = false;
       this.isADS = false;
@@ -2135,7 +2138,7 @@ class Player {
           this._justBledOut = true;
         }
       }
-      if (this.beingDragged) {
+      if (this.beingDragged || this.beingRevivedBy) {
         this.velocity.x = 0;
         this.velocity.z = 0;
       } else {

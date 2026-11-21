@@ -3373,6 +3373,25 @@ button:disabled {
   box-shadow: 0 10px 32px rgba(0, 0, 0, 0.58), inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
+.spectate-banner {
+  position: fixed;
+  bottom: 92px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 26;
+  pointer-events: none;
+  padding: 8px 18px;
+  border-radius: 10px;
+  background: rgba(10, 14, 16, 0.88);
+  border: 1.5px solid rgba(105, 240, 174, 0.55);
+  color: #e6f2ec;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.9px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65);
+}
+
 .hideout-header {
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);

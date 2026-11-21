@@ -346,10 +346,14 @@ class SquadMate {
       const gyD = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(this.position.x, this.position.z) : 0;
       this.position.y = gyD;
       this.group.position.y = gyD - 0.56;
-      this.group.rotation.x = -0.22;
+      this.group.rotation.x = -0.24;
       this.group.rotation.z = 0;
-      if (this.leftHip) this.leftHip.rotation.x = -1.38;
-      if (this.rightHip) this.rightHip.rotation.x = -1.38;
+      if (this.leftHip) this.leftHip.rotation.x = 1.72;
+      if (this.rightHip) this.rightHip.rotation.x = 1.62;
+      if (this.opModel) {
+        if (this.opModel.leftLeg && this.opModel.leftLeg.knee) this.opModel.leftLeg.knee.rotation.x = -0.22;
+        if (this.opModel.rightLeg && this.opModel.rightLeg.knee) this.opModel.rightLeg.knee.rotation.x = -0.16;
+      }
       if (this.leftArm) { this.leftArm.rotation.x = 0.55; this.leftArm.rotation.z = 0.24; }
       if (this.rightArm) { this.rightArm.rotation.x = -0.78; this.rightArm.rotation.z = -0.48; }
       this._redrawTag('DOWNED', '#ff5252');
@@ -539,15 +543,18 @@ class SquadMate {
         const prevX = this.position.x;
         const prevZ = this.position.z;
         const lerpRate = Math.min(1, dt * 14);
-        this.position.lerp(this._remoteTargetPos, lerpRate);
-        this.group.position.x = this.position.x;
-        this.group.position.z = this.position.z;
+        // When being revived/dragged locally by the player, let the reviver parent our position directly!
+        if (!this.beingRevivedBy) {
+          this.position.lerp(this._remoteTargetPos, lerpRate);
+          this.group.position.x = this.position.x;
+          this.group.position.z = this.position.z;
 
-        // Shortest-angle yaw interpolation
-        let dYaw = this._remoteTargetYaw - this.group.rotation.y;
-        while (dYaw > Math.PI) dYaw -= Math.PI * 2;
-        while (dYaw < -Math.PI) dYaw += Math.PI * 2;
-        this.group.rotation.y += dYaw * lerpRate;
+          // Shortest-angle yaw interpolation
+          let dYaw = this._remoteTargetYaw - this.group.rotation.y;
+          while (dYaw > Math.PI) dYaw -= Math.PI * 2;
+          while (dYaw < -Math.PI) dYaw += Math.PI * 2;
+          this.group.rotation.y += dYaw * lerpRate;
+        }
 
         const moveDist = Math.hypot(this.position.x - prevX, this.position.z - prevZ) / Math.max(0.001, dt);
         const moving = moveDist > 0.35;
@@ -562,13 +569,17 @@ class SquadMate {
           this._redrawTag('ELIMINATED', '#ff5252');
           this._updateBleedSprite(dt);
         } else if (this.isDowned) {
-          const phase = moving ? Math.sin(performance.now() * 0.006) : 0;
+          const phase = (moving && !this.beingRevivedBy) ? Math.sin(performance.now() * 0.006) : 0;
           const heave = Math.max(0, phase);
           this.group.position.y = this.position.y - 0.56 + heave * 0.035;
-          this.group.rotation.x = -0.22 - heave * 0.04;
-          if (this.leftHip) this.leftHip.rotation.x = -1.38 - heave * 0.14;
-          if (this.rightHip) this.rightHip.rotation.x = -1.38 - Math.max(0, -phase) * 0.10;
-          this._redrawTag(`DOWNED ${Math.ceil(Math.max(0, this.downedBleedTimer))}s`, '#ff5252');
+          this.group.rotation.x = -0.24 - heave * 0.04;
+          if (this.leftHip) this.leftHip.rotation.x = 1.72 + heave * 0.14;
+          if (this.rightHip) this.rightHip.rotation.x = 1.62 + Math.max(0, -phase) * 0.10;
+          if (this.opModel) {
+            if (this.opModel.leftLeg && this.opModel.leftLeg.knee) this.opModel.leftLeg.knee.rotation.x = -0.22;
+            if (this.opModel.rightLeg && this.opModel.rightLeg.knee) this.opModel.rightLeg.knee.rotation.x = -0.16;
+          }
+          this._redrawTag(this.beingRevivedBy ? `REVIVING ${Math.round(this.reviveProgress * 100)}%` : `DOWNED ${Math.ceil(Math.max(0, this.downedBleedTimer))}s`, this.beingRevivedBy ? '#69f0ae' : '#ff5252');
           this._updateBleedSprite(dt);
         } else {
           if (this.bleedSprite) this.bleedSprite.visible = false;
@@ -650,9 +661,13 @@ class SquadMate {
           const gyS = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(this.position.x, this.position.z) : 0;
           this.position.y = gyS;
           this.group.position.y = gyS - 0.56 + heave * 0.035;
-          this.group.rotation.x = -0.22 - heave * 0.04;
-          if (this.leftHip) this.leftHip.rotation.x = -1.38 - heave * 0.14;
-          if (this.rightHip) this.rightHip.rotation.x = -1.38 - Math.max(0, -phase) * 0.10;
+          this.group.rotation.x = -0.24 - heave * 0.04;
+          if (this.leftHip) this.leftHip.rotation.x = 1.72 + heave * 0.14;
+          if (this.rightHip) this.rightHip.rotation.x = 1.62 + Math.max(0, -phase) * 0.10;
+          if (this.opModel) {
+            if (this.opModel.leftLeg && this.opModel.leftLeg.knee) this.opModel.leftLeg.knee.rotation.x = -0.22;
+            if (this.opModel.rightLeg && this.opModel.rightLeg.knee) this.opModel.rightLeg.knee.rotation.x = -0.16;
+          }
         }
         this._redrawTag(`DOWNED ${Math.ceil(Math.max(0, this.downedBleedTimer))}s`, '#ff5252');
         if (this.downedBleedTimer <= 0) {

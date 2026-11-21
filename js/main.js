@@ -367,11 +367,19 @@
           } else if (pkt.type === 'revive_progress') {
             if (pkt.targetClientId === ui._clientId && player && (player.isDowned || player.dead)) {
               player.beingRevivedBy = pkt.reviverName || 'SQUAD';
+              player.beingDragged = !!player.isDowned;
               if (typeof pkt.progress === 'number') player.reviveProgress = pkt.progress;
+              if (player.isDowned && typeof pkt.dx === 'number' && typeof pkt.dz === 'number') {
+                const gyDrag = (world && world.getTerrainHeight) ? world.getTerrainHeight(pkt.dx, pkt.dz) : 0;
+                player.position.x = pkt.dx;
+                player.position.z = pkt.dz;
+                player.position.y = gyDrag + player.currentEyeHeight;
+              }
               player._remoteReviveExpire = performance.now() + 800;
             }
           } else if (pkt.type === 'revive_complete') {
             if (pkt.targetClientId === ui._clientId && player && (player.isDowned || player.dead)) {
+              player.beingDragged = false;
               player.revive(pkt.hp || 45);
               if (mpSession && mpSession.active && mpSession.sendStateNow) {
                 mpSession.sendStateNow(player);
@@ -629,6 +637,7 @@
 
   window.addEventListener('mousemove', (e) => {
     if (!inRaid || isModalOpen || document.pointerLockElement !== canvas) return;
+    if (player && player.dead) return; // Corpse frozen when dead (spectating living ally)
     if (pingWheelOpen) {
       pingWheelX = THREE.MathUtils.clamp(pingWheelX + e.movementX, -110, 110);
       pingWheelY = THREE.MathUtils.clamp(pingWheelY + e.movementY, -110, 110);
@@ -660,6 +669,10 @@
       return;
     }
     if (e.button === 0) {
+      if (player && player.dead) {
+        spectateAllyIdx += 1;
+        return;
+      }
       if (throwableSystem && throwableSystem.isBusy()) return;
       player.isFiring = true;
       firePlayerWeapon();
@@ -804,6 +817,10 @@
       return;
     }
     if (e.code === (kb.jump || 'Space')) {
+      if (!e.repeat && player && player.dead) {
+        spectateAllyIdx += 1;
+        return;
+      }
       if (!e.repeat) player.onJumpKeyDown();
       return;
     }
@@ -2330,6 +2347,7 @@
     // Clear expired remote revive lock if teammate let go of Interact
     if (player && player.beingRevivedBy && player.beingRevivedBy !== 'SELF-REVIVE' && player._remoteReviveExpire && performance.now() > player._remoteReviveExpire) {
       player.beingRevivedBy = null;
+      player.beingDragged = false;
       player._remoteReviveExpire = 0;
     }
     // Self-Revive Kit: hold [Interact] while downed to channel Self-Revive AND pause the death/bleedout timer!
@@ -2367,26 +2385,38 @@
         const dur = candidate.dead ? 7.5 : 3.5;
         candidate.reviveProgress = Math.min(1, (candidate.reviveProgress || 0) + dt / dur);
 
-        // Notify remote human teammate of active revive progress (pauses their bleedout + shows banner!)
+        // Parent/lock DOWNED ally directly to the reviver's local drag slot so moving or turning drags them smoothly!
+        const moving = Math.hypot(player.velocity.x, player.velocity.z) > 0.20;
+        let dragX = candidate.position.x;
+        let dragZ = candidate.position.z;
+        if (candidate.isDowned) {
+          const sinY = Math.sin(player.yaw);
+          const cosY = Math.cos(player.yaw);
+          dragX = player.position.x - sinY * 1.05;
+          dragZ = player.position.z - cosY * 1.05;
+          const gy = (world && world.getTerrainHeight) ? world.getTerrainHeight(dragX, dragZ) : 0;
+          candidate.position.set(dragX, gy, dragZ);
+          if (candidate.group) {
+            candidate.group.position.set(dragX, gy - 0.56, dragZ);
+            candidate.group.rotation.y = Math.atan2(player.position.x - dragX, player.position.z - dragZ);
+          }
+          if (candidate._remoteTargetPos) {
+            candidate._remoteTargetPos.set(dragX, gy, dragZ);
+          }
+        }
+
+        // Notify remote human teammate of active revive progress & parented drag position (~12Hz)
         const nowMs = performance.now();
-        if (candidate.isRemoteHuman && mpSession && mpSession.active && candidate.clientId && (nowMs - _lastRemoteRevivePing > 220)) {
+        if (candidate.isRemoteHuman && mpSession && mpSession.active && candidate.clientId && (nowMs - _lastRemoteRevivePing > 80)) {
           _lastRemoteRevivePing = nowMs;
           mpSession.sendEvent({
             type: 'revive_progress',
             targetClientId: candidate.clientId,
             progress: Math.round(candidate.reviveProgress * 100) / 100,
-            reviverName: getPlayerCallsign()
+            reviverName: getPlayerCallsign(),
+            dx: candidate.isDowned ? Math.round(dragX * 100) / 100 : undefined,
+            dz: candidate.isDowned ? Math.round(dragZ * 100) / 100 : undefined
           });
-        }
-
-        // Moving while reviving a DOWNED ally drags them smoothly into cover!
-        const moving = Math.hypot(player.velocity.x, player.velocity.z) > 0.25;
-        if (candidate.isDowned && moving) {
-          const sinY = Math.sin(player.yaw);
-          const cosY = Math.cos(player.yaw);
-          const dragX = player.position.x - sinY * 1.15;
-          const dragZ = player.position.z - cosY * 1.15;
-          candidate.dragToward(dragX, dragZ, 2.4, dt);
         }
 
         if (candidate.reviveProgress >= 1) {
@@ -2422,6 +2452,59 @@
       player.isDraggingAlly = false;
     }
     ui.updateReviveBanner(player, null, false);
+  }
+
+  let spectateAllyIdx = 0;
+  let lastSpectatedAlly = null;
+
+  function updateSpectatorCamera() {
+    const specBanner = document.getElementById('spectate-banner');
+    if (!inRaid || !player || !player.dead || !squadManager || !squadManager.allies) {
+      if (lastSpectatedAlly && lastSpectatedAlly.group) {
+        lastSpectatedAlly.group.visible = true;
+      }
+      lastSpectatedAlly = null;
+      if (player) player.spectatingAlly = null;
+      if (specBanner) specBanner.classList.add('hidden');
+      return;
+    }
+
+    // Prefer living human teammates first, then living AI squadmates
+    const aliveAllies = squadManager.allies.filter(a => a && !a.dead && !a.extracted);
+    if (aliveAllies.length === 0) {
+      if (lastSpectatedAlly && lastSpectatedAlly.group) lastSpectatedAlly.group.visible = true;
+      lastSpectatedAlly = null;
+      player.spectatingAlly = null;
+      if (specBanner) specBanner.classList.add('hidden');
+      return;
+    }
+
+    const spec = aliveAllies[spectateAllyIdx % aliveAllies.length];
+    if (lastSpectatedAlly && lastSpectatedAlly !== spec && lastSpectatedAlly.group) {
+      lastSpectatedAlly.group.visible = true;
+    }
+    lastSpectatedAlly = spec;
+    player.spectatingAlly = spec;
+    // Hide the spectated ally's 3D body locally so our first-person eye camera never clips inside their head!
+    if (spec.group) spec.group.visible = false;
+
+    const st = spec._remoteStance || (spec.isDowned ? 'downed' : 'stand');
+    const eyeH = st === 'prone' ? 0.55 : (st === 'downed' ? 0.72 : (st === 'slide' ? 0.78 : (st === 'crouch' ? 1.12 : 1.66)));
+    const camYaw = (spec.group ? spec.group.rotation.y : 0) + Math.PI;
+    const camPitch = THREE.MathUtils.clamp(spec._remotePitch || 0, -Math.PI / 2 + 0.1, Math.PI / 2 - 0.1);
+
+    camera.position.set(spec.position.x, spec.position.y + eyeH, spec.position.z);
+    camera.rotation.order = 'YXZ';
+    camera.rotation.set(camPitch, camYaw, 0);
+
+    if (weaponSystem && weaponSystem.viewmodelGroup) {
+      weaponSystem.viewmodelGroup.visible = false;
+    }
+    if (specBanner) {
+      const switchHint = aliveAllies.length > 1 ? ' · [LMB / SPACE] SWITCH' : '';
+      specBanner.textContent = `SPECTATING: ${spec.name} (${Math.ceil(spec.hp || 0)} HP)${switchHint}`;
+      specBanner.classList.remove('hidden');
+    }
   }
 
   function hasInteractLineOfSight(targetPos, ignoreMeshRoot = null) {
@@ -2853,6 +2936,7 @@
         }
 
         updatePlayerRevive(dt);
+        updateSpectatorCamera();
         updateKillstreaks(dt);
         updateRedZone(dt);
         updatePings(dt);

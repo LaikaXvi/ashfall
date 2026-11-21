@@ -403,7 +403,7 @@ class GamepadController {
     const slowdown = this._applyRotationalAimAssist(dt, player, ctx.enemyManager, ls, rs);
 
     // === RIGHT STICK: ANALOG LOOK (YAW & PITCH) ===
-    if (rs.mag > 0) {
+    if (rs.mag > 0 && !player.dead) {
       const lookSpeed = (player.isADS ? 1.55 : 2.95) * (window.CONTROLLER_SENS || 1.0) * slowdown;
       player.yaw -= rs.x * lookSpeed * dt;
       player.pitch -= rs.y * lookSpeed * dt;
