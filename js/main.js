@@ -371,7 +371,8 @@
       const jitter = (Math.random() - 0.5) * 0.35;
       const dropX = player.position.x - sinY * 1.05 + cosY * jitter;
       const dropZ = player.position.z - cosY * 1.05 - sinY * jitter;
-      const gi = world.spawnGroundItem(droppedItem.id, droppedItem.qty || 1, new THREE.Vector3(dropX, 0.02, dropZ), {
+      const dropY = Math.max(0.02, (player.position.y - player.currentEyeHeight));
+      const gi = world.spawnGroundItem(droppedItem.id, droppedItem.qty || 1, new THREE.Vector3(dropX, dropY, dropZ), {
         mods: droppedItem.mods || null,
         mag: droppedItem.mag,
         rarityOverride: droppedItem.rarityOverride || null

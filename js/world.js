@@ -924,6 +924,24 @@ class WastelandWorld {
     this.spawnPoints = this.pois.map(p => new THREE.Vector3(p.x + 12, this.getTerrainHeight(p.x + 12, p.z + 10), p.z + 10));
   }
 
+  getSurfaceHeightAt(x, z, referenceY = null) {
+    const terrainY = this.getTerrainHeight(x, z);
+    let bestY = terrainY;
+    for (let i = 0; i < this.colliders.length; i++) {
+      const c = this.colliders[i];
+      if (x >= c.minX && x <= c.maxX && z >= c.minZ && z <= c.maxZ) {
+        if (c.maxY > bestY) {
+          if (referenceY !== null) {
+            if (c.maxY <= referenceY + 0.55) bestY = c.maxY;
+          } else if (c.maxY - terrainY <= 1.2) {
+            bestY = c.maxY;
+          }
+        }
+      }
+    }
+    return bestY;
+  }
+
   spawnGroundItem(id, qty = 1, pos = new THREE.Vector3(0, 0.02, 0), opts = {}) {
     const def = GAME_DATA.ITEMS[id];
     if (!def) return null;
@@ -948,7 +966,10 @@ class WastelandWorld {
     const rarColor = new THREE.Color(rarInfo.color);
 
     const g = new THREE.Group();
-    const yBase = pos.y !== undefined ? pos.y : 0.02;
+    const terrainY = this.getTerrainHeight(pos.x, pos.z);
+    const yBase = opts.onSurface
+      ? Math.max(pos.y !== undefined ? pos.y : terrainY, terrainY + 0.02)
+      : (this.getSurfaceHeightAt(pos.x, pos.z, (pos.y !== undefined && pos.y > terrainY + 0.25) ? pos.y : null) + 0.02);
     g.position.set(pos.x, yBase, pos.z);
     g.rotation.y = opts.rotY !== undefined ? opts.rotY : Math.random() * Math.PI * 2;
 
@@ -1062,7 +1083,8 @@ class WastelandWorld {
 
   spawnBossPack(pos, bossName = 'Sector Boss') {
     const g = new THREE.Group();
-    const yBase = Math.max(0.02, pos.y || 0.02);
+    const terrainY = this.getTerrainHeight(pos.x, pos.z);
+    const yBase = this.getSurfaceHeightAt(pos.x, pos.z, (pos.y !== undefined && pos.y > terrainY + 0.25) ? pos.y : null) + 0.02;
     g.position.set(pos.x, yBase, pos.z);
     g.rotation.y = Math.random() * Math.PI * 2;
 
