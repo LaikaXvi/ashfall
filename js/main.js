@@ -2287,11 +2287,39 @@
 
   function performMeleeStrike(isQuick = false) {
     if (!player || player.isDowned || player.dead || player.isRevivingAlly || isModalOpen) return;
-    const hit = weaponSystem.tryMeleeSlash(player, world, enemyManager, (isHead, killed, enemy, attackerInfo) => {
+    const hit = weaponSystem.tryMeleeSlash(player, world, enemyManager, (isHead, killed, enemy, attackerInfo, dmg) => {
       window.soundEngine.playHitmarker(isHead);
       ui.triggerHitmarker(isHead, !!(enemy && enemy.lastHitArmor));
       handleOperatorHitResult(isHead, killed, enemy, attackerInfo);
-    }, isQuick);
+      if (enemy && enemy.isRemoteReplicated && mpSession && mpSession.active && typeof enemy.netIdx === 'number') {
+        mpSession.sendEvent({
+          type: 'enemy_hit',
+          enemyIdx: enemy.netIdx,
+          dmg: dmg || 55,
+          isHead: !!isHead,
+          weaponId: (attackerInfo && attackerInfo.weaponId) || 'melee_knife',
+          weaponName: (attackerInfo && attackerInfo.weaponName) || 'Melee'
+        });
+      }
+    }, isQuick, squadManager, (isHead, dmg, ally, attackerInfo) => {
+      window.soundEngine.playHitmarker(isHead);
+      ui.triggerHitmarker(isHead);
+      if (ally && ally.isRemoteHuman && mpSession && mpSession.active && ally.clientId) {
+        mpSession.sendEvent({
+          type: 'pvp_hit',
+          targetClientId: ally.clientId,
+          dmg: dmg || 55,
+          isHead: !!isHead,
+          weaponId: (attackerInfo && attackerInfo.weaponId) || 'melee_knife',
+          weaponName: (attackerInfo && attackerInfo.weaponName) || 'Melee',
+          ax: Math.round(player.position.x * 10) / 10,
+          ay: Math.round(player.position.y * 10) / 10,
+          az: Math.round(player.position.z * 10) / 10
+        });
+      } else if (ally && !ally.isRemoteHuman && typeof ally.takeDamage === 'function') {
+        ally.takeDamage(dmg || 55, attackerInfo);
+      }
+    });
     if (hit && gamepad && gamepad.connected) {
       gamepad.rumble(75, 0.45, 0.55);
     }

@@ -4567,7 +4567,7 @@ class WeaponSystem {
     this.viewmodelGroup.visible = !this.isThirdPerson;
   }
 
-  tryMeleeSlash(player, world, enemyManager, onHitCallback, isQuick = false) {
+  tryMeleeSlash(player, world, enemyManager, onHitCallback, isQuick = false, squadManager = null, onAllyHitCallback = null) {
     if (this.meleeSwingTimer > 0) return false;
     this._fistPunchSide = !this._fistPunchSide;
     this.cancelReload();
@@ -4582,27 +4582,141 @@ class WeaponSystem {
       try { window.soundEngine.playClick(); } catch (e) {}
     }
 
+    // Use true eye origin in 3P so third-person camera pullback never steals melee reach
     const origin = new THREE.Vector3();
-    this.camera.getWorldPosition(origin);
+    if (player && player.isThirdPerson && player.position) {
+      origin.copy(player.position);
+    } else {
+      this.camera.getWorldPosition(origin);
+    }
     const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion).normalize();
-    const reach = 2.5;
-    const raycaster = new THREE.Raycaster(origin, dir, 0.1, reach);
-    const worldHits = raycaster.intersectObjects(world.shootableMeshes, false);
-    const worldDist = worldHits.length > 0 ? worldHits[0].distance : reach;
-    const enemyHits = raycaster.intersectObjects(enemyManager.getHitboxMeshes(), false);
+    const right = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion).normalize();
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(this.camera.quaternion).normalize();
 
-    if (enemyHits.length > 0 && enemyHits[0].distance < worldDist) {
-      const hit = enemyHits[0];
-      const { enemy, part } = hit.object.userData;
-      const isHead = part === 'head';
-      const dmg = isHead ? 105 : 68;
-      const mDef = GAME_DATA.ITEMS[player.melee || 'melee_knife'];
-      const attackerInfo = { name: 'YOU', isPlayer: true, weaponId: player.melee || 'melee_knife', weaponName: mDef ? mDef.name : 'Combat Knife' };
-      const killed = enemy.takeDamage(dmg, origin, attackerInfo);
-      this._spawnImpact(hit.point, 0x991111, 6);
-      if (onHitCallback) onHitCallback(isHead, killed, enemy, attackerInfo);
-    } else if (worldHits.length > 0) {
-      this._spawnImpact(worldHits[0].point, 0xc8b898, 4);
+    const reach = 2.85;
+    const isFists = !isQuick && player && player.activeSlot !== 'melee' && !player.getActiveWeaponSlot();
+    const mDef = (!isFists && player) ? GAME_DATA.ITEMS[player.melee || 'melee_knife'] : null;
+    const attackerInfo = isFists
+      ? { name: 'YOU', isPlayer: true, weaponId: 'fists', weaponName: 'Fists' }
+      : { name: 'YOU', isPlayer: true, weaponId: (player && player.melee) || 'melee_knife', weaponName: mDef ? mDef.name : 'Combat Knife' };
+    const bodyDmg = isFists ? 55 : 68;
+    const headDmg = isFists ? 85 : 105;
+
+    const enemyMeshes = (enemyManager && enemyManager.getHitboxMeshes) ? enemyManager.getHitboxMeshes() : [];
+    const allyMeshes = (window.SQUAD_PVP && squadManager && squadManager.getHitboxMeshes) ? squadManager.getHitboxMeshes() : [];
+
+    // 1. Multi-ray melee sweep (center + slight left/right/down/up fan, near = 0 so point-blank hits always register)
+    const rayDirs = [
+      dir.clone(),
+      dir.clone().addScaledVector(right, 0.14).normalize(),
+      dir.clone().addScaledVector(right, -0.14).normalize(),
+      dir.clone().addScaledVector(up, -0.14).normalize(),
+      dir.clone().addScaledVector(up, 0.10).normalize()
+    ];
+
+    let bestEnemyHit = null;
+    let bestAllyHit = null;
+    let firstWorldHit = null;
+
+    for (let rIdx = 0; rIdx < rayDirs.length; rIdx++) {
+      const rDir = rayDirs[rIdx];
+      const raycaster = new THREE.Raycaster(origin, rDir, 0.0, reach);
+      const worldHits = (world && world.shootableMeshes) ? raycaster.intersectObjects(world.shootableMeshes, false) : [];
+      const worldDist = worldHits.length > 0 ? worldHits[0].distance : reach;
+      if (rIdx === 0 && worldHits.length > 0) firstWorldHit = worldHits[0];
+
+      if (enemyMeshes.length > 0) {
+        const eHits = raycaster.intersectObjects(enemyMeshes, false);
+        if (eHits.length > 0 && eHits[0].distance < worldDist) {
+          if (!bestEnemyHit || eHits[0].distance < bestEnemyHit.distance) {
+            bestEnemyHit = eHits[0];
+          }
+        }
+      }
+      if (allyMeshes.length > 0) {
+        const aHits = raycaster.intersectObjects(allyMeshes, false);
+        if (aHits.length > 0 && aHits[0].distance < worldDist) {
+          if (!bestAllyHit || aHits[0].distance < bestAllyHit.distance) {
+            bestAllyHit = aHits[0];
+          }
+        }
+      }
+    }
+
+    // 2. Close-range melee cone fallback (catches point-blank punches/slashes slightly off exact ray center)
+    let coneEnemy = null;
+    let coneEnemyDist = Infinity;
+    let coneEnemyPt = null;
+    let coneAlly = null;
+    let coneAllyDist = Infinity;
+    let coneAllyPt = null;
+
+    if (!bestEnemyHit && !bestAllyHit) {
+      const coneReach = 2.65;
+      const checkLOS = (targetPt, dist) => {
+        if (!world || !world.shootableMeshes || dist < 0.2) return true;
+        const losDir = targetPt.clone().sub(origin).normalize();
+        const losRay = new THREE.Raycaster(origin, losDir, 0.05, Math.max(0.1, dist - 0.15));
+        return losRay.intersectObjects(world.shootableMeshes, false).length === 0;
+      };
+
+      if (enemyManager && enemyManager.enemies) {
+        for (const e of enemyManager.enemies) {
+          if (!e || e.dead) continue;
+          const chest = e.position.clone().add(new THREE.Vector3(0, 1.15, 0));
+          const toTarget = chest.clone().sub(origin);
+          const dist = toTarget.length();
+          if (dist <= coneReach && dist < coneEnemyDist) {
+            const dot = toTarget.clone().normalize().dot(dir);
+            if ((dot >= 0.45 || dist < 1.15) && checkLOS(chest, dist)) {
+              coneEnemy = e;
+              coneEnemyDist = dist;
+              coneEnemyPt = chest;
+            }
+          }
+        }
+      }
+
+      if (window.SQUAD_PVP && squadManager && squadManager.allies) {
+        for (const a of squadManager.allies) {
+          if (!a || a.dead || a.extracted || !a.position) continue;
+          const chest = a.position.clone().add(new THREE.Vector3(0, 1.15, 0));
+          const toTarget = chest.clone().sub(origin);
+          const dist = toTarget.length();
+          if (dist <= coneReach && dist < coneAllyDist) {
+            const dot = toTarget.clone().normalize().dot(dir);
+            if ((dot >= 0.45 || dist < 1.15) && checkLOS(chest, dist)) {
+              coneAlly = a;
+              coneAllyDist = dist;
+              coneAllyPt = chest;
+            }
+          }
+        }
+      }
+    }
+
+    const eDist = bestEnemyHit ? bestEnemyHit.distance : coneEnemyDist;
+    const aDist = bestAllyHit ? bestAllyHit.distance : coneAllyDist;
+
+    if (aDist < eDist && aDist < Infinity) {
+      const ally = bestAllyHit ? bestAllyHit.object.userData.ally : coneAlly;
+      const isHead = bestAllyHit ? (bestAllyHit.object.userData.part === 'head') : false;
+      const hitPt = bestAllyHit ? bestAllyHit.point : coneAllyPt;
+      const dmg = isHead ? headDmg : bodyDmg;
+      if (hitPt) this._spawnImpact(hitPt, 0x991111, 6);
+      if (onAllyHitCallback && ally) onAllyHitCallback(isHead, dmg, ally, attackerInfo);
+    } else if (eDist < Infinity) {
+      const enemy = bestEnemyHit ? bestEnemyHit.object.userData.enemy : coneEnemy;
+      const isHead = bestEnemyHit ? (bestEnemyHit.object.userData.part === 'head') : false;
+      const hitPt = bestEnemyHit ? bestEnemyHit.point : coneEnemyPt;
+      const dmg = isHead ? headDmg : bodyDmg;
+      if (enemy && !enemy.dead) {
+        const killed = enemy.takeDamage(dmg, origin, attackerInfo);
+        if (hitPt) this._spawnImpact(hitPt, 0x991111, 6);
+        if (onHitCallback) onHitCallback(isHead, killed, enemy, attackerInfo, dmg);
+      }
+    } else if (firstWorldHit) {
+      this._spawnImpact(firstWorldHit.point, 0xc8b898, 4);
     }
     return true;
   }
