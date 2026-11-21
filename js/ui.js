@@ -1012,8 +1012,7 @@ class GameUI {
     }
     if (!badge) return;
 
-    let pagesReadyVer = null;
-    let githubPendingVer = null;
+    let latestAvailable = null;
     const parseVer = (v) => String(v || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0);
     const isNewer = (remote, local) => {
       if (!remote || !local || remote === local) return false;
@@ -1028,17 +1027,24 @@ class GameUI {
       return remote !== local;
     };
 
-    const renderBadge = () => {
-      const nextVer = pagesReadyVer || githubPendingVer;
-      if (nextVer) {
-        badge.textContent = `NEW VERSION AVAILABLE (${nextVer})`;
+    const reportRemoteVersion = (remoteVer) => {
+      const localVer = (window.GAME_DATA && GAME_DATA.VERSION) || (verBadge && verBadge.textContent.trim()) || '';
+      if (!remoteVer || !localVer) return false;
+      if (isNewer(remoteVer, localVer)) {
+        if (!latestAvailable || isNewer(remoteVer, latestAvailable)) {
+          latestAvailable = remoteVer;
+        }
+        badge.textContent = `NEW VERSION AVAILABLE (${latestAvailable})`;
         badge.style.opacity = '1';
         badge.classList.remove('hidden');
+        return true;
       }
+      return false;
     };
+    this._reportRemoteVersion = reportRemoteVersion;
 
     badge.addEventListener('click', () => {
-      const bust = encodeURIComponent(pagesReadyVer || githubPendingVer || Date.now());
+      const bust = encodeURIComponent(latestAvailable || Date.now());
       const base = window.location.origin + window.location.pathname;
       window.location.replace(`${base}?v=${bust}&t=${Date.now()}`);
     });
@@ -1051,44 +1057,47 @@ class GameUI {
       return (m2 && m2[1]) || null;
     };
 
-    const checkForUpdate = () => {
-      const localVer = (window.GAME_DATA && GAME_DATA.VERSION) || (verBadge && verBadge.textContent.trim()) || '';
-      if (!localVer) return;
-      const ts = Date.now();
-
-      // 1. Check live GitHub Pages index.html + data.js (confirms CDN has actually published the new version!)
-      if (window.location.protocol !== 'file:') {
-        fetch(`./index.html?nocache=${ts}`, { cache: 'no-store' })
-          .then(r => (r.ok ? r.text() : ''))
-          .then((txt) => {
-            const v = extractVer(txt);
-            if (v && isNewer(v, localVer)) {
-              if (!pagesReadyVer || isNewer(v, pagesReadyVer)) pagesReadyVer = v;
-              renderBadge();
-            }
-          })
-          .catch(() => {});
-      }
-
-      // 2. Check raw GitHub main branch (instant detection within seconds of a git push!)
-      fetch(`https://raw.githubusercontent.com/LaikaXvi/ashfall/main/js/data.js?t=${ts}`, { cache: 'no-store' })
-        .then(r => (r.ok ? r.text() : ''))
-        .then((txt) => {
-          const v = extractVer(txt);
-          if (v && isNewer(v, localVer)) {
-            if (!githubPendingVer || isNewer(v, githubPendingVer)) githubPendingVer = v;
-            renderBadge();
-          }
+    let lastGhApiCheck = 0;
+    const checkGitHubApi = () => {
+      const now = Date.now();
+      if (now - lastGhApiCheck < 20000) return;
+      lastGhApiCheck = now;
+      // GitHub REST API commits/main has ZERO 5-minute Fastly cache — updates in <1s of a push!
+      fetch(`https://api.github.com/repos/LaikaXvi/ashfall/commits/main?t=${now}`, { cache: 'no-store' })
+        .then(r => (r.ok ? r.json() : null))
+        .then((data) => {
+          const msg = data && data.commit && data.commit.message;
+          if (!msg) return;
+          const m = msg.match(/\b(v\d+\.\d+)\b/i);
+          if (m && m[1]) reportRemoteVersion(m[1].toLowerCase());
         })
         .catch(() => {});
     };
 
-    setTimeout(checkForUpdate, 1200);
-    this._updateCheckInterval = setInterval(checkForUpdate, 10000);
+    const checkPagesLive = () => {
+      if (window.location.protocol === 'file:') return;
+      fetch(`./index.html?nocache=${Date.now()}`, { cache: 'no-store' })
+        .then(r => (r.ok ? r.text() : ''))
+        .then((txt) => {
+          const v = extractVer(txt);
+          if (v) reportRemoteVersion(v);
+        })
+        .catch(() => {});
+    };
+
+    setTimeout(() => { checkGitHubApi(); checkPagesLive(); }, 1000);
+    this._updateCheckInterval = setInterval(checkPagesLive, 20000);
+    this._updateApiInterval = setInterval(checkGitHubApi, 65000);
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') checkForUpdate();
+      if (document.visibilityState === 'visible') {
+        checkGitHubApi();
+        checkPagesLive();
+      }
     });
-    window.addEventListener('focus', checkForUpdate);
+    window.addEventListener('focus', () => {
+      checkGitHubApi();
+      checkPagesLive();
+    });
   }
 
   _initSocial() {
@@ -1176,6 +1185,11 @@ class GameUI {
         ? Math.min(now, serverTimeSec * 1000)
         : now;
 
+      if (msg.type === 'version_announce' && msg.version) {
+        if (this._reportRemoteVersion) this._reportRemoteVersion(msg.version);
+        return;
+      }
+
       if (msg.type === 'presence_req') {
         // Newly connected player asked who is online — reply immediately!
         if (this._broadcastPresence) this._broadcastPresence();
@@ -1183,6 +1197,7 @@ class GameUI {
       }
 
       if (msg.type === 'presence' || msg.type === 'rename') {
+        if (msg.ver && this._reportRemoteVersion) this._reportRemoteVersion(msg.ver);
         const name = (msg.from || msg.name || '').trim().toUpperCase();
         if (!name) return;
         if (now - effectiveTs > PEER_TTL_MS) return;
@@ -1515,6 +1530,7 @@ class GameUI {
         clientId: this._clientId,
         from: myName,
         status: 'ONLINE',
+        ver: (window.GAME_DATA && GAME_DATA.VERSION) || '',
         ts: now
       });
       this._rebuildOnlineList();
