@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ASHFALL // 3D Extraction Looter-Shooter</title>
-  <link rel="stylesheet" href="css/style.css?v=182" />
+  <link rel="stylesheet" href="css/style.css?v=183" />
   <!-- Three.js r128 UMD for zero-build compatibility (works on both http:// and file://) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
@@ -22,7 +22,7 @@
     <!-- IMPORTANT: Update version in GAME_DATA.VERSION (js/data.js) and here with EVERY new commit -->
     <div class="menu-version-stack">
       <button id="menu-update-badge" class="menu-update-badge hidden" title="Click to reload into the latest version">NEW VERSION AVAILABLE</button>
-      <div id="menu-version-badge" class="menu-version-badge">v1.82</div>
+      <div id="menu-version-badge" class="menu-version-badge">v1.83</div>
     </div>
     <!-- Top Bar (visible inside utility tabs; hidden on clean Main Menu title card) -->
     <header id="menu-topbar" class="hideout-header hidden">
@@ -747,63 +747,61 @@
       </div>
     </div>
 
-    <!-- Bottom Left: Vitals + Dynamic Stance Silhouette -->
+    <!-- Bottom Left: Exact DMZ Operator Portrait + Callsign + Ice-Blue Plates + White HP + Plate/Med Tiles -->
     <div class="hud-bottom-left hud-vitals-wrap">
       <div class="hud-op-portrait-col">
         <div id="hud-stance-icon" class="stance-silhouette" title="Operator Stance"></div>
-        <span class="hud-squad-num">1</span>
       </div>
       <div class="vitals-bars-col">
+        <div class="hud-op-name-row">
+          <span class="hud-squad-num">1</span>
+          <span id="hud-op-callsign" class="hud-op-callsign">NOMAD</span>
+          <span id="hud-bag-value" class="hud-cash-inline">₽ 0</span>
+        </div>
         <div class="vital-row vital-row-plates">
-          <span class="vital-label">PLATES</span>
           <div id="hud-plate-segments" class="plate-segments"></div>
-          <span id="hud-armor-val" class="vital-val">0</span>
+          <span id="hud-armor-val" class="vital-val hidden">0</span>
         </div>
         <div class="vital-row vital-row-hp">
-          <span class="vital-label">HP</span>
           <div class="bar-bg hp-bg"><div id="hud-hp-bar" class="bar-fill hp-fill"></div></div>
-          <span id="hud-hp-val" class="vital-val">100</span>
+          <span id="hud-hp-val" class="vital-val hidden">100</span>
         </div>
         <div class="vital-row vital-row-stam">
-          <span class="vital-label">STM</span>
           <div class="bar-bg stam-bg"><div id="hud-stam-bar" class="bar-fill stam-fill"></div></div>
-          <span id="hud-stam-val" class="vital-val">100</span>
+          <span id="hud-stam-val" class="vital-val hidden">100</span>
         </div>
-        <div class="quick-med" style="justify-content:space-between;">
-          <span><span class="key-badge">H</span> MED: <b id="hud-medkits">0</b></span>
-          <span><span class="key-badge">G</span> PLATES: <b id="hud-plates">3</b></span>
+      </div>
+
+      <!-- Adjacent Compact Armor Plate + Medkit + Killstreak Quick Tiles -->
+      <div class="hud-left-quick-tiles">
+        <div class="hud-q-tile" title="Insert Armor Plate [G]">
+          <svg class="hud-q-svg" viewBox="0 0 24 26" aria-hidden="true"><path d="M5 6 L9 2 H15 L19 6 V22 H5 Z" fill="rgba(255,255,255,0.88)"/></svg>
+          <b id="hud-plates" class="hud-q-count">3</b>
+          <span class="hud-q-key">G</span>
+        </div>
+        <div class="hud-q-tile" title="Field Medkit [H]">
+          <svg class="hud-q-svg" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2" fill="rgba(255,255,255,0.22)" stroke="rgba(255,255,255,0.65)" stroke-width="1.5"/><path d="M12 8v8M8 12h8" stroke="#ffffff" stroke-width="2.4"/></svg>
+          <b id="hud-medkits" class="hud-q-count">0</b>
+          <span class="hud-q-key">H</span>
+        </div>
+        <div id="hud-ks-wrap" class="ks-hud-wrap empty" title="Killstreak [K]">
+          <div id="hud-ks-icon" class="ks-icon-center"></div>
+          <span id="hud-ks-status" class="ks-status-tag hidden">25s</span>
+          <span id="hud-ks-key" class="fu-key-tag">K</span>
         </div>
       </div>
     </div>
 
-    <!-- Bottom Right: Weapon, Ammo, Grenade Silhouettes, Melee & Field Upgrade Ring -->
+    <!-- Bottom Center: Minimal Backpack Prompt -->
+    <div class="hud-bottom-center-pack">
+      <span class="hud-pack-key">TAB</span>
+      <span class="hud-pack-label">BACKPACK</span>
+      <span id="hud-xp-val" class="hidden">0 XP</span>
+    </div>
+
+    <!-- Bottom Right: Exact DMZ Ammo + Weapon Silhouettes + Melee + Grenades + Top-Right Field Upgrade Ring -->
     <div class="hud-bottom-right-cluster">
-      <div class="hud-bottom-right">
-        <div class="weapon-slots-hud">
-          <span id="hud-slot-1" class="w-slot active">[1] PRIMARY</span>
-          <span id="hud-slot-2" class="w-slot">[2] SIDEARM</span>
-        </div>
-        <div id="hud-weapon-name" class="weapon-name">AK-74M</div>
-        <div class="ammo-counter">
-          <span id="hud-mag" class="mag-count">30</span>
-          <span class="ammo-sep">/</span>
-          <span id="hud-reserve" class="reserve-count">90</span>
-        </div>
-        <div class="hud-ordnance-row">
-          <span class="ord-pill" title="Tactical [Q]"><span id="hud-tac-svg" class="ord-svg"></span><b id="hud-tactical">2</b></span>
-          <span class="ord-pill" title="Lethal [F]"><span id="hud-leth-svg" class="ord-svg"></span><b id="hud-lethal">2</b></span>
-          <span class="ord-pill melee" title="Melee Equipped"><span id="hud-melee-svg" class="ord-svg"></span><b id="hud-melee-name">KNIFE</b></span>
-        </div>
-        <div class="backpack-hint"><span class="key-badge">TAB</span> PACK (<span id="hud-bag-value">₽ 0</span>) · <span id="hud-xp-val" class="accent">0 XP</span></div>
-      </div>
-
-      <!-- Far Right: Killstreak Badge + Active Field Upgrade Ring -->
-      <div id="hud-ks-wrap" class="ks-hud-wrap empty" title="Killstreak [K]">
-        <div id="hud-ks-icon" class="ks-icon-center"></div>
-        <span id="hud-ks-status" class="ks-status-tag hidden">25s</span>
-        <span id="hud-ks-key" class="fu-key-tag">K</span>
-      </div>
-
+      <!-- Floating Field Upgrade Circular Ring above far-right -->
       <div class="field-upgrade-ring-wrap" title="Field Upgrade [Z]">
         <svg class="fu-ring-svg" viewBox="0 0 56 56">
           <circle class="fu-ring-bg" cx="28" cy="28" r="24" />
@@ -811,6 +809,52 @@
         </svg>
         <div id="hud-fu-icon" class="fu-icon-center"></div>
         <span class="fu-key-tag">Z</span>
+      </div>
+
+      <div class="hud-bottom-right dmz-right-grid">
+        <!-- Col 1: Bracketed Ammo Counter + Weapon Name + Fire Mode -->
+        <div class="dmz-ammo-col">
+          <div class="ammo-counter">
+            <span id="hud-mag" class="mag-count">30</span>
+            <span id="hud-reserve" class="reserve-count">90</span>
+            <span class="dmz-bullet-stack" aria-hidden="true">≡</span>
+          </div>
+          <div id="hud-weapon-name" class="weapon-name">AK-74M</div>
+          <div class="dmz-firemode-row">
+            <span id="hud-firemode-bars" class="dmz-fm-bars">≡</span>
+          </div>
+        </div>
+
+        <!-- Col 2: Primary & Secondary Weapon Silhouettes -->
+        <div class="dmz-weapons-col">
+          <div id="hud-slot-1" class="w-slot dmz-wpn-tile active" title="Primary [1]">
+            <span id="hud-pri-sil" class="dmz-wpn-sil"></span>
+          </div>
+          <div id="hud-slot-2" class="w-slot dmz-sec-row" title="Secondary [2]">
+            <span id="hud-sec-mag" class="dmz-sec-mag">17</span>
+            <span id="hud-sec-sil" class="dmz-wpn-sil-sm"></span>
+          </div>
+        </div>
+
+        <!-- Col 3: Melee Knife Silhouette (Top) + Tactical & Lethal Icons (Bottom) -->
+        <div class="dmz-ord-col">
+          <div class="dmz-melee-top" title="Melee [3]">
+            <span id="hud-melee-svg" class="ord-svg"></span>
+            <b id="hud-melee-name" class="hidden">KNIFE</b>
+          </div>
+          <div class="hud-ordnance-row">
+            <div class="ord-pill dmz-ord-tile" title="Tactical [Q]">
+              <b id="hud-tactical" class="dmz-ord-qty">02</b>
+              <span id="hud-tac-svg" class="ord-svg"></span>
+              <span class="dmz-ord-key">Q</span>
+            </div>
+            <div class="ord-pill dmz-ord-tile" title="Lethal [F]">
+              <b id="hud-lethal" class="dmz-ord-qty">02</b>
+              <span id="hud-leth-svg" class="ord-svg"></span>
+              <span class="dmz-ord-key">F</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -971,7 +1015,7 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION with every new commit) -->
-  <script src="js/data.js?v=182"></script>
+  <script src="js/data.js?v=183"></script>
   <script src="js/net.js?v=123"></script>
   <script src="js/sfx_samples.js?v=21"></script>
   <script src="js/audio.js?v=179"></script>
@@ -986,7 +1030,7 @@
   <script src="js/gamepad.js?v=178"></script>
   <script src="js/gunsmith.js?v=41"></script>
   <script src="js/matchmaking.js?v=168"></script>
-  <script src="js/ui.js?v=181"></script>
+  <script src="js/ui.js?v=183"></script>
   <script src="js/console.js?v=117"></script>
   <script src="js/main.js?v=179"></script>
 </body>

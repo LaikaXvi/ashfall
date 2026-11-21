@@ -4782,11 +4782,34 @@ class GameUI {
       }
     }
 
+    // Bottom-Left Callsign
+    const csEl = document.getElementById('hud-op-callsign');
+    if (csEl) {
+      const nameTxt = (player && player.spectatingAlly && player.dead)
+        ? player.spectatingAlly.name
+        : ((this.profile && this.profile.social && this.profile.social.callsign) || 'NOMAD');
+      if (csEl.textContent !== nameTxt) csEl.textContent = nameTxt;
+    }
+
     // Weapon
     const wSlot = player.getActiveWeaponSlot();
     const wDef = player.getActiveWeaponDef();
     document.getElementById('hud-slot-1').classList.toggle('active', player.activeSlot === 'primary');
     document.getElementById('hud-slot-2').classList.toggle('active', player.activeSlot === 'secondary');
+
+    // Render Primary & Secondary Weapon Silhouettes + Secondary Mag in DMZ Right HUD
+    const pSlot = player.slots && player.slots.primary;
+    const sSlot = player.slots && player.slots.secondary;
+    const silKey = `${pSlot ? pSlot.id : 'none'}|${sSlot ? sSlot.id : 'none'}`;
+    if (this._lastHudSilKey !== silKey) {
+      this._lastHudSilKey = silKey;
+      const priSil = document.getElementById('hud-pri-sil');
+      const secSil = document.getElementById('hud-sec-sil');
+      if (priSil) priSil.innerHTML = pSlot ? this._getWeaponSilhouetteSVG(pSlot.id, '') : '';
+      if (secSil) secSil.innerHTML = sSlot ? this._getWeaponSilhouetteSVG(sSlot.id, '') : '';
+    }
+    const secMagEl = document.getElementById('hud-sec-mag');
+    if (secMagEl) secMagEl.textContent = sSlot ? String(sSlot.mag ?? 0) : '';
 
     if (player.activeSlot === 'melee') {
       const mDef = player.melee && GAME_DATA.ITEMS[player.melee];
