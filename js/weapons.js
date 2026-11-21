@@ -1201,69 +1201,121 @@ class WeaponSystem {
       this.muzzleMesh.position.set(0, 0.01, -slideLen / 2 - 0.03);
       this.muzzleFlash.position.set(0, 0.02, -slideLen / 2 - 0.06);
     } else if (weaponDef.id === 'mp5k') {
-      // MP5-K Submachine Gun
-      const upper = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.042, 0.34), steelMat);
-      upper.position.set(0, 0.008, 0.02);
-      const lower = new THREE.Mesh(new THREE.BoxGeometry(0.040, 0.030, 0.24), darkMat);
-      lower.position.set(0, -0.024, 0.06);
+      // Remastered Heckler & Koch MP5 Submachine Gun (authentic stamped upper, tubular cocking tube, triangular tropical handguard, Navy lower, 3-lug barrel & curved 30rd steel banana mag)
+      const hkSteel = new THREE.MeshLambertMaterial({ color: 0x262a2e });
+      const hkPoly = new THREE.MeshLambertMaterial({ color: 0x17191c });
+      const hkDark = new THREE.MeshLambertMaterial({ color: 0x111316 });
 
-      // Iconic MP5 cylindrical cocking tube above barrel
-      const cockingTube = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 0.24, 10), steelMat);
+      // Stamped-steel upper receiver with subtle side rail flutes & A3 collapsible stock rail channels
+      const upper = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.036, 0.31), hkSteel);
+      upper.position.set(0, 0.008, 0.025);
+      const upperTop = new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.017, 0.31, 10), hkSteel);
+      upperTop.rotation.x = Math.PI / 2;
+      upperTop.position.set(0, 0.020, 0.025);
+      const railL = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.009, 0.30), hkDark);
+      railL.position.set(-0.021, 0.002, 0.03);
+      const railR = railL.clone();
+      railR.position.x = 0.021;
+      const ejectionPort = new THREE.Mesh(new THREE.BoxGeometry(0.004, 0.016, 0.056), hkDark);
+      ejectionPort.position.set(0.019, 0.011, -0.01);
+
+      // Iconic tubular HK cocking tube running forward above barrel + left-side HK charging handle & lock notch
+      const cockingTube = new THREE.Mesh(new THREE.CylinderGeometry(0.0135, 0.0135, 0.25, 10), hkSteel);
       cockingTube.rotation.x = Math.PI / 2;
-      cockingTube.position.set(0, 0.022, -0.14);
+      cockingTube.position.set(0, 0.022, -0.175);
+      const frontCap = new THREE.Mesh(new THREE.CylinderGeometry(0.0145, 0.0145, 0.016, 10), hkDark);
+      frontCap.rotation.x = Math.PI / 2;
+      frontCap.position.set(0, 0.022, -0.30);
 
-      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.24, 10), darkMat);
+      // Exposed cold-hammer-forged barrel + iconic 3-lug muzzle adapter
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.0095, 0.010, 0.28, 10), hkDark);
       barrel.rotation.x = Math.PI / 2;
-      barrel.position.set(0, 0.002, -0.18);
+      barrel.position.set(0, 0.001, -0.21);
+      const triLug = new THREE.Mesh(new THREE.CylinderGeometry(0.0125, 0.0125, 0.022, 6), hkSteel);
+      triLug.rotation.x = Math.PI / 2;
+      triLug.position.set(0, 0.001, -0.345);
 
-      const handguard = new THREE.Mesh(new THREE.BoxGeometry(0.046, 0.042, 0.14), darkMat);
-      handguard.position.set(0, -0.004, -0.14);
-      const foregrip = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.075, 0.034), darkMat);
-      foregrip.position.set(0, -0.056, -0.15);
+      // Signature sloped triangular polymer "Tropical" wide handguard
+      const hgMain = new THREE.Mesh(new THREE.BoxGeometry(0.044, 0.038, 0.175), hkPoly);
+      hgMain.position.set(0, -0.008, -0.185);
+      const hgTaper = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.024, 0.165), hkPoly);
+      hgTaper.position.set(0, -0.026, -0.180);
+      const hgPin = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.048, 6), hkSteel);
+      hgPin.rotation.z = Math.PI / 2;
+      hgPin.position.set(0, 0.004, -0.255);
 
-      const grip = new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.098, 0.044), darkMat);
-      grip.position.set(0, -0.075, 0.13);
-      grip.rotation.x = 0.24;
-      addTriggerGuard(0.07, -0.038);
+      // Contoured Navy-style polymer lower trigger housing + magwell + paddle release + selector lever
+      const lower = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.028, 0.175), hkPoly);
+      lower.position.set(0, -0.020, 0.085);
+      const magWell = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.044, 0.056), hkSteel);
+      magWell.position.set(0, -0.026, -0.045);
+      const paddleRel = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.022, 0.010), hkDark);
+      paddleRel.position.set(0, -0.048, -0.012);
+      const selector = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.012, 0.024), hkSteel);
+      selector.position.set(-0.020, -0.022, 0.115);
+      selector.rotation.x = 0.25;
 
-      // Curved 9mm stick magazine (2-segment curve)
+      // Ergonomic HK pistol grip + rear endcap
+      const grip = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.098, 0.044), hkPoly);
+      grip.position.set(0, -0.072, 0.132);
+      grip.rotation.x = 0.28;
+      const endCap = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.052, 0.028), hkPoly);
+      endCap.position.set(0, 0.002, 0.182);
+      addTriggerGuard(0.072, -0.038);
+
+      // Signature 3-segment curved 30-round steel 9mm banana magazine
       const mag = new THREE.Group();
-      const magTop = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.085, 0.038), magMat);
-      magTop.position.set(0, 0.02, 0);
-      const magBot = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.085, 0.038), magMat);
-      magBot.position.set(0, -0.055, -0.014);
-      magBot.rotation.x = -0.18;
-      const magTip = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.012, 0.032), brassMat);
-      magTip.position.set(0, 0.068, 0);
-      mag.add(magTop, magBot, magTip);
-      mag.position.set(0, -0.092, -0.025);
-      mag.rotation.x = -0.10;
+      const magTop = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.068, 0.036), magMat);
+      magTop.position.set(0, 0.028, 0);
+      const magMid = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.068, 0.036), magMat);
+      magMid.position.set(0, -0.032, -0.009);
+      magMid.rotation.x = -0.16;
+      const magBot = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.066, 0.036), magMat);
+      magBot.position.set(0, -0.090, -0.029);
+      magBot.rotation.x = -0.32;
+      const magFloor = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.009, 0.040), hkDark);
+      magFloor.position.set(0, -0.122, -0.042);
+      magFloor.rotation.x = -0.32;
+      const magTip = new THREE.Mesh(new THREE.BoxGeometry(0.020, 0.011, 0.030), brassMat);
+      magTip.position.set(0, 0.066, 0);
+      mag.add(magTop, magMid, magBot, magFloor, magTip);
+      mag.position.set(0, -0.096, -0.045);
+      mag.rotation.x = -0.06;
       this.magMesh = mag;
       this.magRestPos.copy(mag.position);
 
-      const boltHandle = new THREE.Mesh(
-        new THREE.BoxGeometry(0.036, 0.016, 0.032),
-        new THREE.MeshLambertMaterial({ color: 0x6d747d })
-      );
-      boltHandle.position.set(-0.026, 0.024, -0.12);
+      // Angled left-side HK rubberized cocking handle
+      const boltHandle = new THREE.Group();
+      const chStem = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.010, 0.012), hkSteel);
+      const chKnob = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.009, 0.026, 8), hkPoly);
+      chKnob.rotation.z = Math.PI / 2;
+      chKnob.position.set(-0.016, 0.006, 0);
+      boltHandle.add(chStem, chKnob);
+      boltHandle.position.set(-0.022, 0.024, -0.21);
       this.boltMesh = boltHandle;
       this.boltRestPos.copy(boltHandle.position);
 
       this.rightHand = this._createHand(true, 'grip');
       this.rightHand.position.set(0.0, -0.064, 0.132);
-      this.leftHand = this._createHand(false, 'supportPistol');
-      this.leftHand.position.set(-0.004, -0.056, -0.15);
+      this.leftHand = this._createHand(false, 'supportRifle');
+      this.leftHand.position.set(0.0, -0.026, -0.185);
       this.leftHandRestPos.copy(this.leftHand.position);
       this.leftHandRestRot.copy(this.leftHand.rotation);
 
-      g.add(upper, lower, cockingTube, barrel, handguard, foregrip, grip, mag, boltHandle, this.rightHand, this.leftHand);
+      g.add(
+        upper, upperTop, railL, railR, ejectionPort,
+        cockingTube, frontCap, barrel, triLug,
+        hgMain, hgTaper, hgPin,
+        lower, magWell, paddleRel, selector, grip, endCap,
+        mag, boltHandle, this.rightHand, this.leftHand
+      );
 
-      this.sightHeight = 0.043;
-      this.adsZ = -0.26;
+      this.sightHeight = 0.044;
+      this.adsZ = -0.25;
       const hasOptic = !!(mods.optic && mods.optic !== 'none');
       this._addWeaponIronSights(g, 'mp5k', this.sightHeight, hasOptic);
-      this.muzzleMesh.position.set(0, 0.005, -0.32);
-      this.muzzleFlash.position.set(0, 0.01, -0.36);
+      this.muzzleMesh.position.set(0, 0.001, -0.365);
+      this.muzzleFlash.position.set(0, 0.01, -0.40);
     } else if (weaponDef.id === 'ak74m') {
       // AK-74M Assault Rifle
       const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.044, 0.054, 0.36), steelMat);
@@ -2275,7 +2327,7 @@ class WeaponSystem {
         this.pumpDelayTimer -= dt;
         if (this.pumpDelayTimer <= 0) {
           this.pumpTimer = this.pumpDuration;
-          window.soundEngine.playRechamber();
+          window.soundEngine.playRechamber('m870');
         }
       } else if (this.pumpTimer > 0) {
         this.pumpTimer = Math.max(0, this.pumpTimer - dt);
@@ -2297,7 +2349,7 @@ class WeaponSystem {
         this.boltActionDelayTimer -= dt;
         if (this.boltActionDelayTimer <= 0) {
           this.boltActionTimer = this.boltActionDuration;
-          window.soundEngine.playRechamber();
+          window.soundEngine.playRechamber(weaponDef.id);
         }
       } else if (this.boltActionTimer > 0) {
         this.boltActionTimer = Math.max(0, this.boltActionTimer - dt);
@@ -2749,19 +2801,19 @@ class WeaponSystem {
       // MP5-K: Lock charging handle up -> pull mag straight out -> line up fresh mag -> insert -> H&K slap!
       if (p > 0.06 && !this.reloadSfxFlags.boltLock) {
         this.reloadSfxFlags.boltLock = true;
-        window.soundEngine.playRechamber();
+        window.soundEngine.playRechamber(this.reloadWeaponId || (weaponDef && weaponDef.id) || 'ak74m');
       }
       if (p > 0.25 && !this.reloadSfxFlags.magOut) {
         this.reloadSfxFlags.magOut = true;
-        window.soundEngine.playMagOut();
+        window.soundEngine.playMagOut(this.reloadWeaponId);
       }
       if (p > 0.68 && !this.reloadSfxFlags.magIn) {
         this.reloadSfxFlags.magIn = true;
-        window.soundEngine.playMagIn();
+        window.soundEngine.playMagIn(this.reloadWeaponId);
       }
       if (p > 0.80 && !this.reloadSfxFlags.rack) {
         this.reloadSfxFlags.rack = true;
-        window.soundEngine.playRechamber();
+        window.soundEngine.playRechamber(this.reloadWeaponId || (weaponDef && weaponDef.id) || 'ak74m');
       }
 
       restRightHand();
@@ -2844,15 +2896,15 @@ class WeaponSystem {
       // AK-74M: New mag (spareMagMesh) strikes paddle release & flicks old mag (magMesh) forward out of seat, then rocks into lock!
       if (p > 0.22 && !this.reloadSfxFlags.magOut) {
         this.reloadSfxFlags.magOut = true;
-        window.soundEngine.playMagOut();
+        window.soundEngine.playMagOut(this.reloadWeaponId);
       }
       if (p > 0.56 && !this.reloadSfxFlags.magIn) {
         this.reloadSfxFlags.magIn = true;
-        window.soundEngine.playMagIn();
+        window.soundEngine.playMagIn(this.reloadWeaponId);
       }
       if (this.wasEmptyReload && p > 0.68 && !this.reloadSfxFlags.rack) {
         this.reloadSfxFlags.rack = true;
-        window.soundEngine.playRechamber();
+        window.soundEngine.playRechamber(this.reloadWeaponId || (weaponDef && weaponDef.id) || 'ak74m');
       }
 
       if (p < 0.22) {
@@ -2976,7 +3028,7 @@ class WeaponSystem {
 
       if (this.wasEmptyReload && p > 0.72 && !this.reloadSfxFlags.rack) {
         this.reloadSfxFlags.rack = true;
-        window.soundEngine.playRechamber();
+        window.soundEngine.playRechamber(this.reloadWeaponId || (weaponDef && weaponDef.id) || 'ak74m');
       }
 
       restRightHand();
@@ -2994,7 +3046,7 @@ class WeaponSystem {
 
           if (shellT > 0.45 && shellIdx > this.lastShellSoundIdx) {
             this.lastShellSoundIdx = shellIdx;
-            window.soundEngine.playMagIn();
+            window.soundEngine.playMagIn(this.reloadWeaponId);
           }
           if (shellT > 0.72 && shellIdx > this.lastShellLoadedIdx) {
             this.lastShellLoadedIdx = shellIdx;
@@ -3057,15 +3109,15 @@ class WeaponSystem {
       // M91/30 Mosin-Nagant: Open Bolt -> Insert 5-Round Brass Stripper Clip From Top -> Press Rounds Down -> Flick Clip -> Close Bolt!
       if (p > 0.06 && !this.reloadSfxFlags.magOut) {
         this.reloadSfxFlags.magOut = true;
-        window.soundEngine.playRechamber();
+        window.soundEngine.playRechamber(this.reloadWeaponId || (weaponDef && weaponDef.id) || 'ak74m');
       }
       if (p > 0.44 && !this.reloadSfxFlags.magIn) {
         this.reloadSfxFlags.magIn = true;
-        window.soundEngine.playMagIn();
+        window.soundEngine.playMagIn(this.reloadWeaponId);
       }
       if (p > 0.72 && !this.reloadSfxFlags.rack) {
         this.reloadSfxFlags.rack = true;
-        window.soundEngine.playRechamber();
+        window.soundEngine.playRechamber(this.reloadWeaponId || (weaponDef && weaponDef.id) || 'ak74m');
       }
 
       if (p < 0.22) {
@@ -3155,15 +3207,15 @@ class WeaponSystem {
       // M24 Marksman: Straight-axis box mag (Left Hand) + Right-Handed Bolt Lift, Pull, Push & Lock (Right Hand)
       if (p > 0.08 && !this.reloadSfxFlags.magOut) {
         this.reloadSfxFlags.magOut = true;
-        window.soundEngine.playMagOut();
+        window.soundEngine.playMagOut(this.reloadWeaponId);
       }
       if (p > 0.52 && !this.reloadSfxFlags.magIn) {
         this.reloadSfxFlags.magIn = true;
-        window.soundEngine.playMagIn();
+        window.soundEngine.playMagIn(this.reloadWeaponId);
       }
       if (this.wasEmptyReload && p > 0.64 && !this.reloadSfxFlags.rack) {
         this.reloadSfxFlags.rack = true;
-        window.soundEngine.playRechamber();
+        window.soundEngine.playRechamber(this.reloadWeaponId || (weaponDef && weaponDef.id) || 'ak74m');
       }
 
       if (p < 0.26) {
@@ -3238,15 +3290,15 @@ class WeaponSystem {
     const isG17 = id === 'g17';
     if (p > 0.08 && !this.reloadSfxFlags.magOut) {
       this.reloadSfxFlags.magOut = true;
-      window.soundEngine.playMagOut();
+      window.soundEngine.playMagOut(this.reloadWeaponId);
     }
     if (p > 0.54 && !this.reloadSfxFlags.magIn) {
       this.reloadSfxFlags.magIn = true;
-      window.soundEngine.playMagIn();
+      window.soundEngine.playMagIn(this.reloadWeaponId);
     }
     if (this.wasEmptyReload && p > 0.64 && !this.reloadSfxFlags.rack) {
       this.reloadSfxFlags.rack = true;
-      window.soundEngine.playRechamber();
+      window.soundEngine.playRechamber(this.reloadWeaponId || (weaponDef && weaponDef.id) || 'ak74m');
     }
 
     restRightHand();

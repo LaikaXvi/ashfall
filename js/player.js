@@ -797,16 +797,20 @@ class Player {
       wpnRotY = 0.10 * entry;
       wpnRotZ = -0.12 * entry;
     } else if (this.isProne) {
-      // === PRONE & CRAWL (Boots pointed back along ground -> zero toe clipping!) ===
+      // === PRONE & CRAWL: Arms tucked underneath chest holding weapon upright, head down & gun raised to line eyes up with optics/iron sights! ===
       autoClampFeet = false;
-      rigPitch = -1.44;
+      rigPitch = -1.36;
       rigY = 0.28;
       pelvisY = 0.90;
-      torsoPitch = 0.16 + breathe * 0.015;
-      lHipX = -0.06 - Math.max(0, stride) * 0.18;  lKneeX = -0.10 - Math.max(0, -stride) * 0.22; lAnkX = 0.65;
-      rHipX = -0.06 - Math.max(0, -stride) * 0.18; rKneeX = -0.10 - Math.max(0, stride) * 0.22;  rAnkX = 0.65;
-      lShX = 1.38 + stride * 0.28; lElbX = 0.75; lShZ = -0.24;
-      rShX = 1.48 - stride * 0.28; rElbX = 0.62; rShZ = 0.12;
+      torsoPitch = 0.22 + breathe * 0.012;
+      lHipX = -0.06 - Math.max(0, stride) * 0.16;  lKneeX = -0.10 - Math.max(0, -stride) * 0.20; lAnkX = 0.65;
+      rHipX = -0.06 - Math.max(0, -stride) * 0.16; rKneeX = -0.10 - Math.max(0, stride) * 0.20;  rAnkX = 0.65;
+      // Both elbows tucked underneath chest supporting weapon upright; gun raised to meet lowered cheek/eye line
+      lShX = 1.14 + (moving ? stride * 0.16 : 0); lElbX = 1.36; lShZ = 0.36;
+      rShX = 1.18 - (moving ? stride * 0.16 : 0); rElbX = 1.32; rShZ = -0.18;
+      wpnRotX = -Math.PI / 2 + 0.44;
+      wpnRotY = 0.08;
+      wpnRotZ = 0.0;
     } else if (!this.onGround) {
       // === AIRBORNE / JUMP ===
       autoClampFeet = false;
@@ -1177,7 +1181,7 @@ class Player {
       : (this.isDowned
         ? (-torsoPitch + this.pitch * 0.65)
         : (this.isProne
-          ? (1.15 + this.pitch * 0.4)
+          ? (0.92 + this.pitch * 0.45)
           : (this.isSliding ? (-torsoPitch + this.pitch * 0.65) : (this.pitch * 0.65))));
     p.head.rotation.x = THREE.MathUtils.lerp(p.head.rotation.x, headPitch, rate);
     if (p.leftArm.wrist) {

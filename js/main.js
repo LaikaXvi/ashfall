@@ -374,6 +374,9 @@
                 player.position.x = pkt.dx;
                 player.position.z = pkt.dz;
                 player.position.y = gyDrag + player.currentEyeHeight;
+                if (typeof pkt.dyaw === 'number') {
+                  player.yaw = pkt.dyaw;
+                }
               }
               player._remoteReviveExpire = performance.now() + 800;
             }
@@ -1544,25 +1547,46 @@
     camera.getWorldPosition(origin);
     camera.getWorldDirection(dir);
 
-    const ray = new THREE.Raycaster(origin, dir, 1.0, 480);
+    // 1. High-accuracy raycast up to 1400m across all world structures & terrain meshes
+    const ray = new THREE.Raycaster(origin, dir, 1.0, 1400);
     if (world && world.shootableMeshes && world.shootableMeshes.length > 0) {
       const hits = ray.intersectObjects(world.shootableMeshes, true);
       if (hits.length > 0) {
         const pt = hits[0].point;
-        return new THREE.Vector3(pt.x, pt.y + 0.05, pt.z);
+        return new THREE.Vector3(pt.x, pt.y + 0.06, pt.z);
       }
     }
-    if (dir.y < -0.015) {
-      const t = Math.min(420, Math.max(8, -origin.y / dir.y));
-      const tx = origin.x + dir.x * t;
-      const tz = origin.z + dir.z * t;
-      const ty = (world && world.getTerrainHeight) ? world.getTerrainHeight(tx, tz) : 0;
-      return new THREE.Vector3(tx, ty + 0.05, tz);
+    // 2. Exact analytical terrain raymarch along crosshair vector up to 1300m (never stops short!)
+    if (world && world.getTerrainHeight) {
+      let prevT = 4;
+      for (let t = 8; t <= 1300; t += (t < 150 ? 3 : 8)) {
+        const px = origin.x + dir.x * t;
+        const py = origin.y + dir.y * t;
+        const pz = origin.z + dir.z * t;
+        const ty = world.getTerrainHeight(px, pz);
+        if (py <= ty) {
+          // Binary refine between prevT and t for pinpoint crosshair alignment
+          let lo = prevT, hi = t;
+          for (let k = 0; k < 6; k++) {
+            const mid = (lo + hi) * 0.5;
+            const mx = origin.x + dir.x * mid;
+            const my = origin.y + dir.y * mid;
+            const mz = origin.z + dir.z * mid;
+            if (my <= world.getTerrainHeight(mx, mz)) hi = mid;
+            else lo = mid;
+          }
+          const fx = origin.x + dir.x * hi;
+          const fz = origin.z + dir.z * hi;
+          const fy = world.getTerrainHeight(fx, fz);
+          return new THREE.Vector3(fx, fy + 0.06, fz);
+        }
+        prevT = t;
+      }
     }
-    const fx = origin.x + dir.x * 75;
-    const fz = origin.z + dir.z * 75;
+    const fx = origin.x + dir.x * 650;
+    const fz = origin.z + dir.z * 650;
     const fy = (world && world.getTerrainHeight) ? world.getTerrainHeight(fx, fz) : 0;
-    return new THREE.Vector3(fx, fy + 0.05, fz);
+    return new THREE.Vector3(fx, fy + 0.06, fz);
   }
 
   let designatorActive = false;
@@ -1979,20 +2003,37 @@
           camera.updateProjectionMatrix();
 
           // Position 3D binocular rig with both tactical hands & forearms clearly visible
+          // When sprinting without aiming: drop designator down to the right side & pump left fist like tactical sprint!
           const fullyAimed = designatorAimBlend > 0.72;
+          const desigSprinting = !aiming && (player.isSprinting || player.isTacSprinting);
           if (designatorRig) {
             designatorRig.visible = !player.isThirdPerson && !fullyAimed;
-            const bob = Math.sin(performance.now() * 0.0028) * 0.005 * (1 - designatorAimBlend);
-            designatorRig.position.set(
-              THREE.MathUtils.lerp(0.06, 0.0, designatorAimBlend),
-              THREE.MathUtils.lerp(-0.15 + bob, -0.02, designatorAimBlend),
-              THREE.MathUtils.lerp(-0.34, -0.15, designatorAimBlend)
-            );
-            designatorRig.rotation.set(
-              THREE.MathUtils.lerp(-0.08, 0, designatorAimBlend),
-              THREE.MathUtils.lerp(-0.10, 0, designatorAimBlend),
-              0
-            );
+            const tNow = performance.now() * 0.001;
+            const stride = desigSprinting ? Math.sin(tNow * 11.5) : 0;
+            const strideCos = desigSprinting ? Math.cos(tNow * 11.5) : 0;
+            const bob = Math.sin(tNow * 2.8) * 0.005 * (1 - designatorAimBlend);
+            const targetX = desigSprinting ? (0.28 + strideCos * 0.018) : THREE.MathUtils.lerp(0.06, 0.0, designatorAimBlend);
+            const targetY = desigSprinting ? (-0.27 + Math.abs(stride) * 0.032) : THREE.MathUtils.lerp(-0.15 + bob, -0.02, designatorAimBlend);
+            const targetZ = desigSprinting ? (-0.29 + stride * 0.035) : THREE.MathUtils.lerp(-0.34, -0.15, designatorAimBlend);
+            const targetRX = desigSprinting ? (-0.52 + stride * 0.14) : THREE.MathUtils.lerp(-0.08, 0, designatorAimBlend);
+            const targetRY = desigSprinting ? (-0.34) : THREE.MathUtils.lerp(-0.10, 0, designatorAimBlend);
+            const targetRZ = desigSprinting ? (-0.26 + strideCos * 0.08) : 0;
+            const lerpD = Math.min(1, dt * 14);
+            designatorRig.position.x = THREE.MathUtils.lerp(designatorRig.position.x, targetX, lerpD);
+            designatorRig.position.y = THREE.MathUtils.lerp(designatorRig.position.y, targetY, lerpD);
+            designatorRig.position.z = THREE.MathUtils.lerp(designatorRig.position.z, targetZ, lerpD);
+            designatorRig.rotation.x = THREE.MathUtils.lerp(designatorRig.rotation.x, targetRX, lerpD);
+            designatorRig.rotation.y = THREE.MathUtils.lerp(designatorRig.rotation.y, targetRY, lerpD);
+            designatorRig.rotation.z = THREE.MathUtils.lerp(designatorRig.rotation.z, targetRZ, lerpD);
+
+            // Pump left fist in tactical sprint rhythm when sprinting with designator!
+            if (weaponSystem && weaponSystem.tacFistRig) {
+              weaponSystem.tacFistRig.visible = desigSprinting && !player.isThirdPerson;
+              if (desigSprinting) {
+                weaponSystem.tacFistRig.position.set(-0.28 + strideCos * 0.025, -0.22 + stride * 0.065, -0.34 - stride * 0.085);
+                weaponSystem.tacFistRig.rotation.set(-0.35 + stride * 0.25, 0.22, -0.18);
+              }
+            }
             if (designatorRig.userData.triggerFingerPivot) {
               designatorRig.userData.triggerFingerPivot.rotation.z = designatorFireHeld ? 0.24 : 0;
             }
@@ -2385,10 +2426,11 @@
         const dur = candidate.dead ? 7.5 : 3.5;
         candidate.reviveProgress = Math.min(1, (candidate.reviveProgress || 0) + dt / dur);
 
-        // Parent/lock DOWNED ally directly to the reviver's local drag slot so moving or turning drags them smoothly!
+        // Parent/lock DOWNED ally directly to the reviver's local drag slot with their BACK towards the reviver!
         const moving = Math.hypot(player.velocity.x, player.velocity.z) > 0.20;
         let dragX = candidate.position.x;
         let dragZ = candidate.position.z;
+        let dragYaw = player.yaw;
         if (candidate.isDowned) {
           const sinY = Math.sin(player.yaw);
           const cosY = Math.cos(player.yaw);
@@ -2398,11 +2440,13 @@
           candidate.position.set(dragX, gy, dragZ);
           if (candidate.group) {
             candidate.group.position.set(dragX, gy - 0.56, dragZ);
-            candidate.group.rotation.y = Math.atan2(player.position.x - dragX, player.position.z - dragZ);
+            // Turn downed ally with their BACK toward the reviver (facing away from reviver!)
+            candidate.group.rotation.y = Math.atan2(dragX - player.position.x, dragZ - player.position.z);
           }
           if (candidate._remoteTargetPos) {
             candidate._remoteTargetPos.set(dragX, gy, dragZ);
           }
+          dragYaw = player.yaw;
         }
 
         // Notify remote human teammate of active revive progress & parented drag position (~12Hz)
@@ -2415,7 +2459,8 @@
             progress: Math.round(candidate.reviveProgress * 100) / 100,
             reviverName: getPlayerCallsign(),
             dx: candidate.isDowned ? Math.round(dragX * 100) / 100 : undefined,
-            dz: candidate.isDowned ? Math.round(dragZ * 100) / 100 : undefined
+            dz: candidate.isDowned ? Math.round(dragZ * 100) / 100 : undefined,
+            dyaw: candidate.isDowned ? Math.round(dragYaw * 1000) / 1000 : undefined
           });
         }
 
@@ -2456,12 +2501,17 @@
 
   let spectateAllyIdx = 0;
   let lastSpectatedAlly = null;
+  let lastSpectatedWeaponId = null;
 
   function updateSpectatorCamera() {
     const specBanner = document.getElementById('spectate-banner');
     if (!inRaid || !player || !player.dead || !squadManager || !squadManager.allies) {
       if (lastSpectatedAlly && lastSpectatedAlly.group) {
         lastSpectatedAlly.group.visible = true;
+      }
+      if (lastSpectatedWeaponId !== null && player && player._syncActiveViewmodel) {
+        lastSpectatedWeaponId = null;
+        player._syncActiveViewmodel();
       }
       lastSpectatedAlly = null;
       if (player) player.spectatingAlly = null;
@@ -2497,8 +2547,25 @@
     camera.rotation.order = 'YXZ';
     camera.rotation.set(camPitch, camYaw, 0);
 
+    // Show the spectated ally's equipped 1st-person weapon viewmodel!
     if (weaponSystem && weaponSystem.viewmodelGroup) {
-      weaponSystem.viewmodelGroup.visible = false;
+      const specWpnId = spec.weaponId || 'ak74m';
+      if (specWpnId !== lastSpectatedWeaponId) {
+        lastSpectatedWeaponId = specWpnId;
+        const wDef = GAME_DATA.ITEMS[specWpnId] || GAME_DATA.ITEMS.ak74m;
+        if (wDef && weaponSystem.buildViewmodel) {
+          weaponSystem.buildViewmodel(wDef, {}, true);
+        }
+      }
+      weaponSystem.viewmodelGroup.visible = !spec.isDowned;
+      const isAds = !!spec._remoteAds;
+      const bob = Math.sin(performance.now() * 0.004) * 0.004;
+      weaponSystem.viewmodelGroup.position.set(
+        isAds ? 0.0 : 0.21,
+        isAds ? -(weaponSystem.sightHeight || 0.05) : (-0.20 + bob),
+        isAds ? (weaponSystem.adsZ || -0.24) : -0.42
+      );
+      weaponSystem.viewmodelGroup.rotation.set(0, 0, 0);
     }
     if (specBanner) {
       const switchHint = aliveAllies.length > 1 ? ' · [LMB / SPACE] SWITCH' : '';
@@ -2956,7 +3023,32 @@
         if (isModalOpen && ui.activeLootSource && ui.positionContainerPanel) {
           ui.positionContainerPanel(camera);
         }
-        ui.updateHUD(player, world, raidTimeLeft, weaponSystem, throwableSystem, enemyManager, squadManager, raidXp);
+        // When spectating a living ally, mirror their HUD (HP, armor, weapon, compass, minimap) while keeping pings & revive symbols live!
+        let hudSubject = player;
+        if (player && player.dead && player.spectatingAlly) {
+          const spec = player.spectatingAlly;
+          const wDefSpec = GAME_DATA.ITEMS[spec.weaponId || 'ak74m'] || GAME_DATA.ITEMS.ak74m;
+          const specSlot = { id: wDefSpec.id, mag: (typeof spec._remoteMag === 'number') ? spec._remoteMag : (wDefSpec.magSize || 30), mods: {} };
+          hudSubject = Object.assign(Object.create(Object.getPrototypeOf(player)), player, {
+            hp: spec.hp ?? 100,
+            maxHp: spec.maxHp ?? 100,
+            armor: spec.armor ?? 0,
+            maxArmor: spec.maxArmor ?? 100,
+            plateSlots: Math.max(1, Math.ceil((spec.maxArmor || 100) / 50)),
+            position: spec.position,
+            yaw: (spec.group ? spec.group.rotation.y : 0) + Math.PI,
+            pitch: spec._remotePitch || 0,
+            stance: spec._remoteStance || 'stand',
+            isDowned: !!spec.isDowned,
+            dead: false,
+            isADS: !!spec._remoteAds,
+            isTacSprinting: !!spec._remoteTacSprint,
+            getActiveWeaponDef: () => wDefSpec,
+            getActiveWeaponSlot: () => specSlot,
+            getReserveAmmo: () => wDefSpec.magSize ? wDefSpec.magSize * 2 : 0
+          });
+        }
+        ui.updateHUD(hudSubject, world, raidTimeLeft, weaponSystem, throwableSystem, enemyManager, squadManager, raidXp);
       }
       // Sync viewmodel camera to world camera & render in two passes (clearDepth prevents all wall clipping!)
       if (viewmodelCamera) {

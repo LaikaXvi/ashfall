@@ -179,26 +179,33 @@ class SquadMate {
 
   _redrawTag(statusLabel, statusColor = null) {
     const distM = Math.round(this.lastPlayerDist || 0);
-    const nameColor = this.squadColor || '#69f0ae';
-    const borderCol = statusColor || nameColor;
-    const key = `${statusLabel}|${Math.ceil(this.hp)}|${distM}|${borderCol}`;
+    const dotColor = this.squadColor || '#69f0ae';
+    const subColor = statusColor || '#dce2dc';
+    const key = `${statusLabel}|${Math.ceil(this.hp)}|${distM}|${dotColor}|${subColor}`;
     if (this._lastTagState === key) return;
     this._lastTagState = key;
 
     const ctx = this.tagCanvas.getContext('2d');
     ctx.clearRect(0, 0, 320, 72);
-    ctx.fillStyle = 'rgba(10, 16, 13, 0.80)';
-    ctx.fillRect(6, 6, 308, 60);
-    ctx.strokeStyle = borderCol;
-    ctx.lineWidth = 2.5;
-    ctx.strokeRect(6, 6, 308, 60);
-    ctx.font = 'bold 19px monospace';
-    ctx.fillStyle = nameColor;
-    ctx.textAlign = 'center';
-    ctx.fillText(this.name, 160, 27);
+    // Clean subtle dark pill backdrop (NO colored border box!)
+    ctx.fillStyle = 'rgba(10, 14, 13, 0.72)';
+    ctx.fillRect(8, 8, 304, 56);
+    // Crisp colored squad dot on the left side of the nametag
+    ctx.beginPath();
+    ctx.arc(30, 36, 9, 0, Math.PI * 2);
+    ctx.fillStyle = dotColor;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    ctx.font = 'bold 20px monospace';
+    ctx.fillStyle = '#f2f7f4';
+    ctx.textAlign = 'left';
+    ctx.fillText(this.name, 50, 31);
     ctx.font = 'bold 14px monospace';
-    ctx.fillStyle = '#dce2dc';
-    ctx.fillText(`${distM}m · ${statusLabel} · HP ${Math.ceil(this.hp)}`, 160, 51);
+    ctx.fillStyle = subColor;
+    ctx.fillText(`${distM}m · ${statusLabel} · ${Math.ceil(this.hp)} HP`, 50, 53);
     this.tagTex.needsUpdate = true;
   }
 
@@ -499,6 +506,10 @@ class SquadMate {
     this._remoteStance = st.stance || 'stand';
     this._remoteTacSprint = !!st.tacSprint;
     this._remoteAds = !!st.ads;
+    this._remoteReload = !!st.rld;
+    this._remotePlate = !!st.plt;
+    this._remoteHeal = !!st.hl;
+    if (typeof st.mag === 'number') this._remoteMag = st.mag;
     if (typeof st.hp === 'number') this.hp = st.hp;
     if (typeof st.armor === 'number') this.armor = st.armor;
     if (st.wpn && st.wpn !== this.weaponId) {
@@ -527,7 +538,16 @@ class SquadMate {
     if (this.extracted) return;
 
     if (player && player.position) {
-      this.lastPlayerDist = Math.hypot(this.position.x - player.position.x, this.position.z - player.position.z);
+      const refPos = (player.dead && player.spectatingAlly && player.spectatingAlly.position)
+        ? player.spectatingAlly.position
+        : player.position;
+      this.lastPlayerDist = Math.hypot(this.position.x - refPos.x, this.position.z - refPos.z);
+      // Scale overhead nametag + distance indicator with distance so squadmates stay readable far away!
+      if (this.tagSprite) {
+        const sc = THREE.MathUtils.clamp(1.0 + this.lastPlayerDist * 0.032, 1.0, 9.5);
+        this.tagSprite.scale.set(1.85 * sc, 0.42 * sc, 1);
+        this.tagSprite.position.y = 2.08 + Math.min(4.8, this.lastPlayerDist * 0.022);
+      }
     }
 
     // Remote Human Party Member: smoothly interpolate live network transform, stance, and vitals!
@@ -616,24 +636,69 @@ class SquadMate {
               this.opModel.rightLeg.knee.rotation.x = THREE.MathUtils.lerp(this.opModel.rightLeg.knee.rotation.x, -0.10, dt * 10);
             }
           }
-          // Track player's live crosshair pitch with head, torso & both weapon-holding arms (+ tac-sprint pose!)
-          if (this.opModel && !isProne) {
+          // Track player's live crosshair pitch with head, torso & both weapon-holding arms (+ prone aiming, reload, plating, healing & tac-sprint!)
+          if (this.opModel) {
             const m = this.opModel;
-            m.head.rotation.x = THREE.MathUtils.lerp(m.head.rotation.x, rPitch * 0.72, lerpRate);
-            if (this._remoteTacSprint && moving) {
-              m.torso.rotation.x = THREE.MathUtils.lerp(m.torso.rotation.x, -0.26, lerpRate);
-              m.rightArm.shoulder.rotation.set(1.12, 0, -0.18);
-              m.leftArm.shoulder.rotation.set(0.36 - Math.sin(this.animCycle) * 0.65, 0, 0.18);
+            const tNow = performance.now() * 0.005;
+            if (isProne) {
+              // Prone: arms tucked underneath chest holding weapon upright, head aligned to sights!
+              m.head.rotation.x = THREE.MathUtils.lerp(m.head.rotation.x, 0.92 + rPitch * 0.45, lerpRate);
+              m.torso.rotation.x = THREE.MathUtils.lerp(m.torso.rotation.x, 0.22, lerpRate);
+              m.leftArm.shoulder.rotation.set(1.14, 0, 0.36);
+              m.leftArm.elbow.rotation.x = 1.36;
+              m.rightArm.shoulder.rotation.set(1.18, 0, -0.18);
+              m.rightArm.elbow.rotation.x = 1.32;
+              if (m.weaponMount) m.weaponMount.rotation.x = -Math.PI / 2 + 0.44;
+            } else if (this._remotePlate) {
+              // Armor plating animation on 3rd-person operator
+              const cyc = Math.sin(tNow * 1.4) * 0.5 + 0.5;
+              m.head.rotation.x = THREE.MathUtils.lerp(m.head.rotation.x, -0.32, lerpRate);
+              m.torso.rotation.x = THREE.MathUtils.lerp(m.torso.rotation.x, -0.12, lerpRate);
+              m.rightArm.shoulder.rotation.set(0.42 + cyc * 0.45, 0, -0.35);
+              m.rightArm.elbow.rotation.x = 1.35;
+              m.leftArm.shoulder.rotation.set(0.55, 0, 0.38);
+              m.leftArm.elbow.rotation.x = 1.25;
+              if (m.handPlate) m.handPlate.visible = true;
+            } else if (this._remoteHeal) {
+              // Field Medkit healing animation on 3rd-person operator
+              const cyc = Math.sin(tNow * 1.2) * 0.22;
+              m.head.rotation.x = THREE.MathUtils.lerp(m.head.rotation.x, -0.42, lerpRate);
+              m.torso.rotation.x = THREE.MathUtils.lerp(m.torso.rotation.x, -0.16, lerpRate);
+              m.leftArm.shoulder.rotation.set(0.62, 0, 0.36);
+              m.leftArm.elbow.rotation.x = 1.28;
+              m.rightArm.shoulder.rotation.set(0.68 + cyc, 0, -0.34);
+              m.rightArm.elbow.rotation.x = 1.34;
+              if (m.handPlate) m.handPlate.visible = false;
+            } else if (this._remoteReload) {
+              // Live magazine reload animation on 3rd-person operator
+              const cyc = Math.sin(tNow * 1.8) * 0.5 + 0.5;
+              m.head.rotation.x = THREE.MathUtils.lerp(m.head.rotation.x, -0.20 + rPitch * 0.4, lerpRate);
+              m.torso.rotation.x = THREE.MathUtils.lerp(m.torso.rotation.x, -0.10, lerpRate);
+              m.rightArm.shoulder.rotation.set(0.92, 0, -0.18);
+              m.rightArm.elbow.rotation.x = 0.88;
+              m.leftArm.shoulder.rotation.set(0.45 + cyc * 0.52, 0, 0.28 + cyc * 0.20);
+              m.leftArm.elbow.rotation.x = 1.15;
+              if (m.handPlate) m.handPlate.visible = false;
             } else {
-              m.torso.rotation.x = THREE.MathUtils.lerp(m.torso.rotation.x, -0.09 + rPitch * 0.26, lerpRate);
-              const armPitch = (this._remoteAds ? 0.98 : 0.86) + rPitch * 0.74;
-              m.leftArm.shoulder.rotation.x = THREE.MathUtils.lerp(m.leftArm.shoulder.rotation.x, armPitch, lerpRate);
-              m.leftArm.shoulder.rotation.z = THREE.MathUtils.lerp(m.leftArm.shoulder.rotation.z, 0.45, lerpRate);
-              m.rightArm.shoulder.rotation.x = THREE.MathUtils.lerp(m.rightArm.shoulder.rotation.x, armPitch + 0.04, lerpRate);
-              m.rightArm.shoulder.rotation.z = THREE.MathUtils.lerp(m.rightArm.shoulder.rotation.z, -0.15, lerpRate);
+              if (m.handPlate) m.handPlate.visible = false;
+              if (m.weaponMount) m.weaponMount.rotation.x = -Math.PI / 2;
+              m.head.rotation.x = THREE.MathUtils.lerp(m.head.rotation.x, rPitch * 0.72, lerpRate);
+              if (this._remoteTacSprint && moving) {
+                m.torso.rotation.x = THREE.MathUtils.lerp(m.torso.rotation.x, -0.26, lerpRate);
+                m.rightArm.shoulder.rotation.set(1.12, 0, -0.18);
+                m.leftArm.shoulder.rotation.set(0.36 - Math.sin(this.animCycle) * 0.65, 0, 0.18);
+              } else {
+                m.torso.rotation.x = THREE.MathUtils.lerp(m.torso.rotation.x, -0.09 + rPitch * 0.26, lerpRate);
+                const armPitch = (this._remoteAds ? 0.98 : 0.86) + rPitch * 0.74;
+                m.leftArm.shoulder.rotation.x = THREE.MathUtils.lerp(m.leftArm.shoulder.rotation.x, armPitch, lerpRate);
+                m.leftArm.shoulder.rotation.z = THREE.MathUtils.lerp(m.leftArm.shoulder.rotation.z, 0.45, lerpRate);
+                m.rightArm.shoulder.rotation.x = THREE.MathUtils.lerp(m.rightArm.shoulder.rotation.x, armPitch + 0.04, lerpRate);
+                m.rightArm.shoulder.rotation.z = THREE.MathUtils.lerp(m.rightArm.shoulder.rotation.z, -0.15, lerpRate);
+              }
             }
           }
-          this._redrawTag(isSlide ? 'SLIDE' : (isCrouch ? 'CROUCH' : (isProne ? 'PRONE' : 'SQUAD')), this.squadColor);
+          const stLbl = this._remotePlate ? 'PLATING' : (this._remoteHeal ? 'HEALING' : (this._remoteReload ? 'RELOADING' : (isSlide ? 'SLIDE' : (isCrouch ? 'CROUCH' : (isProne ? 'PRONE' : 'SQUAD')))));
+          this._redrawTag(stLbl, this.squadColor);
         }
       } else {
         this._redrawTag('SYNCING...', '#ffca28');

@@ -466,54 +466,137 @@ class SoundEngine {
     osc.stop(now + 0.03);
   }
 
-  playMagOut() {
-    if (this.muted || !this.ctx) return;
-    const now = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(520, now);
-    osc.frequency.exponentialRampToValueAtTime(240, now + 0.06);
-    const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(0.14, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.065);
-    osc.connect(gain);
-    gain.connect(this._bus('sfx'));
-    osc.start(now);
-    osc.stop(now + 0.07);
+  _playMetallicClick(time, freq, q, dur, vol, hpFreq = 900) {
+    const n = this._makeNoise(time, dur);
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(freq, time);
+    bp.Q.setValueAtTime(q, time);
+    const hp = this.ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.setValueAtTime(hpFreq, time);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(vol, time);
+    g.gain.exponentialRampToValueAtTime(0.001, time + dur);
+    n.connect(bp);
+    bp.connect(hp);
+    hp.connect(g);
+    g.connect(this._bus('sfx'));
   }
 
-  playMagIn() {
+  playMagOut(weaponId = 'ak74m') {
     if (this.muted || !this.ctx) return;
     const now = this.ctx.currentTime;
-    const osc = this.ctx.createOscillator();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(340, now);
-    osc.frequency.exponentialRampToValueAtTime(760, now + 0.055);
-    const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(0.18, now);
-    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
-    osc.connect(gain);
-    gain.connect(this._bus('sfx'));
-    osc.start(now);
-    osc.stop(now + 0.075);
+    const isSteel = weaponId === 'ak74m' || weaponId === 'mp5k' || weaponId === 'awm338' || weaponId === 'm24';
+    const isPistol = weaponId === 'g17' || weaponId === 'pm9';
+    // 1. Mag catch button/paddle release click
+    this._playMetallicClick(now, isPistol ? 3200 : 2100, 3.2, 0.028, 0.24, 1100);
+    // 2. Magazine sliding/scraping out of magwell
+    const slideDur = isPistol ? 0.09 : 0.14;
+    const slide = this._makeNoise(now + 0.02, slideDur);
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(isSteel ? 1450 : 980, now + 0.02);
+    bp.frequency.exponentialRampToValueAtTime(isSteel ? 720 : 480, now + 0.02 + slideDur);
+    bp.Q.setValueAtTime(1.8, now + 0.02);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.16, now + 0.02);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.02 + slideDur);
+    slide.connect(bp);
+    bp.connect(g);
+    g.connect(this._bus('sfx'));
+    // 3. Secondary mechanical clunk (AK rock-out / steel mag clear)
+    if (isSteel) {
+      this._playMetallicClick(now + 0.075, 1150, 2.5, 0.045, 0.18, 500);
+    }
   }
 
-  playRechamber() {
+  playMagIn(weaponId = 'ak74m') {
     if (this.muted || !this.ctx) return;
     const now = this.ctx.currentTime;
-    [0, 0.14].forEach((offset, idx) => {
-      const osc = this.ctx.createOscillator();
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(idx === 0 ? 780 : 1040, now + offset);
-      osc.frequency.exponentialRampToValueAtTime(idx === 0 ? 480 : 620, now + offset + 0.06);
-      const gain = this.ctx.createGain();
-      gain.gain.setValueAtTime(0.11, now + offset);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.07);
-      osc.connect(gain);
-      gain.connect(this._bus('sfx'));
-      osc.start(now + offset);
-      osc.stop(now + offset + 0.075);
-    });
+    const isMosin = weaponId === 'mosin9130';
+    const isSteel = weaponId === 'ak74m' || weaponId === 'mp5k' || weaponId === 'awm338' || weaponId === 'm24';
+    const isPistol = weaponId === 'g17' || weaponId === 'pm9';
+
+    if (isMosin) {
+      // Mosin-Nagant 5-round brass stripper clip thumb-press & metallic clip-eject ping!
+      for (let i = 0; i < 5; i++) {
+        this._playMetallicClick(now + i * 0.036, 2600 + i * 180, 4.0, 0.026, 0.17, 1200);
+      }
+      // Subtle steel clip ping
+      const ping = this.ctx.createOscillator();
+      ping.type = 'sine';
+      ping.frequency.setValueAtTime(3420, now + 0.18);
+      const pg = this.ctx.createGain();
+      pg.gain.setValueAtTime(0.06, now + 0.18);
+      pg.gain.exponentialRampToValueAtTime(0.001, now + 0.34);
+      ping.connect(pg);
+      pg.connect(this._bus('sfx'));
+      ping.start(now + 0.18);
+      ping.stop(now + 0.35);
+      return;
+    }
+
+    // 1. Guide-in magwell scrape
+    this._playMetallicClick(now, isPistol ? 1800 : 1200, 1.8, 0.055, 0.14, 500);
+    // 2. Solid seating thump (low body impact)
+    const thump = this.ctx.createOscillator();
+    thump.type = 'sine';
+    thump.frequency.setValueAtTime(isPistol ? 220 : 155, now + 0.045);
+    thump.frequency.exponentialRampToValueAtTime(58, now + 0.11);
+    const tg = this.ctx.createGain();
+    tg.gain.setValueAtTime(0.24, now + 0.045);
+    tg.gain.exponentialRampToValueAtTime(0.001, now + 0.115);
+    thump.connect(tg);
+    tg.connect(this._bus('sfx'));
+    thump.start(now + 0.045);
+    thump.stop(now + 0.12);
+    // 3. Crisp metallic mag-catch lock snap!
+    this._playMetallicClick(now + 0.052, isSteel ? 2850 : 2350, 3.8, 0.038, 0.28, 1200);
+  }
+
+  playRechamber(weaponId = 'ak74m') {
+    if (this.muted || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    const isBolt = weaponId === 'awm338' || weaponId === 'm24' || weaponId === 'mosin9130';
+    const isPump = weaponId === 'm870';
+    const isMp5 = weaponId === 'mp5k';
+    const isPistol = weaponId === 'g17' || weaponId === 'pm9';
+
+    if (isBolt) {
+      // True steel bolt-action throw: unlock clack -> steel rail slide back -> forward feed -> lock-down thud
+      this._playMetallicClick(now, 2400, 3.6, 0.032, 0.24, 900);
+      this._playMetallicClick(now + 0.04, 1350, 1.8, 0.095, 0.20, 600);
+      this._playMetallicClick(now + 0.17, 1650, 2.0, 0.085, 0.22, 700);
+      this._playMetallicClick(now + 0.25, 2900, 4.2, 0.036, 0.28, 1100);
+      return;
+    }
+    if (isPump) {
+      // M870 iconic heavy tubular pump shuck-clack!
+      this._playMetallicClick(now, 1180, 1.6, 0.085, 0.30, 420);
+      this._playMetallicClick(now + 0.06, 2200, 3.0, 0.035, 0.22, 900);
+      this._playMetallicClick(now + 0.15, 1420, 1.8, 0.090, 0.32, 520);
+      this._playMetallicClick(now + 0.22, 2650, 3.4, 0.040, 0.26, 1000);
+      return;
+    }
+    if (isMp5) {
+      // Iconic H&K MP5 bolt slap & steel roller-delayed slam!
+      this._playMetallicClick(now, 1650, 1.4, 0.035, 0.26, 500);
+      this._playMetallicClick(now + 0.025, 3100, 3.5, 0.048, 0.30, 1200);
+      this._playMetallicClick(now + 0.055, 1100, 2.2, 0.050, 0.22, 450);
+      return;
+    }
+    if (isPistol) {
+      // Crisp pistol slide rack / release snap
+      this._playMetallicClick(now, 2900, 3.4, 0.035, 0.24, 1100);
+      this._playMetallicClick(now + 0.085, 3400, 3.8, 0.042, 0.30, 1400);
+      return;
+    }
+    // AK-74M heavy steel bolt carrier pull & spring-driven slam home
+    this._playMetallicClick(now, 1600, 2.2, 0.075, 0.26, 650);
+    this._playMetallicClick(now + 0.07, 2500, 3.4, 0.032, 0.22, 1000);
+    this._playMetallicClick(now + 0.15, 1850, 2.4, 0.060, 0.28, 700);
+    this._playMetallicClick(now + 0.18, 3000, 4.0, 0.040, 0.30, 1200);
   }
 
   playFootstep(sprinting = false) {
@@ -983,85 +1066,81 @@ class SoundEngine {
   playA10Strafe(distance = 25) {
     if (this.muted || !this.ctx) return;
     const now = this.ctx.currentTime;
-    const vol = Math.max(0.22, Math.min(1.0, 1.15 - distance / 180));
+    const vol = Math.max(0.24, Math.min(1.0, 1.15 - distance / 190));
 
-    // 1. Twin-Turbofan A-10 Doppler Jet Flyby Roar (approaches -> screams overhead -> fades climbing out)
-    const jetNoise = this._makeNoise(now, 3.0);
+    // 1. Twin-Turbofan A-10 Doppler Jet Flyby Roar
+    const jetNoise = this._makeNoise(now, 3.1);
     const jetBp = this.ctx.createBiquadFilter();
     jetBp.type = 'bandpass';
-    jetBp.Q.setValueAtTime(1.4, now);
-    jetBp.frequency.setValueAtTime(280, now);
-    jetBp.frequency.exponentialRampToValueAtTime(980, now + 0.95);
-    jetBp.frequency.exponentialRampToValueAtTime(220, now + 2.85);
+    jetBp.Q.setValueAtTime(1.1, now);
+    jetBp.frequency.setValueAtTime(260, now);
+    jetBp.frequency.exponentialRampToValueAtTime(880, now + 0.95);
+    jetBp.frequency.exponentialRampToValueAtTime(190, now + 2.95);
     const jetG = this.ctx.createGain();
     jetG.gain.setValueAtTime(0.001, now);
-    jetG.gain.linearRampToValueAtTime(0.42 * vol, now + 0.85);
-    jetG.gain.exponentialRampToValueAtTime(0.001, now + 2.95);
+    jetG.gain.linearRampToValueAtTime(0.38 * vol, now + 0.85);
+    jetG.gain.exponentialRampToValueAtTime(0.001, now + 3.05);
     jetNoise.connect(jetBp);
     jetBp.connect(jetG);
     jetG.connect(this._bus('sfx'));
 
-    // High-pitched TF34 turbine whine
-    const whine = this.ctx.createOscillator();
-    whine.type = 'sine';
-    whine.frequency.setValueAtTime(1180, now);
-    whine.frequency.exponentialRampToValueAtTime(1620, now + 0.90);
-    whine.frequency.exponentialRampToValueAtTime(640, now + 2.65);
-    const whineG = this.ctx.createGain();
-    whineG.gain.setValueAtTime(0.001, now);
-    whineG.gain.linearRampToValueAtTime(0.065 * vol, now + 0.85);
-    whineG.gain.exponentialRampToValueAtTime(0.001, now + 2.65);
-    whine.connect(whineG);
-    whineG.connect(this._bus('sfx'));
-    whine.start(now);
-    whine.stop(now + 2.7);
+    // 2. Authentic GAU-8 Avenger 30mm Rotary Cannon Burst (65 rounds/sec real ballistic explosive impulses!)
+    //    Synthesizes ~72 individual broadband explosive gun-blast transients spaced every 15.4ms
+    const brtStart = now + 0.24;
+    const brtDur = 1.18;
+    const sr = this.ctx.sampleRate;
+    const len = Math.floor(sr * (brtDur + 0.15));
+    const buf = this.ctx.createBuffer(1, len, sr);
+    const data = buf.getChannelData(0);
+    const periodSamples = Math.floor(sr / 65); // 3,900 RPM = 65 shots/sec!
+    const totalShots = Math.floor((brtDur * sr) / periodSamples);
+    for (let s = 0; s < totalShots; s++) {
+      const startIdx = s * periodSamples;
+      const jitter = Math.floor((Math.random() - 0.5) * 18);
+      const base = Math.max(0, startIdx + jitter);
+      const burstLen = Math.min(periodSamples * 1.45, len - base);
+      const amp = 0.85 + Math.random() * 0.30;
+      for (let i = 0; i < burstLen; i++) {
+        const t = i / sr;
+        // Sharp explosive crack + punchy 30mm cannon chamber bark
+        const env = Math.exp(-t * 155);
+        const punch = Math.sin(2 * Math.PI * (145 - t * 3200) * t) * Math.exp(-t * 190) * 0.65;
+        const crack = (Math.random() * 2 - 1) * env;
+        data[base + i] = Math.max(-1, Math.min(1, data[base + i] + (crack * 0.85 + punch) * amp));
+      }
+    }
 
-    // 2. Iconic GAU-8 Avenger 30mm "BRRRRRRRRT" (delayed ~0.26s after ground impacts for authentic speed-of-sound feel!)
-    const brtStart = now + 0.26;
-    const brtDur = 1.15;
-    const brtOsc = this.ctx.createOscillator();
-    brtOsc.type = 'sawtooth';
-    brtOsc.frequency.setValueAtTime(64, brtStart);
-    brtOsc.frequency.linearRampToValueAtTime(58, brtStart + brtDur);
+    const brtSrc = this.ctx.createBufferSource();
+    brtSrc.buffer = buf;
 
-    const brtSub = this.ctx.createOscillator();
-    brtSub.type = 'square';
-    brtSub.frequency.setValueAtTime(128, brtStart);
-    brtSub.frequency.linearRampToValueAtTime(114, brtStart + brtDur);
+    // Shape with realistic distant atmospheric cannon air-absorption + low-mid cannon bark
+    const airLp = this.ctx.createBiquadFilter();
+    airLp.type = 'lowpass';
+    airLp.frequency.setValueAtTime(Math.max(1600, 5200 / (1 + distance * 0.015)), brtStart);
 
-    const brtFilter = this.ctx.createBiquadFilter();
-    brtFilter.type = 'bandpass';
-    brtFilter.frequency.setValueAtTime(340, brtStart);
-    brtFilter.Q.setValueAtTime(1.1, brtStart);
+    const barkEq = this.ctx.createBiquadFilter();
+    barkEq.type = 'peaking';
+    barkEq.frequency.setValueAtTime(240, brtStart);
+    barkEq.Q.setValueAtTime(0.9, brtStart);
+    barkEq.gain.setValueAtTime(8.5, brtStart);
 
     const brtG = this.ctx.createGain();
     brtG.gain.setValueAtTime(0.001, brtStart);
-    brtG.gain.linearRampToValueAtTime(0.72 * vol, brtStart + 0.04);
-    brtG.gain.setValueAtTime(0.68 * vol, brtStart + brtDur - 0.14);
-    brtG.gain.exponentialRampToValueAtTime(0.001, brtStart + brtDur);
+    brtG.gain.linearRampToValueAtTime(1.15 * vol, brtStart + 0.025);
+    brtG.gain.setValueAtTime(1.10 * vol, brtStart + brtDur - 0.08);
+    brtG.gain.exponentialRampToValueAtTime(0.001, brtStart + brtDur + 0.12);
 
-    brtOsc.connect(brtFilter);
-    brtSub.connect(brtFilter);
-    brtFilter.connect(brtG);
-    brtG.connect(this._bus('sfx'));
-    brtOsc.start(brtStart);
-    brtSub.start(brtStart);
-    brtOsc.stop(brtStart + brtDur + 0.02);
-    brtSub.stop(brtStart + brtDur + 0.02);
-
-    // Gritty muzzle-blast noise layer for the BRRRT
-    const brtNoise = this._makeNoise(brtStart, brtDur);
-    const bnLp = this.ctx.createBiquadFilter();
-    bnLp.type = 'bandpass';
-    bnLp.frequency.setValueAtTime(620, brtStart);
-    bnLp.Q.setValueAtTime(0.85, brtStart);
-    const bnG = this.ctx.createGain();
-    bnG.gain.setValueAtTime(0.001, brtStart);
-    bnG.gain.linearRampToValueAtTime(0.45 * vol, brtStart + 0.03);
-    bnG.gain.exponentialRampToValueAtTime(0.001, brtStart + brtDur);
-    brtNoise.connect(bnLp);
-    bnLp.connect(bnG);
-    bnG.connect(this._bus('sfx'));
+    brtSrc.connect(barkEq);
+    barkEq.connect(airLp);
+    airLp.connect(brtG);
+    brtG.connect(this.gunBus || this._bus('sfx'));
+    if (this.reverbSend) {
+      const revG = this.ctx.createGain();
+      revG.gain.setValueAtTime(0.32 * vol, brtStart);
+      brtG.connect(revG);
+      revG.connect(this.reverbSend);
+    }
+    brtSrc.start(brtStart);
   }
 
   playCannonImpact(distance = 25) {
