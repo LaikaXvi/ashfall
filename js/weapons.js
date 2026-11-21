@@ -1949,14 +1949,16 @@ class WeaponSystem {
     let inspectRotOffset = { x: 0, y: 0, z: 0 };
     if (this.meleeSwingTimer > 0) {
       this.meleeSwingTimer = Math.max(0, this.meleeSwingTimer - dt);
-      const mp = 1 - (this.meleeSwingTimer / (this.meleeSwingDuration || 0.32));
-      const arc = Math.sin(mp * Math.PI);
-      inspectPosOffset.x = -0.26 * arc;
-      inspectPosOffset.y = -0.06 * arc;
-      inspectPosOffset.z = -0.18 * arc;
-      inspectRotOffset.x = -0.55 * arc;
-      inspectRotOffset.y = 0.95 * arc;
-      inspectRotOffset.z = 0.72 * arc;
+      if (!this.isFistsMode) {
+        const mp = 1 - (this.meleeSwingTimer / (this.meleeSwingDuration || 0.32));
+        const arc = Math.sin(mp * Math.PI);
+        inspectPosOffset.x = -0.26 * arc;
+        inspectPosOffset.y = -0.06 * arc;
+        inspectPosOffset.z = -0.18 * arc;
+        inspectRotOffset.x = -0.55 * arc;
+        inspectRotOffset.y = 0.95 * arc;
+        inspectRotOffset.z = 0.72 * arc;
+      }
     }
     if (this.isInspecting) {
       if (this.isReloading || player.isADS || player.isSprinting) {
