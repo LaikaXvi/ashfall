@@ -2,6 +2,27 @@
 window.DEV_MODE = true;
 window.SQUAD_PVP = false;
 window.MOUSE_SENS = 1.0;
+window.CONTROLLER_SENS = (() => {
+  try {
+    const v = parseFloat(localStorage.getItem('ashfall_ctrl_sens'));
+    return Number.isFinite(v) ? v : 1.0;
+  } catch (e) { return 1.0; }
+})();
+window.GFX_SETTINGS = (() => {
+  try {
+    const raw = localStorage.getItem('ashfall_gfx_settings');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        lod: parsed.lod ?? 3,
+        lighting: parsed.lighting ?? 3,
+        shadows: parsed.shadows ?? 3,
+        textures: parsed.textures ?? 3
+      };
+    }
+  } catch (e) {}
+  return { lod: 3, lighting: 3, shadows: 3, textures: 3 };
+})();
 window.BASE_FOV = 75;
 window.DEFAULT_KEYBINDS = {
   moveForward: 'KeyW',
@@ -2561,6 +2582,27 @@ class GameUI {
         pDev.style.borderColor = window.DEV_MODE ? '#69f0ae' : '';
         pDev.style.color = window.DEV_MODE ? '#69f0ae' : '';
       }
+      const ctrlSens = window.CONTROLLER_SENS || 1.0;
+      const ctrlSensEl = document.getElementById('setting-ctrl-sens');
+      const ctrlSensVal = document.getElementById('setting-ctrl-sens-val');
+      if (ctrlSensEl) ctrlSensEl.value = ctrlSens;
+      if (ctrlSensVal) ctrlSensVal.textContent = `${ctrlSens.toFixed(1)}x`;
+
+      const gfx = window.GFX_SETTINGS || { lod: 3, lighting: 3, shadows: 3, textures: 3 };
+      const lvl4 = ['', 'LOW', 'MEDIUM', 'HIGH', 'ULTRA'];
+      const lvlShadow = ['OFF', 'LOW', 'MEDIUM', 'HIGH'];
+      const lvlTex = ['', 'LOW', 'MEDIUM', 'HIGH'];
+      const bindVal = (id, valId, v, labels) => {
+        const inp = document.getElementById(id);
+        const lbl = document.getElementById(valId);
+        if (inp) inp.value = String(v);
+        if (lbl) lbl.textContent = labels[v] || String(v);
+      };
+      bindVal('setting-gfx-lod', 'setting-gfx-lod-val', gfx.lod, lvl4);
+      bindVal('setting-gfx-lighting', 'setting-gfx-lighting-val', gfx.lighting, lvl4);
+      bindVal('setting-gfx-shadows', 'setting-gfx-shadows-val', gfx.shadows, lvlShadow);
+      bindVal('setting-gfx-textures', 'setting-gfx-textures-val', gfx.textures, lvlTex);
+
       ['btn-pvp-mode', 'btn-pause-pvp'].forEach((id) => {
         const el = document.getElementById(id);
         if (el) {
@@ -2586,6 +2628,33 @@ class GameUI {
       if (el) {
         el.addEventListener('input', () => {
           window.MOUSE_SENS = parseFloat(el.value) || 1.0;
+          syncSettingsUI();
+        });
+      }
+    });
+    const ctrlSensInp = document.getElementById('setting-ctrl-sens');
+    if (ctrlSensInp) {
+      ctrlSensInp.addEventListener('input', () => {
+        window.CONTROLLER_SENS = parseFloat(ctrlSensInp.value) || 1.0;
+        try { localStorage.setItem('ashfall_ctrl_sens', String(window.CONTROLLER_SENS)); } catch (e) {}
+        syncSettingsUI();
+      });
+    }
+    [
+      ['setting-gfx-lod', 'lod'],
+      ['setting-gfx-lighting', 'lighting'],
+      ['setting-gfx-shadows', 'shadows'],
+      ['setting-gfx-textures', 'textures']
+    ].forEach(([id, key]) => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.addEventListener('input', () => {
+          if (!window.GFX_SETTINGS) window.GFX_SETTINGS = { lod: 3, lighting: 3, shadows: 3, textures: 3 };
+          window.GFX_SETTINGS[key] = parseInt(el.value, 10);
+          try { localStorage.setItem('ashfall_gfx_settings', JSON.stringify(window.GFX_SETTINGS)); } catch (e) {}
+          if (typeof window.applyGraphicsSettings === 'function') {
+            window.applyGraphicsSettings(window.GFX_SETTINGS);
+          }
           syncSettingsUI();
         });
       }
@@ -3510,96 +3579,98 @@ class GameUI {
       ['map', 'Toggle Full-Size Tactical Map'],
       ['pause', 'Pause Menu']
     ];
-    ctrlPane.innerHTML = '';
-
     const stickRows = [
       ['LEFT STICK', 'Move / Inventory Cursor'],
       ['RIGHT STICK', 'Aim / Look (Rotational Aim Assist)']
     ];
-    for (const [keyTxt, desc] of stickRows) {
-      const row = document.createElement('div');
-      row.className = 'ctrl-row';
-      row.innerHTML = `<b style="min-width:110px;">${keyTxt}</b><span>${desc}</span>`;
-      ctrlPane.appendChild(row);
-    }
+    const ctrlTargets = [ctrlPane, document.getElementById('settings-controller-binds')].filter(Boolean);
+    ctrlTargets.forEach((targetPane) => {
+      targetPane.innerHTML = '';
+      for (const [keyTxt, desc] of stickRows) {
+        const row = document.createElement('div');
+        row.className = 'ctrl-row';
+        row.innerHTML = `<b style="min-width:110px;">${keyTxt}</b><span>${desc}</span>`;
+        targetPane.appendChild(row);
+      }
 
-    for (const [action, label] of gpLabels) {
-      const row = document.createElement('div');
-      row.className = 'ctrl-row';
-      const btn = document.createElement('button');
-      btn.className = 'btn-small';
-      btn.style.minWidth = '112px';
-      btn.textContent = this._formatGamepadButton(window.GAMEPAD_BINDS[action]);
-      btn.addEventListener('click', () => {
-        if (this._rebindCleanup) this._rebindCleanup();
-        btn.textContent = 'PRESS BUTTON...';
-        btn.style.borderColor = '#69f0ae';
-        btn.style.color = '#69f0ae';
-        let rafId = null;
-        let armed = false;
-        const pollPad = () => {
-          const pads = navigator.getGamepads ? navigator.getGamepads() : [];
-          let activePad = null;
-          for (const p of pads) { if (p && p.connected) { activePad = p; break; } }
-          if (activePad) {
-            const anyDown = activePad.buttons.some(b => b && (b.pressed || b.value > 0.55));
-            if (!armed) {
-              if (!anyDown) armed = true;
-            } else {
-              for (let i = 0; i < activePad.buttons.length; i++) {
-                const b = activePad.buttons[i];
-                if (b && (b.pressed || b.value > 0.55)) {
-                  window.GAMEPAD_BINDS[action] = i;
-                  this.profile.gamepadBinds = { ...window.GAMEPAD_BINDS };
-                  this.saveProfile();
-                  cleanup();
-                  this.renderKeybindSettings();
-                  return;
+      for (const [action, label] of gpLabels) {
+        const row = document.createElement('div');
+        row.className = 'ctrl-row';
+        const btn = document.createElement('button');
+        btn.className = 'btn-small';
+        btn.style.minWidth = '112px';
+        btn.textContent = this._formatGamepadButton(window.GAMEPAD_BINDS[action]);
+        btn.addEventListener('click', () => {
+          if (this._rebindCleanup) this._rebindCleanup();
+          btn.textContent = 'PRESS BUTTON...';
+          btn.style.borderColor = '#69f0ae';
+          btn.style.color = '#69f0ae';
+          let rafId = null;
+          let armed = false;
+          const pollPad = () => {
+            const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+            let activePad = null;
+            for (const p of pads) { if (p && p.connected) { activePad = p; break; } }
+            if (activePad) {
+              const anyDown = activePad.buttons.some(b => b && (b.pressed || b.value > 0.55));
+              if (!armed) {
+                if (!anyDown) armed = true;
+              } else {
+                for (let i = 0; i < activePad.buttons.length; i++) {
+                  const b = activePad.buttons[i];
+                  if (b && (b.pressed || b.value > 0.55)) {
+                    window.GAMEPAD_BINDS[action] = i;
+                    this.profile.gamepadBinds = { ...window.GAMEPAD_BINDS };
+                    this.saveProfile();
+                    cleanup();
+                    this.renderKeybindSettings();
+                    return;
+                  }
                 }
               }
             }
-          }
+            rafId = requestAnimationFrame(pollPad);
+          };
+          const onEsc = (ev) => {
+            if (ev.code === 'Escape') {
+              ev.preventDefault();
+              cleanup();
+              this.renderKeybindSettings();
+            }
+          };
+          const cleanup = () => {
+            if (rafId) cancelAnimationFrame(rafId);
+            window.removeEventListener('keydown', onEsc, true);
+            this._rebindCleanup = null;
+          };
+          this._rebindCleanup = cleanup;
+          window.addEventListener('keydown', onEsc, true);
           rafId = requestAnimationFrame(pollPad);
-        };
-        const onEsc = (ev) => {
-          if (ev.code === 'Escape') {
-            ev.preventDefault();
-            cleanup();
-            this.renderKeybindSettings();
-          }
-        };
-        const cleanup = () => {
-          if (rafId) cancelAnimationFrame(rafId);
-          window.removeEventListener('keydown', onEsc, true);
-          this._rebindCleanup = null;
-        };
-        this._rebindCleanup = cleanup;
-        window.addEventListener('keydown', onEsc, true);
-        rafId = requestAnimationFrame(pollPad);
-      });
-      const lbl = document.createElement('span');
-      lbl.textContent = label;
-      row.append(btn, lbl);
-      ctrlPane.appendChild(row);
-    }
+        });
+        const lbl = document.createElement('span');
+        lbl.textContent = label;
+        row.append(btn, lbl);
+        targetPane.appendChild(row);
+      }
 
-    const gpResetRow = document.createElement('div');
-    gpResetRow.className = 'ctrl-row';
-    gpResetRow.style.marginTop = '6px';
-    const gpResetBtn = document.createElement('button');
-    gpResetBtn.className = 'btn-small btn-danger';
-    gpResetBtn.textContent = 'RESET CONTROLLER DEFAULTS';
-    gpResetBtn.addEventListener('click', () => {
-      window.GAMEPAD_BINDS = { ...window.DEFAULT_GAMEPAD_BINDS };
-      this.profile.gamepadBinds = { ...window.GAMEPAD_BINDS };
-      this.saveProfile();
-      this.renderKeybindSettings();
+      const gpResetRow = document.createElement('div');
+      gpResetRow.className = 'ctrl-row';
+      gpResetRow.style.marginTop = '6px';
+      const gpResetBtn = document.createElement('button');
+      gpResetBtn.className = 'btn-small btn-danger';
+      gpResetBtn.textContent = 'RESET CONTROLLER DEFAULTS';
+      gpResetBtn.addEventListener('click', () => {
+        window.GAMEPAD_BINDS = { ...window.DEFAULT_GAMEPAD_BINDS };
+        this.profile.gamepadBinds = { ...window.GAMEPAD_BINDS };
+        this.saveProfile();
+        this.renderKeybindSettings();
+      });
+      const gpTip = document.createElement('span');
+      gpTip.style.color = '#69f0ae';
+      gpTip.textContent = 'Click any button and press a controller input (ESC to cancel)';
+      gpResetRow.append(gpResetBtn, gpTip);
+      targetPane.appendChild(gpResetRow);
     });
-    const gpTip = document.createElement('span');
-    gpTip.style.color = '#69f0ae';
-    gpTip.textContent = 'Click any button and press a controller input (ESC to cancel)';
-    gpResetRow.append(gpResetBtn, gpTip);
-    ctrlPane.appendChild(gpResetRow);
   }
 
   _equipOrPackFromStash(stashIdx, maxBagSlots) {

@@ -833,55 +833,64 @@ class Player {
       torsoPitch = -0.22 + breathe * 0.015;
       rigRoll = -strafeInput * 0.05;
 
-      lShX = 0.86; lElbX = 0.72; lShZ = -0.24;
-      rShX = 0.96; rElbX = 0.62; rShZ = 0.06;
+      lShX = 0.86; lElbX = 0.90; lShZ = 0.44;
+      rShX = 0.90; rElbX = 0.74; rShZ = -0.14;
     } else {
-      // === STANDING / WALKING / SPRINTING ===
-      const amp = this.isSprinting ? 0.78 : 0.46;
+      // === FORWARD COMBAT-STANCE: IDLE / WALKING / SPRINTING / TACTICAL SPRINT ===
+      const amp = this.isTacSprinting ? 0.92 : (this.isSprinting ? 0.78 : 0.48);
       lHipX = stride * amp;
       rHipX = -stride * amp;
-      lKneeX = -Math.max(0, -strideCos) * (this.isSprinting ? 1.15 : 0.62) - 0.06;
-      rKneeX = -Math.max(0, strideCos) * (this.isSprinting ? 1.15 : 0.62) - 0.06;
+      lKneeX = -Math.max(0, -strideCos) * (this.isSprinting ? 1.18 : 0.62) - 0.10;
+      rKneeX = -Math.max(0, strideCos) * (this.isSprinting ? 1.18 : 0.62) - 0.10;
       lAnkX = -(lHipX + lKneeX) * 0.55;
       rAnkX = -(rHipX + rKneeX) * 0.55;
 
-      pelvisY = 0.90;
-      pelvisYaw = stride * (this.isSprinting ? 0.16 : 0.08);
+      pelvisY = 0.88;
+      pelvisYaw = moving ? (stride * (this.isSprinting ? 0.16 : 0.08)) : 0.18;
       torsoYaw = -pelvisYaw * 0.85;
-      torsoPitch = (this.isSprinting ? -0.24 : -0.04) + breathe * 0.012;
+      // Forward combat-ready lean across idle, walk & sprint
+      torsoPitch = (this.isTacSprinting ? -0.30 : (this.isSprinting ? -0.22 : -0.09)) + breathe * 0.012;
       rigRoll = -strafeInput * (this.isSprinting ? 0.08 : 0.04);
 
       if (this.isTacSprinting) {
-        // One-handed high-port Tactical Sprint: right hand holds gun UP in air, left fist pumps independently apart!
-        lShX = 0.25 - stride * 0.78; lElbX = 1.28; lShZ = -0.14;
-        rShX = 0.92 + stride * 0.16; rElbX = 1.18; rShZ = 0.10;
-        wpnRotX = -Math.PI / 2 + 0.42;
-        wpnRotY = 0.12;
-        wpnRotZ = -0.12;
+        // High-Port Tactical Sprint: athletic forward drive, weapon held high & ready across upper chest!
+        lShX = 0.32 - stride * 0.72; lElbX = 1.24; lShZ = 0.18;
+        rShX = 1.12 + stride * 0.14; rElbX = 1.18; rShZ = -0.18;
+        wpnRotX = -Math.PI / 2 + 0.52;
+        wpnRotY = 0.18;
+        wpnRotZ = -0.14;
       } else if (this.isSprinting) {
-        // Standard tactical sprint weapon carry
-        lShX = 0.62 - stride * 0.18; lElbX = 0.92; lShZ = -0.32;
-        rShX = 0.55 + stride * 0.18; rElbX = 0.95; rShZ = 0.15;
-        wpnRotY = 0.42;
-        wpnRotZ = -0.18;
+        // Combat-ready two-handed sprint (both hands locked firmly on weapon across chest!)
+        lShX = 0.76 - stride * 0.12; lElbX = 0.96; lShZ = 0.48;
+        rShX = 0.72 + stride * 0.12; rElbX = 0.88; rShZ = -0.18;
+        wpnRotY = 0.34;
+        wpnRotZ = -0.12;
       } else {
-        // Two-handed ready-to-fire tactical stance (ADS cheek-weld vs hip-fire ready)
+        // Two-handed ready-to-fire forward combat stance (ADS cheek-weld vs hip-fire ready)
         if (this.isADS) {
           pelvisYaw = 0.22;
           torsoYaw = -0.20;
-          torsoPitch = -0.07 + breathe * 0.008;
+          torsoPitch = -0.10 + breathe * 0.008;
           lShX = 0.98 + breathe * 0.008; lElbX = 0.94; lShZ = 0.46;
           rShX = 1.04 + breathe * 0.008; rElbX = 0.80; rShZ = -0.16;
           wpnRotX = -Math.PI / 2 + 0.04;
           wpnRotY = 0.12;
         } else {
-          pelvisYaw = moving ? stride * 0.08 : 0.16;
-          torsoYaw = moving ? -stride * 0.07 : -0.14;
-          lShX = 0.84 + breathe * 0.012; lElbX = 0.90; lShZ = 0.44;
-          rShX = 0.88 + breathe * 0.012; rElbX = 0.74; rShZ = -0.14;
+          pelvisYaw = moving ? stride * 0.08 : 0.18;
+          torsoYaw = moving ? -stride * 0.07 : -0.15;
+          lShX = 0.86 + breathe * 0.012; lElbX = 0.92; lShZ = 0.45;
+          rShX = 0.90 + breathe * 0.012; rElbX = 0.76; rShZ = -0.15;
           wpnRotY = 0.14;
         }
       }
+    }
+
+    // === CROSSHAIR AIM-PITCH TRACKING: Head, Torso & Both Arms Align Weapon Directly to Crosshair ===
+    if (!this.isDowned && !this.dead && !this.isInventoryOpen && !this.mantleState && !this.ledgeState && !this.isTacSprinting) {
+      const aimPitch = THREE.MathUtils.clamp(this.pitch || 0, -0.85, 0.85);
+      torsoPitch += aimPitch * 0.26;
+      lShX += aimPitch * 0.74;
+      rShX += aimPitch * 0.74;
     }
 
     // Exact Foot-Contact Ground Clamping (prevents boots from ever clipping into the ground!)

@@ -424,6 +424,8 @@ class WastelandWorld {
     trunkInst.instanceMatrix.needsUpdate = true;
     coneLowInst.instanceMatrix.needsUpdate = true;
     coneTopInst.instanceMatrix.needsUpdate = true;
+    this._pineMeshes = [trunkInst, coneLowInst, coneTopInst];
+    this._maxPines = placedPines;
     this.scene.add(trunkInst, coneLowInst, coneTopInst);
 
     // 2. Instanced Tactical Bushes & Foliage Shrubs (750 clusters -> 1 draw call!)
@@ -451,6 +453,8 @@ class WastelandWorld {
     }
     bushInst.count = placedBushes;
     bushInst.instanceMatrix.needsUpdate = true;
+    this._bushInst = bushInst;
+    this._maxBushes = placedBushes;
     this.scene.add(bushInst);
 
     // 3. Natural Rock Outcrops & Tactical Cover Boulders (110 formations with colliders -> 1 draw call!)
@@ -1373,6 +1377,23 @@ class WastelandWorld {
     this._addWorkbenchTable(144.0, 163.0, 0, [
       { id: 'medkit', qty: 1 }, { id: 'ammo_9x19', qty: 24 }
     ], 0);
+  }
+
+  setGraphicsOptions(gfx = {}) {
+    const lod = gfx.lod ?? 3; // 1..4
+    const lighting = gfx.lighting ?? 3; // 1..4
+    const lodFrac = lod === 1 ? 0.35 : (lod === 2 ? 0.62 : (lod === 3 ? 0.85 : 1.0));
+    if (this._pineMeshes && this._maxPines) {
+      const c = Math.max(40, Math.round(this._maxPines * lodFrac));
+      this._pineMeshes.forEach(m => { m.count = c; });
+    }
+    if (this._bushInst && this._maxBushes) {
+      this._bushInst.count = Math.max(60, Math.round(this._maxBushes * lodFrac));
+    }
+    if (this.fogLayers) {
+      const showMist = lighting >= 2;
+      this.fogLayers.forEach(fl => { fl.mesh.visible = showMist; });
+    }
   }
 
   update(dt, time, playerPos = null) {

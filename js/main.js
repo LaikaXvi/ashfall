@@ -14,6 +14,55 @@
   let scene = null;
   let camera = null;
   let sunLight = null;
+  let hemiLight = null;
+  let rimFillLight = null;
+
+  window.applyGraphicsSettings = (gfx = window.GFX_SETTINGS || {}) => {
+    const lod = gfx.lod ?? 3;
+    const lighting = gfx.lighting ?? 3;
+    const shadows = gfx.shadows ?? 3;
+    const textures = gfx.textures ?? 3;
+
+    // 1. Texture Quality -> pixel ratio
+    const dpr = window.devicePixelRatio || 1;
+    const targetPr = textures === 1 ? 0.72 : (textures === 2 ? 1.0 : Math.min(dpr, 2));
+    renderer.setPixelRatio(targetPr);
+    renderer.setSize(window.innerWidth, window.innerHeight);
+
+    // 2. Realtime Shadows
+    renderer.shadowMap.enabled = shadows > 0;
+    if (sunLight) {
+      sunLight.castShadow = shadows > 0;
+      const res = shadows === 1 ? 512 : (shadows === 2 ? 1024 : 2048);
+      if (sunLight.shadow && sunLight.shadow.mapSize && sunLight.shadow.mapSize.width !== res) {
+        sunLight.shadow.mapSize.width = res;
+        sunLight.shadow.mapSize.height = res;
+        if (sunLight.shadow.map) {
+          sunLight.shadow.map.dispose();
+          sunLight.shadow.map = null;
+        }
+      }
+    }
+
+    // 3. Lighting Quality
+    if (renderer.toneMappingExposure !== undefined) {
+      renderer.toneMappingExposure = lighting === 1 ? 0.96 : (lighting === 2 ? 1.02 : (lighting === 3 ? 1.08 : 1.14));
+    }
+    if (hemiLight) hemiLight.intensity = lighting === 1 ? 0.72 : (lighting === 2 ? 0.84 : (lighting === 3 ? 0.92 : 1.0));
+    if (rimFillLight) rimFillLight.intensity = lighting === 1 ? 0.0 : (lighting === 2 ? 0.25 : (lighting === 3 ? 0.42 : 0.58));
+
+    // 4. LOD / View Distance
+    if (camera) {
+      camera.far = lod === 1 ? 580 : (lod === 2 ? 980 : (lod === 3 ? 1420 : 1750));
+      camera.updateProjectionMatrix();
+    }
+    if (scene && scene.fog) {
+      scene.fog.density = lod === 1 ? 0.0038 : (lod === 2 ? 0.0028 : (lod === 3 ? 0.0021 : 0.0016));
+    }
+    if (world && world.setGraphicsOptions) {
+      world.setGraphicsOptions(gfx);
+    }
+  };
   let viewmodelScene = null;
   let viewmodelCamera = null;
   let world = null;
@@ -111,8 +160,8 @@
     scene.add(camera);
 
     // Redux Atmospheric Lighting (Sky/Ground bounce + Golden-Hour Sun + Cool Rim Fill)
-    const hemi = new THREE.HemisphereLight(0xcbe0f5, 0x453e32, 0.92);
-    scene.add(hemi);
+    hemiLight = new THREE.HemisphereLight(0xcbe0f5, 0x453e32, 0.92);
+    scene.add(hemiLight);
 
     sunLight = new THREE.DirectionalLight(0xffe4b8, 1.35);
     sunLight.position.set(160, 210, 120);
@@ -130,9 +179,9 @@
     scene.add(sunLight);
     scene.add(sunLight.target);
 
-    const rimFill = new THREE.DirectionalLight(0x88b4d8, 0.42);
-    rimFill.position.set(-140, 85, -130);
-    scene.add(rimFill);
+    rimFillLight = new THREE.DirectionalLight(0x88b4d8, 0.42);
+    rimFillLight.position.set(-140, 85, -130);
+    scene.add(rimFillLight);
 
     // Dedicated Viewmodel Layer (separate scene & depth pass so gun/hands NEVER clip through walls!)
     viewmodelScene = new THREE.Scene();
@@ -144,6 +193,7 @@
     viewmodelScene.add(vmSun);
 
     world = new WastelandWorld(scene, zone);
+    if (window.applyGraphicsSettings) window.applyGraphicsSettings(window.GFX_SETTINGS);
     weaponSystem = new WeaponSystem(scene, camera, viewmodelCamera);
     throwableSystem = new ThrowableSystem(scene, camera, viewmodelCamera, world, weaponSystem);
     player = new Player(camera, world, weaponSystem, {

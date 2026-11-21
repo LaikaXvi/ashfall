@@ -404,7 +404,7 @@ class GamepadController {
 
     // === RIGHT STICK: ANALOG LOOK (YAW & PITCH) ===
     if (rs.mag > 0) {
-      const lookSpeed = (player.isADS ? 1.55 : 2.95) * (window.MOUSE_SENS || 1.0) * slowdown;
+      const lookSpeed = (player.isADS ? 1.55 : 2.95) * (window.CONTROLLER_SENS || 1.0) * slowdown;
       player.yaw -= rs.x * lookSpeed * dt;
       player.pitch -= rs.y * lookSpeed * dt;
       player.pitch = THREE.MathUtils.clamp(player.pitch, -Math.PI / 2 + 0.08, Math.PI / 2 - 0.08);

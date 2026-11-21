@@ -1160,12 +1160,24 @@ class Enemy {
         const gySlide = this._getGroundY();
         this.position.y = gySlide;
         this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, gySlide - 0.36, dt * 16);
-        this.group.rotation.x = THREE.MathUtils.lerp(this.group.rotation.x, -0.30, dt * 14);
-        if (this.leftHip) this.leftHip.rotation.x = -0.95;
-        if (this.rightHip) this.rightHip.rotation.x = -0.35;
+        this.group.rotation.x = THREE.MathUtils.lerp(this.group.rotation.x, -0.26, dt * 14);
+        if (this.opModel) {
+          // Baseball-slide pose: lead leg kicked straight out in front, trailing knee tucked!
+          this.opModel.leftLeg.hip.rotation.x = 1.52;
+          this.opModel.leftLeg.knee.rotation.x = -0.05;
+          this.opModel.rightLeg.hip.rotation.x = 1.15;
+          this.opModel.rightLeg.knee.rotation.x = -2.25;
+        } else {
+          if (this.leftHip) this.leftHip.rotation.x = -0.95;
+          if (this.rightHip) this.rightHip.rotation.x = -0.35;
+        }
         if (this.slideTimer <= 0) {
           this.group.position.y = gySlide;
           this.group.rotation.x = 0;
+          if (this.opModel) {
+            this.opModel.leftLeg.knee.rotation.x = -0.12;
+            this.opModel.rightLeg.knee.rotation.x = -0.12;
+          }
         }
         return;
       }
@@ -1275,6 +1287,25 @@ class Enemy {
         this.group.rotation.z = this.leanAngle;
         this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, gyStand, Math.min(1, dt * 12));
         this.group.rotation.x = THREE.MathUtils.lerp(this.group.rotation.x, 0, Math.min(1, dt * 12));
+        // Aim head, torso & both arms directly at target elevation (or tactical sprint pose)
+        if (this.opModel && tPos) {
+          const m = this.opModel;
+          const hDist = Math.max(1, Math.hypot(tPos.x - this.position.x, tPos.z - this.position.z));
+          const aimPitch = THREE.MathUtils.clamp(Math.atan2((tPos.y - (this.position.y + 1.35)), hDist), -0.75, 0.75);
+          m.head.rotation.x = THREE.MathUtils.lerp(m.head.rotation.x, aimPitch * 0.72, Math.min(1, dt * 12));
+          if (this.isTacSprinting) {
+            m.torso.rotation.x = THREE.MathUtils.lerp(m.torso.rotation.x, -0.26, Math.min(1, dt * 12));
+            m.rightArm.shoulder.rotation.set(1.12, 0, -0.18);
+            m.leftArm.shoulder.rotation.set(0.36, 0, 0.18);
+          } else {
+            m.torso.rotation.x = THREE.MathUtils.lerp(m.torso.rotation.x, -0.09 + aimPitch * 0.26, Math.min(1, dt * 12));
+            const armP = 0.88 + aimPitch * 0.74;
+            m.leftArm.shoulder.rotation.x = THREE.MathUtils.lerp(m.leftArm.shoulder.rotation.x, armP, Math.min(1, dt * 12));
+            m.leftArm.shoulder.rotation.z = THREE.MathUtils.lerp(m.leftArm.shoulder.rotation.z, 0.45, Math.min(1, dt * 12));
+            m.rightArm.shoulder.rotation.x = THREE.MathUtils.lerp(m.rightArm.shoulder.rotation.x, armP + 0.04, Math.min(1, dt * 12));
+            m.rightArm.shoulder.rotation.z = THREE.MathUtils.lerp(m.rightArm.shoulder.rotation.z, -0.15, Math.min(1, dt * 12));
+          }
+        }
       }
 
       this.fireTimer -= dt;

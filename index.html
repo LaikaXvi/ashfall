@@ -22,7 +22,7 @@
     <!-- IMPORTANT: Update version in GAME_DATA.VERSION (js/data.js) and here with EVERY new commit -->
     <div class="menu-version-stack">
       <button id="menu-update-badge" class="menu-update-badge hidden" title="Click to reload into the latest version">NEW VERSION AVAILABLE</button>
-      <div id="menu-version-badge" class="menu-version-badge">v1.71</div>
+      <div id="menu-version-badge" class="menu-version-badge">v1.72</div>
     </div>
     <!-- Top Bar (visible inside utility tabs; hidden on clean Main Menu title card) -->
     <header id="menu-topbar" class="hideout-header hidden">
@@ -454,6 +454,75 @@
             </details>
 
             <details class="settings-section">
+              <summary class="settings-section-header">GRAPHICS</summary>
+              <div class="settings-section-body">
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-title">LOD / VIEW DISTANCE</div>
+                    <div class="setting-desc">Terrain draw distance, foliage density &amp; horizon detail</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <input id="setting-gfx-lod" type="range" min="1" max="4" step="1" value="3" />
+                    <span id="setting-gfx-lod-val" class="accent" style="min-width:56px;text-align:right;font-weight:700;">HIGH</span>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-title">LIGHTING QUALITY</div>
+                    <div class="setting-desc">Atmospheric bounce, rim lighting &amp; volumetric valley mist</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <input id="setting-gfx-lighting" type="range" min="1" max="4" step="1" value="3" />
+                    <span id="setting-gfx-lighting-val" class="accent" style="min-width:56px;text-align:right;font-weight:700;">HIGH</span>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-title">REALTIME SHADOWS</div>
+                    <div class="setting-desc">Dynamic sun shadow map quality (OFF / LOW / MED / HIGH)</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <input id="setting-gfx-shadows" type="range" min="0" max="3" step="1" value="3" />
+                    <span id="setting-gfx-shadows-val" class="accent" style="min-width:56px;text-align:right;font-weight:700;">HIGH</span>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-title">TEXTURE QUALITY</div>
+                    <div class="setting-desc">Render pixel scale &amp; surface sharpness</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <input id="setting-gfx-textures" type="range" min="1" max="3" step="1" value="3" />
+                    <span id="setting-gfx-textures-val" class="accent" style="min-width:56px;text-align:right;font-weight:700;">HIGH</span>
+                  </div>
+                </div>
+              </div>
+            </details>
+
+            <details class="settings-section">
+              <summary class="settings-section-header">CONTROLLER CONFIGURATION</summary>
+              <div class="settings-section-body">
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-title">CONTROLLER SENSITIVITY</div>
+                    <div class="setting-desc">Adjust right-stick aim &amp; look rotation speed (0.4x – 2.5x)</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <input id="setting-ctrl-sens" type="range" min="0.4" max="2.5" step="0.1" value="1.0" />
+                    <span id="setting-ctrl-sens-val" class="accent" style="min-width:38px;text-align:right;font-weight:700;">1.0x</span>
+                  </div>
+                </div>
+                <div style="margin-top:6px;">
+                  <div class="setting-title" style="margin-bottom:6px;color:var(--accent-bright);">CONTROLLER KEYBINDINGS</div>
+                  <div id="settings-controller-binds" class="controls-grid"></div>
+                </div>
+              </div>
+            </details>
+
+            <details class="settings-section">
               <summary class="settings-section-header">GAMEPLAY &amp; SQUAD</summary>
               <div class="settings-section-body">
                 <div class="setting-row">
@@ -860,23 +929,23 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION with every new commit) -->
-  <script src="js/data.js?v=171"></script>
+  <script src="js/data.js?v=172"></script>
   <script src="js/net.js?v=123"></script>
   <script src="js/sfx_samples.js?v=21"></script>
   <script src="js/audio.js?v=139"></script>
-  <script src="js/world.js?v=167"></script>
-  <script src="js/weapons.js?v=171"></script>
+  <script src="js/world.js?v=172"></script>
+  <script src="js/weapons.js?v=172"></script>
   <script src="js/icons.js?v=112"></script>
   <script src="js/throwables.js?v=122"></script>
-  <script src="js/enemies.js?v=167"></script>
-  <script src="js/squad.js?v=169"></script>
-  <script src="js/multiplayer.js?v=159"></script>
-  <script src="js/player.js?v=169"></script>
-  <script src="js/gamepad.js?v=166"></script>
+  <script src="js/enemies.js?v=172"></script>
+  <script src="js/squad.js?v=172"></script>
+  <script src="js/multiplayer.js?v=172"></script>
+  <script src="js/player.js?v=172"></script>
+  <script src="js/gamepad.js?v=172"></script>
   <script src="js/gunsmith.js?v=41"></script>
   <script src="js/matchmaking.js?v=168"></script>
-  <script src="js/ui.js?v=166"></script>
+  <script src="js/ui.js?v=172"></script>
   <script src="js/console.js?v=117"></script>
-  <script src="js/main.js?v=170"></script>
+  <script src="js/main.js?v=172"></script>
 </body>
 </html>

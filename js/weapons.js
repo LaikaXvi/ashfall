@@ -1554,6 +1554,30 @@ class WeaponSystem {
       this.plateArm = plateArm;
     }
 
+    if (withHands && !this.slideLegRig && this.vmCamera) {
+      // First-Person Baseball-Slide Lead Leg Rig (visible kicked out in front of player for duration of slide!)
+      const sLeg = new THREE.Group();
+      const pantsMat = new THREE.MeshLambertMaterial({ color: 0x2f342d });
+      const padMat = new THREE.MeshLambertMaterial({ color: 0x181b1a });
+      const bootMat = new THREE.MeshLambertMaterial({ color: 0x1e2124 });
+      const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.16, 0.44), pantsMat);
+      thigh.position.set(0, 0, 0.18);
+      const kneePad = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.06, 0.12), padMat);
+      kneePad.position.set(0, 0.075, -0.04);
+      const shin = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.135, 0.42), pantsMat);
+      shin.position.set(0, -0.01, -0.24);
+      const boot = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.22, 0.13), bootMat);
+      boot.position.set(0, 0.045, -0.47);
+      boot.rotation.x = 0.25;
+      const bootToe = new THREE.Mesh(new THREE.BoxGeometry(0.142, 0.08, 0.10), padMat);
+      bootToe.position.set(0, 0.14, -0.45);
+      sLeg.add(thigh, kneePad, shin, boot, bootToe);
+      sLeg.visible = false;
+      this.vmCamera.add(sLeg);
+      this.slideLegRig = sLeg;
+      this.slideLegBlend = 0;
+    }
+
     if (withHands && !this.medRig) {
       // Camera-space Tactical Field Medkit Rig (matches close-up plating rig)
       const mRig = new THREE.Group();
@@ -2378,6 +2402,28 @@ class WeaponSystem {
           : new THREE.Vector3(-0.22 + leanShX + swayShX, -0.20 - Math.abs(player.lean) * 0.02, 0.30));
       const lWrist = this.leftHand.position.clone().add(new THREE.Vector3(-0.010, -0.010, 0.034));
       this._aimArm(this.leftArm, lShoulder, lWrist);
+    }
+
+    // First-Person Baseball-Slide Lead Leg Animation (kicks out in front of camera for duration of slide!)
+    if (this.slideLegRig) {
+      const showSlideLeg = !!(player && player.isSliding && !player.isThirdPerson && !player.isDowned && !player.dead);
+      this.slideLegBlend = THREE.MathUtils.lerp(this.slideLegBlend || 0, showSlideLeg ? 1 : 0, Math.min(1, dt * 15));
+      if (this.slideLegBlend > 0.02) {
+        this.slideLegRig.visible = true;
+        const vib = showSlideLeg ? Math.sin(performance.now() * 0.036) * 0.008 : 0;
+        this.slideLegRig.position.set(
+          THREE.MathUtils.lerp(-0.34, -0.22, this.slideLegBlend),
+          THREE.MathUtils.lerp(-0.78, -0.42, this.slideLegBlend) + vib,
+          THREE.MathUtils.lerp(-0.22, -0.58, this.slideLegBlend)
+        );
+        this.slideLegRig.rotation.set(
+          THREE.MathUtils.lerp(-0.55, 0.12, this.slideLegBlend),
+          THREE.MathUtils.lerp(0.28, 0.16, this.slideLegBlend),
+          THREE.MathUtils.lerp(-0.25, -0.14, this.slideLegBlend)
+        );
+      } else {
+        this.slideLegRig.visible = false;
+      }
     }
 
     // FOV ADS zoom & subtle Tactical Sprint FOV burst (respects Settings FOV slider)

@@ -492,7 +492,10 @@ class SquadMate {
     this._remoteTargetPos.set(st.x || 0, st.y || 0, st.z || 0);
     // Player camera looks down -Z; SquadMate mesh faces +Z -> add PI to yaw!
     this._remoteTargetYaw = (st.yaw || 0) + Math.PI;
+    this._remotePitch = st.pitch || 0;
     this._remoteStance = st.stance || 'stand';
+    this._remoteTacSprint = !!st.tacSprint;
+    this._remoteAds = !!st.ads;
     if (typeof st.hp === 'number') this.hp = st.hp;
     if (typeof st.armor === 'number') this.armor = st.armor;
     if (st.wpn && st.wpn !== this.weaponId) {
@@ -572,21 +575,55 @@ class SquadMate {
           if (this.bleedSprite) this.bleedSprite.visible = false;
           // Prone rotates the standing rig (feet at y=0) forward ~86° onto belly -> pivot must sit at +0.20 ABOVE floor, never negative!
           const isProne = this._remoteStance === 'prone';
-          const isCrouch = this._remoteStance === 'crouch' || this._remoteStance === 'slide';
-          const stanceY = isProne ? 0.20 : (isCrouch ? -0.24 : 0);
-          const stancePitch = isProne ? 1.48 : 0;
+          const isSlide = this._remoteStance === 'slide';
+          const isCrouch = this._remoteStance === 'crouch';
+          const stanceY = isProne ? 0.20 : (isSlide ? -0.36 : (isCrouch ? -0.24 : 0));
+          const stancePitch = isProne ? 1.48 : (isSlide ? -0.24 : 0);
           this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, this.position.y + stanceY, lerpRate);
           this.group.rotation.x = THREE.MathUtils.lerp(this.group.rotation.x, stancePitch, lerpRate);
-          if (moving) {
-            this.animCycle += dt * Math.min(12, moveDist * 1.4);
-            const legAmp = isProne ? 0.14 : 0.48;
+
+          const rPitch = THREE.MathUtils.clamp(this._remotePitch || 0, -0.85, 0.85);
+          if (isSlide && this.opModel) {
+            // Baseball-slide pose: lead leg kicked straight out in front, trailing knee tucked!
+            this.leftHip.rotation.x = THREE.MathUtils.lerp(this.leftHip.rotation.x, 1.52, lerpRate);
+            this.opModel.leftLeg.knee.rotation.x = THREE.MathUtils.lerp(this.opModel.leftLeg.knee.rotation.x, -0.05, lerpRate);
+            this.rightHip.rotation.x = THREE.MathUtils.lerp(this.rightHip.rotation.x, 1.15, lerpRate);
+            this.opModel.rightLeg.knee.rotation.x = THREE.MathUtils.lerp(this.opModel.rightLeg.knee.rotation.x, -2.25, lerpRate);
+          } else if (moving) {
+            this.animCycle += dt * Math.min(13, moveDist * (this._remoteTacSprint ? 1.7 : 1.4));
+            const legAmp = isProne ? 0.14 : (this._remoteTacSprint ? 0.78 : 0.52);
             if (this.leftHip) this.leftHip.rotation.x = Math.sin(this.animCycle) * legAmp;
             if (this.rightHip) this.rightHip.rotation.x = -Math.sin(this.animCycle) * legAmp;
+            if (this.opModel) {
+              this.opModel.leftLeg.knee.rotation.x = -Math.max(0, -Math.cos(this.animCycle)) * 0.75 - 0.1;
+              this.opModel.rightLeg.knee.rotation.x = -Math.max(0, Math.cos(this.animCycle)) * 0.75 - 0.1;
+            }
           } else {
-            if (this.leftHip) this.leftHip.rotation.x = THREE.MathUtils.lerp(this.leftHip.rotation.x, 0, dt * 10);
-            if (this.rightHip) this.rightHip.rotation.x = THREE.MathUtils.lerp(this.rightHip.rotation.x, 0, dt * 10);
+            if (this.leftHip) this.leftHip.rotation.x = THREE.MathUtils.lerp(this.leftHip.rotation.x, 0.10, dt * 10);
+            if (this.rightHip) this.rightHip.rotation.x = THREE.MathUtils.lerp(this.rightHip.rotation.x, -0.08, dt * 10);
+            if (this.opModel) {
+              this.opModel.leftLeg.knee.rotation.x = THREE.MathUtils.lerp(this.opModel.leftLeg.knee.rotation.x, -0.14, dt * 10);
+              this.opModel.rightLeg.knee.rotation.x = THREE.MathUtils.lerp(this.opModel.rightLeg.knee.rotation.x, -0.10, dt * 10);
+            }
           }
-          this._redrawTag(this._remoteStance === 'crouch' ? 'CROUCH' : (isProne ? 'PRONE' : 'SQUAD'), this.squadColor);
+          // Track player's live crosshair pitch with head, torso & both weapon-holding arms (+ tac-sprint pose!)
+          if (this.opModel && !isProne) {
+            const m = this.opModel;
+            m.head.rotation.x = THREE.MathUtils.lerp(m.head.rotation.x, rPitch * 0.72, lerpRate);
+            if (this._remoteTacSprint && moving) {
+              m.torso.rotation.x = THREE.MathUtils.lerp(m.torso.rotation.x, -0.26, lerpRate);
+              m.rightArm.shoulder.rotation.set(1.12, 0, -0.18);
+              m.leftArm.shoulder.rotation.set(0.36 - Math.sin(this.animCycle) * 0.65, 0, 0.18);
+            } else {
+              m.torso.rotation.x = THREE.MathUtils.lerp(m.torso.rotation.x, -0.09 + rPitch * 0.26, lerpRate);
+              const armPitch = (this._remoteAds ? 0.98 : 0.86) + rPitch * 0.74;
+              m.leftArm.shoulder.rotation.x = THREE.MathUtils.lerp(m.leftArm.shoulder.rotation.x, armPitch, lerpRate);
+              m.leftArm.shoulder.rotation.z = THREE.MathUtils.lerp(m.leftArm.shoulder.rotation.z, 0.45, lerpRate);
+              m.rightArm.shoulder.rotation.x = THREE.MathUtils.lerp(m.rightArm.shoulder.rotation.x, armPitch + 0.04, lerpRate);
+              m.rightArm.shoulder.rotation.z = THREE.MathUtils.lerp(m.rightArm.shoulder.rotation.z, -0.15, lerpRate);
+            }
+          }
+          this._redrawTag(isSlide ? 'SLIDE' : (isCrouch ? 'CROUCH' : (isProne ? 'PRONE' : 'SQUAD')), this.squadColor);
         }
       } else {
         this._redrawTag('SYNCING...', '#ffca28');
