@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ASHFALL // 3D Extraction Looter-Shooter</title>
-  <link rel="stylesheet" href="css/style.css?v=196" />
+  <link rel="stylesheet" href="css/style.css?v=197" />
   <!-- Three.js r128 UMD for zero-build compatibility (works on both http:// and file://) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
@@ -33,7 +33,7 @@
     <!-- IMPORTANT: Update version in GAME_DATA.VERSION (js/data.js) and here with EVERY new commit -->
     <div class="menu-version-stack">
       <button id="menu-update-badge" class="menu-update-badge hidden" title="Click to reload into the latest version">NEW VERSION AVAILABLE</button>
-      <div id="menu-version-badge" class="menu-version-badge">v1.96</div>
+      <div id="menu-version-badge" class="menu-version-badge">v1.97</div>
     </div>
     <!-- Minimal Sub-Menu Top Bar (Top-Left Back Button only — no redundant nav band) -->
     <header id="menu-topbar" class="hideout-header hidden">
@@ -389,6 +389,7 @@
 
           <!-- 3 Vertical Active Duty Operator Slots -->
           <div id="active-duty-grid" class="active-duty-grid"></div>
+          <div class="duty-rc-hint">LEFT-CLICK TO SELECT OPERATOR · RIGHT-CLICK CARD FOR SKINS, TRAITS &amp; DISMISS</div>
 
           <!-- Active Operator Equipped Loadout Bar -->
           <div class="duty-loadout-footer">
@@ -1102,6 +1103,46 @@
     </div>
   </div>
 
+  <!-- ==================== ACTIVE DUTY OPERATOR CONTEXT MENU & MODALS ==================== -->
+  <div id="op-context-menu" class="op-context-menu hidden">
+    <div id="op-ctx-header" class="op-ctx-header">GHOST-01</div>
+    <button id="op-ctx-skin" class="op-ctx-btn" type="button">CHANGE SKIN</button>
+    <button id="op-ctx-traits" class="op-ctx-btn" type="button">MANAGE TRAITS</button>
+    <div class="op-ctx-sep"></div>
+    <button id="op-ctx-dismiss" class="op-ctx-btn danger" type="button">DISMISS OPERATOR</button>
+  </div>
+
+  <div id="op-skin-modal" class="op-submodal hidden">
+    <div class="op-submodal-card">
+      <div class="panel-header" style="margin-bottom:10px;">
+        <div>
+          <h3 id="op-skin-modal-title">OPERATOR SKINS</h3>
+          <span class="sub">SELECT AN EXCLUSIVE SKIN FOR THIS OPERATOR</span>
+        </div>
+        <button id="btn-op-skin-close" class="btn-small">CLOSE [ESC]</button>
+      </div>
+      <div id="op-skin-grid" class="op-skin-grid"></div>
+    </div>
+  </div>
+
+  <div id="op-traits-modal" class="op-submodal hidden">
+    <div class="op-submodal-card op-traits-card">
+      <div class="panel-header" style="margin-bottom:10px;">
+        <div>
+          <h3 id="op-traits-modal-title">OPERATOR TRAITS</h3>
+          <span id="op-traits-modal-sub" class="sub">EARN TRAIT POINTS BY LEVELING UP DOGTAG TIERS</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span id="op-traits-points-pill" class="op-points-pill">0 TRAIT PTS</span>
+          <button id="btn-op-traits-devpt" class="btn-small hidden" style="border-color:#69f0ae;color:#69f0ae;">+1 DEV PT</button>
+          <button id="btn-op-traits-reset" class="btn-small">RESET</button>
+          <button id="btn-op-traits-close" class="btn-small">CLOSE [ESC]</button>
+        </div>
+      </div>
+      <div id="op-traits-tracks" class="op-traits-tracks"></div>
+    </div>
+  </div>
+
   <!-- ==================== DEVELOPER CONSOLE (` BACKQUOTE) ==================== -->
   <div id="dev-console" class="dev-console hidden">
     <div class="dev-console-header">
@@ -1116,7 +1157,7 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION with every new commit) -->
-  <script src="js/data.js?v=196"></script>
+  <script src="js/data.js?v=197"></script>
   <script src="js/net.js?v=123"></script>
   <script src="js/sfx_samples.js?v=21"></script>
   <script src="js/audio.js?v=179"></script>
@@ -1132,7 +1173,7 @@
   <script src="js/gunsmith.js?v=195"></script>
   <script src="js/matchmaking.js?v=168"></script>
   <script src="js/hideout.js?v=193"></script>
-  <script src="js/ui.js?v=196"></script>
+  <script src="js/ui.js?v=197"></script>
   <script src="js/console.js?v=117"></script>
   <script src="js/main.js?v=195"></script>
 </body>

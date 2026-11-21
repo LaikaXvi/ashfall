@@ -3985,10 +3985,10 @@ class GameUI {
 
   _getDogtagInfo(streak = 0) {
     const s = Math.max(0, Math.floor(Number(streak) || 0));
-    if (s >= 10) return { tier: 'DAMASCUS DOGTAG', level: 'LVL 4', color: '#c48bff', stroke: '#8c52ff', value: 50000, streak: s };
-    if (s >= 5) return { tier: 'GOLD DOGTAG', level: 'LVL 3', color: '#ffd54f', stroke: '#f5a623', value: 25000, streak: s };
-    if (s >= 2) return { tier: 'SILVER DOGTAG', level: 'LVL 2', color: '#cfd8dc', stroke: '#90a4ae', value: 10000, streak: s };
-    return { tier: 'BRONZE DOGTAG', level: 'LVL 1', color: '#cd8c52', stroke: '#9c6230', value: 2500, streak: s };
+    if (s >= 10) return { tier: 'DAMASCUS DOGTAG', level: 'LVL 4', levelNum: 4, color: '#c48bff', stroke: '#8c52ff', value: 50000, streak: s };
+    if (s >= 5) return { tier: 'GOLD DOGTAG', level: 'LVL 3', levelNum: 3, color: '#ffd54f', stroke: '#f5a623', value: 25000, streak: s };
+    if (s >= 2) return { tier: 'SILVER DOGTAG', level: 'LVL 2', levelNum: 2, color: '#cfd8dc', stroke: '#90a4ae', value: 10000, streak: s };
+    return { tier: 'BRONZE DOGTAG', level: 'LVL 1', levelNum: 1, color: '#cd8c52', stroke: '#9c6230', value: 2500, streak: s };
   }
 
   _buildOperatorPortraitSVG(op) {
@@ -4080,19 +4080,82 @@ class GameUI {
     this.renderHideout();
   }
 
-  _getOperatorSkins() {
+  _getOperatorSkinsForOp(opId) {
+    const rosters = {
+      op_1: [
+        { id: 'ghost_ranger', name: 'RANGER OLIVE', accent: '#69f0ae', helmet: '#2a332b', visor: '#69f0ae', rig: '#384438', uniform: '#232b24', style: 'nvg' },
+        { id: 'ghost_arctic', name: 'ARCTIC GHOST', accent: '#80deea', helmet: '#c7d3db', visor: '#4dd0e1', rig: '#8fa1ad', uniform: '#b4c2cc', style: 'nvg' },
+        { id: 'ghost_woodland', name: 'WOODLAND PHANTOM', accent: '#aed581', helmet: '#34422a', visor: '#9ccc65', rig: '#455436', uniform: '#283320', style: 'nvg' },
+        { id: 'ghost_night', name: 'NIGHTSTALKER', accent: '#b388ff', helmet: '#16161d', visor: '#b388ff', rig: '#22212e', uniform: '#121218', style: 'nvg' }
+      ],
+      op_2: [
+        { id: 'viper_shadow', name: 'SHADOW RECON', accent: '#42a5f5', helmet: '#1f2836', visor: '#42a5f5', rig: '#283647', uniform: '#19202b', style: 'goggles' },
+        { id: 'viper_cobalt', name: 'COBALT SPECTRE', accent: '#4fc3f7', helmet: '#1a2f42', visor: '#29b6f6', rig: '#23425c', uniform: '#142333', style: 'goggles' },
+        { id: 'viper_urban', name: 'URBAN VIPER', accent: '#cfd8dc', helmet: '#3c434a', visor: '#90a4ae', rig: '#4d565e', uniform: '#2c3136', style: 'goggles' },
+        { id: 'viper_cbrn', name: 'CBRN HAZARD', accent: '#ffd54f', helmet: '#383a26', visor: '#ffca28', rig: '#47492e', uniform: '#2d2f1e', style: 'goggles' }
+      ],
+      op_3: [
+        { id: 'kodiak_iron', name: 'IRON BREACHER', accent: '#f5a623', helmet: '#3d3528', visor: '#f5a623', rig: '#524634', uniform: '#2c261e', style: 'heavy' },
+        { id: 'kodiak_desert', name: 'DESERT JUGGERNAUT', accent: '#ffcc80', helmet: '#7a684e', visor: '#ffb74d', rig: '#8c7758', uniform: '#5c4e3a', style: 'heavy' },
+        { id: 'kodiak_crimson', name: 'CRIMSON VANGUARD', accent: '#ff5252', helmet: '#1a1a1d', visor: '#ff5252', rig: '#361c20', uniform: '#161518', style: 'heavy' },
+        { id: 'kodiak_titan', name: 'TITAN CARBON', accent: '#b0bec5', helmet: '#212529', visor: '#eceff1', rig: '#2f353b', uniform: '#181b1e', style: 'heavy' }
+      ]
+    };
+    return rosters[opId] || rosters.op_1;
+  }
+
+  _getTraitTracksDef() {
     return [
-      { id: 'ranger_olive', name: 'RANGER OLIVE', accent: '#69f0ae', helmet: '#2a332b', visor: '#69f0ae', rig: '#384438', uniform: '#232b24', style: 'nvg' },
-      { id: 'shadow_recon', name: 'SHADOW RECON', accent: '#42a5f5', helmet: '#1f2836', visor: '#42a5f5', rig: '#283647', uniform: '#19202b', style: 'goggles' },
-      { id: 'iron_breacher', name: 'IRON BREACHER', accent: '#f5a623', helmet: '#3d3528', visor: '#f5a623', rig: '#524634', uniform: '#2c261e', style: 'heavy' },
-      { id: 'arctic_ghost', name: 'ARCTIC GHOST', accent: '#80deea', helmet: '#c7d3db', visor: '#4dd0e1', rig: '#8fa1ad', uniform: '#b4c2cc', style: 'nvg' },
-      { id: 'crimson_vanguard', name: 'CRIMSON VANGUARD', accent: '#ff5252', helmet: '#1a1a1d', visor: '#ff5252', rig: '#2d1c20', uniform: '#161518', style: 'heavy' },
-      { id: 'hazard_cbrn', name: 'CBRN HAZARD', accent: '#ffd54f', helmet: '#383a26', visor: '#ffca28', rig: '#47492e', uniform: '#2d2f1e', style: 'goggles' }
+      {
+        id: 'assault',
+        name: 'ASSAULT TRACK',
+        accent: '#ff6b6b',
+        tiers: [
+          { tier: 1, name: 'QUICK HANDS', desc: '+15% faster weapon reload speed', cost: 1 },
+          { tier: 2, name: 'STEADY AIM', desc: '-15% vertical & horizontal recoil', cost: 1 },
+          { tier: 3, name: 'DEADEYE', desc: '+12% precision headshot damage', cost: 1 }
+        ]
+      },
+      {
+        id: 'survival',
+        name: 'SURVIVAL TRACK',
+        accent: '#4fc3f7',
+        tiers: [
+          { tier: 1, name: 'FAST PLATING', desc: '+20% faster armor plate insertion', cost: 1 },
+          { tier: 2, name: 'FIELD MEDIC', desc: '+20% faster medkits & squad revives', cost: 1 },
+          { tier: 3, name: 'JUGGERNAUT', desc: '+15 maximum operator health', cost: 1 }
+        ]
+      },
+      {
+        id: 'recon',
+        name: 'RECON TRACK',
+        accent: '#69f0ae',
+        tiers: [
+          { tier: 1, name: 'LIGHTWEIGHT', desc: '+8% sprint & tactical sprint speed', cost: 1 },
+          { tier: 2, name: 'MARATHON', desc: '+25% stamina capacity & recovery', cost: 1 },
+          { tier: 3, name: 'SCAVENGER', desc: '+25% faster container search reveal', cost: 1 }
+        ]
+      }
     ];
   }
 
+  _ensureOperatorTraits(op) {
+    if (!op.traits || typeof op.traits !== 'object') {
+      op.traits = { assault: 0, survival: 0, recon: 0 };
+    }
+    const dt = this._getDogtagInfo(op.exfilStreak || 0);
+    const minFromDogtag = Math.max(0, (dt.levelNum - 1) * 2);
+    const spent = (op.traits.assault || 0) + (op.traits.survival || 0) + (op.traits.recon || 0);
+    if (typeof op.traitPoints !== 'number' || Number.isNaN(op.traitPoints)) {
+      op.traitPoints = Math.max(0, minFromDogtag - spent);
+    } else if (op.traitPoints + spent < minFromDogtag) {
+      op.traitPoints = minFromDogtag - spent;
+    }
+    return op.traits;
+  }
+
   _resolveOperatorSkin(op) {
-    const skins = this._getOperatorSkins();
+    const skins = this._getOperatorSkinsForOp(op.id);
     const found = skins.find((s) => s.id === op.skinId) || skins[0];
     return {
       ...op,
@@ -4107,25 +4170,281 @@ class GameUI {
     };
   }
 
-  cycleActiveDutySkin(idx) {
+  _bindOperatorContextAndModals() {
+    if (this._opCtxBound) return;
+    this._opCtxBound = true;
+
+    const ctx = document.getElementById('op-context-menu');
+    const skinModal = document.getElementById('op-skin-modal');
+    const traitsModal = document.getElementById('op-traits-modal');
+
+    document.addEventListener('mousedown', (e) => {
+      if (ctx && !ctx.classList.contains('hidden') && !ctx.contains(e.target)) {
+        this.closeOperatorContextMenu();
+      }
+    });
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Escape') {
+        if (ctx && !ctx.classList.contains('hidden')) this.closeOperatorContextMenu();
+        if (skinModal && !skinModal.classList.contains('hidden')) {
+          e.stopPropagation();
+          this.closeOperatorSkinModal();
+        }
+        if (traitsModal && !traitsModal.classList.contains('hidden')) {
+          e.stopPropagation();
+          this.closeOperatorTraitsModal();
+        }
+      }
+    }, true);
+
+    const btnSkin = document.getElementById('op-ctx-skin');
+    const btnTraits = document.getElementById('op-ctx-traits');
+    const btnDismiss = document.getElementById('op-ctx-dismiss');
+    if (btnSkin) btnSkin.addEventListener('click', () => {
+      const idx = this._opContextIdx;
+      this.closeOperatorContextMenu();
+      this.openOperatorSkinModal(idx);
+    });
+    if (btnTraits) btnTraits.addEventListener('click', () => {
+      const idx = this._opContextIdx;
+      this.closeOperatorContextMenu();
+      this.openOperatorTraitsModal(idx);
+    });
+    if (btnDismiss) btnDismiss.addEventListener('click', () => {
+      const idx = this._opContextIdx;
+      this.closeOperatorContextMenu();
+      this.dismissActiveDutyOperator(idx);
+    });
+
+    const closeSkinBtn = document.getElementById('btn-op-skin-close');
+    if (closeSkinBtn) closeSkinBtn.addEventListener('click', () => this.closeOperatorSkinModal());
+    if (skinModal) skinModal.addEventListener('mousedown', (e) => {
+      if (e.target === skinModal) this.closeOperatorSkinModal();
+    });
+
+    const closeTraitsBtn = document.getElementById('btn-op-traits-close');
+    if (closeTraitsBtn) closeTraitsBtn.addEventListener('click', () => this.closeOperatorTraitsModal());
+    if (traitsModal) traitsModal.addEventListener('mousedown', (e) => {
+      if (e.target === traitsModal) this.closeOperatorTraitsModal();
+    });
+
+    const resetTraitsBtn = document.getElementById('btn-op-traits-reset');
+    if (resetTraitsBtn) resetTraitsBtn.addEventListener('click', () => this.resetOperatorTraits(this._opTraitsIdx));
+
+    const devPtBtn = document.getElementById('btn-op-traits-devpt');
+    if (devPtBtn) devPtBtn.addEventListener('click', () => {
+      const ops = this._ensureActiveDutyOperators();
+      const op = ops[this._opTraitsIdx];
+      if (!op) return;
+      this._ensureOperatorTraits(op);
+      op.traitPoints = (op.traitPoints || 0) + 1;
+      this.saveProfile();
+      this.renderOperatorTraitsModal(this._opTraitsIdx);
+      this.renderActiveDutyRoster();
+    });
+  }
+
+  openOperatorContextMenu(idx, clientX, clientY) {
+    this._bindOperatorContextAndModals();
     const ops = this._ensureActiveDutyOperators();
-    if (idx < 0 || idx >= ops.length) return;
-    const skins = this._getOperatorSkins();
-    const curIdx = Math.max(0, skins.findIndex((s) => s.id === ops[idx].skinId));
-    const next = skins[(curIdx + 1) % skins.length];
-    ops[idx].skinId = next.id;
-    ops[idx].skinName = next.name;
-    ops[idx].accent = next.accent;
-    ops[idx].helmet = next.helmet;
-    ops[idx].visor = next.visor;
-    ops[idx].rig = next.rig;
-    ops[idx].uniform = next.uniform;
-    ops[idx].style = next.style;
+    const rawOp = ops[idx];
+    if (!rawOp) return;
+    const op = this._resolveOperatorSkin(rawOp);
+    this._opContextIdx = idx;
+
+    const ctx = document.getElementById('op-context-menu');
+    const hdr = document.getElementById('op-ctx-header');
+    if (!ctx) return;
+    if (hdr) hdr.textContent = `${op.callsign} // ${op.skinName}`;
+    ctx.classList.remove('hidden');
+
+    const w = ctx.offsetWidth || 195;
+    const h = ctx.offsetHeight || 150;
+    const x = Math.max(8, Math.min(window.innerWidth - w - 8, clientX));
+    const y = Math.max(8, Math.min(window.innerHeight - h - 8, clientY));
+    ctx.style.left = `${x}px`;
+    ctx.style.top = `${y}px`;
+  }
+
+  closeOperatorContextMenu() {
+    const ctx = document.getElementById('op-context-menu');
+    if (ctx) ctx.classList.add('hidden');
+  }
+
+  dismissActiveDutyOperator(idx) {
+    const ops = this._ensureActiveDutyOperators();
+    const op = ops[idx];
+    if (!op) return;
+    const defaultSkins = this._getOperatorSkinsForOp(op.id);
+    const defSkin = defaultSkins[0];
+    op.exfilStreak = 0;
+    op.traitPoints = 0;
+    op.traits = { assault: 0, survival: 0, recon: 0 };
+    op.gear = null;
+    if (defSkin) {
+      op.skinId = defSkin.id;
+      op.skinName = defSkin.name;
+      op.accent = defSkin.accent;
+      op.helmet = defSkin.helmet;
+      op.visor = defSkin.visor;
+      op.rig = defSkin.rig;
+      op.uniform = defSkin.uniform;
+      op.style = defSkin.style;
+    }
+    if (idx === (this.profile.activeOperatorIdx || 0) && this.profile.loadout) {
+      this.profile.loadout.armor = null;
+      this.profile.loadout.backpack = null;
+      this.profile.loadout.headgear = null;
+      this.profile.loadout.selfRevive = null;
+      this.profile.loadout.killstreak = null;
+    }
     this.saveProfile();
     this.renderHideout();
   }
 
+  openOperatorSkinModal(idx) {
+    this._bindOperatorContextAndModals();
+    const ops = this._ensureActiveDutyOperators();
+    const rawOp = ops[idx];
+    if (!rawOp) return;
+    const op = this._resolveOperatorSkin(rawOp);
+    const modal = document.getElementById('op-skin-modal');
+    const title = document.getElementById('op-skin-modal-title');
+    const grid = document.getElementById('op-skin-grid');
+    if (!modal || !grid) return;
+
+    if (title) title.textContent = `${op.callsign} // EXCLUSIVE SKINS`;
+    const skins = this._getOperatorSkinsForOp(op.id);
+    grid.innerHTML = '';
+    skins.forEach((sk) => {
+      const equipped = sk.id === op.skinId;
+      const previewOp = { ...op, ...sk, id: `${op.id}_${sk.id}` };
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = `op-skin-choice${equipped ? ' equipped' : ''}`;
+      card.innerHTML = `
+        <div class="op-skin-choice-name" style="color:${sk.accent};">${sk.name}</div>
+        <div class="op-skin-choice-portrait">${this._buildOperatorPortraitSVG(previewOp)}</div>
+        <div class="op-skin-choice-status">${equipped ? 'EQUIPPED' : 'SELECT SKIN'}</div>
+      `;
+      card.addEventListener('click', () => {
+        rawOp.skinId = sk.id;
+        rawOp.skinName = sk.name;
+        rawOp.accent = sk.accent;
+        rawOp.helmet = sk.helmet;
+        rawOp.visor = sk.visor;
+        rawOp.rig = sk.rig;
+        rawOp.uniform = sk.uniform;
+        rawOp.style = sk.style;
+        this.saveProfile();
+        this.renderHideout();
+        this.openOperatorSkinModal(idx);
+      });
+      grid.appendChild(card);
+    });
+    modal.classList.remove('hidden');
+  }
+
+  closeOperatorSkinModal() {
+    const modal = document.getElementById('op-skin-modal');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  openOperatorTraitsModal(idx) {
+    this._bindOperatorContextAndModals();
+    this._opTraitsIdx = idx;
+    this.renderOperatorTraitsModal(idx);
+    const modal = document.getElementById('op-traits-modal');
+    if (modal) modal.classList.remove('hidden');
+  }
+
+  closeOperatorTraitsModal() {
+    const modal = document.getElementById('op-traits-modal');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  resetOperatorTraits(idx) {
+    const ops = this._ensureActiveDutyOperators();
+    const op = ops[idx];
+    if (!op) return;
+    this._ensureOperatorTraits(op);
+    const spent = (op.traits.assault || 0) + (op.traits.survival || 0) + (op.traits.recon || 0);
+    if (spent <= 0) return;
+    op.traitPoints = (op.traitPoints || 0) + spent;
+    op.traits = { assault: 0, survival: 0, recon: 0 };
+    this.saveProfile();
+    this.renderOperatorTraitsModal(idx);
+    this.renderActiveDutyRoster();
+  }
+
+  renderOperatorTraitsModal(idx) {
+    const ops = this._ensureActiveDutyOperators();
+    const op = ops[idx];
+    if (!op) return;
+    const traits = this._ensureOperatorTraits(op);
+    const dt = this._getDogtagInfo(op.exfilStreak || 0);
+    const title = document.getElementById('op-traits-modal-title');
+    const sub = document.getElementById('op-traits-modal-sub');
+    const ptsPill = document.getElementById('op-traits-points-pill');
+    const devPtBtn = document.getElementById('btn-op-traits-devpt');
+    const tracksEl = document.getElementById('op-traits-tracks');
+    if (!tracksEl) return;
+
+    if (title) title.textContent = `${op.callsign} // TRAIT TRACKS`;
+    if (sub) sub.textContent = `${dt.tier} (${dt.level}) · EARN +2 TRAIT PTS EACH DOGTAG LEVEL-UP`;
+    if (ptsPill) {
+      ptsPill.textContent = `${op.traitPoints || 0} TRAIT PTS`;
+      ptsPill.classList.toggle('has-pts', (op.traitPoints || 0) > 0);
+    }
+    if (devPtBtn) devPtBtn.classList.toggle('hidden', !window.DEV_MODE);
+
+    const trackDefs = this._getTraitTracksDef();
+    tracksEl.innerHTML = '';
+    trackDefs.forEach((tr) => {
+      const unlockedTier = traits[tr.id] || 0;
+      const col = document.createElement('div');
+      col.className = 'op-trait-track';
+      col.innerHTML = `
+        <div class="op-trait-track-hdr" style="border-top-color:${tr.accent};">
+          <span style="color:${tr.accent};">${tr.name}</span>
+          <span class="sub">${unlockedTier}/3</span>
+        </div>
+        <div class="op-trait-nodes"></div>
+      `;
+      const nodesWrap = col.querySelector('.op-trait-nodes');
+      tr.tiers.forEach((node) => {
+        const isUnlocked = unlockedTier >= node.tier;
+        const isNext = unlockedTier === node.tier - 1;
+        const canBuy = isNext && (op.traitPoints || 0) >= node.cost;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = `op-trait-node${isUnlocked ? ' unlocked' : ''}${isNext ? ' next' : ''}${!isUnlocked && !isNext ? ' locked' : ''}`;
+        btn.disabled = !canBuy;
+        btn.innerHTML = `
+          <div class="otn-top">
+            <span class="otn-tier">TIER ${node.tier}</span>
+            <span class="otn-state">${isUnlocked ? 'UNLOCKED' : (isNext ? `UNLOCK (${node.cost} PT)` : 'LOCKED')}</span>
+          </div>
+          <div class="otn-name">${node.name}</div>
+          <div class="otn-desc">${node.desc}</div>
+        `;
+        if (canBuy) {
+          btn.addEventListener('click', () => {
+            op.traitPoints = Math.max(0, (op.traitPoints || 0) - node.cost);
+            traits[tr.id] = node.tier;
+            this.saveProfile();
+            this.renderOperatorTraitsModal(idx);
+            this.renderActiveDutyRoster();
+          });
+        }
+        nodesWrap.appendChild(btn);
+      });
+      tracksEl.appendChild(col);
+    });
+  }
+
   renderActiveDutyRoster() {
+    this._bindOperatorContextAndModals();
     const grid = document.getElementById('active-duty-grid');
     if (!grid) return;
     const ops = this._ensureActiveDutyOperators();
@@ -4133,14 +4452,11 @@ class GameUI {
     grid.innerHTML = '';
 
     ops.forEach((rawOp, idx) => {
-      // Assign default skinId by slot index if not yet stored
-      if (!rawOp.skinId) {
-        const defaultSkins = ['ranger_olive', 'shadow_recon', 'iron_breacher'];
-        rawOp.skinId = defaultSkins[idx] || 'ranger_olive';
-      }
       const op = this._resolveOperatorSkin(rawOp);
+      this._ensureOperatorTraits(rawOp);
       const isActive = idx === activeIdx;
       const dt = this._getDogtagInfo(op.exfilStreak || 0);
+      const availPts = rawOp.traitPoints || 0;
 
       const card = document.createElement('div');
       card.className = `duty-op-card duty-skin-card${isActive ? ' active' : ''}`;
@@ -4151,7 +4467,6 @@ class GameUI {
             ${isActive ? '<span class="duty-active-pill">ACTIVE</span>' : '<span class="duty-slot-tag">STANDBY</span>'}
           </div>
           <div class="duty-skin-name" style="color:${isActive ? op.accent : '#f2f6fa'};">${op.skinName}</div>
-          <button class="btn-small duty-skin-cycle-btn" type="button" title="Cycle Operator Skin">CYCLE SKIN ↻</button>
         </div>
 
         <div class="duty-portrait-wrap duty-portrait-tall">
@@ -4161,17 +4476,15 @@ class GameUI {
         <div class="duty-dogtag-centered">
           ${this._buildDogtagIconSVG(dt)}
           <div class="duty-dogtag-level-text" style="color:${dt.color};">${dt.tier} · ${dt.level}</div>
-          <div class="duty-dogtag-sub">EXFIL STREAK: ${dt.streak} · ₽${dt.value.toLocaleString()}</div>
+          <div class="duty-dogtag-sub">EXFIL STREAK: ${dt.streak}${availPts > 0 ? ` · <span style="color:#69f0ae;font-weight:800;">${availPts} TRAIT PT${availPts > 1 ? 'S' : ''}</span>` : ''}</div>
         </div>
       `;
-      const cycleBtn = card.querySelector('.duty-skin-cycle-btn');
-      if (cycleBtn) {
-        cycleBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          this.cycleActiveDutySkin(idx);
-        });
-      }
       card.addEventListener('click', () => this.selectActiveDutyOperator(idx));
+      card.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.openOperatorContextMenu(idx, e.clientX, e.clientY);
+      });
       grid.appendChild(card);
     });
   }
@@ -7145,11 +7458,22 @@ class GameUI {
     const badge = document.getElementById('summary-status-badge');
     const title = document.getElementById('summary-title');
 
-    // Update Active Duty Operator exfil streak & dogtag level on raid completion!
+    // Update Active Duty Operator exfil streak, dogtag level & award Trait Points on dogtag level-up!
     const ops = this._ensureActiveDutyOperators();
     const curOp = ops[this.profile.activeOperatorIdx || 0];
     if (curOp) {
-      curOp.exfilStreak = extracted ? Math.min(10, (curOp.exfilStreak || 0) + 1) : 0;
+      if (extracted) {
+        const prevDt = this._getDogtagInfo(curOp.exfilStreak || 0);
+        curOp.exfilStreak = Math.min(10, (curOp.exfilStreak || 0) + 1);
+        const nextDt = this._getDogtagInfo(curOp.exfilStreak);
+        if (nextDt.levelNum > prevDt.levelNum) {
+          curOp.traitPoints = (curOp.traitPoints || 0) + 2 * (nextDt.levelNum - prevDt.levelNum);
+        }
+      } else {
+        curOp.exfilStreak = 0;
+        curOp.traitPoints = 0;
+        curOp.traits = { assault: 0, survival: 0, recon: 0 };
+      }
       this.saveProfile();
     }
 
