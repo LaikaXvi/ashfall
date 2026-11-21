@@ -3068,9 +3068,46 @@ class GameUI {
     return `₽${n}`;
   }
 
+  _getCategoryGlyphSVG(def) {
+    const t = (def && def.type) || '';
+    const id = (def && def.id) || '';
+    if (t === 'med' || id === 'self_revive') {
+      return '<svg class="slot-cat-svg cat-med" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="#4caf50"/><path d="M8 4.2v7.6M4.2 8h7.6" stroke="#ffffff" stroke-width="2.1" stroke-linecap="round"/></svg>';
+    }
+    if (t === 'armor' || t === 'plate') {
+      return '<svg class="slot-cat-svg" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 2.5L6.5 2h3l2 .5 1.5 2.5-1.2 1.2v7.3H4.2V6.2L3 5z" fill="currentColor"/></svg>';
+    }
+    if (t === 'backpack') {
+      return '<svg class="slot-cat-svg" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3a2.5 2.5 0 0 1 5 0v1H12a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 12 14H4a1.5 1.5 0 0 1-1.5-1.5v-7A1.5 1.5 0 0 1 4 4h1.5V3zm1.5 1h2V3a1 1 0 0 0-2 0v1z" fill="currentColor"/></svg>';
+    }
+    if (t === 'weapon') {
+      return '<svg class="slot-cat-svg" viewBox="0 0 18 14" aria-hidden="true"><path d="M1 6h10l1.5-1.5h4.5v2h-4l-1 1.5h-2l.8 4H8.5L7.6 8H5L3.8 11H2l.8-3.5H1V6z" fill="currentColor"/></svg>';
+    }
+    if (t === 'melee') {
+      return '<svg class="slot-cat-svg" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 12.5l3.5-3.5L4.5 8l1-1 1 1 6.5-5.5-2 5.5-3.5 3.5 1 1-1 1-1-1-3 2z" fill="currentColor"/></svg>';
+    }
+    if (t === 'ammo') {
+      return '<svg class="slot-cat-svg" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 13V6.5L6.5 3 8 6.5V13H5zm4 0V6.5L10.5 3 12 6.5V13H9z" fill="currentColor"/></svg>';
+    }
+    if (t === 'lethal' || t === 'tactical') {
+      return '<svg class="slot-cat-svg" viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 2h3v1.5h1.2l.8 1.5-.8.6-.5-1H9.5v.8a4 4 0 1 1-3 0v-.8H5.5V2h1z" fill="currentColor"/></svg>';
+    }
+    if (t === 'key') {
+      return '<svg class="slot-cat-svg" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 9.5a3.5 3.5 0 1 1 2.7-1.3L14 14l-1.3 1.3-1.4-1.4-1.1 1.1-1.3-1.3 1.1-1.1-2.2-2.2a3.5 3.5 0 0 1-2.3.1zM5.5 4.8a1.2 1.2 0 1 0 0 2.4 1.2 1.2 0 0 0 0-2.4z" fill="currentColor"/></svg>';
+    }
+    if (t === 'valuable' || t === 'dogtag') {
+      return '<svg class="slot-cat-svg" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2L14 7.5 8 14 2 7.5 8 2z" fill="currentColor"/></svg>';
+    }
+    if (t === 'killstreak' || t === 'field_upgrade') {
+      return '<svg class="slot-cat-svg" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8l1.9 3.9 4.3.6-3.1 3 .7 4.3L8 11.6 4.2 13.6l.7-4.3-3.1-3 4.3-.6L8 1.8z" fill="currentColor"/></svg>';
+    }
+    // Material / gear / default cube silhouette
+    return '<svg class="slot-cat-svg" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8L13.5 5v6L8 14.2 2.5 11V5L8 1.8zm0 1.6L4.2 5.6 8 7.8l3.8-2.2L8 3.4z" fill="currentColor"/></svg>';
+  }
+
   _renderInvSlotInner(item, def, opts = {}) {
     const wide = !!(opts.wide);
-    const typeLbl = opts.typeLabel || this._getItemTypeLabel(def);
+    const catGlyph = this._getCategoryGlyphSVG(def);
     const totalVal = (def.value || 0) * (item.qty || 1);
     const valLbl = this._formatShortValue(totalVal);
     const iconCls = wide ? 'slot-icon-img wide-weapon-icon' : 'slot-icon-img';
@@ -3079,7 +3116,7 @@ class GameUI {
       : '';
     return `
       <div class="slot-top-bar">
-        <span class="slot-type">${typeLbl}</span>
+        <span class="slot-type-icon">${catGlyph}</span>
         ${valLbl ? `<span class="slot-price">${valLbl}</span>` : ''}
       </div>
       ${this._renderItemIconHTML(item.id, def, { wide, cls: iconCls, mods: item.mods })}
@@ -4523,7 +4560,7 @@ class GameUI {
     setTimeout(() => row.remove(), 5200);
   }
 
-  showXpFeedback({ label = 'KILL', xp = 100, isDowned = false, isRevive = false } = {}) {
+  showXpFeedback({ label = 'KILL', xp = 100, isDowned = false, isRevive = false, isArmorBreak = false } = {}) {
     const totalEl = document.getElementById('hud-xp-total');
     const eventsEl = document.getElementById('hud-xp-events');
     if (!totalEl || !eventsEl) return;
@@ -4537,8 +4574,13 @@ class GameUI {
     totalEl.classList.add('visible', 'bump');
 
     const row = document.createElement('div');
-    row.className = 'xp-event-row' + (isDowned ? ' downed' : '') + (isRevive ? ' revive' : '');
-    row.textContent = label;
+    row.className = 'xp-event-row' + (isDowned ? ' downed' : '') + (isRevive ? ' revive' : '') + (isArmorBreak ? ' armor-break' : '');
+    if (isArmorBreak) {
+      // Special cracked/broken armor plate vest icon in the XP feed!
+      row.innerHTML = `<svg class="xp-armor-break-svg" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4L8 2h3l-1.5 6 3 2-2.5 5 1.5 7H5V4z" fill="#4fc3f7"/><path d="M19 4L16 2h-3l1.2 5.2 2.8 2.2-2.2 4.8L16.5 22H19V4z" fill="#4fc3f7" opacity="0.88"/><path d="M12.2 2.5L9.8 8.2l3.4 2.4-2.8 5.2 1.8 6" fill="none" stroke="#ffffff" stroke-width="1.6" stroke-linecap="round"/></svg><span>${label}</span>`;
+    } else {
+      row.textContent = label;
+    }
     eventsEl.prepend(row);
     while (eventsEl.children.length > 4) eventsEl.lastElementChild.remove();
 
@@ -4620,12 +4662,20 @@ class GameUI {
     banner.classList.add('hidden');
   }
 
-  triggerHitmarker(headshot = false) {
+  triggerHitmarker(headshot = false, hitArmor = false) {
     const hm = document.getElementById('hitmarker');
-    hm.classList.toggle('headshot', headshot);
+    if (!hm) return;
+    hm.classList.toggle('headshot', !!headshot);
+    hm.classList.toggle('armor', !headshot && !!hitArmor);
+    hm.classList.remove('pop');
+    void hm.offsetWidth;
+    hm.classList.add('pop');
     hm.style.opacity = '1';
     clearTimeout(this._hmTimer);
-    this._hmTimer = setTimeout(() => { hm.style.opacity = '0'; }, 120);
+    this._hmTimer = setTimeout(() => {
+      hm.style.opacity = '0';
+      hm.classList.remove('pop');
+    }, 150);
   }
 
   triggerDamageFlash() {

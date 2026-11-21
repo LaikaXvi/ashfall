@@ -1117,12 +1117,13 @@ class WeaponSystem {
     const g = new THREE.Group();
     const hasCamo = mods.camo && mods.camo !== 'none';
     const gunMat = this._getCamoMaterial(weaponDef, mods.camo);
-    const steelMat = hasCamo ? gunMat : new THREE.MeshLambertMaterial({ color: 0x2a2d30 });
-    const darkMat = new THREE.MeshLambertMaterial({ color: 0x16181a });
-    const magMat = new THREE.MeshLambertMaterial({ color: 0x4c5259 });
-    const bakeliteMat = new THREE.MeshLambertMaterial({ color: 0x6e3524 });
-    const brassMat = new THREE.MeshLambertMaterial({ color: 0xd4a442 });
-    const woodMat = new THREE.MeshLambertMaterial({ color: 0x634025 });
+    // HD Specular Gunmetal, Polymer, Bakelite, Brass & Lacquered Wood finishes
+    const steelMat = hasCamo ? gunMat : new THREE.MeshPhongMaterial({ color: 0x2f343a, specular: 0x6f7c8a, shininess: 58 });
+    const darkMat = new THREE.MeshPhongMaterial({ color: 0x191c20, specular: 0x454d56, shininess: 38 });
+    const magMat = new THREE.MeshPhongMaterial({ color: 0x4c535c, specular: 0x707b86, shininess: 48 });
+    const bakeliteMat = new THREE.MeshPhongMaterial({ color: 0x753826, specular: 0x4a2a1e, shininess: 32 });
+    const brassMat = new THREE.MeshPhongMaterial({ color: 0xdcb04a, specular: 0xfff0b8, shininess: 85 });
+    const woodMat = new THREE.MeshPhongMaterial({ color: 0x6a4427, specular: 0x3a2a1c, shininess: 26 });
 
     const addTriggerGuard = (zPos, yPos) => {
       const bot = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.005, 0.045), darkMat);
@@ -4250,52 +4251,118 @@ class WeaponSystem {
     this.muzzleMesh.getWorldPosition(muzzleWorld);
     this._spawnSmoke(muzzleWorld, 2);
 
+    // Calculate attachment-aware muzzle velocity & effective bullet drop distance
+    const mods = (weaponSlotState && weaponSlotState.mods) || {};
+    const baseVelMap = {
+      awm338: 920,
+      m24: 820,
+      mosin9130: 780,
+      ak74m: 680,
+      mp5k: 390,
+      m870: 340,
+      g17: 355,
+      pm9: 330
+    };
+    let muzzleVel = baseVelMap[def.id] || 560;
+    if (mods.muzzle === 'suppressor' || def.suppressed) muzzleVel *= 0.90;
+    else if (mods.muzzle === 'compensator' || mods.muzzle === 'brake') muzzleVel *= 1.05;
+    if (mods.optic === 'sniper_8x' || mods.optic === 'lpvo_4x') muzzleVel *= 1.04;
+    const gravity = 13.5; // Tuned tactical ballistic drop (m/s^2)
+    // Effective flat-drop zero distance (meters before noticeable drop)
+    const zeroDist = def.id === 'awm338' ? 140 : (def.id === 'm24' || def.id === 'mosin9130' ? 115 : (def.id === 'ak74m' ? 75 : 40));
+
+    // Find crosshair aim convergence point so bullets physically spawn from muzzleWorld and converge cleanly onto sight zero!
+    const camFwd = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion).normalize();
+    const aimRay = new THREE.Raycaster(origin, camFwd, 0.5, def.range);
     const enemyMeshes = enemyManager.getHitboxMeshes();
     const allyMeshes = (window.SQUAD_PVP && squadManager && squadManager.getHitboxMeshes) ? squadManager.getHitboxMeshes() : [];
+    const aimHitsW = aimRay.intersectObjects(world.shootableMeshes, false);
+    const aimHitsE = aimRay.intersectObjects(enemyMeshes, false);
+    const aimDistW = aimHitsW.length > 0 ? aimHitsW[0].distance : def.range;
+    const aimDistE = aimHitsE.length > 0 ? aimHitsE[0].distance : def.range;
+    const convDist = Math.max(4.5, Math.min(aimDistW, aimDistE, zeroDist));
+    const aimPoint = origin.clone().addScaledVector(camFwd, convDist);
 
     for (let p = 0; p < def.pellets; p++) {
-      const dir = new THREE.Vector3(0, 0, -1);
-      dir.x += (Math.random() - 0.5) * 2 * totalSpread;
-      dir.y += (Math.random() - 0.5) * 2 * totalSpread;
-      dir.normalize();
-      dir.applyQuaternion(this.camera.quaternion);
+      // Spawn bullet directly from the end of the barrel (muzzleWorld), aimed toward sight convergence + spread!
+      const baseDir = aimPoint.clone().sub(muzzleWorld).normalize();
+      const spreadQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(
+        (Math.random() - 0.5) * 2 * totalSpread,
+        (Math.random() - 0.5) * 2 * totalSpread,
+        0,
+        'YXZ'
+      ));
+      const launchDir = baseDir.applyQuaternion(spreadQuat).normalize();
+      // Compensate slight upward zero angle so shots land dead-on at zeroDist and drop naturally beyond!
+      const zeroTime = zeroDist / muzzleVel;
+      const zeroCompY = (0.5 * gravity * zeroTime * zeroTime) / zeroDist;
+      launchDir.y += zeroCompY;
+      launchDir.normalize();
 
-      const raycaster = new THREE.Raycaster(origin, dir, 0.1, def.range);
+      // Step parabolic ballistic curve from barrel tip out to def.range
+      const vel = launchDir.clone().multiplyScalar(muzzleVel);
+      const curPos = muzzleWorld.clone();
+      const tracePts = [curPos.clone()];
+      const maxSteps = def.pellets > 1 ? 4 : 18;
+      const stepDistTarget = Math.max(12, def.range / maxSteps);
+      const stepDt = stepDistTarget / muzzleVel;
+      let hitPoint = null;
+      let totalDist = 0;
 
-      const worldHits = raycaster.intersectObjects(world.shootableMeshes, false);
-      const worldDist = worldHits.length > 0 ? worldHits[0].distance : def.range;
+      for (let step = 0; step < maxSteps && totalDist < def.range; step++) {
+        const nextPos = curPos.clone().addScaledVector(vel, stepDt);
+        nextPos.y -= 0.5 * gravity * stepDt * stepDt;
+        vel.y -= gravity * stepDt;
 
-      const enemyHits = raycaster.intersectObjects(enemyMeshes, false);
-      const allyHits = allyMeshes.length > 0 ? raycaster.intersectObjects(allyMeshes, false) : [];
-      const enemyDist = enemyHits.length > 0 ? enemyHits[0].distance : Infinity;
-      const allyDist = allyHits.length > 0 ? allyHits[0].distance : Infinity;
+        const segVec = nextPos.clone().sub(curPos);
+        const segLen = segVec.length();
+        if (segLen < 0.001) break;
+        const segDir = segVec.clone().divideScalar(segLen);
+        const segRay = new THREE.Raycaster(curPos, segDir, 0.01, segLen);
 
-      let hitPoint = origin.clone().addScaledVector(dir, worldDist);
+        const worldHits = segRay.intersectObjects(world.shootableMeshes, false);
+        const worldDist = worldHits.length > 0 ? worldHits[0].distance : Infinity;
+        const enemyHits = segRay.intersectObjects(enemyMeshes, false);
+        const allyHits = allyMeshes.length > 0 ? segRay.intersectObjects(allyMeshes, false) : [];
+        const enemyDist = enemyHits.length > 0 ? enemyHits[0].distance : Infinity;
+        const allyDist = allyHits.length > 0 ? allyHits[0].distance : Infinity;
 
-      if (allyDist < worldDist && allyDist < enemyDist) {
-        const hit = allyHits[0];
-        hitPoint = hit.point;
-        const { ally, part } = hit.object.userData;
-        const isHead = part === 'head';
-        const dmg = Math.round(def.damage * (isHead ? 1.8 : 1.0));
-        const attackerInfo = { name: 'YOU', isPlayer: true, weaponId: weaponSlotState.id, weaponName: def.name };
-        this._spawnImpact(hitPoint, 0x991111, 5);
-        if (onAllyHitCallback) onAllyHitCallback(isHead, dmg, ally, attackerInfo);
-      } else if (enemyDist < worldDist) {
-        const hit = enemyHits[0];
-        hitPoint = hit.point;
-        const { enemy, part } = hit.object.userData;
-        const isHead = part === 'head';
-        const dmg = Math.round(def.damage * (isHead ? 2.0 : 1.0));
-        const attackerInfo = { name: 'YOU', isPlayer: true, weaponId: weaponSlotState.id, weaponName: def.name };
-        const killed = enemy.takeDamage(dmg, origin, attackerInfo);
-        this._spawnImpact(hitPoint, 0x991111, 5);
-        onHitCallback(isHead, killed, enemy, attackerInfo, dmg);
-      } else if (worldHits.length > 0) {
-        this._spawnImpact(hitPoint, 0xc8b898, 4);
+        if (allyDist < worldDist && allyDist < enemyDist && allyDist <= segLen) {
+          const hit = allyHits[0];
+          hitPoint = hit.point.clone();
+          tracePts.push(hitPoint.clone());
+          const { ally, part } = hit.object.userData;
+          const isHead = part === 'head';
+          const dmg = Math.round(def.damage * (isHead ? 1.8 : 1.0));
+          const attackerInfo = { name: 'YOU', isPlayer: true, weaponId: weaponSlotState.id, weaponName: def.name };
+          this._spawnImpact(hitPoint, 0x991111, 5);
+          if (onAllyHitCallback) onAllyHitCallback(isHead, dmg, ally, attackerInfo);
+          break;
+        } else if (enemyDist < worldDist && enemyDist <= segLen) {
+          const hit = enemyHits[0];
+          hitPoint = hit.point.clone();
+          tracePts.push(hitPoint.clone());
+          const { enemy, part } = hit.object.userData;
+          const isHead = part === 'head';
+          const dmg = Math.round(def.damage * (isHead ? 2.0 : 1.0));
+          const attackerInfo = { name: 'YOU', isPlayer: true, weaponId: weaponSlotState.id, weaponName: def.name };
+          const killed = enemy.takeDamage(dmg, muzzleWorld, attackerInfo);
+          this._spawnImpact(hitPoint, enemy.lastHitArmor ? 0x4fc3f7 : 0x991111, 5);
+          onHitCallback(isHead, killed, enemy, attackerInfo, dmg);
+          break;
+        } else if (worldHits.length > 0 && worldDist <= segLen) {
+          hitPoint = worldHits[0].point.clone();
+          tracePts.push(hitPoint.clone());
+          this._spawnImpact(hitPoint, 0xc8b898, 4);
+          break;
+        }
+
+        curPos.copy(nextPos);
+        totalDist += segLen;
+        tracePts.push(curPos.clone());
       }
 
-      this._spawnTracer(muzzleWorld, hitPoint, 0xffdd88);
+      this._spawnCurvedTracer(tracePts, def.boltAction ? 0xffe49e : 0xffdd88);
     }
 
     return true;
@@ -4572,6 +4639,15 @@ class WeaponSystem {
     const line = new THREE.Line(geo, mat);
     this.scene.add(line);
     this.tracers.push({ line, life: 0.08 });
+  }
+
+  _spawnCurvedTracer(points, color = 0xffdd88) {
+    if (!points || points.length < 2) return;
+    const geo = new THREE.BufferGeometry().setFromPoints(points);
+    const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.86 });
+    const line = new THREE.Line(geo, mat);
+    this.scene.add(line);
+    this.tracers.push({ line, life: 0.13 });
   }
 
   _spawnImpact(pos, color, count) {

@@ -466,6 +466,8 @@ class Enemy {
   takeDamage(amount, attackerPos, attackerInfo = null) {
     if (this.dead) return false;
     this.justDowned = false;
+    this.lastHitArmor = false;
+    this.justBrokeArmor = false;
 
     if (this.isDowned) {
       if (attackerInfo) this.downedBy = attackerInfo;
@@ -479,8 +481,12 @@ class Enemy {
 
     // Operators absorb incoming fire with their vest armor just like players!
     if (this.isOperator && this.armor > 0) {
+      this.lastHitArmor = true;
       const absorbed = Math.min(this.armor, Math.round(amount * 0.78));
-      this.armor -= absorbed;
+      this.armor = Math.max(0, this.armor - absorbed);
+      if (this.armor <= 0) {
+        this.justBrokeArmor = true;
+      }
       amount -= absorbed;
     }
     this.hp -= amount;

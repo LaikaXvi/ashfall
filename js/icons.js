@@ -51,8 +51,8 @@ class ItemIconRenderer {
     const cacheKey = `${itemId}|${wide ? 'W' : 'S'}|${modsKey}`;
     if (this.cache[cacheKey]) return this.cache[cacheKey];
 
-    const w = wide ? 320 : 160;
-    const h = 160;
+    const w = wide ? 384 : 192;
+    const h = 192;
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();

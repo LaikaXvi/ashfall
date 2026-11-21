@@ -2237,6 +2237,11 @@
     const wName = (attackerInfo && attackerInfo.weaponName) || '';
     const killerName = getPlayerCallsign();
 
+    if (enemy.justBrokeArmor) {
+      enemy.justBrokeArmor = false;
+      raidXp += 25;
+      ui.showXpFeedback({ label: 'ARMOR BROKEN', xp: 25, isArmorBreak: true });
+    }
     if (enemy.justDowned) {
       enemy.justDowned = false;
       raidXp += 50;
@@ -2276,7 +2281,7 @@
 
   function onThrowableHit(isHead, killed, enemy, attackerInfo = null) {
     window.soundEngine.playHitmarker(isHead);
-    ui.triggerHitmarker(isHead);
+    ui.triggerHitmarker(isHead, !!(enemy && enemy.lastHitArmor));
     handleOperatorHitResult(isHead, killed, enemy, attackerInfo);
   }
 
@@ -2284,7 +2289,7 @@
     if (!player || player.isDowned || player.dead || player.isRevivingAlly || isModalOpen) return;
     const hit = weaponSystem.tryMeleeSlash(player, world, enemyManager, (isHead, killed, enemy, attackerInfo) => {
       window.soundEngine.playHitmarker(isHead);
-      ui.triggerHitmarker(isHead);
+      ui.triggerHitmarker(isHead, !!(enemy && enemy.lastHitArmor));
       handleOperatorHitResult(isHead, killed, enemy, attackerInfo);
     }, isQuick);
     if (hit && gamepad && gamepad.connected) {
@@ -2312,7 +2317,7 @@
     }
     const fired = weaponSystem.tryFire(player, slotObj, world, enemyManager, (isHead, killed, enemy, attackerInfo, dmg) => {
       window.soundEngine.playHitmarker(isHead);
-      ui.triggerHitmarker(isHead);
+      ui.triggerHitmarker(isHead, !!(enemy && enemy.lastHitArmor));
       handleOperatorHitResult(isHead, killed, enemy, attackerInfo);
       if (enemy && enemy.isRemoteReplicated && mpSession && mpSession.active && typeof enemy.netIdx === 'number') {
         mpSession.sendEvent({
