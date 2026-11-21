@@ -244,8 +244,30 @@ class Enemy {
 
     this.hp = this.maxHp;
     const initGy = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(spawnPos.x, spawnPos.z) : 0;
-    this.homePos = new THREE.Vector3(spawnPos.x, initGy, spawnPos.z);
-    this.position = new THREE.Vector3(spawnPos.x, initGy, spawnPos.z);
+    // Preserve elevated floor spawn height (e.g. Boss on 2nd floor of Command Center)
+    const spawnY = (spawnPos.y > initGy + 1.2) ? spawnPos.y : initGy;
+    this._elevatedFloorY = (spawnPos.y > initGy + 1.2) ? spawnPos.y : null;
+    this.homePos = new THREE.Vector3(spawnPos.x, spawnY, spawnPos.z);
+    this.position = new THREE.Vector3(spawnPos.x, spawnY, spawnPos.z);
+    // Ensure spawn position is never trapped inside a solid building wall
+    if (this.world && this.world.colliders && !this._elevatedFloorY && this._collides(this.position.x, this.position.z, 0.5)) {
+      for (let rad = 1.5; rad <= 9.0; rad += 1.5) {
+        let freed = false;
+        for (let a = 0; a < 8; a++) {
+          const ang = (a / 8) * Math.PI * 2;
+          const tx = spawnPos.x + Math.cos(ang) * rad;
+          const tz = spawnPos.z + Math.sin(ang) * rad;
+          if (!this._collides(tx, tz, 0.5)) {
+            const gy = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(tx, tz) : 0;
+            this.position.set(tx, gy, tz);
+            this.homePos.set(tx, gy, tz);
+            freed = true;
+            break;
+          }
+        }
+        if (freed) break;
+      }
+    }
     this.state = 'PATROL';
     this.patrolTarget = this._pickPatrolPoint();
     this.lastKnownPlayerPos = null;
@@ -274,7 +296,11 @@ class Enemy {
   }
 
   _getGroundY(x = this.position.x, z = this.position.z) {
-    return (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(x, z) : 0;
+    const ty = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(x, z) : 0;
+    if (this._elevatedFloorY != null && Math.hypot(x - this.homePos.x, z - this.homePos.z) < 9.5) {
+      return Math.max(ty, this._elevatedFloorY);
+    }
+    return ty;
   }
 
   _buildModel() {
@@ -737,6 +763,9 @@ class Enemy {
 
     // Articulated Torso lean, crouch drop & PRONE combat fighting posture when no cover is available!
     if (this.group) {
+      this.group.visible = !this.extracted && !this.removed;
+      this.group.position.x = this.position.x;
+      this.group.position.z = this.position.z;
       const baseGy = this._getGroundY();
       const targetRotX = this.isProne ? 1.28 : 0;
       const targetY = this.isProne ? (baseGy + 0.26) : baseGy;

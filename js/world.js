@@ -107,6 +107,34 @@ class WastelandWorld {
 
   // Deterministic rolling terrain heightfield with hills, ridges, creek valley & smooth POI plateaus
   getTerrainHeight(x, z) {
+    // Once the rendered terrain mesh is built, sample the EXACT rendered triangle height in O(1)
+    // so players, operators, NPCs, loot & buildings NEVER clip underneath a coarse terrain triangle!
+    if (this._terrainHeights) {
+      const segs = this._terrainSegs;
+      const half = this._terrainSize * 0.5;
+      const fx = ((x + half) / this._terrainSize) * segs;
+      const fz = ((z + half) / this._terrainSize) * segs;
+      const gx = Math.max(0, Math.min(segs - 1, Math.floor(fx)));
+      const gz = Math.max(0, Math.min(segs - 1, Math.floor(fz)));
+      const tx = Math.max(0, Math.min(1, fx - gx));
+      const tz = Math.max(0, Math.min(1, fz - gz));
+      const row = segs + 1;
+      const i00 = gz * row + gx;
+      const h00 = this._terrainHeights[i00];
+      const h10 = this._terrainHeights[i00 + 1];
+      const h01 = this._terrainHeights[i00 + row];
+      const h11 = this._terrainHeights[i00 + row + 1];
+      // PlaneGeometry split diagonal matches (tx + tz <= 1) vs (tx + tz > 1)
+      if (tx + tz <= 1) {
+        return h00 + tx * (h10 - h00) + tz * (h01 - h00);
+      } else {
+        return h11 + (1 - tx) * (h01 - h11) + (1 - tz) * (h10 - h11);
+      }
+    }
+    return this._evalAnalyticalTerrainHeight(x, z);
+  }
+
+  _evalAnalyticalTerrainHeight(x, z) {
     // Broad rolling wasteland hills & elevated northern ridge
     const ridgeN = Math.max(0, (-z - 140) / 480) * 9.5;
     const h1 = Math.sin(x * 0.0068 + 0.4) * Math.cos(z * 0.0062 - 0.3) * 7.8;
@@ -429,6 +457,7 @@ class WastelandWorld {
     groundGeo.rotateX(-Math.PI / 2);
 
     const posAttr = groundGeo.attributes.position;
+    const heights = new Float32Array(posAttr.count);
     const colors = new Float32Array(posAttr.count * 3);
     const colLow = new THREE.Color(0x5a7c3c);     // Lush valley meadow grass
     const colMid = new THREE.Color(0x6b9246);     // Sunlit green pasture grass
@@ -439,12 +468,13 @@ class WastelandWorld {
     for (let i = 0; i < posAttr.count; i++) {
       const vx = posAttr.getX(i);
       const vz = posAttr.getZ(i);
-      const vy = this.getTerrainHeight(vx, vz);
+      const vy = this._evalAnalyticalTerrainHeight(vx, vz);
       posAttr.setY(i, vy);
+      heights[i] = vy;
 
       // Compute approximate slope for natural dirt/rock blending
-      const hx = this.getTerrainHeight(vx + 3, vz) - vy;
-      const hz = this.getTerrainHeight(vx, vz + 3) - vy;
+      const hx = this._evalAnalyticalTerrainHeight(vx + 3, vz) - vy;
+      const hz = this._evalAnalyticalTerrainHeight(vx, vz + 3) - vy;
       const slope = Math.hypot(hx, hz) / 3;
 
       if (vy < 0.8) {
@@ -463,6 +493,9 @@ class WastelandWorld {
     }
     groundGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     groundGeo.computeVertexNormals();
+    this._terrainSize = terrainSize;
+    this._terrainSegs = segs;
+    this._terrainHeights = heights;
 
     const ground = new THREE.Mesh(groundGeo, this._materials.ground);
     ground.receiveShadow = true;
