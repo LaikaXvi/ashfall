@@ -1729,7 +1729,8 @@ class Player {
     for (let i = 0; i < list.length; i++) {
       const c = list[i];
       if (c.doorRef && c.doorRef.passable) continue;
-      if (headY > c.minY + 0.02 && feetY < c.maxY - 0.05) {
+      // Auto step-up: allow walking smoothly onto stair treads & curbs up to 0.42m above feetY!
+      if (headY > c.minY + 0.02 && feetY < c.maxY - 0.42) {
         if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) {
           return true;
         }
@@ -1760,8 +1761,9 @@ class Player {
     const list = this.world.getNearbyColliders ? this.world.getNearbyColliders(x, z, r + 0.6) : this.world.colliders;
     for (let i = 0; i < list.length; i++) {
       const c = list[i];
+      if (c.doorRef && c.doorRef.passable) continue;
       if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) {
-        if (c.maxY <= feetY + 0.36 && c.maxY > bestY) {
+        if (c.maxY <= feetY + 0.46 && c.maxY > bestY) {
           bestY = c.maxY;
         }
       }

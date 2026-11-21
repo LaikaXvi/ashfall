@@ -20,12 +20,12 @@ class WastelandWorld {
 
     // Pre-registered flat terrain pads for every POI & extraction zone (smoothly leveled into the hills!)
     this._poiPads = [
-      { x: 0, z: 0, r: 28, h: 1.5 },          // WAREHOUSE (Central Hub)
-      { x: -320, z: -240, r: 30, h: 6.5 },    // COMPOUND (NW Military Base)
-      { x: 340, z: 20, r: 32, h: 3.0 },       // CLINIC (East Meadow - Multi-Room Hospital)
-      { x: -290, z: 310, r: 28, h: 2.0 },     // POLICE STATION (2-Story Precinct)
-      { x: -195, z: 315, r: 30, h: 2.0 },     // FIRE STATION (Garage + Climbable Watch Tower)
-      { x: 310, z: -270, r: 46, h: 9.5 },     // BOSS CAMP (NE Walled Compound & Command Center)
+      { x: 0, z: 0, r: 34, h: 1.5 },          // WAREHOUSE (Central Logistics Hub + Catwalk)
+      { x: -320, z: -240, r: 32, h: 6.5 },    // COMPOUND (NW Military Base)
+      { x: 340, z: 20, r: 38, h: 3.0 },       // CLINIC (East Meadow - Large Multi-Room Hospital + Canopy)
+      { x: -295, z: 310, r: 34, h: 2.0 },     // POLICE STATION (Large 2-Story Precinct)
+      { x: -195, z: 315, r: 36, h: 2.0 },     // FIRE STATION (Large 3-Bay Garage + 8m x 8m Watch Tower)
+      { x: 310, z: -270, r: 52, h: 9.5 },     // BOSS CAMP (Large 70m x 64m Walled Compound & Command HQ)
       { x: 270, z: 290, r: 26, h: 5.5 },      // RADIO OUTPOST (SE Low-Threat Hilltop)
       { x: -370, z: 50, r: 32, h: 0.5 },      // RAIL YARD (West Valley Depot)
       { x: -60, z: -340, r: 26, h: 10.0 },    // NORTH BUNKER (Northern Ridge)
@@ -1343,323 +1343,343 @@ class WastelandWorld {
       this._addBox(tx, by + h * 0.98, tz, w * 0.42, 0.18, d + 0.3, this._materials.crateMil, false);
     };
 
-    // 2. Multi-Room Field Hospital & Clinic (East Meadow: 340, 20) — White Walls, Windows & Green Plus-in-Circle Sign!
+    // 2. Large Multi-Room Field Hospital & Clinic (East Meadow: 340, 20) — 28m x 20m White Hospital + Ambulance Canopy + 6 Patient Rooms!
     {
       const cx = 340, cz = 20;
       const by = this.getTerrainHeight(cx, cz);
-      this._addBuilding(cx, cz, 22, 16, 4.5, 'west', this._materials.whiteWall);
+      this._addBuilding(cx, cz, 28, 20, 4.8, 'west', this._materials.whiteWall);
       this.pois.push({ name: 'CLINIC', x: cx, z: cz, color: '#69f0ae', threat: 'medium' });
 
-      // Giant recognizable Clinic front sign (Green Medical Plus inside Circle) on West Entrance + Roof!
-      this._addSignBoard(cx - 11.4, by + 5.75, cz, 7.6, 2.85, -Math.PI / 2, 'clinic');
-      this._addSignBoard(cx, by + 5.75, cz - 8.3, 7.6, 2.85, Math.PI, 'clinic');
-      // Extra front windows flanking the west entrance
-      this._addWindow(cx - 11.24, by + 2.4, cz - 4.6, 2.4, 1.4, Math.PI / 2);
-      this._addWindow(cx - 11.24, by + 2.4, cz + 4.6, 2.4, 1.4, Math.PI / 2);
+      // Covered Ambulance Drop-Off Canopy on West Front Entrance (instantly recognizable hospital silhouette!)
+      this._addBox(cx - 17.2, by + 3.8, cz, 6.4, 0.36, 7.6, this._materials.whiteWall, false);
+      this._addBox(cx - 20.1, by + 1.9, cz - 3.4, 0.45, 3.8, 0.45, this._materials.metal, true);
+      this._addBox(cx - 20.1, by + 1.9, cz + 3.4, 0.45, 3.8, 0.45, this._materials.metal, true);
+      // Giant Green Medical Plus-in-Circle Sign on Ambulance Canopy & Roofline!
+      this._addSignBoard(cx - 20.5, by + 5.1, cz, 8.2, 3.1, -Math.PI / 2, 'clinic');
+      this._addSignBoard(cx, by + 6.2, cz - 10.3, 8.6, 3.2, Math.PI, 'clinic');
+      this._addSignBoard(cx, by + 6.2, cz + 10.3, 8.6, 3.2, 0, 'clinic');
+      // Extra panoramic hospital windows along West front facade
+      this._addWindow(cx - 14.24, by + 2.5, cz - 6.0, 3.2, 1.55, Math.PI / 2);
+      this._addWindow(cx - 14.24, by + 2.5, cz + 6.0, 3.2, 1.55, Math.PI / 2);
 
-      // Front Triage / Reception Desk near west entrance
-      this._addBox(cx - 7.5, by + 0.55, cz - 2.6, 1.2, 1.1, 3.8, this._materials.crateMed, true);
-      this._addWallFirstAidKit(cx - 5.5, cz - 7.55, 'north', 'Clinic Lobby First Aid Kit');
+      // Front Triage & Reception Desk
+      this._addBox(cx - 9.8, by + 0.55, cz - 3.0, 1.3, 1.1, 4.6, this._materials.crateMed, true);
+      this._addWallFirstAidKit(cx - 7.5, cz - 9.55, 'north', 'Clinic Lobby First Aid Kit');
 
-      // Central Corridor + 4 Partitioned Patient Rooms WITH INTERACTIVE SUB-ROOM DOORS!
-      this._addBox(cx - 2.2, by + 2.1, cz - 4.6, 0.24, 4.2, 6.2, this._materials.whiteWall, true);
-      this._addBox(cx + 4.4, by + 2.1, cz - 4.6, 0.24, 4.2, 6.2, this._materials.whiteWall, true);
-      this._addBox(cx + 1.1, by + 2.1, cz - 1.6, 4.0, 4.2, 0.24, this._materials.whiteWall, true);
-      this._addBox(cx + 7.7, by + 2.1, cz - 1.6, 4.0, 4.2, 0.24, this._materials.whiteWall, true);
-      this._addDoor(cx - 1.35, by + 0.16, cz - 1.6, 1.6, 2.55, 0, 'Exam Room 1 Door', 'wood');
-      this._addDoor(cx + 5.25, by + 0.16, cz - 1.6, 1.6, 2.55, 0, 'Trauma Room Door', 'wood');
+      // Central Corridor + 6 Partitioned Patient / ICU / Pharmacy Rooms (3 North, 3 South) ALL WITH INTERACTIVE DOORS!
+      for (const side of [-1, 1]) {
+        const wallZ = cz + side * 2.2;
+        const roomZ = cz + side * 6.0;
+        const bedZ = cz + side * 7.2;
+        // Longitudinal corridor wall segments leaving 3 wide doorways
+        for (const rx of [cx - 4.5, cx + 2.5, cx + 9.5]) {
+          this._addBox(rx - 3.5, by + 2.25, roomZ, 0.24, 4.5, 7.6, this._materials.whiteWall, true);
+          this._addBox(rx + 1.0, by + 2.25, wallZ, 4.4, 4.5, 0.24, this._materials.whiteWall, true);
+          const roomNum = side === -1 ? (rx < 340 ? 'Exam 1' : (rx < 345 ? 'ICU 1' : 'Trauma')) : (rx < 340 ? 'Exam 2' : (rx < 345 ? 'Ward B' : 'Pharmacy'));
+          this._addDoor(rx - 2.3, by + 0.16, wallZ, 1.75, 2.6, 0, `${roomNum} Door`, 'wood');
+          addHospitalBed(rx + 0.6, by, bedZ, 0);
+        }
+      }
 
-      // South Wing Partition Walls + Interactive Sub-Room Doors
-      this._addBox(cx - 2.2, by + 2.1, cz + 4.6, 0.24, 4.2, 6.2, this._materials.whiteWall, true);
-      this._addBox(cx + 4.4, by + 2.1, cz + 4.6, 0.24, 4.2, 6.2, this._materials.whiteWall, true);
-      this._addBox(cx + 1.1, by + 2.1, cz + 1.6, 4.0, 4.2, 0.24, this._materials.whiteWall, true);
-      this._addBox(cx + 7.7, by + 2.1, cz + 1.6, 4.0, 4.2, 0.24, this._materials.whiteWall, true);
-      this._addDoor(cx - 1.35, by + 0.16, cz + 1.6, 1.6, 2.55, 0, 'Patient Room 2 Door', 'wood');
-      this._addDoor(cx + 5.25, by + 0.16, cz + 1.6, 1.6, 2.55, 0, 'Pharmacy Room Door', 'wood');
-
-      // Hospital Beds inside all 4 Patient / Trauma Rooms
-      addHospitalBed(cx + 1.0, by, cz - 5.6, 0);
-      addHospitalBed(cx + 7.6, by, cz - 5.6, 0);
-      addHospitalBed(cx + 1.0, by, cz + 5.6, 0);
-      addHospitalBed(cx + 7.6, by, cz + 5.6, 0);
-      addHospitalBed(cx - 5.2, by, cz + 5.4, Math.PI / 2);
-
-      // Medical loot across the rooms
-      this._addWallFirstAidKit(cx + 10.55, cz - 4.2, 'east', 'Trauma Room First Aid Kit');
-      this._addMedicineCabinet(cx + 7.4, cz + 7.55, 'south', 'Clinic Pharmacy Cabinet');
-      this._addLootContainer(cx + 8.6, 0.16, cz - 2.8, 'hospital', 'Hospital Trauma Crate');
-      this._addLootContainer(cx - 5.5, 0.16, cz - 6.0, 'hospital', 'Triage Supply Case');
-      this._addMetalShelf(cx + 1.0, cz - 7.1, 0, [
-        { id: 'bandage', qty: 2 }, { id: 'painkillers', qty: 1 }, { id: 'cloth_roll', qty: 2 }
+      // Medical loot across the hospital wings
+      this._addWallFirstAidKit(cx + 13.55, cz - 5.2, 'east', 'Trauma Room First Aid Kit');
+      this._addMedicineCabinet(cx + 9.4, cz + 9.55, 'south', 'Clinic Pharmacy Cabinet');
+      this._addLootContainer(cx + 11.2, 0.16, cz - 4.2, 'hospital', 'Hospital Trauma Crate');
+      this._addLootContainer(cx - 7.5, 0.16, cz - 7.8, 'hospital', 'Triage Supply Case');
+      this._addLootContainer(cx + 4.0, 0.16, cz + 8.0, 'hospital', 'ICU Medical Cart');
+      this._addMetalShelf(cx + 2.2, cz - 9.1, 0, [
+        { id: 'bandage', qty: 3 }, { id: 'painkillers', qty: 2 }, { id: 'cloth_roll', qty: 2 }
       ]);
-      this._addWorkbenchTable(cx - 4.8, cz + 1.2, 0, [
-        { id: 'medkit', qty: 1 }, { id: 'water_filter', qty: 1 }
+      this._addWorkbenchTable(cx - 6.8, cz + 1.8, 0, [
+        { id: 'medkit', qty: 1 }, { id: 'painkillers', qty: 1 }, { id: 'water_filter', qty: 1 }
       ]);
-      this._addBarrier(cx - 16, cz - 6, false);
+      this._addBarrier(cx - 22, cz - 7, false);
     }
 
-    // 3A. 2-Story Police Station (SW West Pad: -290, 310 — separated cleanly from Fire Station!)
+    // 3A. Large 2-Story Police Precinct Headquarters (SW West Pad: -295, 310 — 24m x 18m w/ Front Portico & Wide Central Stairs!)
     {
-      const pcx = -290, pcz = 310;
+      const pcx = -295, pcz = 310;
       const pby = this.getTerrainHeight(pcx, pcz);
       this.pois.push({ name: 'POLICE STATION', x: pcx, z: pcz, color: '#42a5f5', threat: 'low' });
 
-      const pw = 18, pd = 14, ph = 4.2;
-      this._addBox(pcx, pby - 0.5, pcz, pw + 0.6, 1.0, pd + 0.6, this._materials.darkConcrete, false);
+      const pw = 24, pd = 18, ph = 4.4;
+      this._addBox(pcx, pby - 0.5, pcz, pw + 0.8, 1.0, pd + 0.8, this._materials.darkConcrete, false);
       this._addBox(pcx, pby + 0.08, pcz, pw, 0.16, pd, this._materials.darkConcrete, false);
-      // North, South, West solid walls (2 stories tall = 8.4m) in distinctive Police Navy
-      this._addBox(pcx, pby + ph, pcz - pd / 2, pw, ph * 2, 0.5, this._materials.policeNavy, true);
-      this._addBox(pcx, pby + ph, pcz + pd / 2, pw, ph * 2, 0.5, this._materials.policeNavy, true);
-      this._addBox(pcx - pw / 2, pby + ph, pcz, 0.5, ph * 2, pd, this._materials.policeNavy, true);
-      // East facade with interactive front entrance door + 2nd floor wall
-      this._addBox(pcx + pw / 2, pby + ph / 2, pcz - 4.0, 0.5, ph, 6.0, this._materials.policeNavy, true);
-      this._addBox(pcx + pw / 2, pby + ph / 2, pcz + 4.0, 0.5, ph, 6.0, this._materials.policeNavy, true);
-      this._addBox(pcx + pw / 2, pby + ph - 0.75, pcz, 0.5, 1.5, 2.0, this._materials.policeNavy, true);
-      this._addDoor(pcx + pw / 2, pby + 0.16, pcz, 2.0, 2.62, Math.PI / 2, 'Police Station Entrance', 'steel');
-      this._addBox(pcx + pw / 2, pby + ph * 1.5, pcz, 0.5, ph, pd, this._materials.policeNavy, true);
+      // Limestone lower base + Navy-Blue 2-story precinct walls
+      this._addBox(pcx, pby + ph, pcz - pd / 2, pw, ph * 2, 0.52, this._materials.policeNavy, true);
+      this._addBox(pcx, pby + ph, pcz + pd / 2, pw, ph * 2, 0.52, this._materials.policeNavy, true);
+      this._addBox(pcx - pw / 2, pby + ph, pcz, 0.52, ph * 2, pd, this._materials.policeNavy, true);
+      // East Front Entrance Wall with Interactive Double-Width Door + Covered Precinct Portico Canopy
+      this._addBox(pcx + pw / 2, pby + ph / 2, pcz - 5.0, 0.52, ph, 8.0, this._materials.policeNavy, true);
+      this._addBox(pcx + pw / 2, pby + ph / 2, pcz + 5.0, 0.52, ph, 8.0, this._materials.policeNavy, true);
+      this._addBox(pcx + pw / 2, pby + ph - 0.85, pcz, 0.52, 1.7, 2.0, this._materials.policeNavy, true);
+      this._addDoor(pcx + pw / 2, pby + 0.16, pcz, 2.0, 2.65, Math.PI / 2, 'Police Precinct Entrance', 'steel');
+      this._addBox(pcx + pw / 2, pby + ph * 1.5, pcz, 0.52, ph, pd, this._materials.policeNavy, true);
+      // Front Portico Overhang & Columns
+      this._addBox(pcx + pw / 2 + 2.4, pby + 3.7, pcz, 4.4, 0.34, 6.2, this._materials.whiteWall, false);
+      this._addBox(pcx + pw / 2 + 4.2, pby + 1.85, pcz - 2.6, 0.42, 3.7, 0.42, this._materials.whiteWall, true);
+      this._addBox(pcx + pw / 2 + 4.2, pby + 1.85, pcz + 2.6, 0.42, 3.7, 0.42, this._materials.whiteWall, true);
       // 1st & 2nd Floor Exterior Windows
-      for (const wy of [pby + 2.3, pby + ph + 2.3]) {
-        this._addWindow(pcx - 4.2, wy, pcz - pd / 2 - 0.24, 2.4, 1.35, 0);
-        this._addWindow(pcx + 4.2, wy, pcz - pd / 2 - 0.24, 2.4, 1.35, 0);
-        this._addWindow(pcx - 4.2, wy, pcz + pd / 2 + 0.24, 2.4, 1.35, 0);
-        this._addWindow(pcx + 4.2, wy, pcz + pd / 2 + 0.24, 2.4, 1.35, 0);
-        this._addWindow(pcx + pw / 2 + 0.24, wy, pcz - 4.0, 2.2, 1.35, Math.PI / 2);
-        this._addWindow(pcx + pw / 2 + 0.24, wy, pcz + 4.0, 2.2, 1.35, Math.PI / 2);
+      for (const wy of [pby + 2.4, pby + ph + 2.4]) {
+        this._addWindow(pcx - 6.0, wy, pcz - pd / 2 - 0.25, 2.8, 1.45, 0);
+        this._addWindow(pcx + 0.0, wy, pcz - pd / 2 - 0.25, 2.8, 1.45, 0);
+        this._addWindow(pcx + 6.0, wy, pcz - pd / 2 - 0.25, 2.8, 1.45, 0);
+        this._addWindow(pcx - 6.0, wy, pcz + pd / 2 + 0.25, 2.8, 1.45, 0);
+        this._addWindow(pcx + 6.0, wy, pcz + pd / 2 + 0.25, 2.8, 1.45, 0);
+        this._addWindow(pcx + pw / 2 + 0.25, wy, pcz - 5.2, 2.6, 1.45, Math.PI / 2);
+        this._addWindow(pcx + pw / 2 + 0.25, wy, pcz + 5.2, 2.6, 1.45, Math.PI / 2);
       }
-      // Giant POLICE rooftop sign + glowing blue/red rooftop beacon bar
-      this._addSignBoard(pcx + pw / 2 + 0.4, pby + ph * 2 + 1.55, pcz, 8.0, 3.0, Math.PI / 2, 'police');
-      this._addSignBoard(pcx, pby + ph * 2 + 1.55, pcz - pd / 2 - 0.4, 8.0, 3.0, Math.PI, 'police');
-      this._addBox(pcx + 2, pby + ph * 2 + 0.55, pcz - 2, 2.2, 0.45, 0.6, new THREE.MeshBasicMaterial({ color: 0x2979ff }), false);
-      this._addBox(pcx + 2, pby + ph * 2 + 0.55, pcz + 2, 2.2, 0.45, 0.6, new THREE.MeshBasicMaterial({ color: 0xff3d3d }), false);
+      // Giant POLICE rooftop signage + glowing blue/red rooftop precinct beacons
+      this._addSignBoard(pcx + pw / 2 + 0.4, pby + ph * 2 + 1.65, pcz, 9.2, 3.2, Math.PI / 2, 'police');
+      this._addSignBoard(pcx, pby + ph * 2 + 1.65, pcz - pd / 2 - 0.4, 9.2, 3.2, Math.PI, 'police');
+      this._addBox(pcx + 3, pby + ph * 2 + 0.6, pcz - 2.4, 2.6, 0.5, 0.65, new THREE.MeshBasicMaterial({ color: 0x2979ff }), false);
+      this._addBox(pcx + 3, pby + ph * 2 + 0.6, pcz + 2.4, 2.6, 0.5, 0.65, new THREE.MeshBasicMaterial({ color: 0xff3d3d }), false);
 
-      // 2nd Floor Slab (cleanly inset stairwell cutout around pcx + 4.6, leaving wide wall clearance!)
-      this._addBox(pcx - 2.9, pby + ph, pcz, 12.2, 0.28, pd - 0.4, this._materials.darkConcrete, true);
-      this._addBox(pcx + 7.4, pby + ph, pcz, 3.0, 0.28, pd - 0.4, this._materials.darkConcrete, true);
-      this._addBox(pcx + 4.6, pby + ph, pcz - 4.2, 2.8, 0.28, 5.2, this._materials.darkConcrete, true);
-      this._addBox(pcx, pby + ph * 2 + 0.15, pcz, pw + 0.5, 0.3, pd + 0.5, this._materials.darkConcrete, true);
+      // 2nd Floor Slab with wide open central-east stairwell cutout (around pcx + 5.2, generous 3.2m clearance from east wall!)
+      this._addBox(pcx - 4.2, pby + ph, pcz, 15.6, 0.28, pd - 0.4, this._materials.darkConcrete, true);
+      this._addBox(pcx + 9.4, pby + ph, pcz, 5.0, 0.28, pd - 0.4, this._materials.darkConcrete, true);
+      this._addBox(pcx + 5.2, pby + ph, pcz - 5.5, 3.4, 0.28, 6.6, this._materials.darkConcrete, true);
+      this._addBox(pcx, pby + ph * 2 + 0.15, pcz, pw + 0.6, 0.32, pd + 0.6, this._materials.darkConcrete, true);
 
-      // Ground Floor: Holding / Booking Reception Counter
-      this._addBox(pcx + 1.2, pby + 0.55, pcz - 2.8, 1.0, 1.1, 4.2, this._materials.wood, true);
-      // Ground Floor: 3-Cell Cell Block along West Wall
-      for (let cell = 0; cell < 3; cell++) {
-        const czCell = pcz - 4.2 + cell * 4.2;
+      // Ground Floor: Grand Booking Desk & Holding Area
+      this._addBox(pcx + 1.2, pby + 0.55, pcz - 3.6, 1.2, 1.1, 5.2, this._materials.wood, true);
+      // Ground Floor: 4-Cell Cell Block along West Wall
+      for (let cell = 0; cell < 4; cell++) {
+        const czCell = pcz - 6.3 + cell * 4.2;
         if (cell > 0) {
-          this._addBox(pcx - 6.6, pby + 2.0, czCell - 2.1, 4.2, 4.0, 0.22, this._materials.concrete, true);
+          this._addBox(pcx - 9.2, pby + 2.1, czCell - 2.1, 5.0, 4.2, 0.22, this._materials.concrete, true);
         }
         for (let b = 0; b < 5; b++) {
-          this._addBox(pcx - 4.5, pby + 2.0, czCell - 1.5 + b * 0.48, 0.09, 4.0, 0.09, this._materials.metal, true);
+          this._addBox(pcx - 6.7, pby + 2.1, czCell - 1.5 + b * 0.48, 0.09, 4.2, 0.09, this._materials.metal, true);
         }
-        this._addBox(pcx - 8.1, pby + 0.42, czCell, 0.85, 0.42, 2.2, this._materials.metal, true);
+        this._addBox(pcx - 10.9, pby + 0.42, czCell, 0.9, 0.42, 2.2, this._materials.metal, true);
       }
-      this._addGunLocker(pcx - 0.4, pcz - 6.2, 0, 'police_fire', 'Booking Armory Locker');
-      this._addWallFirstAidKit(pcx + 4.8, pcz - 6.55, 'north', 'Precinct First Aid Kit');
+      this._addGunLocker(pcx - 1.2, pcz - 8.1, 0, 'police_fire', 'Booking Armory Locker');
+      this._addWallFirstAidKit(pcx + 5.6, pcz - 8.55, 'north', 'Precinct First Aid Kit');
 
-      // Spacious Interior Staircase pulled well away from East Wall (pcx + 4.6, width 2.4m!)
-      addStaircase(pcx + 4.6, pby + 0.16, pcz + 5.2, 15, 2.4, ph, 6.4, 'north');
+      // Wide, Gentle Walkable Interior Staircase (18 steps @ 0.24m rise, 2.8m wide, well away from walls!)
+      addStaircase(pcx + 5.2, pby + 0.16, pcz + 6.4, 18, 2.8, ph, 7.6, 'north');
 
-      // 2nd Floor: Detective Bullpen Desks
+      // 2nd Floor: Detective Bullpen Desks (6 desks)
       const f2y = pby + ph + 0.16;
-      addDeskProp(pcx + 1.6, f2y, pcz - 3.6);
-      addDeskProp(pcx + 1.6, f2y, pcz + 0.6);
-      addDeskProp(pcx + 1.6, f2y, pcz + 4.4);
-      addDeskProp(pcx - 1.6, f2y, pcz - 3.6);
-      addDeskProp(pcx - 1.6, f2y, pcz + 0.6);
+      addDeskProp(pcx + 1.8, f2y, pcz - 5.0);
+      addDeskProp(pcx + 1.8, f2y, pcz - 0.8);
+      addDeskProp(pcx + 1.8, f2y, pcz + 3.6);
+      addDeskProp(pcx - 1.8, f2y, pcz - 5.0);
+      addDeskProp(pcx - 1.8, f2y, pcz - 0.8);
+      addDeskProp(pcx - 1.8, f2y, pcz + 3.6);
 
-      // 2nd Floor: Evidence Processing Room WITH INTERACTIVE SUB-ROOM DOOR!
-      this._addBox(pcx - 4.0, f2y + 2.0, pcz - 2.6, 0.24, 4.0, 8.2, this._materials.concrete, true);
-      this._addBox(pcx - 7.1, f2y + 2.0, pcz + 1.5, 3.0, 4.0, 0.24, this._materials.concrete, true);
-      this._addDoor(pcx - 4.85, f2y, pcz + 1.5, 1.65, 2.55, 0, 'Evidence Room Door', 'steel');
-      this._addLootContainer(pcx - 7.4, ph + 0.16, pcz - 4.8, 'military', 'Evidence Locker Vault');
-      this._addLootContainer(pcx - 7.4, ph + 0.16, pcz - 1.2, 'police_fire', 'Evidence Processing Case');
-      this._addWorkbenchTable(pcx - 6.0, pcz - 3.0, 0, [
-        { id: 'intel_drive', qty: 1 }, { id: 'armor_plate', qty: 2 }
+      // 2nd Floor: Evidence Processing Room & Vault WITH INTERACTIVE STEEL DOOR!
+      this._addBox(pcx - 5.2, f2y + 2.1, pcz - 2.8, 0.24, 4.2, 11.4, this._materials.concrete, true);
+      this._addBox(pcx - 9.4, f2y + 2.1, pcz + 2.8, 4.6, 4.2, 0.24, this._materials.concrete, true);
+      this._addDoor(pcx - 6.1, f2y, pcz + 2.8, 1.8, 2.6, 0, 'Evidence Room Door', 'steel');
+      this._addLootContainer(pcx - 10.2, ph + 0.16, pcz - 6.4, 'military', 'Evidence Locker Vault');
+      this._addLootContainer(pcx - 10.2, ph + 0.16, pcz - 1.6, 'police_fire', 'Evidence Processing Case');
+      this._addWorkbenchTable(pcx - 8.2, pcz - 3.8, 0, [
+        { id: 'intel_drive', qty: 1 }, { id: 'armor_plate', qty: 2 }, { id: 'medkit', qty: 1 }
       ]);
     }
 
-    // 3B. Fire Station with Large Double-Bay Garage & Climbable Watch Tower (SW East Pad: -195, 315 — 95m from Police!)
+    // 3B. Large 3-Bay Fire Station + Living Wing + Spacious 8m x 8m Climbable Watch Tower (SW East Pad: -195, 315)
     {
       const fcx = -195, fcz = 315;
       const fby = this.getTerrainHeight(fcx, fcz);
       this.pois.push({ name: 'FIRE STATION', x: fcx, z: fcz, color: '#ef5350', threat: 'low' });
 
-      const fw = 16, fd = 13, fh = 5.4;
-      // Clean Garage Floor & Foundation
-      this._addBox(fcx, fby - 0.5, fcz, fw + 0.6, 1.0, fd + 0.6, this._materials.darkConcrete, false);
+      const fw = 22, fd = 16, fh = 5.6;
+      this._addBox(fcx, fby - 0.5, fcz, fw + 0.8, 1.0, fd + 0.8, this._materials.darkConcrete, false);
       this._addBox(fcx, fby + 0.08, fcz, fw, 0.16, fd, this._materials.darkConcrete, false);
-      // Clean watertight North, West, East outer garage walls (zero overlapping segments!)
-      this._addBox(fcx, fby + fh / 2, fcz - fd / 2, fw, fh, 0.5, this._materials.fireRed, true);
-      this._addBox(fcx - fw / 2, fby + fh / 2, fcz, 0.5, fh, fd, this._materials.fireRed, true);
-      this._addBox(fcx + fw / 2, fby + fh / 2, fcz, 0.5, fh, fd, this._materials.fireRed, true);
-      // Crisp white architectural trim & rear windows
-      this._addBox(fcx, fby + fh - 0.2, fcz + fd / 2 + 0.28, fw, 0.35, 0.16, this._materials.whiteWall, false);
-      this._addWindow(fcx - 3.8, fby + 2.8, fcz - fd / 2 - 0.24, 2.4, 1.4, 0);
-      this._addWindow(fcx + 3.8, fby + 2.8, fcz - fd / 2 - 0.24, 2.4, 1.4, 0);
-      this._addWindow(fcx - fw / 2 - 0.24, fby + 2.8, fcz, 2.6, 1.4, Math.PI / 2);
-      // Giant FIRE DEPT sign over double garage bays!
-      this._addSignBoard(fcx, fby + fh + 1.65, fcz + fd / 2 + 0.3, 8.4, 3.0, 0, 'fire');
-      // South Garage Face: 2 Wide Open Fire-Truck Engine Bays (5.6m wide each)
-      this._addBox(fcx - fw / 2 + 0.8, fby + fh / 2, fcz + fd / 2, 1.6, fh, 0.5, this._materials.fireRed, true);
-      this._addBox(fcx, fby + fh / 2, fcz + fd / 2, 1.4, fh, 0.5, this._materials.fireRed, true);
-      this._addBox(fcx + fw / 2 - 0.8, fby + fh / 2, fcz + fd / 2, 1.6, fh, 0.5, this._materials.fireRed, true);
-      this._addBox(fcx, fby + fh - 0.65, fcz + fd / 2, fw, 1.3, 0.55, this._materials.whiteWall, true);
-      this._addBox(fcx, fby + fh + 0.15, fcz, fw + 0.4, 0.3, fd + 0.4, this._materials.darkConcrete, true);
+      // Clean watertight Fire Red brick-style outer walls
+      this._addBox(fcx, fby + fh / 2, fcz - fd / 2, fw, fh, 0.52, this._materials.fireRed, true);
+      this._addBox(fcx - fw / 2, fby + fh / 2, fcz, 0.52, fh, fd, this._materials.fireRed, true);
+      this._addBox(fcx + fw / 2, fby + fh / 2, fcz, 0.52, fh, fd, this._materials.fireRed, true);
+      // Crisp white architectural cornice trim & rear/side windows
+      this._addBox(fcx, fby + fh - 0.2, fcz + fd / 2 + 0.28, fw, 0.4, 0.18, this._materials.whiteWall, false);
+      this._addWindow(fcx - 6.5, fby + 3.0, fcz - fd / 2 - 0.25, 2.8, 1.5, 0);
+      this._addWindow(fcx + 0.0, fby + 3.0, fcz - fd / 2 - 0.25, 2.8, 1.5, 0);
+      this._addWindow(fcx + 6.5, fby + 3.0, fcz - fd / 2 - 0.25, 2.8, 1.5, 0);
+      this._addWindow(fcx - fw / 2 - 0.25, fby + 3.0, fcz - 3.0, 2.8, 1.5, Math.PI / 2);
+      this._addWindow(fcx - fw / 2 - 0.25, fby + 3.0, fcz + 3.0, 2.8, 1.5, Math.PI / 2);
+      // Giant FIRE DEPT sign over 3 wide garage bays!
+      this._addSignBoard(fcx, fby + fh + 1.75, fcz + fd / 2 + 0.3, 9.6, 3.3, 0, 'fire');
+      this._addSignBoard(fcx, fby + fh + 1.75, fcz - fd / 2 - 0.3, 9.6, 3.3, Math.PI, 'fire');
+      // South Garage Face: 3 Wide Open Fire-Truck Engine Bays (5.4m wide each)
+      this._addBox(fcx - fw / 2 + 0.9, fby + fh / 2, fcz + fd / 2, 1.8, fh, 0.52, this._materials.fireRed, true);
+      this._addBox(fcx - 3.6, fby + fh / 2, fcz + fd / 2, 1.3, fh, 0.52, this._materials.fireRed, true);
+      this._addBox(fcx + 3.6, fby + fh / 2, fcz + fd / 2, 1.3, fh, 0.52, this._materials.fireRed, true);
+      this._addBox(fcx + fw / 2 - 0.9, fby + fh / 2, fcz + fd / 2, 1.8, fh, 0.52, this._materials.fireRed, true);
+      this._addBox(fcx, fby + fh - 0.7, fcz + fd / 2, fw, 1.4, 0.56, this._materials.whiteWall, true);
+      this._addBox(fcx, fby + fh + 0.16, fcz, fw + 0.5, 0.32, fd + 0.5, this._materials.darkConcrete, true);
 
-      // Garage Equipment Lockers & Workbench
-      this._addGunLocker(fcx - 7.1, fcz - 2.0, Math.PI / 2, 'police_fire', 'Fire & Rescue Gear Locker');
-      this._addLootContainer(fcx + 6.0, 0.16, fcz - 4.8, 'supply', 'Firehouse Tool & Medical Crate');
-      this._addWorkbenchTable(fcx, fcz - 4.6, 0, [
-        { id: 'smoke_grenade', qty: 1 }, { id: 'medkit', qty: 1 }, { id: 'armor_plate', qty: 1 }
+      // Garage Equipment Lockers, Bunks & Workbench
+      this._addGunLocker(fcx - 9.8, fcz - 3.0, Math.PI / 2, 'police_fire', 'Fire & Rescue Gear Locker');
+      this._addGunLocker(fcx - 9.8, fcz + 2.0, Math.PI / 2, 'police_fire', 'Emergency Hazmat Locker');
+      this._addLootContainer(fcx + 8.6, 0.16, fcz - 6.0, 'supply', 'Firehouse Tool & Medical Crate');
+      this._addWorkbenchTable(fcx, fcz - 5.8, 0, [
+        { id: 'smoke_grenade', qty: 1 }, { id: 'medkit', qty: 1 }, { id: 'armor_plate', qty: 2 }
       ]);
 
-      // Cleanly Attached 13.2m Climbable Hose / Watch Tower on East Side (zero broken/overlapping walls!)
-      const tcx = fcx + fw / 2 + 3.45, tcz = fcz - 2.8;
-      const tw = 6.4, td = 6.4, th = 13.2;
+      // Spacious 8m x 8m Climbable Hose / Watch Tower (13.2m tall, wide 2.6m gentle stairs, zero wall-snags!)
+      const tcx = fcx + fw / 2 + 4.3, tcz = fcz - 3.6;
+      const tw = 8.0, td = 8.0, th = 13.2;
       this._addBox(tcx, fby + 0.08, tcz, tw, 0.16, td, this._materials.darkConcrete, false);
-      // North, East, West (above garage roof) walls + South wall with clean ground entrance doorway
-      this._addBox(tcx, fby + th / 2, tcz - td / 2, tw, th, 0.42, this._materials.fireRed, true);
-      this._addBox(tcx + tw / 2, fby + th / 2, tcz, 0.42, th, td, this._materials.fireRed, true);
-      this._addBox(tcx - tw / 2, fby + (th + fh) / 2, tcz, 0.42, th - fh, td, this._materials.fireRed, true);
-      // South Tower Wall: clean left/right jambs + header above 2.65m entrance door
-      this._addBox(tcx + 1.5, fby + 1.4, tcz + td / 2, 3.4, 2.8, 0.42, this._materials.fireRed, true);
-      this._addBox(tcx - 2.7, fby + 1.4, tcz + td / 2, 1.0, 2.8, 0.42, this._materials.fireRed, true);
-      this._addBox(tcx, fby + 2.8 + (th - 2.8) / 2, tcz + td / 2, tw, th - 2.8, 0.42, this._materials.fireRed, true);
-      this._addDoor(tcx - 1.2, fby + 0.16, tcz + td / 2, 1.85, 2.65, 0, 'Watch Tower Door', 'steel');
-      this._addWindow(tcx + tw / 2 + 0.22, fby + 6.4, tcz, 2.0, 1.6, Math.PI / 2);
-      this._addWindow(tcx + tw / 2 + 0.22, fby + 10.6, tcz, 2.0, 1.6, Math.PI / 2);
+      this._addBox(tcx, fby + th / 2, tcz - td / 2, tw, th, 0.44, this._materials.fireRed, true);
+      this._addBox(tcx + tw / 2, fby + th / 2, tcz, 0.44, th, td, this._materials.fireRed, true);
+      this._addBox(tcx - tw / 2, fby + (th + fh) / 2, tcz, 0.44, th - fh, td, this._materials.fireRed, true);
+      // South Tower Wall with clean ground entrance doorway
+      this._addBox(tcx + 1.9, fby + 1.4, tcz + td / 2, 4.2, 2.8, 0.44, this._materials.fireRed, true);
+      this._addBox(tcx - 3.2, fby + 1.4, tcz + td / 2, 1.6, 2.8, 0.44, this._materials.fireRed, true);
+      this._addBox(tcx, fby + 2.8 + (th - 2.8) / 2, tcz + td / 2, tw, th - 2.8, 0.44, this._materials.fireRed, true);
+      this._addDoor(tcx - 1.3, fby + 0.16, tcz + td / 2, 2.0, 2.65, 0, 'Watch Tower Door', 'steel');
+      this._addWindow(tcx + tw / 2 + 0.22, fby + 6.4, tcz, 2.4, 1.6, Math.PI / 2);
+      this._addWindow(tcx + tw / 2 + 0.22, fby + 10.6, tcz, 2.4, 1.6, Math.PI / 2);
 
-      // 3 Spacious Switchback Walkable Stair Flights + Landings up to Rooftop Sniper Deck!
-      addStaircase(tcx - 1.4, fby + 0.16, tcz + 2.2, 15, 2.1, 4.4, 4.2, 'north');
-      this._addBox(tcx, fby + 4.4, tcz - 2.1, 5.6, 0.24, 1.8, this._materials.darkConcrete, true);
-      addStaircase(tcx + 1.4, fby + 4.4, tcz - 1.2, 15, 2.1, 4.4, 4.2, 'south');
-      this._addBox(tcx, fby + 8.8, tcz + 2.1, 5.6, 0.24, 1.8, this._materials.darkConcrete, true);
-      addStaircase(tcx - 1.4, fby + 8.8, tcz + 1.2, 15, 2.1, 4.4, 4.2, 'north');
+      // 3 Wide, Gentle Walkable Stair Flights (18 steps @ 0.24m rise, 2.6m wide!) + Spacious 2.4m Landings
+      addStaircase(tcx - 1.9, fby + 0.16, tcz + 2.6, 18, 2.6, 4.4, 4.8, 'north');
+      this._addBox(tcx, fby + 4.4, tcz - 2.7, 7.2, 0.24, 2.2, this._materials.darkConcrete, true);
+      addStaircase(tcx + 1.9, fby + 4.4, tcz - 1.6, 18, 2.6, 4.4, 4.8, 'south');
+      this._addBox(tcx, fby + 8.8, tcz + 2.7, 7.2, 0.24, 2.2, this._materials.darkConcrete, true);
+      addStaircase(tcx - 1.9, fby + 8.8, tcz + 1.6, 18, 2.6, 4.4, 4.8, 'north');
       const topY = fby + 13.2;
-      this._addBox(tcx + 1.1, topY, tcz, 3.8, 0.26, td, this._materials.darkConcrete, true);
-      this._addBox(tcx - 1.5, topY, tcz - 2.1, 2.4, 0.26, 2.0, this._materials.darkConcrete, true);
+      this._addBox(tcx + 1.6, topY, tcz, 4.4, 0.26, td, this._materials.darkConcrete, true);
+      this._addBox(tcx - 2.0, topY, tcz - 2.7, 3.2, 0.26, 2.4, this._materials.darkConcrete, true);
       this._addBox(tcx, topY + 0.55, tcz - td / 2 + 0.2, tw, 1.1, 0.2, this._materials.whiteWall, true);
       this._addBox(tcx, topY + 0.55, tcz + td / 2 - 0.2, tw, 1.1, 0.2, this._materials.whiteWall, true);
       this._addBox(tcx - tw / 2 + 0.2, topY + 0.55, tcz, 0.2, 1.1, td, this._materials.whiteWall, true);
       this._addBox(tcx + tw / 2 - 0.2, topY + 0.55, tcz, 0.2, 1.1, td, this._materials.whiteWall, true);
-      this._addBox(tcx + 2.4, topY + 1.8, tcz - 2.4, 0.22, 1.6, 0.22, this._materials.metal, false);
-      this._addBox(tcx + 2.4, topY + 2.7, tcz - 2.4, 0.55, 0.55, 0.55, new THREE.MeshBasicMaterial({ color: 0xff3b3b }), false);
-      this._addLootContainer(tcx + 1.4, 13.35, tcz - 1.4, 'military', 'Fire Tower Overwatch Case');
+      this._addBox(tcx + 3.2, topY + 1.9, tcz - 3.2, 0.24, 1.8, 0.24, this._materials.metal, false);
+      this._addBox(tcx + 3.2, topY + 2.9, tcz - 3.2, 0.65, 0.65, 0.65, new THREE.MeshBasicMaterial({ color: 0xff3b3b }), false);
+      this._addLootContainer(tcx + 1.8, 13.35, tcz - 1.8, 'military', 'Fire Tower Overwatch Case');
     }
 
-    // 4. Boss Encampment — Fortified Black/Amber Compound, Barracks, Tents & Multi-Floor Central Command Center (NE: 310, -270)
+    // 4. Massive Boss Encampment Compound (NE: 310, -270 — 70m x 64m Walls, 4 Corner Guard Towers, Barracks, 3 Tents & 24m x 20m 2-Story Command HQ!)
     {
       const cx = 310, cz = -270;
       const by = this.getTerrainHeight(cx, cz);
       this.pois.push({ name: 'BOSS CAMP', x: cx, z: cz, color: '#ffc107', threat: 'boss' });
 
-      // A. High Fortified Concrete Perimeter Compound Walls with Amber Hazard Trim
-      const cw = 60, cd = 56, wallH = 4.2;
-      this._addBox(cx, by + wallH / 2, cz - cd / 2, cw, wallH, 0.8, this._materials.bossDark, true);
-      this._addBox(cx + cw / 2, by + wallH / 2, cz, 0.8, wallH, cd, this._materials.bossDark, true);
-      this._addBox(cx - 17, by + wallH / 2, cz + cd / 2, 26, wallH, 0.8, this._materials.bossDark, true);
-      this._addBox(cx + 17, by + wallH / 2, cz + cd / 2, 26, wallH, 0.8, this._materials.bossDark, true);
-      this._addBox(cx - cw / 2, by + wallH / 2, cz - 16, 0.8, wallH, 24, this._materials.bossDark, true);
-      this._addBox(cx - cw / 2, by + wallH / 2, cz + 16, 0.8, wallH, 24, this._materials.bossDark, true);
-      // Amber hazard band on south gate pillars
-      this._addBox(cx - 4.3, by + 3.4, cz + cd / 2, 0.9, 0.55, 0.9, this._materials.hazardAmber, false);
-      this._addBox(cx + 4.3, by + 3.4, cz + cd / 2, 0.9, 0.55, 0.9, this._materials.hazardAmber, false);
+      // A. High Fortified Concrete Perimeter Compound Walls (70m x 64m) + 4 Corner Guard Watch Platforms!
+      const cw = 70, cd = 64, wallH = 4.6;
+      this._addBox(cx, by + wallH / 2, cz - cd / 2, cw, wallH, 0.85, this._materials.bossDark, true);
+      this._addBox(cx + cw / 2, by + wallH / 2, cz, 0.85, wallH, cd, this._materials.bossDark, true);
+      this._addBox(cx - 19.5, by + wallH / 2, cz + cd / 2, 31, wallH, 0.85, this._materials.bossDark, true);
+      this._addBox(cx + 19.5, by + wallH / 2, cz + cd / 2, 31, wallH, 0.85, this._materials.bossDark, true);
+      this._addBox(cx - cw / 2, by + wallH / 2, cz - 18, 0.85, wallH, 28, this._materials.bossDark, true);
+      this._addBox(cx - cw / 2, by + wallH / 2, cz + 18, 0.85, wallH, 28, this._materials.bossDark, true);
+      // Amber hazard gate pillars & 4 elevated corner watch towers
+      this._addBox(cx - 4.4, by + 3.6, cz + cd / 2, 1.0, 0.65, 1.0, this._materials.hazardAmber, false);
+      this._addBox(cx + 4.4, by + 3.6, cz + cd / 2, 1.0, 0.65, 1.0, this._materials.hazardAmber, false);
+      for (const [gx, gz] of [[-cw / 2 + 2.2, -cd / 2 + 2.2], [cw / 2 - 2.2, -cd / 2 + 2.2], [-cw / 2 + 2.2, cd / 2 - 2.2], [cw / 2 - 2.2, cd / 2 - 2.2]]) {
+        this._addBox(cx + gx, by + 5.2, cz + gz, 4.4, 0.3, 4.4, this._materials.darkConcrete, true);
+        this._addBox(cx + gx, by + 7.8, cz + gz, 4.6, 0.25, 4.6, this._materials.bossDark, false);
+        this._addBox(cx + gx, by + 5.7, cz + gz, 4.4, 0.22, 4.4, this._materials.hazardAmber, false);
+      }
 
-      // B. Large Central Multi-Floor Command Center (18m x 16m, Dark Armored Walls, Windows, Doors & Giant COMMAND HQ Sign!)
-      const ccw = 18, ccd = 16, cch = 4.4;
+      // B. Massive 24m x 20m 2-Story Central Command Center + Rooftop Radar Tower & Helipad!
+      const ccw = 24, ccd = 20, cch = 4.6;
       this._addBox(cx, by - 0.5, cz - 2, ccw + 0.8, 1.0, ccd + 0.8, this._materials.darkConcrete, false);
       this._addBox(cx, by + 0.08, cz - 2, ccw, 0.16, ccd, this._materials.darkConcrete, false);
       this._addBox(cx - ccw / 2, by + cch, cz - 2, 0.55, cch * 2, ccd, this._materials.bossDark, true);
       this._addBox(cx + ccw / 2, by + cch, cz - 2, 0.55, cch * 2, ccd, this._materials.bossDark, true);
-      this._addBox(cx - 5.0, by + cch / 2, cz - 2 + ccd / 2, 8.0, cch, 0.55, this._materials.bossDark, true);
-      this._addBox(cx + 5.0, by + cch / 2, cz - 2 + ccd / 2, 8.0, cch, 0.55, this._materials.bossDark, true);
-      this._addBox(cx, by + cch - 0.85, cz - 2 + ccd / 2, 2.0, 1.7, 0.55, this._materials.bossDark, true);
-      this._addDoor(cx, by + 0.16, cz - 2 + ccd / 2, 2.0, 2.65, 0, 'Command Center Entrance', 'steel');
+      this._addBox(cx - 6.6, by + cch / 2, cz - 2 + ccd / 2, 10.8, cch, 0.55, this._materials.bossDark, true);
+      this._addBox(cx + 6.6, by + cch / 2, cz - 2 + ccd / 2, 10.8, cch, 0.55, this._materials.bossDark, true);
+      this._addBox(cx, by + cch - 0.9, cz - 2 + ccd / 2, 2.4, 1.8, 0.55, this._materials.bossDark, true);
+      this._addDoor(cx, by + 0.16, cz - 2 + ccd / 2, 2.2, 2.7, 0, 'Command HQ Entrance', 'steel');
       this._addBox(cx, by + cch * 1.5, cz - 2 + ccd / 2, ccw, cch, 0.55, this._materials.bossDark, true);
       this._addBox(cx, by + cch, cz - 2 - ccd / 2, ccw, cch * 2, 0.55, this._materials.bossDark, true);
-      // 1st & 2nd Floor Command Center Windows + Amber Roof Trim
-      for (const wy of [by + 2.4, by + cch + 2.4]) {
-        this._addWindow(cx - 5.2, wy, cz - 2 + ccd / 2 + 0.28, 2.6, 1.25, 0);
-        this._addWindow(cx + 5.2, wy, cz - 2 + ccd / 2 + 0.28, 2.6, 1.25, 0);
-        this._addWindow(cx - ccw / 2 - 0.28, wy, cz - 2, 3.0, 1.25, Math.PI / 2);
-        this._addWindow(cx + ccw / 2 + 0.28, wy, cz - 2, 3.0, 1.25, Math.PI / 2);
+      // 1st & 2nd Floor Command Center Windows
+      for (const wy of [by + 2.5, by + cch + 2.5]) {
+        this._addWindow(cx - 6.8, wy, cz - 2 + ccd / 2 + 0.28, 3.0, 1.35, 0);
+        this._addWindow(cx + 6.8, wy, cz - 2 + ccd / 2 + 0.28, 3.0, 1.35, 0);
+        this._addWindow(cx - ccw / 2 - 0.28, wy, cz - 6, 3.2, 1.35, Math.PI / 2);
+        this._addWindow(cx - ccw / 2 - 0.28, wy, cz + 2, 3.2, 1.35, Math.PI / 2);
+        this._addWindow(cx + ccw / 2 + 0.28, wy, cz - 6, 3.2, 1.35, Math.PI / 2);
+        this._addWindow(cx + ccw / 2 + 0.28, wy, cz + 2, 3.2, 1.35, Math.PI / 2);
       }
-      // Giant COMMAND HQ Signs + Tall Rooftop Radar / Comms Mast for long-distance landmark silhouette!
+      // Roof + Giant COMMAND HQ Signs + Tall Rooftop Radar Mast
       const roofY = by + cch * 2 + 0.15;
-      this._addBox(cx, roofY, cz - 2, ccw + 0.6, 0.32, ccd + 0.6, this._materials.darkConcrete, true);
-      this._addBox(cx, roofY + 0.35, cz - 2 + ccd / 2 + 0.15, ccw + 0.6, 0.35, 0.25, this._materials.hazardAmber, false);
-      this._addSignBoard(cx, roofY + 1.85, cz - 2 + ccd / 2 + 0.3, 9.0, 3.2, 0, 'boss');
-      this._addSignBoard(cx - ccw / 2 - 0.3, roofY + 1.85, cz - 2, 8.2, 3.0, -Math.PI / 2, 'boss');
-      // Tall Radar Mast on Command Center Roof (visible from 400m+ away!)
-      this._addBox(cx + 5.5, roofY + 4.2, cz - 6.5, 0.38, 8.4, 0.38, this._materials.metal, false);
-      this._addBox(cx + 5.5, roofY + 7.2, cz - 6.5, 3.2, 1.4, 0.24, this._materials.hazardAmber, false);
-      this._addBox(cx + 5.5, roofY + 8.6, cz - 6.5, 0.55, 0.55, 0.55, new THREE.MeshBasicMaterial({ color: 0xffb300 }), false);
+      this._addBox(cx, roofY, cz - 2, ccw + 0.6, 0.34, ccd + 0.6, this._materials.darkConcrete, true);
+      this._addBox(cx, roofY + 0.38, cz - 2 + ccd / 2 + 0.15, ccw + 0.6, 0.4, 0.25, this._materials.hazardAmber, false);
+      this._addSignBoard(cx, roofY + 2.0, cz - 2 + ccd / 2 + 0.35, 10.6, 3.6, 0, 'boss');
+      this._addSignBoard(cx - ccw / 2 - 0.35, roofY + 2.0, cz - 2, 9.6, 3.4, -Math.PI / 2, 'boss');
+      this._addBox(cx + 7.5, roofY + 5.0, cz - 7.5, 0.42, 10.0, 0.42, this._materials.metal, false);
+      this._addBox(cx + 7.5, roofY + 8.4, cz - 7.5, 3.8, 1.6, 0.26, this._materials.hazardAmber, false);
+      this._addBox(cx + 7.5, roofY + 10.2, cz - 7.5, 0.65, 0.65, 0.65, new THREE.MeshBasicMaterial({ color: 0xffb300 }), false);
 
-      // 2nd Floor Slab & Walkable Staircase
-      this._addBox(cx - 2.2, by + cch, cz - 2, ccw - 4.4, 0.3, ccd - 0.4, this._materials.darkConcrete, true);
-      this._addBox(cx + 6.6, by + cch, cz - 5.6, 4.4, 0.3, 8.0, this._materials.darkConcrete, true);
-      addStaircase(cx + 6.6, by + 0.16, cz + 4.4, 15, 2.6, cch, 6.4, 'north');
+      // 2nd Floor Slab with wide inset stairwell (cx + 6.6, generous clearance from east wall!)
+      this._addBox(cx - 3.6, by + cch, cz - 2, 16.8, 0.3, ccd - 0.4, this._materials.darkConcrete, true);
+      this._addBox(cx + 10.1, by + cch, cz - 2, 3.6, 0.3, ccd - 0.4, this._materials.darkConcrete, true);
+      this._addBox(cx + 6.6, by + cch, cz - 7.4, 3.6, 0.3, 8.8, this._materials.darkConcrete, true);
+      // Wide, Gentle Walkable Staircase (19 steps @ 0.24m rise, 2.8m wide!)
+      addStaircase(cx + 6.6, by + 0.16, cz + 5.8, 19, 2.8, cch, 8.4, 'north');
 
-      // Ground Floor War-Room Table & 2nd Floor Boss Key Vault Room (with sub-room door!)
-      this._addWorkbenchTable(cx - 1.5, cz - 1.5, 0, [
+      // Ground Floor War-Room Table & 2nd Floor Boss Key Vault Room (with sub-room steel door!)
+      this._addWorkbenchTable(cx - 1.8, cz - 1.5, 0, [
         { id: 'ammo_762', qty: 30 }, { id: 'gold_watch', qty: 1 }, { id: 'intel_drive', qty: 1 }
       ]);
-      this._addGunLocker(cx - 8.0, cz - 2.5, Math.PI / 2, 'military', 'Command Center Armory Locker');
-      this._addWallFirstAidKit(cx - 8.45, cz + 1.8, 'west', 'Command Center First Aid Kit');
-      addDeskProp(cx - 2.0, by + cch + 0.16, cz - 5.5);
-      // 2nd Floor Vault Partition Wall + Interactive Sub-Room Door
-      this._addBox(cx - 3.6, by + cch + 2.1, cz - 6.4, 0.24, 4.0, 6.8, this._materials.bossDark, true);
-      this._addDoor(cx - 3.6, by + cch + 0.16, cz - 1.9, 1.65, 2.55, Math.PI / 2, 'Command Vault Door', 'steel');
-      this._addLootContainer(cx - 5.8, cch + 0.18, cz - 7.8, 'boss_key_room', 'Boss Command Vault [KEY ROOM]', 'boss_key');
-      this._addLootContainer(cx + 3.0, cch + 0.18, cz - 7.8, 'military', 'Command Center Weapons Case');
+      this._addGunLocker(cx - 10.8, cz - 2.5, Math.PI / 2, 'military', 'Command Center Armory Locker');
+      this._addWallFirstAidKit(cx - 11.45, cz + 2.4, 'west', 'Command Center First Aid Kit');
+      addDeskProp(cx - 2.0, by + cch + 0.16, cz - 6.5);
+      this._addBox(cx - 4.6, by + cch + 2.2, cz - 7.2, 0.24, 4.2, 8.8, this._materials.bossDark, true);
+      this._addDoor(cx - 4.6, by + cch + 0.16, cz - 1.8, 1.8, 2.6, Math.PI / 2, 'Command Vault Door', 'steel');
+      this._addLootContainer(cx - 8.4, cch + 0.18, cz - 9.2, 'boss_key_room', 'Boss Command Vault [KEY ROOM]', 'boss_key');
+      this._addLootContainer(cx + 3.2, cch + 0.18, cz - 9.2, 'military', 'Command Center Weapons Case');
 
-      // Record Boss Spawn inside Command Center + Armored Boss Guard Spawn Points!
+      // Boss Spawn inside 2nd Floor Command Center + 5 Armored Boss Guard Spawns
       this.bossSpawnPos = new THREE.Vector3(cx - 1.5, by + cch + 0.2, cz - 2.5);
       this.bossGuardSpawns = [
-        new THREE.Vector3(cx - 2.0, by, cz + 2.0),
+        new THREE.Vector3(cx - 2.0, by, cz + 2.8),
         new THREE.Vector3(cx + 3.5, by, cz - 3.5),
-        new THREE.Vector3(cx - 12.0, by, cz + 16.0),
-        new THREE.Vector3(cx + 12.0, by, cz + 14.0),
-        new THREE.Vector3(cx - 16.0, by, cz - 10.0)
+        new THREE.Vector3(cx - 14.0, by, cz + 20.0),
+        new THREE.Vector3(cx + 14.0, by, cz + 18.0),
+        new THREE.Vector3(cx - 20.0, by, cz - 12.0)
       ];
 
-      // C. Compound Barracks Building (West-South: cx - 19, cz + 13)
-      const bx = cx - 19, bz = cz + 13;
-      this._addBuilding(bx, bz, 13, 10, 4.2, 'east', this._materials.rustOlive);
-      addHospitalBed(bx - 3.6, by, bz - 2.8, Math.PI / 2);
-      addHospitalBed(bx - 3.6, by, bz + 2.8, Math.PI / 2);
-      this._addGunLocker(bx + 2.2, bz - 4.1, 0, 'military', 'Barracks Rifle Rack');
-      this._addLootContainer(bx + 2.2, 0.16, bz + 3.6, 'supply', 'Barracks Footlocker');
+      // C. Compound Barracks Building (16m x 12m, West-South)
+      const bx = cx - 22, bz = cz + 16;
+      this._addBuilding(bx, bz, 16, 12, 4.4, 'east', this._materials.rustOlive);
+      addHospitalBed(bx - 4.6, by, bz - 3.4, Math.PI / 2);
+      addHospitalBed(bx - 4.6, by, bz + 0.0, Math.PI / 2);
+      addHospitalBed(bx - 4.6, by, bz + 3.4, Math.PI / 2);
+      this._addGunLocker(bx + 2.6, bz - 5.1, 0, 'military', 'Barracks Rifle Rack');
+      this._addLootContainer(bx + 2.6, 0.16, bz + 4.4, 'supply', 'Barracks Footlocker');
 
-      // D. 3 Military Canvas Tents with Weapons Lockers & Equipment Containers
+      // D. 3 Large Military Canvas Tents with Weapons Lockers & Equipment Containers
       const tentSpots = [
-        { x: cx + 19, z: cz + 12, label: 'East Armory Tent' },
-        { x: cx + 19, z: cz - 6, label: 'Ordnance Supply Tent' },
-        { x: cx - 18, z: cz - 14, label: 'Recon Gear Tent' }
+        { x: cx + 23, z: cz + 15, label: 'East Armory Tent' },
+        { x: cx + 23, z: cz - 7, label: 'Ordnance Supply Tent' },
+        { x: cx - 22, z: cz - 17, label: 'Recon Gear Tent' }
       ];
       for (const ts of tentSpots) {
-        addMilitaryTent(ts.x, by, ts.z, 8.6, 6.4);
-        this._addGunLocker(ts.x - 3.1, ts.z - 1.2, Math.PI / 2, 'military', `${ts.label} Weapons Locker`);
-        this._addLootContainer(ts.x + 2.6, 0.16, ts.z + 1.2, 'military', `${ts.label} Equipment Container`);
+        addMilitaryTent(ts.x, by, ts.z, 9.6, 7.0);
+        this._addGunLocker(ts.x - 3.6, ts.z - 1.4, Math.PI / 2, 'military', `${ts.label} Weapons Locker`);
+        this._addLootContainer(ts.x + 3.0, 0.16, ts.z + 1.4, 'military', `${ts.label} Equipment Container`);
       }
 
-      this._addBarrier(cx - 7, cz + 18, true);
-      this._addBarrier(cx + 7, cz + 18, true);
-      this._addContainer(cx + 16, cz - 20, 0, this._materials.rustOlive);
+      this._addBarrier(cx - 8, cz + 22, true);
+      this._addBarrier(cx + 8, cz + 22, true);
+      this._addContainer(cx + 20, cz - 24, 0, this._materials.rustOlive);
     }
 
-    // 5. Central Logistics Warehouse (Crossroads Hub: 0, 0)
+    // 5. Enlarged Central Logistics Warehouse (Crossroads Hub: 0, 0 — 28m x 18m w/ Walkable Catwalk Mezzanine!)
     {
       const cx = 0, cz = 0;
-      this._addBuilding(cx, cz, 20, 14, 5.2, 'south');
+      const by = this.getTerrainHeight(cx, cz);
+      this._addBuilding(cx, cz, 28, 18, 6.2, 'south');
       this.pois.push({ name: 'WAREHOUSE', x: cx, z: cz, color: '#ff9800', threat: 'low' });
-      this._addLootContainer(cx - 7.8, 0.16, cz - 4.8, 'military', 'Warehouse Armory Case');
-      this._addLootContainer(cx + 7.8, 0.16, cz - 4.8, 'supply', 'Logistics Cargo Crate');
-      this._addMetalShelf(cx - 3.0, cz - 6.0, 0, [
+      // Interior Walkable Steel Catwalk Mezzanine along North Wall + Gentle Stairs
+      this._addBox(cx, by + 3.2, cz - 6.8, 25.0, 0.24, 3.6, this._materials.metal, true);
+      addStaircase(cx + 9.2, by + 0.16, cz - 0.4, 14, 2.2, 3.2, 4.8, 'north');
+      this._addLootContainer(cx - 10.5, 3.35, cz - 6.8, 'military', 'Catwalk Armory Case');
+      this._addLootContainer(cx - 10.8, 0.16, cz - 6.2, 'military', 'Warehouse Armory Case');
+      this._addLootContainer(cx + 10.8, 0.16, cz - 6.2, 'supply', 'Logistics Cargo Crate');
+      this._addMetalShelf(cx - 4.0, cz - 7.4, 0, [
         { id: 'scrap_metal', qty: 3 }, { id: 'polymer_parts', qty: 2 }, { id: 'ammo_545', qty: 24 }
       ]);
-      this._addMetalShelf(cx + 3.0, cz - 6.0, 0, [
+      this._addMetalShelf(cx + 4.0, cz - 7.4, 0, [
         { id: 'cloth_roll', qty: 2 }, { id: 'gunpowder', qty: 2 }, { id: 'fuel_can', qty: 1 }
       ]);
-      this._addWorkbenchTable(cx, cz + 0.5, 0, [
+      this._addWorkbenchTable(cx, cz + 1.2, 0, [
         { id: 'medkit', qty: 1 }, { id: 'armor_plate', qty: 2 }
       ]);
     }
