@@ -162,7 +162,7 @@
     const hasRemoteParty = (ui.partyMembers || []).some(m => !m.isSelf && m.isRemoteHuman);
     isMatchHost = !hasRemoteParty || (typeof ui.isPartyLeader === 'function' ? ui.isPartyLeader() : true);
     enemyManager = new EnemyManager(scene, world, zone, weaponSystem, hasRemoteParty && !isMatchHost);
-    squadManager = new SquadManager(scene, world, ui.partyMembers || []);
+    squadManager = new SquadManager(scene, world, ui.partyMembers || [], weaponSystem);
 
     window.onSquadPvpForceFair = () => {
       if (player) {

@@ -548,6 +548,23 @@ class WeaponSystem {
       const vGrip = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.015, 0.085, 8), matDark);
       vGrip.position.set(0, -0.058, gripZ);
       g.add(vGrip);
+      // Reposition & reshape operator's support hand to wrap around the vertical foregrip instead of the handguard!
+      if (withHands && this.leftHand) {
+        g.remove(this.leftHand);
+        this.leftHand = this._createHand(false, 'foregrip');
+        this.leftHand.position.set(0.0, -0.064, gripZ + 0.004);
+        this.leftHandRestPos.copy(this.leftHand.position);
+        this.leftHandRestRot.copy(this.leftHand.rotation);
+        g.add(this.leftHand);
+      }
+    } else if (withHands && weaponDef.id === 'mp5k' && this.leftHand) {
+      // MP5-K has an integrated vertical foregrip — wrap left hand cleanly around it!
+      g.remove(this.leftHand);
+      this.leftHand = this._createHand(false, 'foregrip');
+      this.leftHand.position.set(0.0, -0.062, -0.146);
+      this.leftHandRestPos.copy(this.leftHand.position);
+      this.leftHandRestRot.copy(this.leftHand.rotation);
+      g.add(this.leftHand);
     } else if (mods.underbarrel === 'laser') {
       const lx = weaponDef.slot === 'secondary' ? 0.0 : 0.028;
       const ly = weaponDef.slot === 'secondary' ? -0.026 : 0.005;
@@ -904,6 +921,30 @@ class WeaponSystem {
       thumb.rotation.y = -0.25;
       const thumbTip = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.013, 0.014), skinMat);
       thumbTip.position.set(-0.022, 0.020, -0.024);
+      handGroup.add(thumb, thumbTip);
+    } else if (style === 'foregrip') {
+      // Left support hand wrapped firmly around a vertical foregrip shaft
+      const palm = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.062, 0.044), gloveMat);
+      palm.position.set(-0.020, 0.0, 0.004);
+      const knuckle = new THREE.Mesh(new THREE.BoxGeometry(0.020, 0.056, 0.022), knuckleMat);
+      knuckle.position.set(-0.026, 0.0, -0.012);
+      handGroup.add(palm, knuckle);
+
+      // 4 fingers curling around the front and right side of the vertical foregrip
+      for (let i = 0; i < 4; i++) {
+        const fy = 0.020 - i * 0.013;
+        const fBase = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.010, 0.016), gloveMat);
+        fBase.position.set(0.002, fy, -0.020);
+        const fTip = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.009, 0.018), skinMat);
+        fTip.position.set(0.018, fy, -0.008);
+        handGroup.add(fBase, fTip);
+      }
+
+      // Thumb wrapping high around the rear-left of the vertical grip
+      const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.030, 0.014, 0.016), gloveMat);
+      thumb.position.set(-0.002, 0.028, 0.018);
+      const thumbTip = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.012, 0.014), skinMat);
+      thumbTip.position.set(0.016, 0.028, 0.014);
       handGroup.add(thumb, thumbTip);
     }
 

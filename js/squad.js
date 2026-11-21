@@ -1,9 +1,10 @@
 // Autonomous, Self-Aware Extraction AI Squadmates
 // Each squadmate has personal gear needs, raid objectives, tactical combat AI, self-healing/plating, looting, and extraction goals.
 class SquadMate {
-  constructor(scene, world, spawnPos, memberInfo) {
+  constructor(scene, world, spawnPos, memberInfo, weaponSystem = null) {
     this.scene = scene;
     this.world = world;
+    this.weaponSystem = weaponSystem;
     this.name = memberInfo.name || 'ALLY';
     this.squadColor = memberInfo.squadColor || '#69f0ae';
     this.weaponId = memberInfo.weaponId || 'ak74m';
@@ -89,18 +90,14 @@ class SquadMate {
       built.skull.userData = { ally: this, part: 'head' };
       this.hitboxes.push(built.chest, built.skull);
 
-      // Attach actual 3D weapon or fallback rifle to right-hand weaponMount
-      const gearMat = new THREE.MeshLambertMaterial({ color: 0x1a1d20 });
-      const rifle = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.09, 0.62), gearMat);
-      rifle.position.set(0, 0.04, -0.22);
-      this.rifleMesh = rifle;
-      if (built.weaponMount) built.weaponMount.add(rifle);
+      // Attach actual 3D equipped weapon model to right-hand weaponMount (held with both hands!)
+      this._rebuildWeaponMesh(this.weaponId);
 
       this.muzzleMesh = new THREE.Mesh(
         new THREE.SphereGeometry(0.055, 6, 6),
         new THREE.MeshBasicMaterial({ color: 0xffdd77, transparent: true, opacity: 0 })
       );
-      this.muzzleMesh.position.set(0.20, 1.32, 0.68);
+      this.muzzleMesh.position.set(0.14, 1.30, 0.74);
       this.muzzleLight = new THREE.PointLight(0xffaa44, 0, 7);
       this.muzzleLight.position.copy(this.muzzleMesh.position);
     } else {
@@ -155,6 +152,30 @@ class SquadMate {
     g.position.copy(this.position);
     this.scene.add(g);
     this.group = g;
+  }
+
+  _rebuildWeaponMesh(weaponId) {
+    if (!this.opModel || !this.opModel.weaponMount) return;
+    if (this.rifleMesh) {
+      this.opModel.weaponMount.remove(this.rifleMesh);
+      this.rifleMesh = null;
+    }
+    const wDef = GAME_DATA.ITEMS[weaponId];
+    let wObj = null;
+    if (this.weaponSystem && wDef && this.weaponSystem.buildThirdPersonWeapon) {
+      const builtWpn = this.weaponSystem.buildThirdPersonWeapon(wDef, {});
+      if (builtWpn && builtWpn.group) {
+        wObj = builtWpn.group;
+        wObj.scale.setScalar(builtWpn.isPistol ? 1.25 : 1.38);
+        wObj.position.set(0, 0.04, builtWpn.isPistol ? -0.06 : -0.18);
+      }
+    }
+    if (!wObj) {
+      wObj = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.09, 0.62), new THREE.MeshLambertMaterial({ color: 0x1a1d20 }));
+      wObj.position.set(0, 0.04, -0.22);
+    }
+    this.opModel.weaponMount.add(wObj);
+    this.rifleMesh = wObj;
   }
 
   _redrawTag(statusLabel, statusColor = null) {
@@ -474,7 +495,10 @@ class SquadMate {
     this._remoteStance = st.stance || 'stand';
     if (typeof st.hp === 'number') this.hp = st.hp;
     if (typeof st.armor === 'number') this.armor = st.armor;
-    if (st.wpn) this.weaponId = st.wpn;
+    if (st.wpn && st.wpn !== this.weaponId) {
+      this.weaponId = st.wpn;
+      this._rebuildWeaponMesh(this.weaponId);
+    }
     const inReviveGrace = performance.now() < (this._reviveGraceUntil || 0);
     if (!inReviveGrace || (!st.downed && !st.dead)) {
       this.isDowned = !!st.downed;
@@ -930,9 +954,10 @@ class SquadMate {
 }
 
 class SquadManager {
-  constructor(scene, world, partyMembers = []) {
+  constructor(scene, world, partyMembers = [], weaponSystem = null) {
     this.scene = scene;
     this.world = world;
+    this.weaponSystem = weaponSystem;
     this.allies = [];
     this.announced = false;
 
@@ -951,7 +976,7 @@ class SquadManager {
         squadColor: m.squadColor || squadColors[(idx + 1) % squadColors.length],
         weaponId: m.weaponId || (idx % 2 === 0 ? 'ak74m' : 'mp5k'),
         flankSide: side
-      }));
+      }, weaponSystem));
     });
   }
 

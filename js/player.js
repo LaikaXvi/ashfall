@@ -214,10 +214,14 @@ window.buildTacticalOperatorModel = function buildTacticalOperatorModel(opts = {
   const rightArm = makeArm(0.26, true);
 
   // Default tactical two-handed ready-to-fire pose!
-  leftArm.shoulder.rotation.set(0.92, 0, -0.34);
-  leftArm.elbow.rotation.set(0.78, 0, 0);
-  rightArm.shoulder.rotation.set(0.96, 0, 0.12);
-  rightArm.elbow.rotation.set(0.68, 0, 0);
+  // Positive Z on leftArm swings it INWARD (+X) across chest onto handguard/foregrip; negative Z on rightArm tucks into shoulder!
+  leftArm.shoulder.rotation.set(0.84, 0, 0.44);
+  leftArm.elbow.rotation.set(0.92, 0, 0);
+  rightArm.shoulder.rotation.set(0.88, 0, -0.14);
+  rightArm.elbow.rotation.set(0.76, 0, 0);
+  if (weaponMount) {
+    weaponMount.rotation.set(-Math.PI / 2, 0.14, -0.06);
+  }
 
   return {
     root, rigPivot, pelvis, spine, torso, chest, neck, head, skull,
@@ -866,15 +870,16 @@ class Player {
           pelvisYaw = 0.22;
           torsoYaw = -0.20;
           torsoPitch = -0.07 + breathe * 0.008;
-          lShX = 1.08 + breathe * 0.008; lElbX = 0.88; lShZ = -0.40;
-          rShX = 1.12 + breathe * 0.008; rElbX = 0.78; rShZ = 0.14;
+          lShX = 0.98 + breathe * 0.008; lElbX = 0.94; lShZ = 0.46;
+          rShX = 1.04 + breathe * 0.008; rElbX = 0.80; rShZ = -0.16;
           wpnRotX = -Math.PI / 2 + 0.04;
-          wpnRotY = 0.02;
+          wpnRotY = 0.12;
         } else {
           pelvisYaw = moving ? stride * 0.08 : 0.16;
           torsoYaw = moving ? -stride * 0.07 : -0.14;
-          lShX = 0.92 + breathe * 0.012; lElbX = 0.76; lShZ = -0.34;
-          rShX = 0.96 + breathe * 0.012; rElbX = 0.66; rShZ = 0.12;
+          lShX = 0.84 + breathe * 0.012; lElbX = 0.90; lShZ = 0.44;
+          rShX = 0.88 + breathe * 0.012; rElbX = 0.74; rShZ = -0.14;
+          wpnRotY = 0.14;
         }
       }
     }
