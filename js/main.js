@@ -107,6 +107,7 @@
     if (roamHud) roamHud.classList.remove('hidden');
     hideoutBunker.enterRoam(canvas);
   }
+  window.enterHideoutRoam = enterHideoutRoam;
 
   function exitHideoutRoam(openMenu = true) {
     if (!hideoutBunker) return;
@@ -852,6 +853,7 @@
       }
       if (e.code === 'Escape' && !gunsmith.isOpen && ui.activeMenuTab !== 'home') {
         ui.openMenuTab('home');
+        enterHideoutRoam();
       }
       return;
     }

@@ -2416,9 +2416,16 @@ class GameUI {
       btn.addEventListener('click', () => this.openMenuTab(action));
     });
 
-    // Top bar back & quick-switch sub-navigation
+    // Top bar back button closes utility menu and returns to first-person walkable Hideout
     const backBtn = document.getElementById('btn-menu-home');
-    if (backBtn) backBtn.addEventListener('click', () => this.openMenuTab('home'));
+    if (backBtn) {
+      backBtn.addEventListener('click', () => {
+        this.openMenuTab('home');
+        if (typeof window.enterHideoutRoam === 'function') {
+          window.enterHideoutRoam();
+        }
+      });
+    }
     document.querySelectorAll('.subnav-btn').forEach((btn) => {
       btn.addEventListener('click', () => this.openMenuTab(btn.dataset.tab));
     });

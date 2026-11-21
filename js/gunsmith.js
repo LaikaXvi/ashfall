@@ -169,6 +169,10 @@ class GunsmithController {
     this.closeDrawer();
     this.ui.renderHideout();
     this.ui.showScreen('hideout');
+    this.ui.openMenuTab('home');
+    if (typeof window.enterHideoutRoam === 'function') {
+      window.enterHideoutRoam();
+    }
   }
 
   openDrawer(slotKey) {
