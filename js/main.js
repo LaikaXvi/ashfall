@@ -626,6 +626,10 @@
   window.addEventListener('keydown', (e) => {
     if (devConsole && devConsole.isOpen) return;
     if (!inRaid) {
+      if (e.code === 'Escape' && ui && ui._deployWeaponPick && ui.closeDeployWeaponPickMode) {
+        ui.closeDeployWeaponPickMode();
+        return;
+      }
       if (e.code === 'Escape' && !gunsmith.isOpen && ui.activeMenuTab !== 'home') {
         ui.openMenuTab('home');
       }

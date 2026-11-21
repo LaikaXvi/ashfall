@@ -1421,7 +1421,8 @@ button:disabled {
 #menu-view-deploy .edge-panel-left {
   width: fit-content;
   max-width: calc(100vw - 410px);
-  max-height: calc(100vh - 76px);
+  height: calc(100vh - 84px);
+  max-height: calc(100vh - 84px);
   overflow: hidden !important;
   display: flex;
   flex-direction: column;
@@ -1432,27 +1433,30 @@ button:disabled {
   width: fit-content;
   min-width: calc(var(--deploy-slot) * 5 + var(--deploy-gap) * 4 + 24px);
   max-width: calc(var(--deploy-slot) * 5 + var(--deploy-gap) * 4 + 24px);
-  max-height: calc(100vh - 76px);
+  max-height: calc(100vh - 84px);
   flex-shrink: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 8px 10px;
+  padding: 8px 10px 20px;
 }
 
 #menu-view-deploy .deploy-summary-bar {
   padding: 5px 8px;
   gap: 4px 8px;
   font-size: 9.5px;
+  flex-shrink: 0;
 }
 
 .stash-unified-scroll {
   display: flex;
   flex-direction: column;
   gap: var(--deploy-gap);
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
-  max-height: calc(100vh - 140px);
-  padding: 2px 10px 4px 2px;
+  padding: 4px 12px 28px 4px;
   scrollbar-width: auto;
   scrollbar-color: rgba(245, 166, 35, 0.72) rgba(255, 255, 255, 0.08);
 }
@@ -1494,6 +1498,7 @@ button:disabled {
   width: fit-content;
   padding: 0;
   overflow: visible;
+  flex-shrink: 0;
 }
 
 #menu-view-deploy .stash-grid-64 {
@@ -1502,6 +1507,7 @@ button:disabled {
   max-height: none;
   overflow: visible;
   padding: 0;
+  flex-shrink: 0;
 }
 
 #menu-view-deploy .inv-grid-compact {
@@ -3926,17 +3932,21 @@ input[type="range"].gp-focus {
   border: 1px solid rgba(255, 255, 255, 0.16);
 }
 
-/* ==================== DMZ-STYLE IN-PLACE WEAPON-SWITCH SLOT PICKER ==================== */
+/* ==================== DMZ-STYLE IN-PLACE WEAPON-SWITCH SLOT PICKER (IN-RAID & DEPLOYMENT STASH) ==================== */
 #loot-modal.weapon-pick-active .inv-container-panel,
 #loot-modal.weapon-pick-active .inv-slot:not(.wpn-pick-target),
-#loot-modal.weapon-pick-active .op-slot-card:not(.wpn-pick-target) {
+#loot-modal.weapon-pick-active .op-slot-card:not(.wpn-pick-target),
+#menu-view-deploy.weapon-pick-active .edge-panel-left,
+#menu-view-deploy.weapon-pick-active .inv-slot:not(.wpn-pick-target),
+#menu-view-deploy.weapon-pick-active .op-slot-card:not(.wpn-pick-target) {
   opacity: 0.22 !important;
   filter: grayscale(0.85) brightness(0.65);
   pointer-events: none !important;
   transition: opacity 0.15s ease, filter 0.15s ease;
 }
 
-#loot-modal.weapon-pick-active .wpn-pick-target {
+#loot-modal.weapon-pick-active .wpn-pick-target,
+#menu-view-deploy.weapon-pick-active .wpn-pick-target {
   opacity: 1 !important;
   filter: none !important;
   pointer-events: auto !important;
@@ -3952,7 +3962,10 @@ input[type="range"].gp-focus {
 
 #loot-modal.weapon-pick-active .wpn-pick-target:hover,
 #loot-modal.weapon-pick-active .wpn-pick-target.ui-selected,
-#loot-modal.weapon-pick-active .wpn-pick-target.gp-focus {
+#loot-modal.weapon-pick-active .wpn-pick-target.gp-focus,
+#menu-view-deploy.weapon-pick-active .wpn-pick-target:hover,
+#menu-view-deploy.weapon-pick-active .wpn-pick-target.ui-selected,
+#menu-view-deploy.weapon-pick-active .wpn-pick-target.gp-focus {
   border-color: #ffca28 !important;
   box-shadow: 0 0 0 3px rgba(255, 202, 40, 0.95), 0 0 28px rgba(255, 202, 40, 0.75) !important;
   transform: scale(1.06);

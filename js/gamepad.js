@@ -698,6 +698,8 @@ class GamepadController {
     if (this._justPressed(pad, 1)) {
       if (ui && ui._raidWeaponPick && ui.closeRaidWeaponPickMode) {
         ui.closeRaidWeaponPickMode();
+      } else if (ui && ui._deployWeaponPick && ui.closeDeployWeaponPickMode) {
+        ui.closeDeployWeaponPickMode();
       } else if (ui && ui.isInGameSettingsOpen && ui.closeInGameSettings) {
         ui.closeInGameSettings(true);
       } else if (gunsmith && gunsmith.isOpen) {

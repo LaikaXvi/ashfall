@@ -108,6 +108,9 @@ class GameUI {
     if (this._raidWeaponPick && scope.id === 'loot-modal') {
       return Array.from(scope.querySelectorAll('.wpn-pick-target, #btn-cancel-wpn-pick')).filter(el => el.offsetParent !== null);
     }
+    if (this._deployWeaponPick && this.activeMenuTab === 'deploy') {
+      return Array.from(document.querySelectorAll('#menu-view-deploy .wpn-pick-target, #btn-cancel-deploy-wpn-pick')).filter(el => el.offsetParent !== null);
+    }
     const slotSel = this._dragState
       ? '.inv-slot:not(.searching)'
       : '.inv-slot:not(.empty-slot):not(.searching)';
@@ -3156,6 +3159,12 @@ class GameUI {
       killstreak: L.killstreak,
       melee: L.melee
     }, (key) => {
+      if (this._deployWeaponPick) {
+        if ((key === 'primary' || key === 'secondary') && this._deployWeaponPick.validTargets.includes(key)) {
+          this._confirmDeployWeaponPickSlot(key);
+        }
+        return;
+      }
       if (key === 'cash' || key === 'dogtag') return;
       if (key === 'plates') {
         if ((L.plates || 0) > 0) { L.plates -= 1; this.addToStash('armor_plate', 1); }
@@ -3199,6 +3208,10 @@ class GameUI {
         wSlot.innerHTML = this._renderInvSlotInner({ id: L.backpackWeapon, qty: 1 }, wDef, { wide: true, typeLabel: 'WPN SLOT' });
         wSlot.title = `${wDef.name} (Backpack Weapon Slot) — Click to return to Weapon Stash`;
         wSlot.addEventListener('click', () => {
+          if (this._deployWeaponPick && this._deployWeaponPick.validTargets.includes('backpackWeapon')) {
+            this._confirmDeployWeaponPickSlot('backpackWeapon');
+            return;
+          }
           this.addToStash(L.backpackWeapon, 1);
           L.backpackWeapon = null;
           this.saveProfile();
@@ -3207,6 +3220,11 @@ class GameUI {
       } else {
         wSlot.classList.add('empty-slot');
         wSlot.innerHTML = `<div class="slot-top-bar"><span class="slot-type">WPN SLOT</span></div><span class="empty-wpn-hint">WEAPON SLOT</span>`;
+        wSlot.addEventListener('click', () => {
+          if (this._deployWeaponPick && this._deployWeaponPick.validTargets.includes('backpackWeapon')) {
+            this._confirmDeployWeaponPickSlot('backpackWeapon');
+          }
+        });
       }
       bagGrid.appendChild(wSlot);
     }
@@ -3233,32 +3251,113 @@ class GameUI {
     }
   }
 
+  closeDeployWeaponPickMode() {
+    this._deployWeaponPick = null;
+    const view = document.getElementById('menu-view-deploy');
+    if (view) view.classList.remove('weapon-pick-active');
+    const banner = document.getElementById('deploy-wpn-pick-banner');
+    if (banner) banner.remove();
+    document.querySelectorAll('#menu-view-deploy .wpn-pick-target').forEach(el => el.classList.remove('wpn-pick-target'));
+    document.querySelectorAll('#menu-view-deploy .wpn-pick-slot-badge').forEach(el => el.remove());
+  }
+
+  _confirmDeployWeaponPickSlot(targetKey) {
+    const ctx = this._deployWeaponPick;
+    if (!ctx) return false;
+    const { weaponStashIdx, wItem } = ctx;
+    const L = this.profile.loadout;
+    const prevId = L[targetKey];
+    this.profile.weaponStash.splice(weaponStashIdx, 1);
+    if (prevId) this.addToStash(prevId, 1);
+    L[targetKey] = wItem.id;
+    this.closeDeployWeaponPickMode();
+    if (window.soundEngine && window.soundEngine.playMagIn) {
+      try { window.soundEngine.playMagIn(); } catch (e) {}
+    }
+    this.saveProfile();
+    this.renderHideout();
+    return true;
+  }
+
   _openDeployStashWeaponStaging(weaponStashIdx) {
     const wItem = this.profile.weaponStash[weaponStashIdx];
     if (!wItem || !GAME_DATA.ITEMS[wItem.id]) return;
+    const view = document.getElementById('menu-view-deploy');
+    const rightPanel = view ? view.querySelector('.edge-panel-right') : null;
+    if (!view || !rightPanel) return;
+
+    this.closeDeployWeaponPickMode();
+
     const L = this.profile.loadout;
+    const wDef = GAME_DATA.ITEMS[wItem.id];
     const bagDef = GAME_DATA.ITEMS[L.backpack || 'bag_small'];
     const hasWeaponBag = !!(bagDef && bagDef.weaponSlot);
     const allMods = this.profile.weaponMods || {};
+    const validTargets = ['primary', 'secondary'];
+    if (hasWeaponBag) validTargets.push('backpackWeapon');
 
-    this.openWeaponStagingModal({
-      weaponId: wItem.id,
-      mods: wItem.mods || allMods[wItem.id] || null,
-      sourceLabel: 'WEAPON STASH',
-      slots: [
-        { key: 'primary', title: '[1] PRIMARY WEAPON', currentId: L.primary, currentMods: L.primary ? allMods[L.primary] : null, available: true },
-        { key: 'secondary', title: '[2] SECONDARY WEAPON', currentId: L.secondary, currentMods: L.secondary ? allMods[L.secondary] : null, available: true },
-        { key: 'backpackWeapon', title: '[PACK] BACKPACK WEAPON SLOT', currentId: L.backpackWeapon, currentMods: L.backpackWeapon ? allMods[L.backpackWeapon] : null, available: hasWeaponBag, lockReason: 'REQUIRES WEAPON BACKPACK (16 + WPN)' }
-      ],
-      onSelectSlot: (targetKey) => {
-        const prevId = L[targetKey];
-        this.profile.weaponStash.splice(weaponStashIdx, 1);
-        if (prevId) this.addToStash(prevId, 1);
-        L[targetKey] = wItem.id;
-        this.saveProfile();
-        this.renderHideout();
-      }
-    });
+    this._deployWeaponPick = { weaponStashIdx, wItem, validTargets };
+    view.classList.add('weapon-pick-active');
+
+    // Floating selected-weapon banner at top of the right-side backpack/loadout panel (matches in-raid UI!)
+    const banner = document.createElement('div');
+    banner.id = 'deploy-wpn-pick-banner';
+    banner.className = 'wpn-pick-banner';
+    const iconUrl = (window.itemIconRenderer && window.itemIconRenderer.getIcon)
+      ? window.itemIconRenderer.getIcon(wItem.id, { wide: true, mods: wItem.mods || allMods[wItem.id] || {} })
+      : '';
+    banner.innerHTML = `
+      <div class="wpn-pick-banner-left">
+        ${iconUrl ? `<img class="wpn-pick-banner-icon" src="${iconUrl}" alt="${wDef.name}" />` : ''}
+        <div class="wpn-pick-banner-info">
+          <div class="wpn-pick-banner-title">${wDef.name.toUpperCase()}</div>
+          <div class="wpn-pick-banner-sub">WEAPON STASH · SELECT HIGHLIGHTED WEAPON SLOT</div>
+        </div>
+      </div>
+      <button id="btn-cancel-deploy-wpn-pick" class="btn-small" style="padding:4px 8px;flex-shrink:0;">CANCEL</button>
+    `;
+    rightPanel.insertBefore(banner, rightPanel.firstChild);
+    const cancelBtn = banner.querySelector('#btn-cancel-deploy-wpn-pick');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.closeDeployWeaponPickMode();
+      });
+    }
+
+    let firstTargetEl = null;
+    const highlightTarget = (el, slotKey, labelText) => {
+      if (!el) return;
+      el.classList.add('wpn-pick-target');
+      el.dataset.wpnPickKey = slotKey;
+      const badge = document.createElement('span');
+      badge.className = 'wpn-pick-slot-badge';
+      badge.textContent = labelText;
+      el.appendChild(badge);
+      if (!firstTargetEl) firstTargetEl = el;
+    };
+
+    highlightTarget(
+      document.querySelector('#prematch-op-slots .op-slot-card[data-op-key="primary"]'),
+      'primary',
+      L.primary ? 'SWAP [1]' : 'EQUIP [1]'
+    );
+    highlightTarget(
+      document.querySelector('#prematch-op-slots .op-slot-card[data-op-key="secondary"]'),
+      'secondary',
+      L.secondary ? 'SWAP [2]' : 'EQUIP [2]'
+    );
+    if (hasWeaponBag) {
+      highlightTarget(
+        document.querySelector('#prematch-bag-grid .backpack-weapon-slot'),
+        'backpackWeapon',
+        L.backpackWeapon ? 'SWAP BAG' : 'STOW BAG'
+      );
+    }
+
+    if (firstTargetEl && this.setSelectedElement) {
+      this.setSelectedElement(firstTargetEl, { inputMode: 'gamepad' });
+    }
   }
 
   _formatKeyCode(code) {
