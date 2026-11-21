@@ -303,10 +303,9 @@ class Enemy {
         new THREE.MeshBasicMaterial({ color: 0xffcc55, transparent: true, opacity: 0 })
       );
       this.muzzleMesh.position.set(0.20, 1.32, 0.72);
-      this.muzzleLight = new THREE.PointLight(0xffaa33, 0, 6);
-      this.muzzleLight.position.copy(this.muzzleMesh.position);
+      this.muzzleLight = null;
       this.muzzleTimer = 0;
-      this.group.add(this.muzzleMesh, this.muzzleLight);
+      this.group.add(this.muzzleMesh);
       return;
     }
 
@@ -375,13 +374,12 @@ class Enemy {
       new THREE.MeshBasicMaterial({ color: 0xffcc55, transparent: true, opacity: 0 })
     );
     this.muzzleMesh.position.set(0.25, 1.25, 0.78);
-    this.muzzleLight = new THREE.PointLight(0xffaa33, 0, 6);
-    this.muzzleLight.position.set(0.25, 1.25, 0.82);
+    this.muzzleLight = null;
     this.muzzleTimer = 0;
 
     this.group.add(
       this.leftHip, this.rightHip, torso, head,
-      this.leftArm, this.rightArm, weaponObj, this.muzzleMesh, this.muzzleLight
+      this.leftArm, this.rightArm, weaponObj, this.muzzleMesh
     );
   }
 
@@ -972,7 +970,7 @@ class Enemy {
       this.muzzleTimer -= dt;
       if (this.muzzleTimer <= 0) {
         this.muzzleMesh.material.opacity = 0;
-        this.muzzleLight.intensity = 0;
+        if (this.muzzleLight) this.muzzleLight.intensity = 0;
       }
     }
 
@@ -1316,7 +1314,7 @@ class Enemy {
           window.soundEngine.playGunshot(this.weaponId, distToPlayer);
         }
         this.muzzleMesh.material.opacity = 0.95;
-        this.muzzleLight.intensity = 3.0;
+        if (this.muzzleLight) this.muzzleLight.intensity = 3.0;
         this.muzzleTimer = 0.055;
 
         const muzzleWorld = new THREE.Vector3();

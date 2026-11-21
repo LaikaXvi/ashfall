@@ -82,10 +82,12 @@ class WastelandWorld {
 
   _buildSkybox() {
     // Procedural atmospheric skybox dome with zenith gradient, horizon haze, solar disc/corona & drifting clouds
-    const skyGeo = new THREE.SphereGeometry(1450, 32, 20);
+    // Radius 420 + depthTest:false + renderOrder:-1000 guarantees ZERO far-plane clipping at every LOD!
+    const skyGeo = new THREE.SphereGeometry(420, 32, 20);
     const skyMat = new THREE.ShaderMaterial({
       side: THREE.BackSide,
       depthWrite: false,
+      depthTest: false,
       fog: false,
       uniforms: {
         uTime: { value: 0 },
@@ -135,11 +137,11 @@ class WastelandWorld {
           sky += uSunColor * pow(sunDot, 160.0) * 0.95;
           sky += vec3(1.0, 0.97, 0.90) * smoothstep(0.9992, 0.9998, sunDot) * 1.4;
 
-          // Soft high-altitude drifting clouds
-          if (dir.y > 0.03) {
-            vec2 uv = dir.xz / (dir.y + 0.16) * 1.85 + vec2(uTime * 0.006, uTime * 0.002);
-            float c = noise(uv) * 0.55 + noise(uv * 2.3 + 4.1) * 0.30 + noise(uv * 5.1) * 0.15;
-            float cloudMask = smoothstep(0.50, 0.78, c) * smoothstep(0.03, 0.22, dir.y) * 0.48;
+          // Soft high-altitude drifting clouds (faded cleanly above horizon to avoid distant shimmer)
+          if (dir.y > 0.08) {
+            vec2 uv = dir.xz / (dir.y + 0.26) * 1.65 + vec2(uTime * 0.005, uTime * 0.002);
+            float c = noise(uv) * 0.60 + noise(uv * 2.1 + 4.1) * 0.40;
+            float cloudMask = smoothstep(0.52, 0.78, c) * smoothstep(0.08, 0.30, dir.y) * 0.44;
             vec3 cloudCol = mix(vec3(0.84, 0.86, 0.88), uSunColor, pow(sunDot, 3.0) * 0.45);
             sky = mix(sky, cloudCol, cloudMask);
           }
@@ -152,6 +154,8 @@ class WastelandWorld {
       `
     });
     this.skyDome = new THREE.Mesh(skyGeo, skyMat);
+    this.skyDome.renderOrder = -1000;
+    this.skyDome.frustumCulled = false;
     this.scene.add(this.skyDome);
   }
 
@@ -382,7 +386,7 @@ class WastelandWorld {
     const trunkInst = new THREE.InstancedMesh(trunkGeo, trunkMat, pineCount);
     const coneLowInst = new THREE.InstancedMesh(foliageLowGeo, pineMatA, pineCount);
     const coneTopInst = new THREE.InstancedMesh(foliageTopGeo, pineMatB, pineCount);
-    trunkInst.castShadow = true;
+    trunkInst.castShadow = false;
     coneLowInst.castShadow = false;
     coneTopInst.castShadow = false;
     coneLowInst.receiveShadow = false;
@@ -464,7 +468,7 @@ class WastelandWorld {
     rockGeo.scale(1.25, 0.78, 1.05);
     const rockMat = new THREE.MeshLambertMaterial({ color: 0x67645e });
     const rockInst = new THREE.InstancedMesh(rockGeo, rockMat, rockCount);
-    rockInst.castShadow = true;
+    rockInst.castShadow = false;
     rockInst.receiveShadow = true;
 
     let placedRocks = 0;

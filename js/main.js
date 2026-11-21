@@ -1,8 +1,8 @@
 // Main Game Loop, Three.js Scene Setup & Raid Lifecycle
 (function () {
   const canvas = document.getElementById('game-canvas');
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -23,9 +23,9 @@
     const shadows = gfx.shadows ?? 3;
     const textures = gfx.textures ?? 3;
 
-    // 1. Texture Quality -> pixel ratio (capped at 1.5x for smooth high-FPS rendering)
+    // 1. Texture Quality -> pixel ratio (capped at 1.25x for smooth high-FPS rendering on HiDPI displays)
     const dpr = window.devicePixelRatio || 1;
-    const targetPr = textures === 1 ? 0.72 : (textures === 2 ? 1.0 : Math.min(dpr, 1.5));
+    const targetPr = textures === 1 ? 0.72 : (textures === 2 ? 1.0 : Math.min(dpr, 1.25));
     renderer.setPixelRatio(targetPr);
     renderer.setSize(window.innerWidth, window.innerHeight);
 
@@ -2238,7 +2238,7 @@
     if (dist < 0.35) return true;
     const dir = toTarget.divideScalar(dist);
     const ray = new THREE.Raycaster(eye, dir, 0.15, Math.max(0.16, dist - 0.32));
-    const hits = ray.intersectObjects(world.shootableMeshes, false);
+    const hits = ray.intersectObjects((world.wallMeshes && world.wallMeshes.length > 0) ? world.wallMeshes : world.shootableMeshes, false);
     for (const h of hits) {
       // Ignore hits on the container's own mesh (e.g. gun locker body)
       if (ignoreMeshRoot) {
@@ -2490,11 +2490,17 @@
           throwableSystem.update(dt, player, weaponSystem, enemyManager, onThrowableHit, null);
         }
         world.update(dt, now / 1000, player.position);
-        // Keep directional sun shadow frustum centered on player across the 1240m sector
-        if (sunLight && player) {
-          sunLight.position.set(player.position.x + 140, 210, player.position.z + 105);
-          sunLight.target.position.set(player.position.x, 0, player.position.z);
-          sunLight.target.updateMatrixWorld();
+        // Keep directional sun shadow frustum centered on player (snapped every 2m to reduce shadow shimmer & matrix work)
+        if (sunLight && sunLight.castShadow && player) {
+          const sx = Math.round(player.position.x * 0.5) * 2;
+          const sz = Math.round(player.position.z * 0.5) * 2;
+          if (sunLight._lastSnapX !== sx || sunLight._lastSnapZ !== sz) {
+            sunLight._lastSnapX = sx;
+            sunLight._lastSnapZ = sz;
+            sunLight.position.set(sx + 140, 210, sz + 105);
+            sunLight.target.position.set(sx, 0, sz);
+            sunLight.target.updateMatrixWorld();
+          }
         }
 
         enemyManager.update(dt, player, (enemy, hit, dmg, muzzleWorld) => {

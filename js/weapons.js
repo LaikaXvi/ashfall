@@ -2416,14 +2416,14 @@ class WeaponSystem {
         this.slideLegRig.visible = true;
         const vib = showSlideLeg ? Math.sin(performance.now() * 0.036) * 0.008 : 0;
         this.slideLegRig.position.set(
-          THREE.MathUtils.lerp(-0.34, -0.22, this.slideLegBlend),
-          THREE.MathUtils.lerp(-0.78, -0.42, this.slideLegBlend) + vib,
-          THREE.MathUtils.lerp(-0.22, -0.58, this.slideLegBlend)
+          THREE.MathUtils.lerp(-0.18, -0.04, this.slideLegBlend),
+          THREE.MathUtils.lerp(-0.82, -0.46, this.slideLegBlend) + vib,
+          THREE.MathUtils.lerp(-0.24, -0.56, this.slideLegBlend)
         );
         this.slideLegRig.rotation.set(
-          THREE.MathUtils.lerp(-0.55, 0.12, this.slideLegBlend),
-          THREE.MathUtils.lerp(0.28, 0.16, this.slideLegBlend),
-          THREE.MathUtils.lerp(-0.25, -0.14, this.slideLegBlend)
+          THREE.MathUtils.lerp(-0.55, 0.10, this.slideLegBlend),
+          THREE.MathUtils.lerp(0.18, 0.06, this.slideLegBlend),
+          THREE.MathUtils.lerp(-0.16, -0.06, this.slideLegBlend)
         );
       } else {
         this.slideLegRig.visible = false;

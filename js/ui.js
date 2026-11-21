@@ -4654,6 +4654,8 @@ class GameUI {
   }
 
   _renderMinimap(player, world, enemyManager, squadManager) {
+    this._minimapFrame = ((this._minimapFrame || 0) + 1) % 3;
+    if (this._minimapFrame !== 1) return;
     const canvas = document.getElementById('hud-minimap');
     if (!canvas || !world) return;
     const ctx = canvas.getContext('2d');

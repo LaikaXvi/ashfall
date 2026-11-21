@@ -98,8 +98,7 @@ class SquadMate {
         new THREE.MeshBasicMaterial({ color: 0xffdd77, transparent: true, opacity: 0 })
       );
       this.muzzleMesh.position.set(0.14, 1.30, 0.74);
-      this.muzzleLight = new THREE.PointLight(0xffaa44, 0, 7);
-      this.muzzleLight.position.copy(this.muzzleMesh.position);
+      this.muzzleLight = null;
     } else {
       const uniformMat = new THREE.MeshLambertMaterial({ color: 0x2f434a });
       const vestMat = new THREE.MeshLambertMaterial({ color: 0x3b4d3e });
@@ -118,7 +117,7 @@ class SquadMate {
       this.rifleMesh = rifle;
       this.muzzleMesh = new THREE.Mesh(new THREE.SphereGeometry(0.055, 6, 6), new THREE.MeshBasicMaterial({ color: 0xffdd77, transparent: true, opacity: 0 }));
       this.muzzleMesh.position.set(0.24, 1.25, 0.64);
-      this.muzzleLight = new THREE.PointLight(0xffaa44, 0, 7);
+      this.muzzleLight = null;
       g.add(torso, head, rifle);
     }
 
@@ -148,7 +147,7 @@ class SquadMate {
     this.bleedSprite.scale.set(0.80, 0.80, 1);
     this.bleedSprite.visible = false;
 
-    g.add(this.muzzleMesh, this.muzzleLight, this.tagSprite, this.bleedSprite);
+    g.add(this.muzzleMesh, this.tagSprite, this.bleedSprite);
     g.position.copy(this.position);
     this.scene.add(g);
     this.group = g;
@@ -673,7 +672,7 @@ class SquadMate {
       this.muzzleTimer -= dt;
       if (this.muzzleTimer <= 0) {
         this.muzzleMesh.material.opacity = 0;
-        this.muzzleLight.intensity = 0;
+        if (this.muzzleLight) this.muzzleLight.intensity = 0;
       }
     }
 
@@ -855,7 +854,7 @@ class SquadMate {
         this.mag -= 1;
         this.fireTimer = this.weaponId === 'm24' ? 1.1 : (0.22 + Math.random() * 0.20);
         this.muzzleMesh.material.opacity = 0.92;
-        this.muzzleLight.intensity = 3.2;
+        if (this.muzzleLight) this.muzzleLight.intensity = 3.2;
         this.muzzleTimer = 0.05;
 
         const distToPlayer = this.position.distanceTo(player.position);

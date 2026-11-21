@@ -1,7 +1,7 @@
 // Game Item Database, 5-Tier Loot Rarity, Logical POI Tables, Workbench & Attachments
 // IMPORTANT: Update GAME_DATA.VERSION (and ?v= cache-busters in index.html) with EVERY new commit!
 window.GAME_DATA = {
-  VERSION: 'v1.73',
+  VERSION: 'v1.74',
   SQUAD_COLORS: ['#69f0ae', '#42a5f5', '#ffeb3b', '#ff69b4'], // Green, Blue, Yellow, Pink
 
   RARITIES: {
@@ -340,7 +340,7 @@ window.GAME_DATA = {
       fuseTime: 5.0,
       blastRadius: 9.0,
       damage: 145,
-      throwSpeed: 17.5,
+      throwSpeed: 25.5,
       stackable: true,
       buyQty: 2,
       desc: '5-second timed fragmentation grenade. Hold [F] to pull pin & cook.'
@@ -353,7 +353,7 @@ window.GAME_DATA = {
       value: 700,
       weight: 0.25,
       damage: 135,
-      throwSpeed: 26.0,
+      throwSpeed: 28.0,
       stackable: true,
       buyQty: 2,
       desc: 'Silent, high-velocity lethal blade. Hold [F] to aim.'
@@ -368,7 +368,7 @@ window.GAME_DATA = {
       fuseTime: 1.6,
       smokeRadius: 6.5,
       smokeDuration: 28.0,
-      throwSpeed: 16.5,
+      throwSpeed: 22.0,
       stackable: true,
       buyQty: 2,
       desc: 'Deploys a dense smoke screen that blocks enemy line-of-sight ([Q]).'
@@ -383,7 +383,7 @@ window.GAME_DATA = {
       fuseTime: 1.4,
       stunRadius: 9.5,
       stunDuration: 5.0,
-      throwSpeed: 17.5,
+      throwSpeed: 23.5,
       stackable: true,
       buyQty: 2,
       desc: 'Disorients and stuns hostiles in blast radius for 5s ([Q]).'

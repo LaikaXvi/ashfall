@@ -126,7 +126,8 @@ class ThrowableSystem {
       m.scale.setScalar(1.25);
       // Seat grenade/knife cleanly inside the right gloved palm
       if (id === 'throwing_knife') {
-        m.position.set(-0.006, 0.015, -0.022);
+        m.position.set(-0.004, 0.022, -0.024);
+        m.rotation.set(-0.28, 0.0, 0.0);
       } else {
         m.position.set(-0.012, 0.025, -0.024);
       }
@@ -143,7 +144,7 @@ class ThrowableSystem {
   }
 
   _buildTrajectoryArc() {
-    const maxPts = 48;
+    const maxPts = 64;
     const positions = new Float32Array(maxPts * 3);
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -305,7 +306,7 @@ class ThrowableSystem {
     const pos = launch.origin.clone();
     const vel = launch.vel.clone();
     const stepDt = 0.045;
-    const maxPts = 48;
+    const maxPts = 64;
     const arr = this.arcLine.geometry.attributes.position.array;
 
     let count = 0;
@@ -322,11 +323,15 @@ class ThrowableSystem {
       nextVel.y -= this.GRAVITY * stepDt;
       const nextPos = pos.clone().addScaledVector(nextVel, stepDt);
 
-      // Ground check
-      if (nextPos.y <= 0.06) {
-        const t = (pos.y - 0.06) / Math.max(0.001, pos.y - nextPos.y);
+      // Terrain-aware ground check across rolling 1240m elevation
+      const groundY = (this.world && this.world.getTerrainHeight)
+        ? this.world.getTerrainHeight(nextPos.x, nextPos.z)
+        : 0;
+      const floorY = groundY + 0.06;
+      if (nextPos.y <= floorY) {
+        const t = (pos.y - floorY) / Math.max(0.001, pos.y - nextPos.y);
         hitPoint = pos.clone().lerp(nextPos, THREE.MathUtils.clamp(t, 0, 1));
-        hitPoint.y = 0.05;
+        hitPoint.y = groundY + 0.08;
         if (i + 1 < maxPts) {
           arr[(i + 1) * 3] = hitPoint.x;
           arr[(i + 1) * 3 + 1] = hitPoint.y;
@@ -359,7 +364,7 @@ class ThrowableSystem {
 
     this.arcLine.visible = true;
     if (hitPoint) {
-      this.landingRing.position.set(hitPoint.x, Math.max(0.05, hitPoint.y), hitPoint.z);
+      this.landingRing.position.set(hitPoint.x, hitPoint.y, hitPoint.z);
       this.landingRing.visible = true;
     } else {
       this.landingRing.visible = false;
@@ -515,13 +520,15 @@ class ThrowableSystem {
       if (isKnife) {
         if (this.prepLeftHand) this.prepLeftHand.visible = false;
         if (this.prepLeftArm) this.prepLeftArm.visible = false;
-        const readyT = smooth(Math.min(1, this.holdTime / 0.16));
+        const readyT = smooth(Math.min(1, this.holdTime / 0.14));
+        const breathe = Math.sin(this.holdTime * 3.2) * 0.004;
+        // Raise throwing knife high into a clear, cocked-back overhand ready-to-throw stance
         this.prepHand.position.set(
-          THREE.MathUtils.lerp(0.28, 0.20, readyT),
-          THREE.MathUtils.lerp(-0.26, 0.02, readyT),
-          THREE.MathUtils.lerp(-0.28, -0.34, readyT)
+          THREE.MathUtils.lerp(0.28, 0.19, readyT),
+          THREE.MathUtils.lerp(-0.26, 0.09, readyT) + breathe,
+          THREE.MathUtils.lerp(-0.28, -0.32, readyT)
         );
-        this.prepHand.rotation.set(THREE.MathUtils.lerp(-0.4, 0.22, readyT), -0.18, 0.12);
+        this.prepHand.rotation.set(THREE.MathUtils.lerp(-0.20, -0.42, readyT), -0.14, 0.18);
       } else {
         // Phase A (0..pinPullDuration): Bring grenade center-right & yank actual pin off with left hand (NOT live yet!)
         // Phase B (pinPullDuration+): Pin is removed -> pull back to throw & start 5s cook timer on frag!
@@ -587,8 +594,8 @@ class ThrowableSystem {
         this.weaponSystem._aimArm(this.prepLeftArm, lShoulder, lWrist);
       }
 
-      // Show live 3D trajectory arc once held past a brief tap
-      if (this.holdTime >= 0.10) {
+      // Show live 3D trajectory arc immediately when holding throwing knife (or past brief tap for grenades)
+      if (isKnife || this.holdTime >= 0.08) {
         this._updateTrajectoryPreview(def);
       }
 
@@ -724,9 +731,14 @@ class ThrowableSystem {
         window.soundEngine.playGrenadeBounce();
       };
 
+      const terrainY = (this.world && this.world.getTerrainHeight)
+        ? this.world.getTerrainHeight(nextPos.x, nextPos.z)
+        : 0;
+      const floorY = terrainY + 0.07;
+
       if (pr.isKnife) {
-        if (nextPos.y <= 0.07 || this._pointHitsCollider(nextPos, r)) {
-          pr.pos.copy(nextPos.y <= 0.07 ? new THREE.Vector3(nextPos.x, 0.07, nextPos.z) : prevPos);
+        if (nextPos.y <= floorY || this._pointHitsCollider(nextPos, r)) {
+          pr.pos.copy(nextPos.y <= floorY ? new THREE.Vector3(nextPos.x, floorY, nextPos.z) : prevPos);
           pr.mesh.position.copy(pr.pos);
           pr.stuck = true;
           tryBounceSound(pr.vel.length());
@@ -778,9 +790,9 @@ class ThrowableSystem {
             pr.vel.y = -pr.vel.y * 0.35;
           }
           tryBounceSound(impY);
-        } else if (resolved.y <= 0.07) {
+        } else if (resolved.y <= floorY) {
           const impY = Math.abs(pr.vel.y);
-          resolved.y = 0.07;
+          resolved.y = floorY;
           pr.vel.y = impY > 0.85 ? -pr.vel.y * 0.36 : 0;
           pr.vel.x *= 0.72;
           pr.vel.z *= 0.72;

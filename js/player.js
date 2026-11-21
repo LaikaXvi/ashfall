@@ -784,11 +784,11 @@ class Player {
       lKneeX = THREE.MathUtils.lerp(-0.90, -0.04, entry);
       lAnkX = THREE.MathUtils.lerp(0.20, 0.15, entry);
 
-      // Trailing RIGHT knee tucked flat under/beside body with horizontal shin (kneeY ≈ 0.18m, ankleY ≈ 0.18m -> ZERO clipping!)
-      rHipX = THREE.MathUtils.lerp(0.65, 1.28, entry);
-      rHipZ = 0.85 * entry;
-      rKneeX = THREE.MathUtils.lerp(-1.10, -2.85, entry);
-      rAnkX = THREE.MathUtils.lerp(0.30, 0.50, entry);
+      // Trailing RIGHT leg & foot tucked compactly underneath hip/body (zero splay or clipping)
+      rHipX = THREE.MathUtils.lerp(0.60, 1.05, entry);
+      rHipZ = 0.36 * entry;
+      rKneeX = THREE.MathUtils.lerp(-1.10, -2.55, entry);
+      rAnkX = THREE.MathUtils.lerp(0.25, 0.72, entry);
 
       // Arms tucked LOW & INWARD stabilizing the weapon straight forward (never up in the air!)
       lShX = 0.24; lElbX = 0.88; lShZ = 0.32;
