@@ -1261,6 +1261,16 @@ class WeaponSystem {
       grip.rotation.x = 0.28;
       const endCap = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.052, 0.028), hkPoly);
       endCap.position.set(0, 0.002, 0.182);
+      // Default H&K MP5 A3 Collapsible Steel Sliding Stock (when no custom stock mod is mounted)
+      if (!mods.stock || mods.stock === 'none') {
+        const stRailL = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.009, 0.22), hkSteel);
+        stRailL.position.set(-0.019, 0.002, 0.285);
+        const stRailR = stRailL.clone();
+        stRailR.position.x = 0.019;
+        const stPad = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.105, 0.026), hkPoly);
+        stPad.position.set(0, -0.022, 0.395);
+        g.add(stRailL, stRailR, stPad);
+      }
       addTriggerGuard(0.072, -0.038);
 
       // Signature 3-segment curved 30-round steel 9mm banana magazine
@@ -1473,10 +1483,16 @@ class WeaponSystem {
       this.boltMesh = pump;
       this.boltRestPos.copy(pump.position);
 
-      // Stock grip
-      const stock = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.068, 0.22), woodMat);
-      stock.position.set(0, -0.034, 0.24);
-      stock.rotation.x = 0.24;
+      // Full Remington 870 Wooden Buttstock + Rubber Recoil Pad
+      const stockWrist = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.056, 0.16), woodMat);
+      stockWrist.position.set(0, -0.028, 0.22);
+      stockWrist.rotation.x = 0.22;
+      const stockButt = new THREE.Mesh(new THREE.BoxGeometry(0.040, 0.098, 0.22), woodMat);
+      stockButt.position.set(0, -0.048, 0.36);
+      const stockPad = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.102, 0.022), darkMat);
+      stockPad.position.set(0, -0.048, 0.475);
+      const stock = new THREE.Group();
+      stock.add(stockWrist, stockButt, stockPad);
       addTriggerGuard(0.08, -0.028);
 
       // Visible 12ga shell for reload animation (tucked cleanly inside loading port, never dangling below gun)
@@ -1698,6 +1714,19 @@ class WeaponSystem {
       const grip = new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.095, 0.046), gunMat);
       grip.position.set(0, -0.068, 0.15);
       grip.rotation.x = 0.28;
+      // Default M24 SWS Olive-Drab Fiberglass Sniper Buttstock (when no custom stock mod is mounted)
+      if (!mods.stock || mods.stock === 'none') {
+        const m24Wrist = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.052, 0.14), gunMat);
+        m24Wrist.position.set(0, -0.028, 0.22);
+        m24Wrist.rotation.x = 0.14;
+        const m24Butt = new THREE.Mesh(new THREE.BoxGeometry(0.040, 0.102, 0.22), gunMat);
+        m24Butt.position.set(0, -0.040, 0.36);
+        const m24Cheek = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.022, 0.13), darkMat);
+        m24Cheek.position.set(0, 0.018, 0.34);
+        const m24Pad = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.108, 0.020), darkMat);
+        m24Pad.position.set(0, -0.040, 0.475);
+        g.add(m24Wrist, m24Butt, m24Cheek, m24Pad);
+      }
       addTriggerGuard(0.09, -0.034);
 
       // Bolt handle with spherical knob
