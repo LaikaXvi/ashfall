@@ -3010,8 +3010,12 @@ class GameUI {
     // Update Overhauled Main Menu Active Operator Hero Card & Deploy Readiness
     const ops = this._ensureActiveDutyOperators ? this._ensureActiveDutyOperators() : null;
     if (ops && ops.length > 0) {
-      const op = ops[this.profile.activeOperatorIdx || 0] || ops[0];
-      const dt = this._getDogtagInfo(op.exfilStreak || 0);
+      let rawOp = ops[this.profile.activeOperatorIdx || 0];
+      if (!rawOp || rawOp.empty) {
+        rawOp = ops.find((o) => o && !o.empty) || null;
+      }
+      const op = rawOp ? this._resolveOperatorSkin(rawOp) : null;
+      const dt = op ? this._getDogtagInfo(op.exfilStreak || 0) : null;
       const L = this.profile.loadout || {};
       const callsignEl = document.getElementById('home-op-callsign');
       const nameEl = document.getElementById('home-op-name');
@@ -3020,23 +3024,25 @@ class GameUI {
       const portraitEl = document.getElementById('home-op-portrait');
       const chipsEl = document.getElementById('home-op-gear-chips');
       if (callsignEl) {
-        callsignEl.textContent = op.callsign;
-        callsignEl.style.color = op.accent || '#69f0ae';
+        callsignEl.textContent = op ? op.callsign : 'UNASSIGNED';
+        callsignEl.style.color = op ? (op.accent || '#69f0ae') : '#90a4ae';
       }
       if (nameEl) {
-        nameEl.textContent = op.callsign;
-        nameEl.style.color = op.accent || '#f2f6f9';
+        nameEl.textContent = op ? op.callsign : 'NO OPERATOR';
+        nameEl.style.color = op ? (op.accent || '#f2f6f9') : '#90a4ae';
       }
       if (dogtagEl) {
-        dogtagEl.textContent = `${dt.tier} · ${dt.level}`;
-        dogtagEl.style.borderColor = dt.color;
-        dogtagEl.style.color = dt.color;
+        dogtagEl.textContent = dt ? `${dt.tier} · ${dt.level}` : 'EMPTY SLOT';
+        dogtagEl.style.borderColor = dt ? dt.color : 'rgba(255,255,255,0.25)';
+        dogtagEl.style.color = dt ? dt.color : '#90a4ae';
       }
       if (subEl) {
-        subEl.textContent = `${op.title} · EXFIL STREAK ${dt.streak}`;
+        subEl.textContent = op ? `${op.skinName} · EXFIL STREAK ${dt.streak}` : 'RECRUIT AN OPERATOR IN THE OPERATOR TAB';
       }
-      if (portraitEl && this._buildOperatorPortraitSVG) {
-        portraitEl.innerHTML = this._buildOperatorPortraitSVG(op);
+      if (portraitEl) {
+        portraitEl.innerHTML = op
+          ? this._buildOperatorPortraitSVG(op)
+          : this._buildEmptyOperatorSilhouetteSVG();
       }
       if (chipsEl) {
         const pDef = L.primary && GAME_DATA.ITEMS[L.primary];
@@ -4056,9 +4062,10 @@ class GameUI {
   selectActiveDutyOperator(idx) {
     const ops = this._ensureActiveDutyOperators();
     if (idx < 0 || idx >= ops.length || idx === this.profile.activeOperatorIdx) return;
+    if (ops[idx] && ops[idx].empty) return;
     const L = this.profile.loadout;
     const prevOp = ops[this.profile.activeOperatorIdx];
-    if (prevOp) {
+    if (prevOp && !prevOp.empty) {
       prevOp.gear = {
         armor: L.armor || null,
         backpack: L.backpack || null,
@@ -4075,9 +4082,51 @@ class GameUI {
       L.headgear = nextOp.gear.headgear || null;
       L.selfRevive = nextOp.gear.selfRevive || null;
       L.killstreak = nextOp.gear.killstreak || null;
+    } else if (nextOp) {
+      L.armor = null;
+      L.backpack = null;
+      L.headgear = null;
+      L.selfRevive = null;
+      L.killstreak = null;
     }
     this.saveProfile();
     this.renderHideout();
+  }
+
+  _getAvailableOperatorsCatalog() {
+    return [
+      { id: 'op_1', callsign: 'GHOST-01', title: 'RECON // PATHFINDER', defaultSkin: 'ghost_ranger' },
+      { id: 'op_2', callsign: 'VIPER-02', title: 'NIGHT RECON // SHADOW', defaultSkin: 'viper_shadow' },
+      { id: 'op_3', callsign: 'KODIAK-03', title: 'HEAVY BREACHER // IRON', defaultSkin: 'kodiak_iron' },
+      { id: 'op_4', callsign: 'SPECTRE-04', title: 'INFILTRATOR // ZERO', defaultSkin: 'spectre_stealth' },
+      { id: 'op_5', callsign: 'VALKYRIE-05', title: 'COMBAT MEDIC // AEGIS', defaultSkin: 'valkyrie_aegis' },
+      { id: 'op_6', callsign: 'TITAN-06', title: 'ASSAULT // VANGUARD', defaultSkin: 'titan_obsidian' }
+    ];
+  }
+
+  _buildEmptyOperatorSilhouetteSVG() {
+    return `
+      <svg class="duty-portrait-svg duty-empty-silhouette" viewBox="0 0 200 220" aria-hidden="true">
+        <defs>
+          <radialGradient id="emptyOpGrad" cx="50%" cy="46%" r="54%">
+            <stop offset="0%" stop-color="#ffffff" stop-opacity="0.08"/>
+            <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <rect width="200" height="220" fill="url(#emptyOpGrad)"/>
+        <!-- Dashed tactical operator outline silhouette -->
+        <path d="M32 220 L42 146 Q50 120 78 114 L122 114 Q150 120 158 146 L168 220 Z"
+              fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.22)" stroke-width="1.6" stroke-dasharray="5 4"/>
+        <ellipse cx="100" cy="74" rx="27" ry="31"
+                 fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.24)" stroke-width="1.6" stroke-dasharray="5 4"/>
+        <path d="M68 68 Q68 32 100 30 Q132 32 132 68"
+              fill="none" stroke="rgba(255,255,255,0.28)" stroke-width="1.8" stroke-dasharray="4 3"/>
+        <!-- Centered recruit plus reticle -->
+        <circle cx="100" cy="146" r="18" fill="rgba(105,240,174,0.08)" stroke="rgba(105,240,174,0.55)" stroke-width="1.5"/>
+        <line x1="100" y1="137" x2="100" y2="155" stroke="#69f0ae" stroke-width="2.2"/>
+        <line x1="91" y1="146" x2="109" y2="146" stroke="#69f0ae" stroke-width="2.2"/>
+      </svg>
+    `;
   }
 
   _getOperatorSkinsForOp(opId) {
@@ -4099,6 +4148,24 @@ class GameUI {
         { id: 'kodiak_desert', name: 'DESERT JUGGERNAUT', accent: '#ffcc80', helmet: '#7a684e', visor: '#ffb74d', rig: '#8c7758', uniform: '#5c4e3a', style: 'heavy' },
         { id: 'kodiak_crimson', name: 'CRIMSON VANGUARD', accent: '#ff5252', helmet: '#1a1a1d', visor: '#ff5252', rig: '#361c20', uniform: '#161518', style: 'heavy' },
         { id: 'kodiak_titan', name: 'TITAN CARBON', accent: '#b0bec5', helmet: '#212529', visor: '#eceff1', rig: '#2f353b', uniform: '#181b1e', style: 'heavy' }
+      ],
+      op_4: [
+        { id: 'spectre_stealth', name: 'ZERO STEALTH', accent: '#ce93d8', helmet: '#1b1824', visor: '#ba68c8', rig: '#282236', uniform: '#14111c', style: 'nvg' },
+        { id: 'spectre_ash', name: 'ASHFALL DRIFTER', accent: '#90a4ae', helmet: '#373e42', visor: '#b0bec5', rig: '#454e54', uniform: '#282e32', style: 'nvg' },
+        { id: 'spectre_emerald', name: 'VIPER OPTICS', accent: '#00e676', helmet: '#18241e', visor: '#00e676', rig: '#22362c', uniform: '#111a16', style: 'nvg' },
+        { id: 'spectre_ember', name: 'SCORCHED RECON', accent: '#ff8a65', helmet: '#2c1e1a', visor: '#ff7043', rig: '#3e2923', uniform: '#1e1412', style: 'nvg' }
+      ],
+      op_5: [
+        { id: 'valkyrie_aegis', name: 'AEGIS MEDIC', accent: '#4dd0e1', helmet: '#24343b', visor: '#26c6da', rig: '#324852', uniform: '#1c282e', style: 'goggles' },
+        { id: 'valkyrie_snow', name: 'ALPINE RESCUE', accent: '#ff5252', helmet: '#cfd8dc', visor: '#ff5252', rig: '#b0bec5', uniform: '#90a4ae', style: 'goggles' },
+        { id: 'valkyrie_olive', name: 'FIELD SURGEON', accent: '#a5d6a7', helmet: '#2e3b2e', visor: '#81c784', rig: '#3d4f3d', uniform: '#222c22', style: 'goggles' },
+        { id: 'valkyrie_obsidian', name: 'NIGHT WARDEN', accent: '#ffd54f', helmet: '#1c1d21', visor: '#ffd54f', rig: '#2a2c33', uniform: '#15161a', style: 'goggles' }
+      ],
+      op_6: [
+        { id: 'titan_obsidian', name: 'OBSIDIAN SHIELD', accent: '#ff7043', helmet: '#1d1f24', visor: '#ff7043', rig: '#2c3038', uniform: '#16181c', style: 'heavy' },
+        { id: 'titan_olive', name: 'FORTRESS OD', accent: '#81c784', helmet: '#303b2c', visor: '#66bb6a', rig: '#414f3c', uniform: '#242c21', style: 'heavy' },
+        { id: 'titan_sand', name: 'DUNE BASTION', accent: '#ffe082', helmet: '#6e5e46', visor: '#ffd54f', rig: '#826f53', uniform: '#524634', style: 'heavy' },
+        { id: 'titan_cobalt', name: 'BLUE STEEL', accent: '#64b5f6', helmet: '#1e2c3d', visor: '#42a5f5', rig: '#2a3e54', uniform: '#16202e', style: 'heavy' }
       ]
     };
     return rosters[opId] || rosters.op_1;
@@ -4177,6 +4244,7 @@ class GameUI {
     const ctx = document.getElementById('op-context-menu');
     const skinModal = document.getElementById('op-skin-modal');
     const traitsModal = document.getElementById('op-traits-modal');
+    const recruitModal = document.getElementById('op-recruit-modal');
 
     document.addEventListener('mousedown', (e) => {
       if (ctx && !ctx.classList.contains('hidden') && !ctx.contains(e.target)) {
@@ -4193,6 +4261,10 @@ class GameUI {
         if (traitsModal && !traitsModal.classList.contains('hidden')) {
           e.stopPropagation();
           this.closeOperatorTraitsModal();
+        }
+        if (recruitModal && !recruitModal.classList.contains('hidden')) {
+          e.stopPropagation();
+          this.closeOperatorRecruitModal();
         }
       }
     }, true);
@@ -4226,6 +4298,12 @@ class GameUI {
     if (closeTraitsBtn) closeTraitsBtn.addEventListener('click', () => this.closeOperatorTraitsModal());
     if (traitsModal) traitsModal.addEventListener('mousedown', (e) => {
       if (e.target === traitsModal) this.closeOperatorTraitsModal();
+    });
+
+    const closeRecruitBtn = document.getElementById('btn-op-recruit-close');
+    if (closeRecruitBtn) closeRecruitBtn.addEventListener('click', () => this.closeOperatorRecruitModal());
+    if (recruitModal) recruitModal.addEventListener('mousedown', (e) => {
+      if (e.target === recruitModal) this.closeOperatorRecruitModal();
     });
 
     const resetTraitsBtn = document.getElementById('btn-op-traits-reset');
@@ -4275,28 +4353,111 @@ class GameUI {
     const ops = this._ensureActiveDutyOperators();
     const op = ops[idx];
     if (!op) return;
-    const defaultSkins = this._getOperatorSkinsForOp(op.id);
-    const defSkin = defaultSkins[0];
+    // Reset operator-specific inventory, traits, trait points & dogtag level and mark slot empty
+    op.empty = true;
     op.exfilStreak = 0;
     op.traitPoints = 0;
     op.traits = { assault: 0, survival: 0, recon: 0 };
     op.gear = null;
-    if (defSkin) {
-      op.skinId = defSkin.id;
-      op.skinName = defSkin.name;
-      op.accent = defSkin.accent;
-      op.helmet = defSkin.helmet;
-      op.visor = defSkin.visor;
-      op.rig = defSkin.rig;
-      op.uniform = defSkin.uniform;
-      op.style = defSkin.style;
-    }
-    if (idx === (this.profile.activeOperatorIdx || 0) && this.profile.loadout) {
+
+    const wasActive = idx === (this.profile.activeOperatorIdx || 0);
+    if (wasActive && this.profile.loadout) {
       this.profile.loadout.armor = null;
       this.profile.loadout.backpack = null;
       this.profile.loadout.headgear = null;
       this.profile.loadout.selfRevive = null;
       this.profile.loadout.killstreak = null;
+      // Switch active slot to the next available non-empty operator if one exists
+      const nextIdx = ops.findIndex((o) => o && !o.empty);
+      if (nextIdx >= 0) {
+        this.profile.activeOperatorIdx = nextIdx;
+        const nextOp = ops[nextIdx];
+        if (nextOp && nextOp.gear) {
+          this.profile.loadout.armor = nextOp.gear.armor || null;
+          this.profile.loadout.backpack = nextOp.gear.backpack || null;
+          this.profile.loadout.headgear = nextOp.gear.headgear || null;
+          this.profile.loadout.selfRevive = nextOp.gear.selfRevive || null;
+          this.profile.loadout.killstreak = nextOp.gear.killstreak || null;
+        }
+      }
+    }
+    this.saveProfile();
+    this.renderHideout();
+  }
+
+  openOperatorRecruitModal(slotIdx) {
+    this._bindOperatorContextAndModals();
+    const modal = document.getElementById('op-recruit-modal');
+    const grid = document.getElementById('op-recruit-grid');
+    const title = document.getElementById('op-recruit-modal-title');
+    if (!modal || !grid) return;
+
+    const ops = this._ensureActiveDutyOperators();
+    const catalog = this._getAvailableOperatorsCatalog();
+    if (title) title.textContent = `SLOT 0${slotIdx + 1} // SELECT ACTIVE DUTY OPERATOR`;
+    grid.innerHTML = '';
+
+    catalog.forEach((tpl) => {
+      const alreadyAssigned = ops.some((o) => o && !o.empty && o.id === tpl.id);
+      const skins = this._getOperatorSkinsForOp(tpl.id);
+      const defSkin = skins.find((s) => s.id === tpl.defaultSkin) || skins[0];
+      const previewOp = { ...tpl, ...defSkin, id: `rec_${tpl.id}` };
+
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = `op-skin-choice op-recruit-choice${alreadyAssigned ? ' assigned' : ''}`;
+      card.disabled = alreadyAssigned;
+      card.innerHTML = `
+        <div class="op-skin-choice-name" style="color:${defSkin.accent};">${tpl.callsign}</div>
+        <div class="op-recruit-role">${tpl.title}</div>
+        <div class="op-skin-choice-portrait">${this._buildOperatorPortraitSVG(previewOp)}</div>
+        <div class="op-skin-choice-status">${alreadyAssigned ? 'ALREADY ON DUTY' : `RECRUIT · ${defSkin.name}`}</div>
+      `;
+      if (!alreadyAssigned) {
+        card.addEventListener('click', () => {
+          this.recruitOperatorIntoSlot(slotIdx, tpl);
+          this.closeOperatorRecruitModal();
+        });
+      }
+      grid.appendChild(card);
+    });
+    modal.classList.remove('hidden');
+  }
+
+  closeOperatorRecruitModal() {
+    const modal = document.getElementById('op-recruit-modal');
+    if (modal) modal.classList.add('hidden');
+  }
+
+  recruitOperatorIntoSlot(slotIdx, tpl) {
+    const ops = this._ensureActiveDutyOperators();
+    if (slotIdx < 0 || slotIdx >= ops.length || !tpl) return;
+    const skins = this._getOperatorSkinsForOp(tpl.id);
+    const defSkin = skins.find((s) => s.id === tpl.defaultSkin) || skins[0];
+    const noActiveYet = !ops[this.profile.activeOperatorIdx] || ops[this.profile.activeOperatorIdx].empty;
+
+    ops[slotIdx] = {
+      id: tpl.id,
+      slotLabel: `SLOT 0${slotIdx + 1} // ACTIVE DUTY`,
+      callsign: tpl.callsign,
+      title: tpl.title,
+      skinId: defSkin.id,
+      skinName: defSkin.name,
+      accent: defSkin.accent,
+      helmet: defSkin.helmet,
+      visor: defSkin.visor,
+      rig: defSkin.rig,
+      uniform: defSkin.uniform,
+      style: defSkin.style,
+      exfilStreak: 0,
+      traitPoints: 0,
+      traits: { assault: 0, survival: 0, recon: 0 },
+      gear: null,
+      empty: false
+    };
+
+    if (noActiveYet) {
+      this.profile.activeOperatorIdx = slotIdx;
     }
     this.saveProfile();
     this.renderHideout();
@@ -4452,6 +4613,32 @@ class GameUI {
     grid.innerHTML = '';
 
     ops.forEach((rawOp, idx) => {
+      if (rawOp && rawOp.empty) {
+        const card = document.createElement('div');
+        card.className = 'duty-op-card duty-skin-card duty-empty-card';
+        card.innerHTML = `
+          <div class="duty-skin-header">
+            <div class="duty-skin-top-row">
+              <span class="duty-slot-tag">SLOT 0${idx + 1}</span>
+              <span class="duty-slot-tag">VACANT</span>
+            </div>
+            <div class="duty-skin-name" style="color:rgba(190,208,220,0.62);">EMPTY SLOT</div>
+          </div>
+
+          <div class="duty-portrait-wrap duty-portrait-tall">
+            ${this._buildEmptyOperatorSilhouetteSVG()}
+          </div>
+
+          <div class="duty-dogtag-centered">
+            <div class="duty-dogtag-level-text" style="color:#69f0ae;">+ RECRUIT OPERATOR</div>
+            <div class="duty-dogtag-sub">CLICK TO SELECT ACTIVE DUTY OPERATOR</div>
+          </div>
+        `;
+        card.addEventListener('click', () => this.openOperatorRecruitModal(idx));
+        grid.appendChild(card);
+        return;
+      }
+
       const op = this._resolveOperatorSkin(rawOp);
       this._ensureOperatorTraits(rawOp);
       const isActive = idx === activeIdx;
