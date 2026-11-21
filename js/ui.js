@@ -5343,6 +5343,7 @@ class GameUI {
     modal.classList.remove('hidden');
     if (cPanel) {
       cPanel.classList.toggle('hidden', !this.activeLootSource);
+      cPanel.classList.toggle('enemy-corpse-panel', !!(this.activeLootSource && this.activeLootSource.operatorEquipment));
     }
     if (this.activeLootSource) {
       this.autoLootExistingStacks(player);
@@ -5945,6 +5946,7 @@ class GameUI {
 
     this._hoveredSlot = { context, item, idx, el: slotEl, inputMode, mode };
     const rarKey = item.rarityOverride || def.rarity || 'common';
+    pop.dataset.rarity = rarKey;
     const rarInfo = (GAME_DATA.RARITIES && GAME_DATA.RARITIES[rarKey]) || { label: rarKey.toUpperCase(), color: '#69f0ae' };
     const hasContainer = !!this.activeLootSource;
     const canSplit = def.stackable && item.qty > 1;
