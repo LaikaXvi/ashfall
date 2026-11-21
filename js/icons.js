@@ -3,8 +3,8 @@ class ItemIconRenderer {
   constructor() {
     this.cache = {};
     this.canvas = document.createElement('canvas');
-    this.canvas.width = 128;
-    this.canvas.height = 128;
+    this.canvas.width = 160;
+    this.canvas.height = 160;
     try {
       this.renderer = new THREE.WebGLRenderer({
         canvas: this.canvas,
@@ -19,16 +19,16 @@ class ItemIconRenderer {
     }
 
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(34, 1, 0.05, 50);
+    this.camera = new THREE.PerspectiveCamera(32, 1, 0.05, 50);
 
-    // Crisp 3-point studio lighting for readable 3D silhouettes & speculars
-    const hemi = new THREE.HemisphereLight(0xf0f6ff, 0x222624, 1.05);
-    const key = new THREE.DirectionalLight(0xfff1dc, 1.35);
-    key.position.set(2.8, 3.8, 4.2);
-    const rim = new THREE.DirectionalLight(0x88c8ff, 0.85);
-    rim.position.set(-3.2, 2.0, -2.5);
-    const fill = new THREE.DirectionalLight(0xffb86b, 0.45);
-    fill.position.set(0, -2.5, 2.0);
+    // High-contrast tactical studio 3-point specular lighting matching reference icon language
+    const hemi = new THREE.HemisphereLight(0xf6faff, 0x262c32, 1.15);
+    const key = new THREE.DirectionalLight(0xffffff, 1.45);
+    key.position.set(2.4, 3.6, 4.6);
+    const rim = new THREE.DirectionalLight(0xaad8ff, 0.95);
+    rim.position.set(-3.4, 2.2, -2.6);
+    const fill = new THREE.DirectionalLight(0xdce6f0, 0.50);
+    fill.position.set(0, -2.2, 2.5);
     this.scene.add(hemi, key, rim, fill);
 
     this.stage = new THREE.Group();
@@ -51,8 +51,8 @@ class ItemIconRenderer {
     const cacheKey = `${itemId}|${wide ? 'W' : 'S'}|${modsKey}`;
     if (this.cache[cacheKey]) return this.cache[cacheKey];
 
-    const w = wide ? 256 : 128;
-    const h = 128;
+    const w = wide ? 320 : 160;
+    const h = 160;
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
@@ -91,22 +91,21 @@ class ItemIconRenderer {
     return dataUrl;
   }
 
-  _mat(color, emissive = 0x000000) {
-    return new THREE.MeshLambertMaterial({ color, emissive });
+  _mat(color, emissive = 0x000000, shininess = 42, specular = 0x5a6570) {
+    return new THREE.MeshPhongMaterial({ color, emissive, shininess, specular });
   }
 
   _buildItemMesh(id, mods = {}) {
     const def = (window.GAME_DATA && GAME_DATA.ITEMS && GAME_DATA.ITEMS[id]) || null;
     const g = new THREE.Group();
 
-    // 1. REAL 3D WEAPONS (using WeaponSystem.buildThirdPersonWeapon!)
+    // 1. REAL 3D WEAPONS (crisp horizontal side-profile studio render matching reference!)
     if (def && def.type === 'weapon') {
       const wb = this._ensureWeaponBuilder();
       if (wb && wb.buildThirdPersonWeapon) {
         const built = wb.buildThirdPersonWeapon(def, mods);
         if (built && built.group) {
-          // Clean side-profile hero angle facing right to showcase full 3D weapon geometry in double-wide slots
-          built.group.rotation.set(0.05, Math.PI / 2 - 0.14, 0.05);
+          built.group.rotation.set(0.02, Math.PI / 2 - 0.04, 0.0);
           g.add(built.group);
           return g;
         }
@@ -160,92 +159,90 @@ class ItemIconRenderer {
         blade.position.set(-0.05, 0, -0.009);
         g.add(handle, guard, blade);
       }
-      g.rotation.set(0.22, -0.35, 0.38);
+      g.rotation.set(0.04, -0.06, 0.0);
       return g;
     }
 
-    // 3. ARMOR VESTS
+    // 3. ARMOR VESTS (Front-facing studio plate-carrier silhouette matching reference!)
     if (def && def.type === 'armor') {
       const colMap = {
-        vest_1plate: 0x5d6452,
-        vest_2plate: 0x455342,
-        vest_2plate_gel: 0x2c4b6e,
-        vest_2plate_helmet: 0x52376b,
-        vest_3plate: 0x7a2626
+        vest_1plate: 0xd8c39e,       // tactical desert tan
+        vest_2plate: 0x7a8376,       // ranger olive-grey
+        vest_2plate_gel: 0x526d88,   // tactical slate-blue
+        vest_2plate_helmet: 0x625a70,// heavy tactical charcoal-violet
+        vest_3plate: 0x8f3636        // crimson heavy plate carrier
       };
-      const baseMat = this._mat(colMap[id] || 0x4b5342);
-      const pouchMat = this._mat(0x232724);
-      const trimMat = this._mat(id === 'vest_3plate' ? 0xff4d4d : (id === 'vest_2plate_gel' ? 0x58b8ff : 0x7a8474));
-      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.52, 0.22), baseMat);
-      const strapL = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.16, 0.24), pouchMat);
-      strapL.position.set(-0.15, 0.30, 0);
-      const strapR = strapL.clone();
-      strapR.position.x = 0.15;
+      const baseMat = this._mat(colMap[id] || 0x7a8376, 0x000000, 22, 0x3a4044);
+      const pouchMat = this._mat(0x3a403c, 0x000000, 18, 0x2c3034);
+      const trimMat = this._mat(id === 'vest_3plate' ? 0xff5c5c : (id === 'vest_2plate_gel' ? 0x64c8ff : 0xb8c2ba));
+      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.54, 0.18), baseMat);
+      const cumbL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.24, 0.14), baseMat);
+      cumbL.position.set(-0.27, -0.10, 0);
+      const cumbR = cumbL.clone(); cumbR.position.x = 0.27;
+      const strapL = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.17, 0.18), baseMat);
+      strapL.position.set(-0.15, 0.32, 0);
+      const strapR = strapL.clone(); strapR.position.x = 0.15;
       for (let i = -1; i <= 1; i++) {
-        const p = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.16, 0.06), pouchMat);
-        p.position.set(i * 0.14, -0.10, 0.13);
+        const p = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.17, 0.06), pouchMat);
+        p.position.set(i * 0.135, -0.11, 0.11);
         g.add(p);
       }
-      const badge = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.07, 0.03), trimMat);
-      badge.position.set(0, 0.14, 0.12);
-      g.add(torso, strapL, strapR, badge);
+      const badge = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.08, 0.03), trimMat);
+      badge.position.set(0, 0.14, 0.10);
+      g.add(torso, cumbL, cumbR, strapL, strapR, badge);
       if (id === 'vest_2plate_helmet') {
-        const helm = new THREE.Mesh(new THREE.SphereGeometry(0.17, 12, 10, 0, Math.PI * 2, 0, Math.PI * 0.6), this._mat(0x2c2e33));
-        helm.position.set(0, 0.42, 0);
+        const helm = new THREE.Mesh(new THREE.SphereGeometry(0.17, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.6), this._mat(0x383d44, 0x000000, 55));
+        helm.position.set(0, 0.44, 0);
         g.add(helm);
       }
-      g.rotation.set(0.22, -0.42, 0);
+      g.rotation.set(0.06, -0.10, 0);
       return g;
     }
 
-    // 4. ARMOR PLATE
+    // 4. ARMOR PLATE (Front-facing charcoal SAPI ceramic plate with white upper stencil!)
     if (id === 'armor_plate') {
       const shape = new THREE.Shape();
-      shape.moveTo(-0.22, -0.28);
-      shape.lineTo(0.22, -0.28);
-      shape.lineTo(0.22, 0.16);
-      shape.lineTo(0.11, 0.28);
-      shape.lineTo(-0.11, 0.28);
-      shape.lineTo(-0.22, 0.16);
+      shape.moveTo(-0.23, -0.30);
+      shape.lineTo(0.23, -0.30);
+      shape.lineTo(0.23, 0.16);
+      shape.lineTo(0.11, 0.30);
+      shape.lineTo(-0.11, 0.30);
+      shape.lineTo(-0.23, 0.16);
       shape.closePath();
       const plate = new THREE.Mesh(
-        new THREE.ExtrudeGeometry(shape, { depth: 0.055, bevelEnabled: true, bevelThickness: 0.01, bevelSize: 0.01, bevelSegments: 1 }),
-        this._mat(0x2a4563)
+        new THREE.ExtrudeGeometry(shape, { depth: 0.05, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.012, bevelSegments: 2 }),
+        this._mat(0x3d444d, 0x000000, 38, 0x7b8896)
       );
       plate.position.z = -0.025;
-      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.05, 0.07), this._mat(0x52b8ff, 0x0d2840));
-      stripe.position.set(0, 0.04, 0.01);
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.032, 0.068), this._mat(0xdce6f0, 0x1a2633, 60));
+      stripe.position.set(0, 0.10, 0.005);
       g.add(plate, stripe);
-      g.rotation.set(0.20, -0.45, 0.08);
+      g.rotation.set(0.06, -0.08, 0.0);
       return g;
     }
 
-    // 5. BACKPACKS
+    // 5. BACKPACKS (Front-facing upright tactical rucksack matching reference!)
     if (def && def.type === 'backpack') {
       const isWpnBag = id === 'bag_weapon';
-      const s = (id === 'bag_large' || isWpnBag) ? 1.18 : (id === 'bag_medium' ? 1.0 : 0.84);
-      const col = isWpnBag ? 0x3b4836 : (id === 'bag_large' ? 0x6b4f2a : (id === 'bag_medium' ? 0x344c63 : 0x4a5244));
-      const body = new THREE.Mesh(new THREE.BoxGeometry(0.42 * s, 0.54 * s, 0.24 * s), this._mat(col));
-      const pocket = new THREE.Mesh(new THREE.BoxGeometry(0.32 * s, 0.24 * s, 0.10 * s), this._mat(0x232724));
-      pocket.position.set(0, -0.10 * s, 0.15 * s);
-      const flap = new THREE.Mesh(new THREE.BoxGeometry(0.40 * s, 0.12 * s, 0.26 * s), this._mat(0x1f2220));
+      const s = (id === 'bag_large' || isWpnBag) ? 1.14 : (id === 'bag_medium' ? 1.0 : 0.88);
+      const col = isWpnBag ? 0x4c5866 : (id === 'bag_large' ? 0x8e7c5a : (id === 'bag_medium' ? 0x879282 : 0x626b5c));
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.42 * s, 0.56 * s, 0.22 * s), this._mat(col, 0x000000, 20));
+      const pocket = new THREE.Mesh(new THREE.BoxGeometry(0.32 * s, 0.24 * s, 0.09 * s), this._mat(0x343b38, 0x000000, 22));
+      pocket.position.set(0, -0.10 * s, 0.14 * s);
+      const flap = new THREE.Mesh(new THREE.BoxGeometry(0.40 * s, 0.12 * s, 0.24 * s), this._mat(0x2d3330, 0x000000, 25));
       flap.position.set(0, 0.23 * s, 0.01);
-      const handle = new THREE.Mesh(new THREE.TorusGeometry(0.07 * s, 0.018, 6, 12, Math.PI), this._mat(0x181a18));
+      const handle = new THREE.Mesh(new THREE.TorusGeometry(0.07 * s, 0.018, 6, 12, Math.PI), this._mat(0x222624));
       handle.position.set(0, 0.29 * s, 0);
       g.add(body, pocket, flap, handle);
       if (isWpnBag) {
-        // Side-mounted tactical weapon scabbard + protruding rifle barrel/stock silhouette & gold trim
-        const scabbard = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.68, 0.14), this._mat(0x252926));
-        scabbard.position.set(-0.22, 0.08, -0.02);
-        scabbard.rotation.z = 0.12;
-        const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.30, 8), this._mat(0x16181a));
-        barrel.position.set(-0.26, 0.48, -0.02);
-        barrel.rotation.z = 0.12;
-        const badge = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.06, 0.03), this._mat(0xffc107, 0x3b2800));
-        badge.position.set(0, 0.08, 0.16);
-        g.add(scabbard, barrel, badge);
+        const badge = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.07, 0.04), this._mat(0xf5a623, 0x3b2200, 50));
+        badge.position.set(0, 0.10, 0.14);
+        const strapL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.54, 0.25), this._mat(0x262c32));
+        strapL.position.set(-0.12, 0, 0);
+        const strapR = strapL.clone(); strapR.position.x = 0.12;
+        g.add(badge, strapL, strapR);
       }
-      g.rotation.set(0.22, -0.48, 0);
+      g.rotation.set(0.06, -0.12, 0);
       return g;
     }
 
@@ -280,44 +277,55 @@ class ItemIconRenderer {
       return g;
     }
 
-    // 7. MEDICAL & SELF-REVIVE
+    // 7. MEDICAL & SELF-REVIVE (matching reference photo's sterile gauze, IFAK pouch, brown bottle & sleek injector!)
     if (id === 'medkit') {
-      const box = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.38, 0.20), this._mat(0xdce3de));
-      const cH = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.07, 0.02), this._mat(0xe03232, 0x450808));
-      const cV = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.22, 0.02), this._mat(0xe03232, 0x450808));
-      cH.position.z = 0.105; cV.position.z = 0.105;
-      g.add(box, cH, cV);
-      g.rotation.set(0.24, -0.42, 0);
+      const box = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.48, 0.22), this._mat(0x8a9278, 0x000000, 20));
+      const zip = new THREE.Mesh(new THREE.BoxGeometry(0.43, 0.03, 0.23), this._mat(0x222624));
+      zip.position.y = 0.14;
+      const patch = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.20, 0.03), this._mat(0x282d2a));
+      patch.position.set(0, -0.02, 0.115);
+      const cH = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.045, 0.02), this._mat(0xe53935, 0x450808));
+      const cV = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.14, 0.02), this._mat(0xe53935, 0x450808));
+      cH.position.set(0, -0.02, 0.13); cV.position.set(0, -0.02, 0.13);
+      g.add(box, zip, patch, cH, cV);
+      g.rotation.set(0.18, -0.42, 0.05);
       return g;
     }
     if (id === 'bandage') {
-      const roll = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.24, 14), this._mat(0xe8eae6));
-      const core = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.25, 10), this._mat(0x9a9e98));
-      const tail = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.22, 0.02), this._mat(0xd6dad4));
-      tail.position.set(0.18, 0, 0.14);
-      g.add(roll, core, tail);
-      g.rotation.set(0.42, -0.35, 0.22);
+      // Crisp sterile ice-white gauze pack angled diagonally (row 1 of reference)
+      const pack = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.24, 0.10), this._mat(0xdce8f0, 0x101c24, 28));
+      const seamL = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.25, 0.03), this._mat(0x9ab4c6));
+      seamL.position.x = -0.25;
+      const seamR = seamL.clone(); seamR.position.x = 0.25;
+      g.add(pack, seamL, seamR);
+      g.rotation.set(0.32, -0.22, 0.42);
       return g;
     }
     if (id === 'painkillers') {
-      const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.34, 12), this._mat(0xd97324));
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.145, 0.145, 0.09, 12), this._mat(0xf0f2f0));
-      cap.position.y = 0.21;
-      const lbl = new THREE.Mesh(new THREE.CylinderGeometry(0.134, 0.134, 0.16, 12), this._mat(0xf2f4f0));
-      g.add(bottle, cap, lbl);
-      g.rotation.set(0.24, -0.30, 0.28);
+      // Realistic amber-brown glass medicine bottle with crisp white label & white cap
+      const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.135, 0.135, 0.36, 14), this._mat(0x6e3226, 0x1a0804, 65, 0x997060));
+      const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.085, 0.125, 0.08, 12), this._mat(0x6e3226, 0x1a0804, 65));
+      neck.position.y = 0.20;
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.095, 0.095, 0.075, 12), this._mat(0xf2f5f7, 0x000000, 40));
+      cap.position.y = 0.27;
+      const lbl = new THREE.Mesh(new THREE.CylinderGeometry(0.139, 0.139, 0.18, 14), this._mat(0xeef2f4, 0x000000, 18));
+      lbl.position.y = -0.02;
+      g.add(bottle, neck, cap, lbl);
+      g.rotation.set(0.12, -0.20, 0.0);
       return g;
     }
     if (id === 'self_revive') {
-      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.065, 0.42, 12), this._mat(0x2a2d32));
-      const serum = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.052, 0.18, 12), this._mat(0xc962ff, 0x451268));
-      serum.position.y = 0.02;
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.10, 10), this._mat(0x69f0ae));
-      cap.position.y = 0.24;
-      const needle = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.14, 8), this._mat(0xdce6ee));
-      needle.position.y = -0.26;
-      g.add(barrel, serum, cap, needle);
-      g.rotation.set(0.22, -0.25, -0.55);
+      // Sleek white-chrome medical auto-injector pen angled diagonally (row 1 of reference)
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.048, 0.048, 0.56, 12), this._mat(0xedf2f6, 0x101820, 65));
+      const clip = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.18, 0.07), this._mat(0x283238));
+      clip.position.set(0.04, 0.14, 0);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.056, 0.054, 0.09, 10), this._mat(0x69f0ae, 0x124028, 45));
+      cap.position.y = 0.30;
+      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.036, 0.09, 10), this._mat(0x4fc3f7));
+      tip.rotation.x = Math.PI;
+      tip.position.y = -0.32;
+      g.add(body, clip, cap, tip);
+      g.rotation.set(0.15, -0.18, -0.95);
       return g;
     }
 
@@ -431,72 +439,105 @@ class ItemIconRenderer {
       return g;
     }
 
-    // 11. KEYS, DOGTAGS, CASH & VALUABLES
+    // 11. KEYS, DOGTAGS, CASH & VALUABLES (styled to match reference photo's gleaming brass key+blue fob, engraved gold dogtag, mint jug & glowing canister!)
     if (id === 'boss_key') {
-      const bow = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.032, 8, 16), this._mat(0xffc107, 0x453000));
-      bow.position.x = -0.18;
-      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.38, 8), this._mat(0xffc107, 0x453000));
-      shaft.rotation.z = Math.PI / 2;
-      shaft.position.x = 0.09;
-      const tooth1 = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.09, 0.03), this._mat(0xffd54f));
-      tooth1.position.set(0.18, -0.05, 0);
-      const tooth2 = tooth1.clone(); tooth2.position.x = 0.25;
-      g.add(bow, shaft, tooth1, tooth2);
-      g.rotation.set(0.22, -0.35, 0.42);
+      const goldMat = this._mat(0xe6be78, 0x3b2a08, 85, 0xfff0c8);
+      const bow = new THREE.Mesh(new THREE.TorusGeometry(0.10, 0.028, 8, 16), goldMat);
+      bow.position.set(0.02, 0.20, 0);
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.42, 8), goldMat);
+      shaft.position.set(0.02, -0.08, 0);
+      const tooth1 = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.036, 0.024), goldMat);
+      tooth1.position.set(-0.04, -0.20, 0);
+      const tooth2 = tooth1.clone(); tooth2.position.y = -0.27;
+      // Iconic bright cyan-blue circular key-tag fob (exact match to row 2 of reference!)
+      const fob = new THREE.Mesh(new THREE.CylinderGeometry(0.105, 0.105, 0.024, 16), this._mat(0x3ba4f5, 0x0b345c, 55));
+      fob.rotation.x = Math.PI / 2;
+      fob.position.set(0.22, 0.24, 0.02);
+      g.add(bow, shaft, tooth1, tooth2, fob);
+      g.rotation.set(0.10, -0.15, -0.52);
       return g;
     }
     if (id === 'dogtag') {
-      const tag1 = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.38, 0.022), this._mat(0xcfd8dc));
-      const tag2 = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.38, 0.022), this._mat(0x90a4ae));
-      tag2.position.set(0.08, -0.04, -0.03);
-      tag2.rotation.z = -0.18;
-      const chain = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.014, 6, 14, Math.PI), this._mat(0xb0bec5));
-      chain.position.set(0, 0.19, 0);
-      g.add(tag1, tag2, chain);
-      g.rotation.set(0.18, -0.35, 0.10);
+      // Iconic golden-bronze engraved trapezoidal dogtag shield with Roman numeral II
+      const shape = new THREE.Shape();
+      shape.moveTo(-0.20, -0.24);
+      shape.lineTo(0.20, -0.24);
+      shape.lineTo(0.13, 0.24);
+      shape.lineTo(-0.13, 0.24);
+      shape.closePath();
+      const plate = new THREE.Mesh(
+        new THREE.ExtrudeGeometry(shape, { depth: 0.035, bevelEnabled: true, bevelThickness: 0.01, bevelSize: 0.01, bevelSegments: 2 }),
+        this._mat(0xd4ad5a, 0x382808, 90, 0xfff0c2)
+      );
+      plate.position.z = -0.018;
+      const num1 = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.22, 0.052), this._mat(0x6b4b1a, 0x000000, 60));
+      num1.position.set(-0.05, -0.02, 0.005);
+      const num2 = num1.clone(); num2.position.x = 0.05;
+      const barTop = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.032, 0.052), this._mat(0x6b4b1a));
+      barTop.position.set(0, 0.09, 0.005);
+      const barBot = barTop.clone(); barBot.position.y = -0.13;
+      g.add(plate, num1, num2, barTop, barBot);
+      g.rotation.set(0.10, -0.18, 0.06);
       return g;
     }
     if (id === 'cash') {
-      const stack = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.14, 0.26), this._mat(0x4caf50));
-      const band = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.15, 0.27), this._mat(0xffca28));
+      const stack = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.14, 0.26), this._mat(0x4caf50, 0x08240a, 24));
+      const band = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.15, 0.27), this._mat(0xf5c842, 0x362400, 50));
       g.add(stack, band);
-      g.rotation.set(0.42, -0.45, 0.12);
+      g.rotation.set(0.38, -0.35, 0.12);
       return g;
     }
     if (id === 'gold_watch') {
-      const face = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.06, 16), this._mat(0xffca28, 0x3b2a00));
+      const face = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.06, 18), this._mat(0xffca28, 0x3b2a00, 95, 0xfff2c2));
       face.rotation.x = Math.PI / 2;
-      const dial = new THREE.Mesh(new THREE.CircleGeometry(0.105, 14), this._mat(0x1b1e22));
+      const dial = new THREE.Mesh(new THREE.CircleGeometry(0.11, 16), this._mat(0x1b1e22, 0x000000, 80));
       dial.position.z = 0.035;
-      const strap = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.48, 0.03), this._mat(0xd4a017));
+      const strap = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.48, 0.03), this._mat(0xd4a017, 0x2a1c00, 80));
       g.add(face, dial, strap);
-      g.rotation.set(0.25, -0.40, 0.25);
+      g.rotation.set(0.18, -0.30, 0.22);
+      return g;
+    }
+    if (id === 'gpu_unit') {
+      // Metallic brushed square tech/processor safe module (exact match to row 4 of reference!)
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.46, 0.14), this._mat(0x8894a0, 0x000000, 80, 0xdce8f2));
+      const inner = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.34, 0.16), this._mat(0x283038, 0x000000, 60));
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 0.18, 14), this._mat(0xd4af37, 0x2e2000, 90));
+      hub.rotation.x = Math.PI / 2;
+      g.add(frame, inner, hub);
+      g.rotation.set(0.12, -0.22, 0);
       return g;
     }
     if (id === 'intel_drive') {
-      const drive = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.44, 0.09), this._mat(0x262c33));
-      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.05, 0.10), this._mat(0xab47bc, 0x380e42));
-      stripe.position.y = 0.12;
-      const led = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.05, 0.10), this._mat(0x69f0ae, 0x1b6636));
-      led.position.set(0.10, -0.14, 0);
+      const drive = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.28, 0.09), this._mat(0x9ca4aa, 0x000000, 60));
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.06, 0.10), this._mat(0x3a4046));
+      stripe.position.y = 0.04;
+      const led = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.04, 0.10), this._mat(0x69f0ae, 0x1b6636));
+      led.position.set(0.14, -0.08, 0);
       g.add(drive, stripe, led);
-      g.rotation.set(0.28, -0.42, 0.08);
+      g.rotation.set(0.28, -0.32, 0.14);
       return g;
     }
     if (id === 'fuel_can') {
-      const can = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.46, 0.20), this._mat(0xb83228));
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.08, 10), this._mat(0x222222));
-      cap.position.set(0.10, 0.26, 0);
-      g.add(can, cap);
-      g.rotation.set(0.24, -0.45, 0);
+      // Mint-green plastic jerrycan with top handle & crisp white label (exact match to row 2 of reference!)
+      const can = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.44, 0.20), this._mat(0x8ee6b4, 0x0d2b1a, 45, 0xd8ffea));
+      const lbl = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.21), this._mat(0xeef4f2, 0x000000, 15));
+      lbl.position.set(0, -0.02, 0);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 0.09, 10), this._mat(0x283430));
+      cap.position.set(-0.10, 0.25, 0);
+      const handle = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.05, 0.07), this._mat(0x78d4a0));
+      handle.position.set(0.08, 0.24, 0);
+      g.add(can, lbl, cap, handle);
+      g.rotation.set(0.14, -0.30, 0);
       return g;
     }
     if (id === 'water_filter') {
-      const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.42, 14), this._mat(0x42a5f5));
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.08, 14), this._mat(0xe0e6e8));
-      cap.position.y = 0.22;
-      g.add(cyl, cap);
-      g.rotation.set(0.26, -0.35, 0.18);
+      // Armored dark canister with glowing ice-blue core (exact match to Secure Slot 1 of reference!)
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.18, 0.12, 12), this._mat(0x262d34, 0x000000, 65));
+      base.position.y = -0.18;
+      const top = base.clone(); top.position.y = 0.18;
+      const core = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.28, 14), this._mat(0x3ba4f5, 0x0e4c8a, 80, 0xaae0ff));
+      g.add(base, top, core);
+      g.rotation.set(0.12, -0.22, 0);
       return g;
     }
 
