@@ -4,13 +4,24 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ASHFALL // 3D Extraction Looter-Shooter</title>
-  <link rel="stylesheet" href="css/style.css?v=190" />
+  <link rel="stylesheet" href="css/style.css?v=193" />
   <!-- Three.js r128 UMD for zero-build compatibility (works on both http:// and file://) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
   <!-- 3D Viewport -->
   <canvas id="game-canvas"></canvas>
+
+  <!-- Walkable 3D Hideout HUD (Visible in Free-Roam Hideout Mode) -->
+  <div id="hideout-roam-hud" class="hideout-roam-hud hidden">
+    <div id="hideout-station-markers" class="hideout-station-markers hidden"></div>
+    <div class="hideout-roam-topbar">
+      <button id="btn-exit-hideout-roam" class="btn-small topbar-back-btn">← MENU [ESC / M]</button>
+      <span class="hideout-roam-hint">WASD WALK · SHIFT SPRINT · [E] / CLICK INTERACT WITH STATIONS</span>
+    </div>
+    <div id="hideout-roam-crosshair" class="hideout-roam-crosshair"></div>
+    <div id="hideout-interact-prompt" class="hideout-interact-prompt hidden"></div>
+  </div>
 
   <!-- Damage Vignette & Flash Overlays -->
   <div id="damage-vignette"></div>
@@ -22,7 +33,7 @@
     <!-- IMPORTANT: Update version in GAME_DATA.VERSION (js/data.js) and here with EVERY new commit -->
     <div class="menu-version-stack">
       <button id="menu-update-badge" class="menu-update-badge hidden" title="Click to reload into the latest version">NEW VERSION AVAILABLE</button>
-      <div id="menu-version-badge" class="menu-version-badge">v1.92</div>
+      <div id="menu-version-badge" class="menu-version-badge">v1.93</div>
     </div>
     <!-- Minimal Sub-Menu Top Bar (Top-Left Back Button only — no redundant nav band) -->
     <header id="menu-topbar" class="hideout-header hidden">
@@ -66,6 +77,7 @@
         </div>
 
         <div class="home-telemetry-pills">
+          <button id="btn-walk-hideout" class="btn-small walk-hideout-btn" title="Walk around the 3D Hideout & interact with physical stations (WASD)">WALK HIDEOUT [WASD]</button>
           <div class="home-telem-pill">
             <span class="telem-lbl">CREDITS</span>
             <span id="home-credits" class="telem-val accent">₽ 12,500</span>
@@ -1104,7 +1116,7 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION with every new commit) -->
-  <script src="js/data.js?v=192"></script>
+  <script src="js/data.js?v=193"></script>
   <script src="js/net.js?v=123"></script>
   <script src="js/sfx_samples.js?v=21"></script>
   <script src="js/audio.js?v=179"></script>
@@ -1119,8 +1131,9 @@
   <script src="js/gamepad.js?v=178"></script>
   <script src="js/gunsmith.js?v=41"></script>
   <script src="js/matchmaking.js?v=168"></script>
+  <script src="js/hideout.js?v=193"></script>
   <script src="js/ui.js?v=192"></script>
   <script src="js/console.js?v=117"></script>
-  <script src="js/main.js?v=191"></script>
+  <script src="js/main.js?v=193"></script>
 </body>
 </html>

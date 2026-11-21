@@ -93,6 +93,44 @@
   const gunsmith = new GunsmithController(ui);
   const matchmaking = new MatchmakingStage(ui, (zoneId, matchId) => startRaid(zoneId, matchId));
   ui.matchmakingStage = matchmaking;
+  const hideoutBunker = (typeof HideoutBunker !== 'undefined') ? new HideoutBunker() : null;
+
+  function enterHideoutRoam() {
+    if (!hideoutBunker || inRaid || (gunsmith && gunsmith.isOpen)) return;
+    if (ui && ui.activeMenuTab !== 'home') ui.openMenuTab('home');
+    const hideoutScreen = document.getElementById('hideout-screen');
+    const roamHud = document.getElementById('hideout-roam-hud');
+    if (hideoutScreen) hideoutScreen.classList.add('hideout-roam-mode');
+    if (roamHud) roamHud.classList.remove('hidden');
+    hideoutBunker.enterRoam(canvas);
+  }
+
+  function exitHideoutRoam(openMenu = true) {
+    if (!hideoutBunker) return;
+    hideoutBunker.exitRoam();
+    const hideoutScreen = document.getElementById('hideout-screen');
+    const roamHud = document.getElementById('hideout-roam-hud');
+    if (hideoutScreen) hideoutScreen.classList.remove('hideout-roam-mode');
+    if (roamHud) roamHud.classList.add('hidden');
+    if (openMenu && !inRaid && ui && ui.activeMenuTab === 'home') {
+      requestAnimationFrame(() => ui.ensureInitialSelection());
+    }
+  }
+
+  const walkBtn = document.getElementById('btn-walk-hideout');
+  if (walkBtn) walkBtn.addEventListener('click', () => enterHideoutRoam());
+  const exitRoamBtn = document.getElementById('btn-exit-hideout-roam');
+  if (exitRoamBtn) exitRoamBtn.addEventListener('click', () => exitHideoutRoam(true));
+
+  window.addEventListener('resize', () => {
+    if (hideoutBunker) hideoutBunker.onResize();
+  });
+
+  document.addEventListener('pointerlockchange', () => {
+    if (!inRaid && hideoutBunker && hideoutBunker.activeRoam && document.pointerLockElement !== canvas) {
+      exitHideoutRoam(true);
+    }
+  });
   const mpSession = (typeof MultiplayerSession !== 'undefined') ? new MultiplayerSession() : null;
   const devConsole = (typeof DevConsole !== 'undefined') ? new DevConsole({
     getPlayer: () => player,
@@ -466,6 +504,7 @@
     uavDroneMesh = null;
     ksCooldown = 0;
     inRaid = true;
+    exitHideoutRoam(false);
     isModalOpen = false;
     ui.toggleTacMap(false);
     const rzEl = document.getElementById('redzone-banner');
@@ -639,7 +678,13 @@
   }
 
   window.addEventListener('mousemove', (e) => {
-    if (!inRaid || isModalOpen || document.pointerLockElement !== canvas) return;
+    if (!inRaid) {
+      if (hideoutBunker && hideoutBunker.activeRoam && document.pointerLockElement === canvas) {
+        hideoutBunker.handleMouseMove(e.movementX, e.movementY);
+      }
+      return;
+    }
+    if (isModalOpen || document.pointerLockElement !== canvas) return;
     if (player && player.dead) return; // Corpse frozen when dead (spectating living ally)
     if (pingWheelOpen) {
       pingWheelX = THREE.MathUtils.clamp(pingWheelX + e.movementX, -110, 110);
@@ -654,7 +699,24 @@
   });
 
   window.addEventListener('mousedown', (e) => {
-    if (!inRaid || isModalOpen || (ui && ui.isInGameSettingsOpen) || (devConsole && devConsole.isOpen)) return;
+    if (!inRaid) {
+      if (hideoutBunker && hideoutBunker.activeRoam) {
+        if (document.pointerLockElement !== canvas && e.target === canvas) {
+          canvas.requestPointerLock();
+          return;
+        }
+        if (e.button === 0 && hideoutBunker.hoveredStation) {
+          const targetTab = hideoutBunker.hoveredStation.tab;
+          exitHideoutRoam(false);
+          if (window.soundEngine && window.soundEngine.playClick) {
+            try { window.soundEngine.playClick(); } catch (err) {}
+          }
+          ui.openMenuTab(targetTab);
+        }
+      }
+      return;
+    }
+    if (isModalOpen || (ui && ui.isInGameSettingsOpen) || (devConsole && devConsole.isOpen)) return;
     if (ui.isTacMapOpen) return; // map canvas handles clicks when full map is open
     if (document.pointerLockElement !== canvas) {
       if (e.target === canvas) canvas.requestPointerLock();
@@ -748,6 +810,34 @@
   window.addEventListener('keydown', (e) => {
     if (devConsole && devConsole.isOpen) return;
     if (!inRaid) {
+      const tag = document.activeElement && document.activeElement.tagName;
+      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+      if (hideoutBunker && hideoutBunker.activeRoam) {
+        hideoutBunker.keys[e.code] = true;
+        const kb = window.KEYBINDS || {};
+        if (e.code === 'Escape' || e.code === 'KeyM') {
+          e.preventDefault();
+          exitHideoutRoam(true);
+          return;
+        }
+        if ((e.code === (kb.interact || 'KeyE') || e.code === 'KeyE') && hideoutBunker.hoveredStation) {
+          e.preventDefault();
+          const targetTab = hideoutBunker.hoveredStation.tab;
+          exitHideoutRoam(false);
+          if (window.soundEngine && window.soundEngine.playClick) {
+            try { window.soundEngine.playClick(); } catch (err) {}
+          }
+          ui.openMenuTab(targetTab);
+          return;
+        }
+        return;
+      }
+      if (!typing && hideoutBunker && ui && ui.activeMenuTab === 'home' && !(gunsmith && gunsmith.isOpen) &&
+          (e.code === 'KeyW' || e.code === 'KeyA' || e.code === 'KeyS' || e.code === 'KeyD')) {
+        enterHideoutRoam();
+        hideoutBunker.keys[e.code] = true;
+        return;
+      }
       if (e.code === 'Escape' && ui && ui._deployWeaponPick && ui.closeDeployWeaponPickMode) {
         ui.closeDeployWeaponPickMode();
         return;
@@ -883,7 +973,11 @@
   });
 
   window.addEventListener('keyup', (e) => {
-    if (!inRaid || !player) return;
+    if (!inRaid) {
+      if (hideoutBunker) hideoutBunker.keys[e.code] = false;
+      return;
+    }
+    if (!player) return;
     const kb = window.KEYBINDS || {};
     player.keys[e.code] = false;
     if (e.code === (kb.backpack || 'Tab')) {
@@ -3105,9 +3199,13 @@
       // Update 3D Matchmaking Operator Stage + countdown if active
       if (matchmaking && matchmaking.active) {
         matchmaking.update(dt);
+      } else if (hideoutBunker && !(gunsmith && gunsmith.isOpen)) {
+        hideoutBunker.update(dt, renderer);
       }
       // Enable full controller navigation in Main Menu, Stash, Operator, Settings, Gunsmith & Summary screens!
-      gamepad.updateMenu(dt, { ui, gunsmith });
+      if (!(hideoutBunker && hideoutBunker.activeRoam)) {
+        gamepad.updateMenu(dt, { ui, gunsmith });
+      }
     }
   }
 
