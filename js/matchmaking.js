@@ -106,6 +106,8 @@ class MatchmakingStage {
         built.root.add(this._makeOverheadNameSprite(displayName, squadColor));
       }
       built.root.userData.upper = built.torso;
+      built.root.userData.upperBaseY = built.torso.position.y;
+      built.root.userData.upperBaseRotY = built.torso.rotation.y;
       return built.root;
     }
     const root = new THREE.Group();
@@ -319,12 +321,14 @@ class MatchmakingStage {
       }
     }
 
-    // Idle breathing & subtle heroic sway
+    // Idle breathing & subtle heroic sway (relative to torso's local rest Y so it stays seamlessly joined to pelvis!)
     this.operatorsGroup.children.forEach((op, i) => {
       const upper = op.userData.upper;
       if (upper) {
-        upper.position.y = 0.90 + Math.sin(this.animTime * 2.0 + i) * 0.012;
-        upper.rotation.y = Math.sin(this.animTime * 0.65 + i) * 0.08;
+        const baseY = op.userData.upperBaseY !== undefined ? op.userData.upperBaseY : 0.90;
+        const baseRotY = op.userData.upperBaseRotY !== undefined ? op.userData.upperBaseRotY : 0;
+        upper.position.y = baseY + Math.sin(this.animTime * 2.0 + i) * 0.010;
+        upper.rotation.y = baseRotY + Math.sin(this.animTime * 0.65 + i) * 0.05;
       }
     });
 
