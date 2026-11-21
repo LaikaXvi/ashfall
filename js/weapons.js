@@ -878,6 +878,31 @@ class WeaponSystem {
       const thumbTip = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.013, 0.014), skinMat);
       thumbTip.position.set(0.022, 0.020, -0.024);
       handGroup.add(thumb, thumbTip);
+    } else if (style === 'rightFist') {
+      // Clenched right-handed tactical fist (exact mirror of leftFist with matching tactical glove & knuckle armor)
+      const palm = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.058, 0.050), gloveMat);
+      palm.position.set(0.004, 0, 0.004);
+      const knuckle = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.054, 0.020), knuckleMat);
+      knuckle.position.set(0.020, 0, -0.016);
+      handGroup.add(palm, knuckle);
+
+      // 4 fingers tightly balled against inner palm
+      for (let i = 0; i < 4; i++) {
+        const fy = 0.018 - i * 0.012;
+        const fCurl = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.010, 0.022), gloveMat);
+        fCurl.position.set(-0.002, fy, -0.024);
+        const fTuck = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.009, 0.016), skinMat);
+        fTuck.position.set(-0.018, fy, -0.012);
+        handGroup.add(fCurl, fTuck);
+      }
+
+      // Thumb folded tightly across the top/front of the curled index finger
+      const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.015, 0.016), gloveMat);
+      thumb.position.set(-0.004, 0.024, -0.022);
+      thumb.rotation.y = -0.25;
+      const thumbTip = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.013, 0.014), skinMat);
+      thumbTip.position.set(-0.022, 0.020, -0.024);
+      handGroup.add(thumb, thumbTip);
     }
 
     // Invisible articulated wrist pivot anchor (connects forearm to hand without a visible ball joint)
@@ -2103,23 +2128,23 @@ class WeaponSystem {
     this.lookSwayRotZ = THREE.MathUtils.lerp(this.lookSwayRotZ, THREE.MathUtils.clamp(-clampedDY * 1.15 * swayMult, -0.14, 0.14), swayLerpIn);
 
     // Sprint tilt, DMZ Tactical Sprint high-port skyward carry, tactical slide cant, wall tuck, progressive corner-lean cant (even while ADS!), recoil kick & camera sway
-    const slideCantZ = (!customRot && player.isSliding) ? (isAdsActive ? -0.10 : -0.32) : 0;
-    const slideCantY = (!customRot && player.isSliding) ? (isAdsActive ? 0.0 : 0.18) : 0;
-    const sprintRotX = tacSprintingHip ? 0.86 : (sprintingHip ? -0.14 : 0);
-    const sprintRotY = tacSprintingHip ? 0.16 : (sprintingHip ? 0.22 : 0);
-    const sprintRotZ = tacSprintingHip ? -0.14 : (sprintingHip ? 0.08 : 0);
+    const slideCantZ = (!customRot && !this.isFistsMode && player.isSliding) ? (isAdsActive ? -0.10 : -0.32) : 0;
+    const slideCantY = (!customRot && !this.isFistsMode && player.isSliding) ? (isAdsActive ? 0.0 : 0.18) : 0;
+    const sprintRotX = this.isFistsMode ? 0 : (tacSprintingHip ? 0.86 : (sprintingHip ? -0.14 : 0));
+    const sprintRotY = this.isFistsMode ? 0 : (tacSprintingHip ? 0.16 : (sprintingHip ? 0.22 : 0));
+    const sprintRotZ = this.isFistsMode ? 0 : (tacSprintingHip ? -0.14 : (sprintingHip ? 0.08 : 0));
     const leanRotZ = isAdsActive ? (-player.lean * 0.13) : (-player.lean * 0.22);
-    const targetRotX = (customRot ? activeRotOff.x : (sprintRotX + swayRotX + this.recoilPitch + this.lookSwayRotX + wallRotX)) + drawRot.x;
-    const targetRotY = (customRot ? activeRotOff.y : (sprintRotY + slideCantY + this.recoilYaw + this.lookSwayRotY + wallRotY + leanCantY)) + drawRot.y;
-    const targetRotZ = (customRot ? activeRotOff.z : (sprintRotZ + swayRotZ + slideCantZ + this.recoilRoll + this.lookSwayRotZ + wallRotZ + leanRotZ)) + drawRot.z;
+    const targetRotX = (customRot && !this.isFistsMode ? activeRotOff.x : (sprintRotX + swayRotX + this.recoilPitch + this.lookSwayRotX + wallRotX)) + drawRot.x;
+    const targetRotY = (customRot && !this.isFistsMode ? activeRotOff.y : (sprintRotY + slideCantY + this.recoilYaw + this.lookSwayRotY + wallRotY + leanCantY)) + drawRot.y;
+    const targetRotZ = (customRot && !this.isFistsMode ? activeRotOff.z : (sprintRotZ + swayRotZ + slideCantZ + this.recoilRoll + this.lookSwayRotZ + wallRotZ + leanRotZ)) + drawRot.z;
 
     // MW2/DMZ One-Handed High-Port Tactical Sprint: weapon held UP in right hand, left fist pumping apart!
-    // When ADS with any Z-roll (e.g., lean or slide cant), pivot around sightHeight so the sight stays locked to exact screen center!
+    // When in Fists mode, center the viewmodel horizontally so both hands come evenly from bottom-left & bottom-right!
     const adsPivotX = (isAdsActive && !customRot) ? (Math.sin(targetRotZ) * this.sightHeight) : 0;
     const adsPivotY = (isAdsActive && !customRot) ? ((1 - Math.cos(targetRotZ)) * this.sightHeight) : 0;
-    const basePosX = isAdsActive ? adsPivotX : (tacSprintingHip ? 0.24 : (sprintingHip ? 0.19 : 0.22));
-    const basePosY = isAdsActive ? (-this.sightHeight + adsPivotY) : (tacSprintingHip ? -0.14 : (sprintingHip ? -0.235 : -0.20));
-    const basePosZ = isAdsActive ? this.adsZ : (tacSprintingHip ? -0.34 : (sprintingHip ? -0.40 : -0.42));
+    const basePosX = this.isFistsMode ? 0.0 : (isAdsActive ? adsPivotX : (tacSprintingHip ? 0.24 : (sprintingHip ? 0.19 : 0.22)));
+    const basePosY = this.isFistsMode ? -0.16 : (isAdsActive ? (-this.sightHeight + adsPivotY) : (tacSprintingHip ? -0.14 : (sprintingHip ? -0.235 : -0.20)));
+    const basePosZ = this.isFistsMode ? -0.38 : (isAdsActive ? this.adsZ : (tacSprintingHip ? -0.34 : (sprintingHip ? -0.40 : -0.42)));
 
     const targetX = basePosX + this.recoilX + this.lookSwayX + activePosOff.x + wallPosX + leanAlignX + drawPos.x;
     const targetY = basePosY + this.lookSwayY + activePosOff.y + wallPosY + drawPos.y;
@@ -2135,8 +2160,76 @@ class WeaponSystem {
     this.viewmodelGroup.rotation.y = THREE.MathUtils.lerp(this.viewmodelGroup.rotation.y, targetRotY, Math.min(1, dt * rotRate));
     this.viewmodelGroup.rotation.z = THREE.MathUtils.lerp(this.viewmodelGroup.rotation.z, targetRotZ, Math.min(1, dt * rotRate));
 
-    // Left-handed clenched fist pumping on the left during Tactical Sprint (positioned cleanly inside FOV)
-    if (this.leftHand && !customRot && !(weaponDef && weaponDef.id === 'm870' && this.pumpTimer > 0)) {
+    // Fists Mode: Proper alternating left/right pumping animations (walk/sprint/tac-sprint) + alternating jab/cross punches!
+    if (this.isFistsMode && this.leftHand && this.rightHand) {
+      const fRate = Math.min(1, dt * 18);
+      const breath = Math.sin(this.bobTimer * 1.4) * 0.008;
+      const pumpAmp = moving ? (tacSprintingHip ? 1.25 : (sprintingHip ? 0.90 : 0.36)) : 0;
+      const lSin = Math.sin(this.bobTimer);
+      const lCos = Math.cos(this.bobTimer);
+      const rSin = Math.sin(this.bobTimer + Math.PI);
+      const rCos = Math.cos(this.bobTimer + Math.PI);
+
+      // Alternating pump offsets (180° opposite phase: one drives forward/up while the other pulls back/down)
+      let lTarget = new THREE.Vector3(
+        this.leftHandRestPos.x + (moving ? lSin * 0.026 * pumpAmp : 0),
+        this.leftHandRestPos.y + (moving ? lSin * 0.056 * pumpAmp : breath),
+        this.leftHandRestPos.z + (moving ? (-lSin * 0.095 - Math.abs(lCos) * 0.015) * pumpAmp : 0)
+      );
+      let rTarget = new THREE.Vector3(
+        this.rightHandRestPos.x - (moving ? rSin * 0.026 * pumpAmp : 0),
+        this.rightHandRestPos.y + (moving ? rSin * 0.056 * pumpAmp : -breath * 0.6),
+        this.rightHandRestPos.z + (moving ? (-rSin * 0.095 - Math.abs(rCos) * 0.015) * pumpAmp : 0)
+      );
+
+      let lRotX = this.leftHandRestRot.x + (moving ? (-0.20 + lSin * 0.28) * pumpAmp : 0);
+      let lRotY = this.leftHandRestRot.y + (moving ? lSin * 0.14 * pumpAmp : 0);
+      let lRotZ = this.leftHandRestRot.z - player.lean * 0.14 + this.lookSwayRotZ * 0.35;
+
+      let rRotX = this.rightHandRestRot.x + (moving ? (-0.20 + rSin * 0.28) * pumpAmp : 0);
+      let rRotY = this.rightHandRestRot.y - (moving ? rSin * 0.14 * pumpAmp : 0);
+      let rRotZ = this.rightHandRestRot.z - player.lean * 0.14 + this.lookSwayRotZ * 0.35;
+
+      // Alternating left jab / right cross punch animation
+      if (this.meleeSwingTimer > 0) {
+        const p = 1 - (this.meleeSwingTimer / Math.max(0.01, this.meleeSwingDuration));
+        const thrust = p < 0.32 ? Math.sin((p / 0.32) * Math.PI * 0.5) : Math.cos(((p - 0.32) / 0.68) * Math.PI * 0.5);
+        if (this._fistPunchSide) {
+          rTarget.set(
+            THREE.MathUtils.lerp(this.rightHandRestPos.x, 0.03, thrust),
+            THREE.MathUtils.lerp(this.rightHandRestPos.y, 0.03, thrust),
+            THREE.MathUtils.lerp(this.rightHandRestPos.z, -0.34, thrust)
+          );
+          rRotX = this.rightHandRestRot.x - 0.35 * thrust;
+          rRotZ = this.rightHandRestRot.z + 0.55 * thrust;
+          // Left guard tucks slightly back
+          lTarget.z += 0.05 * thrust;
+        } else {
+          lTarget.set(
+            THREE.MathUtils.lerp(this.leftHandRestPos.x, -0.03, thrust),
+            THREE.MathUtils.lerp(this.leftHandRestPos.y, 0.04, thrust),
+            THREE.MathUtils.lerp(this.leftHandRestPos.z, -0.34, thrust)
+          );
+          lRotX = this.leftHandRestRot.x - 0.35 * thrust;
+          lRotZ = this.leftHandRestRot.z - 0.55 * thrust;
+          // Right guard tucks slightly back
+          rTarget.z += 0.05 * thrust;
+        }
+      }
+
+      this.leftHand.visible = true;
+      this.rightHand.visible = true;
+      this.leftHand.position.lerp(lTarget, fRate);
+      this.leftHand.rotation.x = THREE.MathUtils.lerp(this.leftHand.rotation.x, lRotX, fRate);
+      this.leftHand.rotation.y = THREE.MathUtils.lerp(this.leftHand.rotation.y, lRotY, fRate);
+      this.leftHand.rotation.z = THREE.MathUtils.lerp(this.leftHand.rotation.z, lRotZ, fRate);
+
+      this.rightHand.position.lerp(rTarget, fRate);
+      this.rightHand.rotation.x = THREE.MathUtils.lerp(this.rightHand.rotation.x, rRotX, fRate);
+      this.rightHand.rotation.y = THREE.MathUtils.lerp(this.rightHand.rotation.y, rRotY, fRate);
+      this.rightHand.rotation.z = THREE.MathUtils.lerp(this.rightHand.rotation.z, rRotZ, fRate);
+    } else if (this.leftHand && !customRot && !(weaponDef && weaponDef.id === 'm870' && this.pumpTimer > 0)) {
+      // Left-handed clenched fist pumping on the left during Tactical Sprint (positioned cleanly inside FOV)
       if (tacSprintingHip) {
         const pump = Math.sin(this.bobTimer + Math.PI);
         const pumpCos = Math.cos(this.bobTimer + Math.PI);
@@ -2181,28 +2274,32 @@ class WeaponSystem {
     const leanShX = -player.lean * 0.055;
     const swayShX = -this.lookSwayX * 0.45;
     if (this.rightArm && this.rightHand) {
-      if (!customRot) {
+      if (!customRot && !this.isFistsMode) {
         this.rightHand.rotation.z = THREE.MathUtils.lerp(
           this.rightHand.rotation.z,
           this.rightHandRestRot.z - player.lean * 0.12 + this.lookSwayRotZ * 0.35 + this.recoilRoll * 0.5,
           Math.min(1, dt * 16)
         );
       }
-      const rShoulder = new THREE.Vector3(0.16 + leanShX + swayShX, -0.20 - Math.abs(player.lean) * 0.02, 0.36);
+      const rShoulder = this.isFistsMode
+        ? new THREE.Vector3(0.34 + leanShX + swayShX, -0.34 - Math.abs(player.lean) * 0.02, 0.24)
+        : new THREE.Vector3(0.16 + leanShX + swayShX, -0.20 - Math.abs(player.lean) * 0.02, 0.36);
       const rWrist = this.rightHand.position.clone().add(new THREE.Vector3(0.008, -0.010, 0.034));
       this._aimArm(this.rightArm, rShoulder, rWrist);
     }
     if (this.leftArm && this.leftHand) {
-      if (!customRot && !tacSprintingHip) {
+      if (!customRot && !tacSprintingHip && !this.isFistsMode) {
         this.leftHand.rotation.z = THREE.MathUtils.lerp(
           this.leftHand.rotation.z,
           this.leftHandRestRot.z - player.lean * 0.14 + this.lookSwayRotZ * 0.35 + this.recoilRoll * 0.5,
           Math.min(1, dt * 16)
         );
       }
-      const lShoulder = tacSprintingHip
-        ? new THREE.Vector3(-0.62, -0.28, 0.26)
-        : new THREE.Vector3(-0.22 + leanShX + swayShX, -0.20 - Math.abs(player.lean) * 0.02, 0.30);
+      const lShoulder = this.isFistsMode
+        ? new THREE.Vector3(-0.34 + leanShX + swayShX, -0.34 - Math.abs(player.lean) * 0.02, 0.24)
+        : (tacSprintingHip
+          ? new THREE.Vector3(-0.62, -0.28, 0.26)
+          : new THREE.Vector3(-0.22 + leanShX + swayShX, -0.20 - Math.abs(player.lean) * 0.02, 0.30));
       const lWrist = this.leftHand.position.clone().add(new THREE.Vector3(-0.010, -0.010, 0.034));
       this._aimArm(this.leftArm, lShoulder, lWrist);
     }
@@ -3838,33 +3935,19 @@ class WeaponSystem {
     this.leftFist = null;
 
     const g = new THREE.Group();
-    const skinMat = new THREE.MeshLambertMaterial({ color: 0xd1a483 });
-    const knuckleMat = new THREE.MeshLambertMaterial({ color: 0xbd8d6c });
-    const makeBareFist = (isRight) => {
-      const side = isRight ? 1 : -1;
-      const f = new THREE.Group();
-      const palm = new THREE.Mesh(new THREE.BoxGeometry(0.054, 0.062, 0.064), skinMat);
-      const fingers = new THREE.Mesh(new THREE.BoxGeometry(0.056, 0.040, 0.030), knuckleMat);
-      fingers.position.set(0, 0.008, -0.036);
-      const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.020, 0.044), skinMat);
-      thumb.position.set(-side * 0.032, 0.018, -0.008);
-      thumb.rotation.y = side * 0.25;
-      f.add(palm, fingers, thumb);
-      return f;
-    };
 
-    // Left guard bare fist (raised forward-left)
-    this.leftHand = makeBareFist(false);
-    this.leftHand.position.set(-0.29, -0.07, -0.05);
-    this.leftHand.rotation.set(-0.25, 0.35, -0.22);
+    // Gloved tactical fists matching gun-holding hands, rising from bottom-left & bottom-right at an even angle
+    // with the left lead fist positioned slightly above the right guard fist
+    this.leftHand = this._createHand(false, 'leftFist');
+    this.leftHand.position.set(-0.19, -0.015, -0.05);
+    this.leftHand.rotation.set(-0.26, 0.28, -0.22);
     this.leftHandRestPos.copy(this.leftHand.position);
     this.leftHandRestRot.copy(this.leftHand.rotation);
     this.leftArm = this._createForearm();
 
-    // Right power bare fist (slightly back-right)
-    this.rightHand = makeBareFist(true);
-    this.rightHand.position.set(0.02, -0.09, 0.04);
-    this.rightHand.rotation.set(-0.20, -0.30, 0.18);
+    this.rightHand = this._createHand(true, 'rightFist');
+    this.rightHand.position.set(0.19, -0.062, 0.0);
+    this.rightHand.rotation.set(-0.26, -0.28, 0.22);
     this.rightHandRestPos.copy(this.rightHand.position);
     this.rightHandRestRot.copy(this.rightHand.rotation);
     this.rightArm = this._createForearm();
@@ -3880,6 +3963,7 @@ class WeaponSystem {
 
   tryMeleeSlash(player, world, enemyManager, onHitCallback, isQuick = false) {
     if (this.meleeSwingTimer > 0) return false;
+    this._fistPunchSide = !this._fistPunchSide;
     this.cancelReload();
     this.cancelInspect();
     this.cancelPlating();
