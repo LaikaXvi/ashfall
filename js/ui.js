@@ -4080,56 +4080,97 @@ class GameUI {
     this.renderHideout();
   }
 
+  _getOperatorSkins() {
+    return [
+      { id: 'ranger_olive', name: 'RANGER OLIVE', accent: '#69f0ae', helmet: '#2a332b', visor: '#69f0ae', rig: '#384438', uniform: '#232b24', style: 'nvg' },
+      { id: 'shadow_recon', name: 'SHADOW RECON', accent: '#42a5f5', helmet: '#1f2836', visor: '#42a5f5', rig: '#283647', uniform: '#19202b', style: 'goggles' },
+      { id: 'iron_breacher', name: 'IRON BREACHER', accent: '#f5a623', helmet: '#3d3528', visor: '#f5a623', rig: '#524634', uniform: '#2c261e', style: 'heavy' },
+      { id: 'arctic_ghost', name: 'ARCTIC GHOST', accent: '#80deea', helmet: '#c7d3db', visor: '#4dd0e1', rig: '#8fa1ad', uniform: '#b4c2cc', style: 'nvg' },
+      { id: 'crimson_vanguard', name: 'CRIMSON VANGUARD', accent: '#ff5252', helmet: '#1a1a1d', visor: '#ff5252', rig: '#2d1c20', uniform: '#161518', style: 'heavy' },
+      { id: 'hazard_cbrn', name: 'CBRN HAZARD', accent: '#ffd54f', helmet: '#383a26', visor: '#ffca28', rig: '#47492e', uniform: '#2d2f1e', style: 'goggles' }
+    ];
+  }
+
+  _resolveOperatorSkin(op) {
+    const skins = this._getOperatorSkins();
+    const found = skins.find((s) => s.id === op.skinId) || skins[0];
+    return {
+      ...op,
+      skinId: found.id,
+      skinName: found.name,
+      accent: found.accent,
+      helmet: found.helmet,
+      visor: found.visor,
+      rig: found.rig,
+      uniform: found.uniform,
+      style: found.style
+    };
+  }
+
+  cycleActiveDutySkin(idx) {
+    const ops = this._ensureActiveDutyOperators();
+    if (idx < 0 || idx >= ops.length) return;
+    const skins = this._getOperatorSkins();
+    const curIdx = Math.max(0, skins.findIndex((s) => s.id === ops[idx].skinId));
+    const next = skins[(curIdx + 1) % skins.length];
+    ops[idx].skinId = next.id;
+    ops[idx].skinName = next.name;
+    ops[idx].accent = next.accent;
+    ops[idx].helmet = next.helmet;
+    ops[idx].visor = next.visor;
+    ops[idx].rig = next.rig;
+    ops[idx].uniform = next.uniform;
+    ops[idx].style = next.style;
+    this.saveProfile();
+    this.renderHideout();
+  }
+
   renderActiveDutyRoster() {
     const grid = document.getElementById('active-duty-grid');
     if (!grid) return;
     const ops = this._ensureActiveDutyOperators();
     const activeIdx = this.profile.activeOperatorIdx || 0;
-    const L = this.profile.loadout;
     grid.innerHTML = '';
 
-    ops.forEach((op, idx) => {
+    ops.forEach((rawOp, idx) => {
+      // Assign default skinId by slot index if not yet stored
+      if (!rawOp.skinId) {
+        const defaultSkins = ['ranger_olive', 'shadow_recon', 'iron_breacher'];
+        rawOp.skinId = defaultSkins[idx] || 'ranger_olive';
+      }
+      const op = this._resolveOperatorSkin(rawOp);
       const isActive = idx === activeIdx;
       const dt = this._getDogtagInfo(op.exfilStreak || 0);
-      const gearSrc = isActive ? L : (op.gear || {});
-      const vestName = (gearSrc.armor && GAME_DATA.ITEMS[gearSrc.armor]) ? GAME_DATA.ITEMS[gearSrc.armor].name.split(' ')[0] : 'No Vest';
-      const bagName = (gearSrc.backpack && GAME_DATA.ITEMS[gearSrc.backpack]) ? GAME_DATA.ITEMS[gearSrc.backpack].name.split(' ')[0] : 'Small Bag';
 
       const card = document.createElement('div');
-      card.className = `duty-op-card${isActive ? ' active' : ''}`;
+      card.className = `duty-op-card duty-skin-card${isActive ? ' active' : ''}`;
       card.innerHTML = `
-        <div class="duty-title-card">
-          <div>
-            <div class="duty-slot-tag">${op.slotLabel}</div>
-            <div class="duty-callsign" style="color:${isActive ? op.accent : '#f0f5f2'};">${op.callsign}</div>
-            <div class="duty-role">${op.title}</div>
+        <div class="duty-skin-header">
+          <div class="duty-skin-top-row">
+            <span class="duty-slot-tag">${op.callsign}</span>
+            ${isActive ? '<span class="duty-active-pill">ACTIVE</span>' : '<span class="duty-slot-tag">STANDBY</span>'}
           </div>
-          ${isActive ? '<span class="duty-active-pill">ACTIVE</span>' : '<span class="duty-slot-tag">STANDBY</span>'}
+          <div class="duty-skin-name" style="color:${isActive ? op.accent : '#f2f6fa'};">${op.skinName}</div>
+          <button class="btn-small duty-skin-cycle-btn" type="button" title="Cycle Operator Skin">CYCLE SKIN ↻</button>
         </div>
 
-        <div class="duty-portrait-wrap">
+        <div class="duty-portrait-wrap duty-portrait-tall">
           ${this._buildOperatorPortraitSVG(op)}
         </div>
 
-        <div class="duty-dogtag-bar">
-          <div class="duty-dogtag-left">
-            ${this._buildDogtagIconSVG(dt)}
-            <div>
-              <div class="duty-dogtag-tier" style="color:${dt.color};">${dt.tier} (${dt.level})</div>
-              <div class="duty-dogtag-sub">EXFIL STREAK: ${dt.streak}</div>
-            </div>
-          </div>
-          <div class="duty-dogtag-val">₽${dt.value.toLocaleString()}</div>
-        </div>
-
-        <div class="duty-card-footer">
-          <div class="duty-gear-chips">
-            <span class="duty-gear-chip">${vestName}</span>
-            <span class="duty-gear-chip">${bagName}</span>
-          </div>
-          <button class="btn-small" style="${isActive ? 'border-color:#69f0ae;color:#69f0ae;' : ''}">${isActive ? 'EQUIPPED' : 'SELECT'}</button>
+        <div class="duty-dogtag-centered">
+          ${this._buildDogtagIconSVG(dt)}
+          <div class="duty-dogtag-level-text" style="color:${dt.color};">${dt.tier} · ${dt.level}</div>
+          <div class="duty-dogtag-sub">EXFIL STREAK: ${dt.streak} · ₽${dt.value.toLocaleString()}</div>
         </div>
       `;
+      const cycleBtn = card.querySelector('.duty-skin-cycle-btn');
+      if (cycleBtn) {
+        cycleBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.cycleActiveDutySkin(idx);
+        });
+      }
       card.addEventListener('click', () => this.selectActiveDutyOperator(idx));
       grid.appendChild(card);
     });
