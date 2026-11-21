@@ -5121,9 +5121,9 @@ class GameUI {
         ? (document.querySelector('#loot-container-items .inv-slot') || document.querySelector('#loot-backpack-items .inv-slot'))
         : document.querySelector('#loot-backpack-items .inv-slot');
       if (firstTarget && this.setSelectedElement) {
-        this.setSelectedElement(firstTarget, { inputMode: 'gamepad' });
+        this.setSelectedElement(firstTarget, { inputMode: 'auto' });
       } else {
-        this.ensureInitialSelection();
+        this.ensureInitialSelection({ inputMode: 'auto' });
       }
     });
   }
