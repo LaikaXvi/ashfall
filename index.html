@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ASHFALL // 3D Extraction Looter-Shooter</title>
-  <link rel="stylesheet" href="css/style.css?v=174" />
+  <link rel="stylesheet" href="css/style.css?v=177" />
   <!-- Three.js r128 UMD for zero-build compatibility (works on both http:// and file://) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
@@ -22,7 +22,7 @@
     <!-- IMPORTANT: Update version in GAME_DATA.VERSION (js/data.js) and here with EVERY new commit -->
     <div class="menu-version-stack">
       <button id="menu-update-badge" class="menu-update-badge hidden" title="Click to reload into the latest version">NEW VERSION AVAILABLE</button>
-      <div id="menu-version-badge" class="menu-version-badge">v1.76</div>
+      <div id="menu-version-badge" class="menu-version-badge">v1.77</div>
     </div>
     <!-- Top Bar (visible inside utility tabs; hidden on clean Main Menu title card) -->
     <header id="menu-topbar" class="hideout-header hidden">
@@ -626,12 +626,34 @@
 
     <!-- 4x Binocular Laser Designator Overlay (Precision Airstrike) -->
     <div id="designator-overlay" class="designator-overlay hidden">
+      <svg class="desig-bino-mask" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        <defs>
+          <radialGradient id="binoLensGrad" cx="50%" cy="50%" r="50%">
+            <stop offset="78%" stop-color="#000000" />
+            <stop offset="93%" stop-color="#444444" />
+            <stop offset="100%" stop-color="#ffffff" />
+          </radialGradient>
+          <mask id="binoUnionMask">
+            <rect width="1600" height="900" fill="#ffffff" />
+            <circle cx="575" cy="450" r="395" fill="url(#binoLensGrad)" />
+            <circle cx="1025" cy="450" r="395" fill="url(#binoLensGrad)" />
+          </mask>
+        </defs>
+        <rect width="1600" height="900" fill="rgba(4, 7, 6, 0.96)" mask="url(#binoUnionMask)" />
+        <!-- Crisp subtle optical lens rings & mil-dot stadia -->
+        <circle cx="575" cy="450" r="372" fill="none" stroke="rgba(255, 82, 82, 0.14)" stroke-width="2" />
+        <circle cx="1025" cy="450" r="372" fill="none" stroke="rgba(255, 82, 82, 0.14)" stroke-width="2" />
+        <line x1="650" y1="450" x2="735" y2="450" stroke="rgba(255, 82, 82, 0.35)" stroke-width="1.5" />
+        <line x1="865" y1="450" x2="950" y2="450" stroke="rgba(255, 82, 82, 0.35)" stroke-width="1.5" />
+        <line x1="800" y1="330" x2="800" y2="385" stroke="rgba(255, 82, 82, 0.35)" stroke-width="1.5" />
+        <line x1="800" y1="515" x2="800" y2="570" stroke="rgba(255, 82, 82, 0.35)" stroke-width="1.5" />
+      </svg>
       <div class="desig-hud-top">
-        <span>LASER DESIGNATOR // 4.0X</span>
+        <span>A-10 CAS DESIGNATOR // 4.0X</span>
         <span id="desig-range">RANGE: --m</span>
       </div>
       <div class="desig-reticle"><div class="desig-dot"></div></div>
-      <div class="desig-hud-bottom">HOLD [LMB / RT] AIM &amp; RELEASE TO CALL AIRSTRIKE · [K / 1-3 / ESC] STOW</div>
+      <div class="desig-hud-bottom">HOLD [LMB / RT] AIM &amp; RELEASE TO CALL A-10 GUN RUN · [K / 1-3 / ESC] STOW</div>
     </div>
 
     <!-- Right-of-Crosshair Stacking XP Feedback -->
@@ -929,10 +951,10 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION with every new commit) -->
-  <script src="js/data.js?v=176"></script>
+  <script src="js/data.js?v=177"></script>
   <script src="js/net.js?v=123"></script>
   <script src="js/sfx_samples.js?v=21"></script>
-  <script src="js/audio.js?v=175"></script>
+  <script src="js/audio.js?v=177"></script>
   <script src="js/world.js?v=174"></script>
   <script src="js/weapons.js?v=175"></script>
   <script src="js/icons.js?v=112"></script>
@@ -946,6 +968,6 @@
   <script src="js/matchmaking.js?v=168"></script>
   <script src="js/ui.js?v=175"></script>
   <script src="js/console.js?v=117"></script>
-  <script src="js/main.js?v=175"></script>
+  <script src="js/main.js?v=177"></script>
 </body>
 </html>

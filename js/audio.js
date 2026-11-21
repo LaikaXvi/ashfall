@@ -979,6 +979,107 @@ class SoundEngine {
       osc.stop(t + 0.055);
     });
   }
+
+  playA10Strafe(distance = 25) {
+    if (this.muted || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    const vol = Math.max(0.22, Math.min(1.0, 1.15 - distance / 180));
+
+    // 1. Twin-Turbofan A-10 Doppler Jet Flyby Roar (approaches -> screams overhead -> fades climbing out)
+    const jetNoise = this._makeNoise(now, 3.0);
+    const jetBp = this.ctx.createBiquadFilter();
+    jetBp.type = 'bandpass';
+    jetBp.Q.setValueAtTime(1.4, now);
+    jetBp.frequency.setValueAtTime(280, now);
+    jetBp.frequency.exponentialRampToValueAtTime(980, now + 0.95);
+    jetBp.frequency.exponentialRampToValueAtTime(220, now + 2.85);
+    const jetG = this.ctx.createGain();
+    jetG.gain.setValueAtTime(0.001, now);
+    jetG.gain.linearRampToValueAtTime(0.42 * vol, now + 0.85);
+    jetG.gain.exponentialRampToValueAtTime(0.001, now + 2.95);
+    jetNoise.connect(jetBp);
+    jetBp.connect(jetG);
+    jetG.connect(this._bus('sfx'));
+
+    // High-pitched TF34 turbine whine
+    const whine = this.ctx.createOscillator();
+    whine.type = 'sine';
+    whine.frequency.setValueAtTime(1180, now);
+    whine.frequency.exponentialRampToValueAtTime(1620, now + 0.90);
+    whine.frequency.exponentialRampToValueAtTime(640, now + 2.65);
+    const whineG = this.ctx.createGain();
+    whineG.gain.setValueAtTime(0.001, now);
+    whineG.gain.linearRampToValueAtTime(0.065 * vol, now + 0.85);
+    whineG.gain.exponentialRampToValueAtTime(0.001, now + 2.65);
+    whine.connect(whineG);
+    whineG.connect(this._bus('sfx'));
+    whine.start(now);
+    whine.stop(now + 2.7);
+
+    // 2. Iconic GAU-8 Avenger 30mm "BRRRRRRRRT" (delayed ~0.26s after ground impacts for authentic speed-of-sound feel!)
+    const brtStart = now + 0.26;
+    const brtDur = 1.15;
+    const brtOsc = this.ctx.createOscillator();
+    brtOsc.type = 'sawtooth';
+    brtOsc.frequency.setValueAtTime(64, brtStart);
+    brtOsc.frequency.linearRampToValueAtTime(58, brtStart + brtDur);
+
+    const brtSub = this.ctx.createOscillator();
+    brtSub.type = 'square';
+    brtSub.frequency.setValueAtTime(128, brtStart);
+    brtSub.frequency.linearRampToValueAtTime(114, brtStart + brtDur);
+
+    const brtFilter = this.ctx.createBiquadFilter();
+    brtFilter.type = 'bandpass';
+    brtFilter.frequency.setValueAtTime(340, brtStart);
+    brtFilter.Q.setValueAtTime(1.1, brtStart);
+
+    const brtG = this.ctx.createGain();
+    brtG.gain.setValueAtTime(0.001, brtStart);
+    brtG.gain.linearRampToValueAtTime(0.72 * vol, brtStart + 0.04);
+    brtG.gain.setValueAtTime(0.68 * vol, brtStart + brtDur - 0.14);
+    brtG.gain.exponentialRampToValueAtTime(0.001, brtStart + brtDur);
+
+    brtOsc.connect(brtFilter);
+    brtSub.connect(brtFilter);
+    brtFilter.connect(brtG);
+    brtG.connect(this._bus('sfx'));
+    brtOsc.start(brtStart);
+    brtSub.start(brtStart);
+    brtOsc.stop(brtStart + brtDur + 0.02);
+    brtSub.stop(brtStart + brtDur + 0.02);
+
+    // Gritty muzzle-blast noise layer for the BRRRT
+    const brtNoise = this._makeNoise(brtStart, brtDur);
+    const bnLp = this.ctx.createBiquadFilter();
+    bnLp.type = 'bandpass';
+    bnLp.frequency.setValueAtTime(620, brtStart);
+    bnLp.Q.setValueAtTime(0.85, brtStart);
+    const bnG = this.ctx.createGain();
+    bnG.gain.setValueAtTime(0.001, brtStart);
+    bnG.gain.linearRampToValueAtTime(0.45 * vol, brtStart + 0.03);
+    bnG.gain.exponentialRampToValueAtTime(0.001, brtStart + brtDur);
+    brtNoise.connect(bnLp);
+    bnLp.connect(bnG);
+    bnG.connect(this._bus('sfx'));
+  }
+
+  playCannonImpact(distance = 25) {
+    if (this.muted || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    const vol = Math.max(0.14, Math.min(0.85, 0.95 - distance / 110));
+    const noise = this._makeNoise(now, 0.24);
+    const lp = this.ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(2200, now);
+    lp.frequency.exponentialRampToValueAtTime(260, now + 0.22);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.55 * vol, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+    noise.connect(lp);
+    lp.connect(g);
+    g.connect(this._bus('sfx'));
+  }
 }
 
 window.soundEngine = new SoundEngine();

@@ -1372,95 +1372,150 @@
   }
 
   function _createFighterJetMesh() {
+    // Iconic A-10 Thunderbolt II ("Warthog") Close Air Support Gunship!
     const g = new THREE.Group();
-    const darkMat = new THREE.MeshLambertMaterial({ color: 0x2c333a });
-    const wingMat = new THREE.MeshLambertMaterial({ color: 0x45505c });
-    const glowMat = new THREE.MeshBasicMaterial({ color: 0xff9800 });
-    const fuselage = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.65, 6.2), darkMat);
-    const nose = new THREE.Mesh(new THREE.ConeGeometry(0.58, 2.2, 6), darkMat);
-    nose.rotation.x = -Math.PI / 2;
-    nose.position.z = -4.2;
-    const wings = new THREE.Mesh(new THREE.BoxGeometry(7.2, 0.14, 2.1), wingMat);
-    wings.position.z = 0.2;
-    const vTailL = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.35, 1.3), wingMat);
-    vTailL.position.set(-0.7, 0.72, 2.2);
-    vTailL.rotation.z = 0.24;
-    const vTailR = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.35, 1.3), wingMat);
-    vTailR.position.set(0.7, 0.72, 2.2);
-    vTailR.rotation.z = -0.24;
-    const burnerL = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.12, 1.6, 6), glowMat);
-    burnerL.rotation.x = Math.PI / 2;
-    burnerL.position.set(-0.34, -0.05, 3.8);
-    const burnerR = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.12, 1.6, 6), glowMat);
-    burnerR.rotation.x = Math.PI / 2;
-    burnerR.position.set(0.34, -0.05, 3.8);
-    g.add(fuselage, nose, wings, vTailL, vTailR, burnerL, burnerR);
+    const hullMat = new THREE.MeshLambertMaterial({ color: 0x525a62 });
+    const darkMat = new THREE.MeshLambertMaterial({ color: 0x2e343a });
+    const canopyMat = new THREE.MeshLambertMaterial({ color: 0x1b2b36 });
+    const cannonMat = new THREE.MeshLambertMaterial({ color: 0x181a1c });
+    const glowMat = new THREE.MeshBasicMaterial({ color: 0xffaa33 });
+
+    // Rugged elongated fuselage + tapered nose + bubble canopy
+    const fuselage = new THREE.Mesh(new THREE.BoxGeometry(1.35, 0.92, 9.6), hullMat);
+    const nose = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.68, 2.4, 8), hullMat);
+    nose.rotation.x = Math.PI / 2;
+    nose.position.set(0, -0.06, -5.8);
+    const canopy = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.56, 2.4), canopyMat);
+    canopy.position.set(0, 0.62, -2.5);
+
+    // Iconic GAU-8 Avenger 30mm 7-barrel rotary cannon protruding from nose + dynamic muzzle flash cone
+    const cannon = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.16, 1.5, 6), cannonMat);
+    cannon.rotation.x = Math.PI / 2;
+    cannon.position.set(0, -0.26, -7.2);
+    const muzzleCone = new THREE.Mesh(
+      new THREE.ConeGeometry(0.65, 3.6, 6),
+      new THREE.MeshBasicMaterial({ color: 0xffcc44, transparent: true, opacity: 0.92 })
+    );
+    muzzleCone.rotation.x = -Math.PI / 2;
+    muzzleCone.position.set(0, -0.26, -9.4);
+    muzzleCone.visible = false;
+    g.userData.muzzleFlash = muzzleCone;
+
+    // Signature straight, wide, low-mounted Warthog cantilever wings + underwing ordnance pods
+    const wings = new THREE.Mesh(new THREE.BoxGeometry(13.8, 0.18, 2.2), hullMat);
+    wings.position.set(0, -0.18, -0.5);
+    const tipL = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.16, 1.8), darkMat);
+    tipL.position.set(-7.2, -0.04, -0.4);
+    tipL.rotation.z = -0.22;
+    const tipR = tipL.clone();
+    tipR.position.x = 7.2;
+    tipR.rotation.z = 0.22;
+    const gearPodL = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.45, 2.4), darkMat);
+    gearPodL.position.set(-2.4, -0.42, -0.8);
+    const gearPodR = gearPodL.clone();
+    gearPodR.position.x = 2.4;
+
+    // Twin high-mounted rear TF34 turbofan engine nacelles behind the wings
+    const engL = new THREE.Mesh(new THREE.CylinderGeometry(0.56, 0.50, 3.0, 10), darkMat);
+    engL.rotation.x = Math.PI / 2;
+    engL.position.set(-1.35, 0.65, 2.1);
+    const engR = engL.clone();
+    engR.position.x = 1.35;
+    const burnL = new THREE.Mesh(new THREE.CylinderGeometry(0.36, 0.18, 1.4, 6), glowMat);
+    burnL.rotation.x = Math.PI / 2;
+    burnL.position.set(-1.35, 0.65, 4.1);
+    const burnR = burnL.clone();
+    burnR.position.x = 1.35;
+
+    // Iconic A-10 H-tail (wide horizontal stabilizer + twin vertical tailfins at the tips)
+    const hTail = new THREE.Mesh(new THREE.BoxGeometry(5.2, 0.14, 1.35), hullMat);
+    hTail.position.set(0, 0.18, 4.4);
+    const vTailL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 2.2, 1.55), hullMat);
+    vTailL.position.set(-2.55, 0.85, 4.45);
+    const vTailR = vTailL.clone();
+    vTailR.position.x = 2.55;
+
+    g.add(
+      fuselage, nose, canopy, cannon, muzzleCone,
+      wings, tipL, tipR, gearPodL, gearPodR,
+      engL, engR, burnL, burnR, hTail, vTailL, vTailR
+    );
     return g;
   }
 
-  const _ksFireGeo = new THREE.SphereGeometry(1.1, 8, 6);
-  const _ksSmokeGeo = new THREE.SphereGeometry(1.6, 8, 6);
-  const _ksFlashGeo = new THREE.SphereGeometry(0.75, 6, 5);
+  const _ksFireGeo = new THREE.ConeGeometry(0.65, 2.8, 6);
+  const _ksSmokeGeo = new THREE.SphereGeometry(1.15, 7, 5);
+  const _ksFlashGeo = new THREE.RingGeometry(0.45, 1.05, 14);
+  _ksFlashGeo.rotateX(-Math.PI / 2);
 
-  function _spawnAirstrikeExplosion(pos, applyDamage = true, callerName = null) {
+  function _spawnAirstrikeExplosion(pos, applyDamage = true, callerName = null, fromJetPos = null) {
     if (!scene) return;
     const dist = player ? player.position.distanceTo(pos) : 25;
-    if (window.soundEngine && window.soundEngine.playExplosion) {
-      window.soundEngine.playExplosion(dist);
+    if (window.soundEngine && window.soundEngine.playCannonImpact) {
+      window.soundEngine.playCannonImpact(dist);
     }
-    // Subtle camera rumble kick if nearby
-    if (player && dist < 38) {
-      const shake = (1 - dist / 38) * 0.045;
-      player.applyRecoil(shake * (0.6 + Math.random() * 0.6), (Math.random() - 0.5) * shake);
+    // Crisp high-frequency ground concussion rumble when nearby
+    if (player && dist < 42) {
+      const shake = (1 - dist / 42) * 0.026;
+      player.applyRecoil(shake * (0.5 + Math.random() * 0.7), (Math.random() - 0.5) * shake);
     }
 
-    const fireMat = new THREE.MeshBasicMaterial({ color: 0xff8c1a, transparent: true, opacity: 0.95 });
+    // Blazing 30mm HEI tracer streak pouring straight down from the A-10's GAU-8 nose cannon!
+    if (fromJetPos && weaponSystem && weaponSystem._spawnTracer) {
+      weaponSystem._spawnTracer(fromJetPos, pos, 0xffb732);
+    }
+
+    // Vertical 30mm HEI dirt/spark geyser column (distinct from spherical grenade explosions!)
+    const fireMat = new THREE.MeshBasicMaterial({ color: 0xffb338, transparent: true, opacity: 0.94 });
     const fireMesh = new THREE.Mesh(_ksFireGeo, fireMat);
-    fireMesh.position.set(pos.x, pos.y + 0.9, pos.z);
+    fireMesh.position.set(pos.x, pos.y + 1.1, pos.z);
+    fireMesh.rotation.set((Math.random() - 0.5) * 0.22, Math.random() * Math.PI, (Math.random() - 0.5) * 0.22);
     scene.add(fireMesh);
 
-    const flashMat = new THREE.MeshBasicMaterial({ color: 0xfff0b0, transparent: true, opacity: 0.92 });
+    // Expanding ground shockwave dust ring
+    const flashMat = new THREE.MeshBasicMaterial({ color: 0xd8c39e, transparent: true, opacity: 0.80, side: THREE.DoubleSide });
     const flashMesh = new THREE.Mesh(_ksFlashGeo, flashMat);
-    flashMesh.position.set(pos.x, pos.y + 1.1, pos.z);
+    flashMesh.position.set(pos.x, pos.y + 0.14, pos.z);
     scene.add(flashMesh);
 
-    const smokeMat = new THREE.MeshLambertMaterial({ color: 0x262422, transparent: true, opacity: 0.72 });
+    // Rising dark earth/smoke plume
+    const smokeMat = new THREE.MeshLambertMaterial({ color: 0x3b352c, transparent: true, opacity: 0.74 });
     const smokeMesh = new THREE.Mesh(_ksSmokeGeo, smokeMat);
-    smokeMesh.position.set(pos.x, pos.y + 1.6, pos.z);
+    smokeMesh.position.set(pos.x, pos.y + 1.2, pos.z);
     scene.add(smokeMesh);
 
-    // No dynamic PointLight -> ZERO WebGL shader recompilations & zero lag spikes!
-    ksExplosions.push({ fireMesh, flashMesh, smokeMesh, light: null, age: 0, maxAge: 1.55 });
+    // No dynamic PointLight -> ZERO WebGL shader recompilations & butter-smooth FPS!
+    ksExplosions.push({ fireMesh, flashMesh, smokeMesh, light: null, age: 0, maxAge: 1.35 });
 
-    // Heavy AoE damage to enemies & enemy operators (host/caller authoritative to avoid double damage)
-    const blastRadius = 11.5;
+    // Dense 30mm HEI strafing corridor AoE damage (host/caller authoritative to avoid double damage)
+    const blastRadius = 8.5;
     if (applyDamage && enemyManager && enemyManager.enemies) {
       const attackerInfo = {
         name: callerName || getPlayerCallsign(),
         isPlayer: !callerName,
         weaponId: 'ks_airstrike',
-        weaponName: 'Precision Airstrike'
+        weaponName: 'A-10 Warthog 30mm'
       };
       for (const e of enemyManager.enemies) {
         if (e.dead) continue;
         const d = Math.hypot(e.position.x - pos.x, e.position.z - pos.z);
         if (d <= blastRadius) {
-          const falloff = 1 - (d / blastRadius) * 0.65;
-          const dmg = Math.round(185 * falloff);
+          const falloff = 1 - (d / blastRadius) * 0.55;
+          const dmg = Math.round(92 * falloff);
           const killed = e.takeDamage(dmg, pos, attackerInfo);
           if (!callerName) onThrowableHit(false, killed, e, attackerInfo);
         }
       }
     }
 
-    // Mild self-damage if player stands directly inside their own airstrike zone
+    // Mild self-damage if player stands directly inside the 30mm strafing corridor
     if (player && !player.dead && !player.isDowned) {
       const pd = Math.hypot(player.position.x - pos.x, player.position.z - pos.z);
-      if (pd < 8.5) {
-        const selfDmg = Math.round(45 * (1 - pd / 8.5));
-        if (selfDmg > 4) {
+      if (pd < 6.5) {
+        const selfDmg = Math.round(24 * (1 - pd / 6.5));
+        if (selfDmg > 3) {
           ui.triggerDamageFlash();
-          player.takeDamage(selfDmg, { name: 'AIRSTRIKE', weaponId: 'ks_airstrike', weaponName: 'Precision Airstrike' });
+          player.takeDamage(selfDmg, { name: 'A-10 CAS', weaponId: 'ks_airstrike', weaponName: 'A-10 Warthog 30mm' });
         }
       }
     }
@@ -1733,19 +1788,23 @@
       const mesh = _createFighterJetMesh();
       mesh.visible = false;
       scene.add(mesh);
-      const startDelay = 1.9 + passIdx * 1.15;
+      const startDelay = 1.6 + passIdx * 1.35;
+      const duration = 3.2;
       const bombs = [];
-      for (let b = 0; b < 6; b++) {
-        const along = -13 + b * 5.2 + (passIdx === 1 ? 1.8 : 0);
-        const sideJitter = (Math.random() - 0.5) * 3.5;
-        const perp = new THREE.Vector3(-strikeDir.z, 0, strikeDir.x);
+      // 16 rapid-fire 30mm GAU-8 HEI strafing impacts per A-10 Warthog pass!
+      const roundCount = 16;
+      const perp = new THREE.Vector3(-strikeDir.z, 0, strikeDir.x);
+      for (let b = 0; b < roundCount; b++) {
+        const frac = b / (roundCount - 1);
+        const along = -20 + frac * 42 + (passIdx === 1 ? 2.5 : 0);
+        const sideJitter = (Math.random() - 0.5) * 4.2 + (passIdx === 0 ? -1.4 : 1.4);
         const bPos = targetPos.clone()
           .addScaledVector(strikeDir, along)
           .addScaledVector(perp, sideJitter);
         bPos.y = (world && world.getTerrainHeight) ? world.getTerrainHeight(bPos.x, bPos.z) + 0.05 : targetPos.y;
-        bombs.push({ pos: bPos, triggerTime: startDelay + 0.52 + b * 0.11, detonated: false });
+        bombs.push({ pos: bPos, triggerTime: startDelay + 0.72 + b * 0.058, detonated: false });
       }
-      return { mesh, startDelay, duration: 2.3, bombs, passIdx };
+      return { mesh, startDelay, duration, bombs, passIdx, brrtPlayed: false };
     });
 
     activeAirstrikes.push({
@@ -1756,7 +1815,7 @@
       applyDamage,
       callerName,
       elapsed: 0,
-      maxDuration: 5.8
+      maxDuration: 6.8
     });
 
     if (window.soundEngine) {
@@ -2001,19 +2060,57 @@
       }
 
       for (const jet of st.jets) {
+        const perp = new THREE.Vector3(-st.strikeDir.z, 0, st.strikeDir.x);
+        const lateralOff = jet.passIdx === 0 ? -4.2 : 4.2;
+        const baseY = st.targetPos.y || 0;
+        const evalWarthogPos = (prog) => {
+          // Authentic A-10 Warthog diving gun-run arc: dives steep from ~115m -> low pass ~20m -> pulls up into sky ~128m!
+          const travel = THREE.MathUtils.lerp(-205, 205, prog);
+          const u = (prog - 0.46) / 0.54; // nadir slightly past center as pilot pulls up off target
+          const arcAlt = baseY + 20 + jet.passIdx * 4.0 + Math.min(135, u * u * 112);
+          const climbDrift = prog > 0.52 ? Math.pow((prog - 0.52) / 0.48, 2) * (jet.passIdx === 0 ? -24 : 24) : 0;
+          const pos = st.targetPos.clone()
+            .addScaledVector(st.strikeDir, travel)
+            .addScaledVector(perp, lateralOff + climbDrift);
+          pos.y = arcAlt;
+          return pos;
+        };
+
+        let jetNoseWorld = null;
         if (st.elapsed >= jet.startDelay && st.elapsed <= jet.startDelay + jet.duration) {
           jet.mesh.visible = true;
           const p = (st.elapsed - jet.startDelay) / jet.duration;
-          const travel = THREE.MathUtils.lerp(-115, 115, p);
-          const alt = 29 + jet.passIdx * 3.5;
-          const perp = new THREE.Vector3(-st.strikeDir.z, 0, st.strikeDir.x);
-          const jPos = st.targetPos.clone()
-            .addScaledVector(st.strikeDir, travel)
-            .addScaledVector(perp, jet.passIdx === 0 ? -3.2 : 3.2);
-          jPos.y = alt;
+          const jPos = evalWarthogPos(p);
+          const nextPos = evalWarthogPos(Math.min(1, p + 0.02));
           jet.mesh.position.copy(jPos);
-          jet.mesh.lookAt(jPos.clone().add(st.strikeDir));
-          jet.mesh.rotateY(Math.PI); // cone nose points -Z
+          jet.mesh.lookAt(nextPos);
+          jet.mesh.rotateY(Math.PI); // A-10 nose cannon points along -Z
+
+          // Dramatic bank roll during pull-out climb
+          if (p > 0.50) {
+            const bank = Math.min(1, (p - 0.50) / 0.35);
+            jet.mesh.rotateZ((jet.passIdx === 0 ? -0.58 : 0.58) * bank);
+          }
+
+          // Trigger authentic A-10 BRRRT + Doppler flyby sound as the firing dive begins!
+          if (!jet.brrtPlayed && p >= 0.16) {
+            jet.brrtPlayed = true;
+            const d = player ? player.position.distanceTo(st.targetPos) : 35;
+            if (window.soundEngine && window.soundEngine.playA10Strafe) {
+              window.soundEngine.playA10Strafe(d);
+            }
+          }
+
+          // Flicker GAU-8 nose muzzle flash cone during active firing window!
+          const isFiring = p >= 0.21 && p <= 0.54;
+          if (jet.mesh.userData && jet.mesh.userData.muzzleFlash) {
+            jet.mesh.userData.muzzleFlash.visible = isFiring && (Math.random() > 0.22);
+            if (jet.mesh.userData.muzzleFlash.visible) {
+              jet.mesh.userData.muzzleFlash.scale.setScalar(0.85 + Math.random() * 0.45);
+            }
+          }
+          jetNoseWorld = jPos.clone().addScaledVector(st.strikeDir, 6.5);
+          jetNoseWorld.y -= 0.8;
         } else {
           jet.mesh.visible = false;
         }
@@ -2021,7 +2118,7 @@
         for (const bomb of jet.bombs) {
           if (!bomb.detonated && st.elapsed >= bomb.triggerTime) {
             bomb.detonated = true;
-            _spawnAirstrikeExplosion(bomb.pos, st.applyDamage !== false, st.callerName || null);
+            _spawnAirstrikeExplosion(bomb.pos, st.applyDamage !== false, st.callerName || null, jetNoseWorld);
           }
         }
       }
@@ -2038,20 +2135,24 @@
       const ex = ksExplosions[i];
       ex.age += dt;
       const t = Math.min(1, ex.age / ex.maxAge);
-      const fireScale = 1 + t * 5.8;
-      ex.fireMesh.scale.setScalar(fireScale);
-      ex.fireMesh.position.y += dt * 2.2;
-      ex.fireMesh.material.opacity = Math.max(0, 1 - t * 1.45);
+      // 30mm HEI vertical dirt/spark geyser shoots up & dissipates rapidly
+      const geyserScaleX = 0.8 + t * 2.2;
+      const geyserScaleY = 0.7 + Math.sin(Math.min(1, t * 2.2) * Math.PI * 0.5) * 3.4;
+      ex.fireMesh.scale.set(geyserScaleX, geyserScaleY, geyserScaleX);
+      ex.fireMesh.position.y += dt * 3.2 * (1 - t);
+      ex.fireMesh.material.opacity = Math.max(0, 1 - t * 2.2);
 
-      const smokeScale = 1.2 + t * 6.4;
+      // Rising dark earth/smoke plume
+      const smokeScale = 0.9 + t * 4.2;
       ex.smokeMesh.scale.setScalar(smokeScale);
-      ex.smokeMesh.position.y += dt * 3.4;
+      ex.smokeMesh.position.y += dt * 4.4 * (1 - t * 0.5);
       ex.smokeMesh.material.opacity = Math.max(0, 0.72 * (1 - t));
 
+      // Expanding ground dust shockwave ring
       if (ex.flashMesh) {
-        const flashScale = 1 + t * 4.4;
-        ex.flashMesh.scale.setScalar(flashScale);
-        ex.flashMesh.material.opacity = Math.max(0, 0.92 * (1 - t * 3.2));
+        const ringScale = 0.8 + t * 6.8;
+        ex.flashMesh.scale.setScalar(ringScale);
+        ex.flashMesh.material.opacity = Math.max(0, 0.78 * (1 - t * 1.65));
       }
       if (ex.light) {
         ex.light.intensity = Math.max(0, 5.5 * (1 - t * 2.4));
