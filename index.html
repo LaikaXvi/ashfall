@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ASHFALL // 3D Extraction Looter-Shooter</title>
-  <link rel="stylesheet" href="css/style.css?v=188" />
+  <link rel="stylesheet" href="css/style.css?v=189" />
   <!-- Three.js r128 UMD for zero-build compatibility (works on both http:// and file://) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
@@ -22,12 +22,13 @@
     <!-- IMPORTANT: Update version in GAME_DATA.VERSION (js/data.js) and here with EVERY new commit -->
     <div class="menu-version-stack">
       <button id="menu-update-badge" class="menu-update-badge hidden" title="Click to reload into the latest version">NEW VERSION AVAILABLE</button>
-      <div id="menu-version-badge" class="menu-version-badge">v1.88</div>
+      <div id="menu-version-badge" class="menu-version-badge">v1.89</div>
     </div>
-    <!-- Top Bar (visible inside utility tabs; hidden on clean Main Menu title card) -->
+    <!-- Top Bar (visible inside utility tabs; hidden on Main Menu Lobby) -->
     <header id="menu-topbar" class="hideout-header hidden">
-      <div style="display:flex;align-items:center;gap:14px;">
-        <button id="btn-menu-home" class="btn-small">← MAIN MENU</button>
+      <div class="topbar-left">
+        <button id="btn-menu-home" class="btn-small topbar-back-btn">← LOBBY</button>
+        <div class="topbar-brand-mini">ASHFALL<span class="accent">//</span></div>
         <nav class="menu-subnav">
           <button class="subnav-btn" data-tab="deploy">DEPLOY</button>
           <button class="subnav-btn" data-tab="traders">TRADERS</button>
@@ -54,87 +55,168 @@
       </div>
     </header>
 
-    <!-- VIEW 0: CLEAN MAIN MENU TITLE CARD & OPTIONS -->
+    <!-- VIEW 0: OVERHAULED AAA TACTICAL LOBBY -->
     <section id="menu-view-home" class="menu-home-stage">
-      <div class="menu-home-card">
-        <div class="title-card">
-          <span class="brand-tag">SECTOR 7 // TACTICAL EXTRACTION</span>
-          <h1 class="main-title">ASHFALL<span class="accent"> // EXTRACTION</span></h1>
-          <p class="title-subtitle">Scavenge the wasteland. Modify your arsenal. Extract alive.</p>
-          <div class="home-stat-strip">
-            <span>CREDITS <b id="home-credits" class="accent">₽ 12,500</b></span>
-            <span class="dot">·</span>
-            <span>RAIDS <b id="home-raids">0</b></span>
-            <span class="dot">·</span>
-            <span>EXTRACTS <b id="home-extracts">0</b></span>
+      <!-- Top Telemetry Bar -->
+      <header class="home-top-strip">
+        <div class="home-brand-block">
+          <div class="home-brand-emblem">
+            <svg viewBox="0 0 28 28" fill="none" stroke="currentColor" stroke-width="1.8">
+              <polygon points="14,2 25,8.5 25,19.5 14,26 3,19.5 3,8.5" stroke-opacity="0.7"/>
+              <path d="M14 7L20 20H16.6L14 14.2L11.4 20H8L14 7Z" fill="currentColor" stroke="none"/>
+            </svg>
+          </div>
+          <div class="home-brand-copy">
+            <div class="home-brand-eyebrow">
+              <span class="live-status-dot"></span>
+              <span>SECTOR 7 // TACTICAL EXTRACTION NETWORK</span>
+            </div>
+            <h1 class="main-title">ASHFALL <span class="accent">// EXTRACTION</span></h1>
           </div>
         </div>
 
-        <nav class="main-menu-list">
-          <button class="menu-option primary" data-menu-action="deploy">
-            <span class="opt-num">01</span>
-            <span class="opt-label">DEPLOY</span>
-            <span class="opt-hint">Loadout setup, map &amp; matchmaking</span>
+        <div class="home-telemetry-pills">
+          <div class="home-telem-pill">
+            <span class="telem-lbl">CREDITS</span>
+            <span id="home-credits" class="telem-val accent">₽ 12,500</span>
+          </div>
+          <div class="home-telem-pill">
+            <span class="telem-lbl">RAIDS</span>
+            <span id="home-raids" class="telem-val">0</span>
+          </div>
+          <div class="home-telem-pill">
+            <span class="telem-lbl">EXTRACTS</span>
+            <span id="home-extracts" class="telem-val">0</span>
+          </div>
+          <div id="home-operator-badge" class="home-telem-pill op-pill">
+            <span class="telem-lbl">ACTIVE DUTY</span>
+            <span id="home-op-callsign" class="telem-val">GHOST-01</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Center Lobby Stage: Active Operator Showcase + Comms / Squad Panel -->
+      <div class="home-center-stage">
+        <!-- Left Hero Column: Operator Dossier + Primary Deploy CTA -->
+        <div class="home-hero-col">
+          <div id="home-active-op-card" class="home-op-hero-card">
+            <div class="home-op-hero-left">
+              <div id="home-op-portrait" class="home-op-portrait"></div>
+              <div class="home-op-meta">
+                <div class="home-op-kicker">ACTIVE DUTY OPERATOR</div>
+                <div class="home-op-title-row">
+                  <span id="home-op-name" class="home-op-name">GHOST-01</span>
+                  <span id="home-op-dogtag" class="home-op-dogtag">BRONZE TAG</span>
+                </div>
+                <div id="home-op-sub" class="home-op-sub">STREAK 0 · READY FOR INFIL</div>
+                <div id="home-op-gear-chips" class="home-op-gear-chips"></div>
+              </div>
+            </div>
+            <div class="home-op-hero-actions">
+              <button class="btn-small home-quick-btn" data-menu-action="operator">SWAP OPERATOR</button>
+              <button class="btn-small home-quick-btn accent-btn" data-menu-action="gunsmith">MODIFY WEAPON</button>
+            </div>
+          </div>
+
+          <!-- Primary Deploy Hero CTA -->
+          <button class="menu-option primary home-deploy-hero" data-menu-action="deploy">
+            <div class="deploy-hero-left">
+              <span class="deploy-hero-tag">SECTOR 7 INFILTRATION</span>
+              <span class="deploy-hero-title">DEPLOY TO OPERATION</span>
+              <span id="home-deploy-readiness" class="deploy-hero-sub">SOLO READY · CONFIGURE LOADOUT &amp; SELECT ZONE</span>
+            </div>
+            <div class="deploy-hero-arrow">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <path d="M5 12h14M13 5l7 7-7 7"/>
+              </svg>
+            </div>
           </button>
-          <button class="menu-option" data-menu-action="workbench">
-            <span class="opt-num">02</span>
-            <span class="opt-label">WORKBENCH</span>
-            <span class="opt-hint">Craft gear from common materials</span>
-          </button>
-          <button class="menu-option" data-menu-action="stash">
-            <span class="opt-num">03</span>
-            <span class="opt-label">STASH</span>
-            <span class="opt-hint">Hideout inventory &amp; Black Market</span>
-          </button>
-          <button id="btn-open-gunsmith" class="menu-option" data-menu-action="gunsmith">
-            <span class="opt-num">04</span>
-            <span class="opt-label">GUNSMITH</span>
-            <span class="opt-hint">3D weapon mods &amp; cosmetics</span>
-          </button>
-          <button class="menu-option" data-menu-action="operator">
-            <span class="opt-num">05</span>
-            <span class="opt-label">OPERATOR</span>
-            <span class="opt-hint">Equipped gear, armor &amp; rig ammo</span>
-          </button>
-          <button class="menu-option" data-menu-action="settings">
-            <span class="opt-num">06</span>
-            <span class="opt-label">SETTINGS</span>
-            <span class="opt-hint">Controls, audio, sensitivity &amp; dev tools</span>
-          </button>
-        </nav>
+        </div>
+
+        <!-- Right Column: Party, Friends & Real Online Clients Panel -->
+        <aside class="panel social-panel home-comms-panel">
+          <div class="panel-header" style="margin-bottom:8px;">
+            <h2>COMMS // SQUAD</h2>
+            <span id="social-online-count" class="sub" style="color:#69f0ae;">0 ONLINE</span>
+          </div>
+
+          <!-- Current Party Box -->
+          <div class="party-box">
+            <div class="party-head">
+              <span id="party-title" class="party-label">YOUR PARTY (1/4)</span>
+              <button id="btn-leave-party" class="btn-small hidden">LEAVE</button>
+            </div>
+            <div id="party-members" class="party-members"></div>
+          </div>
+
+          <!-- Separate Friends / Online Clients Switcher -->
+          <div id="social-tabs" class="trader-tabs" style="margin:10px 0 8px;">
+            <button class="tab-btn active" data-social="friends">FRIENDS (<span id="friends-count">0</span>)</button>
+            <button class="tab-btn" data-social="online">ONLINE (<span id="online-tab-count">0</span>)</button>
+          </div>
+
+          <!-- Search & Add Friend by Username#1234 -->
+          <div id="add-friend-bar" class="add-friend-bar">
+            <input id="input-add-friend" type="text" maxlength="22" placeholder="Search/Add User#1234..." />
+            <button id="btn-add-friend" class="btn-small">+ ADD</button>
+          </div>
+
+          <div id="social-list" class="item-list social-list"></div>
+          <div id="social-toast" class="social-toast hidden"></div>
+        </aside>
       </div>
 
-      <!-- Right Side: Party, Friends & Real Online Clients Panel -->
-      <aside class="panel social-panel">
-        <div class="panel-header" style="margin-bottom:8px;">
-          <h2>COMMS // SQUAD</h2>
-          <span id="social-online-count" class="sub" style="color:#69f0ae;">0 ONLINE</span>
-        </div>
-
-        <!-- Current Party Box -->
-        <div class="party-box">
-          <div class="party-head">
-            <span id="party-title" class="party-label">YOUR PARTY (1/4)</span>
-            <button id="btn-leave-party" class="btn-small hidden">LEAVE</button>
+      <!-- Bottom Tactical Navigation Dock -->
+      <nav class="main-menu-list home-bottom-dock" aria-label="Main Menu Navigation">
+        <button class="menu-option dock-tile" data-menu-action="traders">
+          <div class="dock-tile-top">
+            <span class="opt-num">01</span>
+            <svg class="dock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 7h18l-2 11H5L3 7z"/><path d="M8 7V5a4 4 0 0 1 8 0v2"/></svg>
           </div>
-          <div id="party-members" class="party-members"></div>
-        </div>
-
-        <!-- Separate Friends / Online Clients Switcher -->
-        <div id="social-tabs" class="trader-tabs" style="margin:10px 0 8px;">
-          <button class="tab-btn active" data-social="friends">FRIENDS (<span id="friends-count">0</span>)</button>
-          <button class="tab-btn" data-social="online">ONLINE (<span id="online-tab-count">0</span>)</button>
-        </div>
-
-        <!-- Search & Add Friend by Username#1234 -->
-        <div id="add-friend-bar" class="add-friend-bar">
-          <input id="input-add-friend" type="text" maxlength="22" placeholder="Search/Add User#1234..." />
-          <button id="btn-add-friend" class="btn-small">+ ADD</button>
-        </div>
-
-        <div id="social-list" class="item-list social-list"></div>
-        <div id="social-toast" class="social-toast hidden"></div>
-      </aside>
+          <span class="opt-label">TRADERS</span>
+          <span class="opt-hint">Black Market arms &amp; supplies</span>
+        </button>
+        <button class="menu-option dock-tile" data-menu-action="workbench">
+          <div class="dock-tile-top">
+            <span class="opt-num">02</span>
+            <svg class="dock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L4 17l3 3 5.3-5.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2-2 2.5-2.5z"/></svg>
+          </div>
+          <span class="opt-label">WORKBENCH</span>
+          <span class="opt-hint">Craft gear &amp; recycle salvage</span>
+        </button>
+        <button class="menu-option dock-tile" data-menu-action="stash">
+          <div class="dock-tile-top">
+            <span class="opt-num">03</span>
+            <svg class="dock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M3 10h18M9 14h6"/></svg>
+          </div>
+          <span class="opt-label">STASH</span>
+          <span class="opt-hint">Hideout vault &amp; valuables</span>
+        </button>
+        <button id="btn-open-gunsmith" class="menu-option dock-tile" data-menu-action="gunsmith">
+          <div class="dock-tile-top">
+            <span class="opt-num">04</span>
+            <svg class="dock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 12h14l3-2v4l-3-2"/><path d="M7 12v4l2 1v-5M12 12l1 5h2l-1-5M9 9h5"/></svg>
+          </div>
+          <span class="opt-label">GUNSMITH</span>
+          <span class="opt-hint">3D attachments &amp; camos</span>
+        </button>
+        <button class="menu-option dock-tile" data-menu-action="operator">
+          <div class="dock-tile-top">
+            <span class="opt-num">05</span>
+            <svg class="dock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.8 3.1-6.5 7-6.5s7 2.7 7 6.5"/></svg>
+          </div>
+          <span class="opt-label">OPERATOR</span>
+          <span class="opt-hint">Active Duty slots &amp; dogtags</span>
+        </button>
+        <button class="menu-option dock-tile" data-menu-action="settings">
+          <div class="dock-tile-top">
+            <span class="opt-num">06</span>
+            <svg class="dock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>
+          </div>
+          <span class="opt-label">SETTINGS</span>
+          <span class="opt-hint">Controls, audio, FOV &amp; dev</span>
+        </button>
+      </nav>
     </section>
 
     <!-- VIEW 1: PRE-MATCH STEP 1 — LOADOUT SETUP (15 DOUBLE-WIDE WEAPON SLOTS + 64-SLOT STASH GRID + BACKPACK & OPERATOR) -->
@@ -1031,7 +1113,7 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION with every new commit) -->
-  <script src="js/data.js?v=188"></script>
+  <script src="js/data.js?v=189"></script>
   <script src="js/net.js?v=123"></script>
   <script src="js/sfx_samples.js?v=21"></script>
   <script src="js/audio.js?v=179"></script>
@@ -1046,8 +1128,8 @@
   <script src="js/gamepad.js?v=178"></script>
   <script src="js/gunsmith.js?v=41"></script>
   <script src="js/matchmaking.js?v=168"></script>
-  <script src="js/ui.js?v=188"></script>
+  <script src="js/ui.js?v=189"></script>
   <script src="js/console.js?v=117"></script>
-  <script src="js/main.js?v=188"></script>
+  <script src="js/main.js?v=189"></script>
 </body>
 </html>

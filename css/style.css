@@ -5265,3 +5265,580 @@ input[type="range"].gp-focus {
   background: rgba(255, 255, 255, 0.12) !important;
   box-shadow: inset 0 0 12px rgba(255, 255, 255, 0.16) !important;
 }
+
+/* ==================== v1.89 MAIN MENU & TACTICAL LOBBY OVERHAUL ==================== */
+#hideout-screen {
+  background:
+    radial-gradient(ellipse 80% 55% at 22% 12%, rgba(79, 195, 247, 0.10) 0%, transparent 60%),
+    radial-gradient(ellipse 70% 50% at 82% 85%, rgba(245, 166, 35, 0.09) 0%, transparent 62%),
+    linear-gradient(165deg, #090d11 0%, #0d1217 48%, #070a0d 100%) !important;
+  padding: 18px 26px !important;
+  gap: 14px !important;
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+#hideout-screen::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(circle at 50% 45%, rgba(0, 0, 0, 0.85) 20%, transparent 88%);
+  z-index: 0;
+}
+
+#hideout-screen > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Overhauled Sub-Tab Top Bar */
+#menu-topbar.hideout-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  background: linear-gradient(180deg, rgba(16, 21, 26, 0.78) 0%, rgba(10, 13, 17, 0.88) 100%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 3px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.topbar-back-btn {
+  padding: 6px 12px !important;
+  font-weight: 700;
+  letter-spacing: 1px;
+  border-color: rgba(255, 255, 255, 0.22) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+.topbar-brand-mini {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: rgba(236, 244, 248, 0.85);
+  padding-right: 12px;
+  border-right: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.menu-subnav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.subnav-btn {
+  background: transparent !important;
+  border: 1px solid transparent !important;
+  border-bottom: 2px solid transparent !important;
+  color: rgba(200, 214, 224, 0.72) !important;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1.4px;
+  padding: 7px 12px !important;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.subnav-btn:hover {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+.subnav-btn.active {
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.09) !important;
+  border-bottom-color: #69f0ae !important;
+}
+
+/* ==================== 3-ZONE AAA TACTICAL LOBBY (#menu-view-home) ==================== */
+#menu-view-home.menu-home-stage {
+  flex: 1;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: space-between !important;
+  align-items: stretch !important;
+  gap: 16px !important;
+  width: 100% !important;
+  max-width: 1380px;
+  margin: 0 auto;
+  min-height: 0;
+  padding: 6px 0 4px !important;
+}
+
+/* Zone 1: Top Telemetry Header Strip */
+.home-top-strip {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 20px;
+  background: linear-gradient(180deg, rgba(18, 24, 30, 0.74) 0%, rgba(10, 14, 18, 0.84) 100%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-top: 2px solid rgba(245, 166, 35, 0.75);
+  border-radius: 3px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+
+.home-brand-block {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.home-brand-emblem {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #f5a623;
+  background: rgba(245, 166, 35, 0.10);
+  border: 1px solid rgba(245, 166, 35, 0.38);
+  border-radius: 2px;
+  box-shadow: 0 0 18px rgba(245, 166, 35, 0.18);
+  flex-shrink: 0;
+}
+
+.home-brand-emblem svg {
+  width: 26px;
+  height: 26px;
+}
+
+.home-brand-copy .main-title {
+  font-size: 26px !important;
+  letter-spacing: 3px !important;
+  font-weight: 900 !important;
+  margin: 2px 0 0 !important;
+  line-height: 1.05;
+  color: #f2f6fa;
+}
+
+.home-brand-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 2.2px;
+  color: rgba(190, 206, 218, 0.78);
+}
+
+.live-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #69f0ae;
+  box-shadow: 0 0 8px #69f0ae;
+  animation: pulseStatusDot 2.2s ease-in-out infinite;
+}
+
+@keyframes pulseStatusDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.45; transform: scale(0.82); }
+}
+
+.home-telemetry-pills {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.home-telem-pill {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  padding: 6px 14px;
+  min-width: 96px;
+  background: rgba(8, 11, 14, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 2px;
+}
+
+.home-telem-pill.op-pill {
+  border-color: rgba(105, 240, 174, 0.32);
+  background: rgba(105, 240, 174, 0.06);
+}
+
+.home-telem-pill .telem-lbl {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 1.5px;
+  color: rgba(176, 194, 208, 0.68);
+}
+
+.home-telem-pill .telem-val {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 800;
+  color: #eef4f8;
+  margin-top: 1px;
+}
+
+/* Zone 2: Center Lobby Stage */
+.home-center-stage {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.85fr);
+  gap: 16px;
+  align-items: stretch;
+}
+
+.home-hero-col {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+  min-height: 0;
+}
+
+/* Active Duty Operator Showcase Hero Card */
+.home-op-hero-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 20px 22px;
+  background:
+    radial-gradient(circle at 14% 35%, rgba(79, 195, 247, 0.11) 0%, transparent 52%),
+    linear-gradient(180deg, rgba(18, 24, 30, 0.72) 0%, rgba(10, 13, 17, 0.84) 100%);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 3px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.45);
+  min-height: 0;
+}
+
+.home-op-hero-left {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex: 1;
+  min-height: 0;
+}
+
+.home-op-portrait {
+  width: 146px;
+  height: 164px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 38%, rgba(255, 255, 255, 0.08) 0%, rgba(6, 9, 12, 0.75) 75%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 3px;
+  overflow: hidden;
+  padding: 6px;
+}
+
+.home-op-portrait svg {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.home-op-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.home-op-kicker {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: rgba(176, 194, 208, 0.72);
+}
+
+.home-op-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.home-op-name {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  line-height: 1;
+  color: #f2f6fa;
+}
+
+.home-op-dogtag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.4px;
+  padding: 3px 9px;
+  border: 1px solid rgba(245, 166, 35, 0.55);
+  color: #f5a623;
+  background: rgba(0, 0, 0, 0.42);
+  border-radius: 2px;
+}
+
+.home-op-sub {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: rgba(204, 218, 228, 0.78);
+}
+
+.home-op-gear-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.home-gear-chip {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 4px 9px;
+  background: rgba(8, 12, 16, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+  color: #e4edf2;
+}
+
+.home-gear-chip b {
+  color: rgba(160, 180, 196, 0.75);
+  margin-right: 5px;
+  font-size: 9px;
+  letter-spacing: 1px;
+}
+
+.home-op-hero-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+}
+
+.home-quick-btn {
+  padding: 6px 14px !important;
+  font-size: 11px !important;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  background: rgba(255, 255, 255, 0.06) !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+}
+
+.home-quick-btn.accent-btn {
+  border-color: rgba(245, 166, 35, 0.55) !important;
+  color: #f5a623 !important;
+  background: rgba(245, 166, 35, 0.10) !important;
+}
+
+.home-quick-btn:hover {
+  border-color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.14) !important;
+  color: #ffffff !important;
+}
+
+/* Primary Deploy Hero CTA Button */
+.menu-option.primary.home-deploy-hero {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  width: 100% !important;
+  padding: 20px 24px !important;
+  text-align: left;
+  background:
+    linear-gradient(105deg, rgba(245, 166, 35, 0.24) 0%, rgba(217, 130, 43, 0.12) 45%, rgba(14, 19, 24, 0.86) 100%) !important;
+  border: 1px solid rgba(245, 166, 35, 0.65) !important;
+  border-left: 4px solid #f5a623 !important;
+  border-radius: 3px !important;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45), inset 0 0 24px rgba(245, 166, 35, 0.08) !important;
+  transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease !important;
+}
+
+.menu-option.primary.home-deploy-hero:hover,
+.menu-option.primary.home-deploy-hero.ui-selected,
+.menu-option.primary.home-deploy-hero.gp-focus {
+  transform: translateY(-2px);
+  border-color: #ffd166 !important;
+  background:
+    linear-gradient(105deg, rgba(245, 166, 35, 0.36) 0%, rgba(217, 130, 43, 0.20) 50%, rgba(22, 28, 34, 0.92) 100%) !important;
+  box-shadow: 0 14px 34px rgba(245, 166, 35, 0.18), inset 0 0 22px rgba(255, 209, 102, 0.18) !important;
+}
+
+.deploy-hero-left {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.deploy-hero-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 2.2px;
+  color: #f5a623;
+}
+
+.deploy-hero-title {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 2.5px;
+  color: #ffffff;
+}
+
+.deploy-hero-sub {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: rgba(220, 232, 240, 0.78);
+}
+
+.deploy-hero-arrow {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+  background: rgba(245, 166, 35, 0.22);
+  border: 1px solid rgba(245, 166, 35, 0.55);
+  color: #ffd166;
+  flex-shrink: 0;
+}
+
+.deploy-hero-arrow svg {
+  width: 22px;
+  height: 22px;
+}
+
+/* Right Column Comms / Squad Panel */
+.home-comms-panel.social-panel {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  background: linear-gradient(180deg, rgba(16, 21, 26, 0.74) 0%, rgba(9, 12, 16, 0.86) 100%) !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.13) !important;
+  border-radius: 3px !important;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.45);
+}
+
+/* Zone 3: Bottom Tactical Module Navigation Dock */
+.main-menu-list.home-bottom-dock {
+  display: grid !important;
+  grid-template-columns: repeat(6, minmax(0, 1fr)) !important;
+  gap: 10px !important;
+  width: 100% !important;
+}
+
+.menu-option.dock-tile {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 6px !important;
+  padding: 13px 14px !important;
+  min-height: 92px;
+  text-align: left;
+  position: relative;
+  overflow: hidden;
+  border-radius: 3px !important;
+  background: linear-gradient(180deg, rgba(18, 24, 30, 0.70) 0%, rgba(10, 14, 18, 0.84) 100%) !important;
+  border: 1px solid rgba(255, 255, 255, 0.13) !important;
+  border-top: 2px solid rgba(255, 255, 255, 0.16) !important;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease !important;
+}
+
+.menu-option.dock-tile:hover,
+.menu-option.dock-tile.ui-selected,
+.menu-option.dock-tile.gp-focus {
+  transform: translateY(-3px);
+  border-color: rgba(255, 255, 255, 0.75) !important;
+  border-top-color: #69f0ae !important;
+  background: linear-gradient(180deg, rgba(30, 40, 48, 0.84) 0%, rgba(15, 20, 26, 0.92) 100%) !important;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.48), inset 0 0 16px rgba(105, 240, 174, 0.10) !important;
+}
+
+.dock-tile-top {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.menu-option.dock-tile .opt-num {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(164, 184, 198, 0.62);
+  letter-spacing: 1px;
+}
+
+.dock-icon {
+  width: 18px;
+  height: 18px;
+  color: rgba(204, 222, 234, 0.78);
+}
+
+.menu-option.dock-tile:hover .dock-icon {
+  color: #69f0ae;
+}
+
+.menu-option.dock-tile .opt-label {
+  font-family: var(--font-mono);
+  font-size: 14px !important;
+  font-weight: 800 !important;
+  letter-spacing: 1.5px;
+  color: #f4f8fb;
+}
+
+.menu-option.dock-tile .opt-hint {
+  font-size: 11px !important;
+  color: rgba(176, 194, 208, 0.72) !important;
+  line-height: 1.25;
+  margin-left: 0 !important;
+}
+
+@media (max-width: 1100px) {
+  .home-center-stage {
+    grid-template-columns: 1fr;
+  }
+  .main-menu-list.home-bottom-dock {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 720px) {
+  .home-top-strip {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .main-menu-list.home-bottom-dock {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}

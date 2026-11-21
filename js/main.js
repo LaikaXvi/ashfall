@@ -1829,8 +1829,8 @@
       const mesh = _createFighterJetMesh();
       mesh.visible = false;
       scene.add(mesh);
-      const startDelay = 1.6 + passIdx * 1.35;
-      const duration = 3.2;
+      const startDelay = 1.4 + passIdx * 1.2;
+      const duration = 3.0;
       const bombs = [];
       // 16 rapid-fire 30mm GAU-8 HEI strafing impacts per A-10 Warthog pass!
       const roundCount = 16;
@@ -1843,7 +1843,7 @@
           .addScaledVector(strikeDir, along)
           .addScaledVector(perp, sideJitter);
         bPos.y = (world && world.getTerrainHeight) ? world.getTerrainHeight(bPos.x, bPos.z) + 0.05 : targetPos.y;
-        bombs.push({ pos: bPos, triggerTime: startDelay + 0.72 + b * 0.058, detonated: false });
+        bombs.push({ pos: bPos, triggerTime: startDelay + 0.65 + b * 0.055, detonated: false });
       }
       return { mesh, startDelay, duration, bombs, passIdx, brrtPlayed: false };
     });
@@ -1856,7 +1856,7 @@
       applyDamage,
       callerName,
       elapsed: 0,
-      maxDuration: 6.8
+      maxDuration: 6.0
     });
 
     if (window.soundEngine) {
@@ -1867,7 +1867,7 @@
       ui.showCenterToast(`${callerName || 'SQUAD'} PRECISION AIRSTRIKE INBOUND`, '#ff5252');
       ui.addFeedMessage(`${callerName || 'SQUAD'} called in a Precision Airstrike!`, '#ffca28');
     } else {
-      ui.showCenterToast('PRECISION AIRSTRIKE INBOUND — 2.0s', '#ff5252');
+      ui.showCenterToast('PRECISION AIRSTRIKE INBOUND — 6.0s', '#ff5252');
       ui.addFeedMessage('Precision Airstrike locked on laser designator coordinates!', '#ffca28');
     }
   }
@@ -2109,9 +2109,9 @@
       if (st.beaconGroup) {
         const pulse = 0.45 + 0.35 * Math.sin(st.elapsed * 12);
         st.beaconGroup.children.forEach((ch) => {
-          if (ch.material) ch.material.opacity = st.elapsed < 3.8 ? pulse : Math.max(0, 1 - (st.elapsed - 3.8));
+          if (ch.material) ch.material.opacity = st.elapsed < 3.6 ? pulse : Math.max(0, 1 - (st.elapsed - 3.6) / 0.8);
         });
-        if (st.elapsed >= 4.6) {
+        if (st.elapsed >= 4.4) {
           scene.remove(st.beaconGroup);
           st.beaconGroup = null;
         }

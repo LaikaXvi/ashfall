@@ -2403,10 +2403,10 @@ class GameUI {
   }
 
   _bindHideoutEvents() {
-    // Main menu option list buttons
-    document.querySelectorAll('.menu-option[data-menu-action]').forEach((btn) => {
+    // Main menu option list buttons + lobby quick-action buttons
+    document.querySelectorAll('.menu-option[data-menu-action], .home-quick-btn[data-menu-action]').forEach((btn) => {
       const action = btn.dataset.menuAction;
-      if (action === 'gunsmith') return; // handled directly by GunsmithController via #btn-open-gunsmith
+      if (action === 'gunsmith' && btn.id === 'btn-open-gunsmith') return; // handled directly by GunsmithController via #btn-open-gunsmith
       btn.addEventListener('click', () => this.openMenuTab(action));
     });
 
@@ -2992,6 +2992,58 @@ class GameUI {
     const verBadge = document.getElementById('menu-version-badge');
     if (verBadge && window.GAME_DATA && window.GAME_DATA.VERSION) {
       verBadge.textContent = window.GAME_DATA.VERSION;
+    }
+
+    // Update Overhauled Main Menu Active Operator Hero Card & Deploy Readiness
+    const ops = this._ensureActiveDutyOperators ? this._ensureActiveDutyOperators() : null;
+    if (ops && ops.length > 0) {
+      const op = ops[this.profile.activeOperatorIdx || 0] || ops[0];
+      const dt = this._getDogtagInfo(op.exfilStreak || 0);
+      const L = this.profile.loadout || {};
+      const callsignEl = document.getElementById('home-op-callsign');
+      const nameEl = document.getElementById('home-op-name');
+      const dogtagEl = document.getElementById('home-op-dogtag');
+      const subEl = document.getElementById('home-op-sub');
+      const portraitEl = document.getElementById('home-op-portrait');
+      const chipsEl = document.getElementById('home-op-gear-chips');
+      if (callsignEl) {
+        callsignEl.textContent = op.callsign;
+        callsignEl.style.color = op.accent || '#69f0ae';
+      }
+      if (nameEl) {
+        nameEl.textContent = op.callsign;
+        nameEl.style.color = op.accent || '#f2f6f9';
+      }
+      if (dogtagEl) {
+        dogtagEl.textContent = `${dt.tier} · ${dt.level}`;
+        dogtagEl.style.borderColor = dt.color;
+        dogtagEl.style.color = dt.color;
+      }
+      if (subEl) {
+        subEl.textContent = `${op.title} · EXFIL STREAK ${dt.streak}`;
+      }
+      if (portraitEl && this._buildOperatorPortraitSVG) {
+        portraitEl.innerHTML = this._buildOperatorPortraitSVG(op);
+      }
+      if (chipsEl) {
+        const pDef = L.primary && GAME_DATA.ITEMS[L.primary];
+        const sDef = L.secondary && GAME_DATA.ITEMS[L.secondary];
+        const aDef = L.armor && GAME_DATA.ITEMS[L.armor];
+        const bDef = L.backpack && GAME_DATA.ITEMS[L.backpack];
+        chipsEl.innerHTML = `
+          <span class="home-gear-chip"><b>PRI</b> ${pDef ? pDef.name : 'NONE'}</span>
+          <span class="home-gear-chip"><b>SEC</b> ${sDef ? sDef.name : 'NONE'}</span>
+          <span class="home-gear-chip"><b>VEST</b> ${aDef ? aDef.name.split(' ')[0] : 'NONE'}</span>
+          <span class="home-gear-chip"><b>BAG</b> ${bDef ? bDef.name.split(' ')[0] : 'SMALL'}</span>
+        `;
+      }
+    }
+    const readinessEl = document.getElementById('home-deploy-readiness');
+    if (readinessEl) {
+      const partyCount = (this.partyMembers && this.partyMembers.length) ? this.partyMembers.length : 1;
+      readinessEl.textContent = partyCount > 1
+        ? `SQUAD OF ${partyCount} READY · CONFIGURE LOADOUT & SELECT ZONE`
+        : 'SOLO READY · CONFIGURE LOADOUT & SELECT ZONE';
     }
 
     const devBtn = document.getElementById('btn-dev-mode');
