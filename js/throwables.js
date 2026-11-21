@@ -835,10 +835,12 @@ class ThrowableSystem {
         const s = 1 + p * fx.maxScale;
         fx.mesh.scale.setScalar(s);
         fx.mesh.material.opacity = Math.max(0, (1 - p) * 0.85);
-        fx.light.intensity = Math.max(0, (1 - p) * 9);
+        if (fx.light) fx.light.intensity = Math.max(0, (1 - p) * 9);
         if (fx.life <= 0) {
           this.scene.remove(fx.mesh);
-          this.scene.remove(fx.light);
+          if (fx.mesh.geometry) fx.mesh.geometry.dispose();
+          if (fx.mesh.material) fx.mesh.material.dispose();
+          if (fx.light) this.scene.remove(fx.light);
           this.effects.splice(i, 1);
         }
       } else if (fx.type === 'smoke') {
