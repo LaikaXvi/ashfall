@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ASHFALL // 3D Extraction Looter-Shooter</title>
-  <link rel="stylesheet" href="css/style.css?v=189" />
+  <link rel="stylesheet" href="css/style.css?v=190" />
   <!-- Three.js r128 UMD for zero-build compatibility (works on both http:// and file://) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
@@ -22,22 +22,12 @@
     <!-- IMPORTANT: Update version in GAME_DATA.VERSION (js/data.js) and here with EVERY new commit -->
     <div class="menu-version-stack">
       <button id="menu-update-badge" class="menu-update-badge hidden" title="Click to reload into the latest version">NEW VERSION AVAILABLE</button>
-      <div id="menu-version-badge" class="menu-version-badge">v1.89</div>
+      <div id="menu-version-badge" class="menu-version-badge">v1.90</div>
     </div>
-    <!-- Top Bar (visible inside utility tabs; hidden on Main Menu Lobby) -->
+    <!-- Minimal Sub-Menu Top Bar (Top-Left Back Button only — no redundant nav band) -->
     <header id="menu-topbar" class="hideout-header hidden">
       <div class="topbar-left">
-        <button id="btn-menu-home" class="btn-small topbar-back-btn">← LOBBY</button>
-        <div class="topbar-brand-mini">ASHFALL<span class="accent">//</span></div>
-        <nav class="menu-subnav">
-          <button class="subnav-btn" data-tab="deploy">DEPLOY</button>
-          <button class="subnav-btn" data-tab="traders">TRADERS</button>
-          <button class="subnav-btn" data-tab="workbench">WORKBENCH</button>
-          <button class="subnav-btn" data-tab="stash">STASH</button>
-          <button class="subnav-btn" data-tab="gunsmith">GUNSMITH</button>
-          <button class="subnav-btn" data-tab="operator">OPERATOR</button>
-          <button class="subnav-btn" data-tab="settings">SETTINGS</button>
-        </nav>
+        <button id="btn-menu-home" class="btn-small topbar-back-btn">← BACK</button>
       </div>
       <div class="player-stats-bar">
         <div class="stat-pill">
@@ -1035,20 +1025,21 @@
 
   <!-- ==================== 3D GUNSMITH WORKBENCH (MW2019+ STYLE) ==================== -->
   <div id="gunsmith-screen" class="screen">
-    <header class="hideout-header">
-      <div class="brand">
-        <span class="brand-tag">WORKBENCH // MODIFICATION</span>
-        <h1>GUNSMITH <span class="accent" id="gs-weapon-title">MP5-K</span></h1>
+    <header class="hideout-header gs-minimal-header">
+      <div class="topbar-left">
+        <button id="btn-gs-close" class="btn-small topbar-back-btn">← BACK</button>
+        <div class="brand" style="display:flex;align-items:baseline;gap:10px;">
+          <h1 style="font-size:18px;letter-spacing:2px;">GUNSMITH <span class="accent" id="gs-weapon-title">MP5-K</span></h1>
+        </div>
       </div>
-      <div id="gs-weapon-tabs" class="trader-tabs" style="margin:0;max-width:360px;"></div>
-      <div class="trader-tabs" style="margin:0;min-width:220px;">
+      <div id="gs-weapon-tabs" class="trader-tabs" style="margin:0;max-width:340px;"></div>
+      <div class="trader-tabs" style="margin:0;min-width:200px;">
         <button id="btn-gs-tab-attach" class="tab-btn active">ATTACHMENTS</button>
         <button id="btn-gs-tab-custom" class="tab-btn">CUSTOMIZE</button>
       </div>
       <div style="display:flex;gap:8px;">
         <button id="btn-gs-preview" class="btn-small">PREVIEW: OFF</button>
         <button id="btn-gs-reset-view" class="btn-small">RESET VIEW</button>
-        <button id="btn-gs-close" class="btn-primary" style="padding:8px 18px;">BACK TO HIDEOUT</button>
       </div>
     </header>
 
@@ -1113,7 +1104,7 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION with every new commit) -->
-  <script src="js/data.js?v=189"></script>
+  <script src="js/data.js?v=190"></script>
   <script src="js/net.js?v=123"></script>
   <script src="js/sfx_samples.js?v=21"></script>
   <script src="js/audio.js?v=179"></script>
