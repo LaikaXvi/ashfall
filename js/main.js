@@ -198,6 +198,12 @@
             const ally = squadManager && squadManager.getAllyByClientId(peerId);
             if (ally) {
               ally.triggerRemoteMuzzleFlash();
+              if (window.soundEngine && window.soundEngine.playGunshot && player) {
+                const shotDist = player.position.distanceTo(ally.position);
+                if (shotDist < 340) {
+                  window.soundEngine.playGunshot(pkt.weaponId || ally.weaponId || 'ak74m', shotDist, !!pkt.suppressed);
+                }
+              }
               if (weaponSystem && weaponSystem.spawnEnemyShot && pkt.tx !== undefined) {
                 const startPos = ally.position.clone().add(new THREE.Vector3(0, 1.35, 0));
                 const endPos = new THREE.Vector3(pkt.tx, pkt.ty, pkt.tz);
@@ -215,6 +221,12 @@
               const e = enemyManager.enemies[pkt.enemyIdx];
               if (e && !e.dead) {
                 if (e.triggerRemoteMuzzleFlash) e.triggerRemoteMuzzleFlash();
+                if (window.soundEngine && window.soundEngine.playGunshot && player) {
+                  const eDist = player.position.distanceTo(e.position);
+                  if (eDist < 300) {
+                    window.soundEngine.playGunshot(e.weaponId || 'ak74m', eDist, false);
+                  }
+                }
                 if (weaponSystem && weaponSystem.spawnEnemyShot && pkt.tx !== undefined) {
                   const startPos = e.position.clone().add(new THREE.Vector3(0, 1.35, 0));
                   const endPos = new THREE.Vector3(pkt.tx, pkt.ty, pkt.tz);
@@ -2042,6 +2054,8 @@
         const endPt = player.position.clone().addScaledVector(dir, 45);
         mpSession.sendEvent({
           type: 'shot',
+          weaponId: (wDef && wDef.id) || 'ak74m',
+          suppressed: !!(wDef && wDef.suppressed),
           tx: Math.round(endPt.x * 10) / 10,
           ty: Math.round(endPt.y * 10) / 10,
           tz: Math.round(endPt.z * 10) / 10

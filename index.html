@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ASHFALL // 3D Extraction Looter-Shooter</title>
-  <link rel="stylesheet" href="css/style.css?v=166" />
+  <link rel="stylesheet" href="css/style.css?v=170" />
   <!-- Three.js r128 UMD for zero-build compatibility (works on both http:// and file://) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
@@ -22,7 +22,7 @@
     <!-- IMPORTANT: Update version in GAME_DATA.VERSION (js/data.js) and here with EVERY new commit -->
     <div class="menu-version-stack">
       <button id="menu-update-badge" class="menu-update-badge hidden" title="Click to reload into the latest version">NEW VERSION AVAILABLE</button>
-      <div id="menu-version-badge" class="menu-version-badge">v1.69</div>
+      <div id="menu-version-badge" class="menu-version-badge">v1.70</div>
     </div>
     <!-- Top Bar (visible inside utility tabs; hidden on clean Main Menu title card) -->
     <header id="menu-topbar" class="hideout-header hidden">
@@ -339,137 +339,157 @@
             <span class="sub">PREFERENCES &amp; TOOLS</span>
           </div>
           <div class="settings-list">
-          <div class="setting-row">
-            <div>
-              <div class="setting-title">OPERATOR USERNAME</div>
-              <div class="setting-desc">Current ID: <b id="setting-current-id" style="color:#69f0ae;">NOMAD#0000</b> (assigns unique 4-digit ID on update)</div>
-            </div>
-            <div style="display:flex;align-items:center;gap:6px;">
-              <input id="setting-username" type="text" maxlength="14" placeholder="Username..." style="width:128px;padding:5px 8px;background:#0e1211;border:1px solid var(--border);color:var(--text-main);font-family:var(--font-mono);font-size:11px;" />
-              <button id="btn-save-username" class="btn-small">SAVE</button>
-            </div>
-          </div>
+            <details class="settings-section" open>
+              <summary class="settings-section-header">GENERAL &amp; CONTROLS</summary>
+              <div class="settings-section-body">
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-title">OPERATOR USERNAME</div>
+                    <div class="setting-desc">Current ID: <b id="setting-current-id" style="color:#69f0ae;">NOMAD#0000</b> (assigns unique 4-digit ID on update)</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <input id="setting-username" type="text" maxlength="14" placeholder="Username..." style="width:128px;padding:5px 8px;background:#0e1211;border:1px solid var(--border);color:var(--text-main);font-family:var(--font-mono);font-size:11px;" />
+                    <button id="btn-save-username" class="btn-small">SAVE</button>
+                  </div>
+                </div>
 
-          <div class="setting-row">
-            <div>
-              <div class="setting-title">FIELD OF VIEW (FOV)</div>
-              <div class="setting-desc">Adjust first-person camera horizontal/vertical FOV (60° – 110°)</div>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px;">
-              <input id="setting-fov" type="range" min="60" max="110" step="1" value="75" />
-              <span id="setting-fov-val" class="accent" style="min-width:38px;text-align:right;font-weight:700;">75°</span>
-            </div>
-          </div>
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-title">FIELD OF VIEW (FOV)</div>
+                    <div class="setting-desc">Adjust first-person camera horizontal/vertical FOV (60° – 110°)</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <input id="setting-fov" type="range" min="60" max="110" step="1" value="75" />
+                    <span id="setting-fov-val" class="accent" style="min-width:38px;text-align:right;font-weight:700;">75°</span>
+                  </div>
+                </div>
 
-          <div class="setting-row">
-            <div>
-              <div class="setting-title">MOUSE SENSITIVITY</div>
-              <div class="setting-desc">Adjust first-person &amp; ADS look speed</div>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px;">
-              <input id="setting-sens" type="range" min="0.4" max="2.0" step="0.1" value="1.0" />
-              <span id="setting-sens-val" class="accent" style="min-width:34px;text-align:right;font-weight:700;">1.0x</span>
-            </div>
-          </div>
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-title">MOUSE SENSITIVITY</div>
+                    <div class="setting-desc">Adjust first-person &amp; ADS look speed</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <input id="setting-sens" type="range" min="0.4" max="2.0" step="0.1" value="1.0" />
+                    <span id="setting-sens-val" class="accent" style="min-width:34px;text-align:right;font-weight:700;">1.0x</span>
+                  </div>
+                </div>
 
-                    <div class="setting-row">
-            <div>
-              <div class="setting-title">AUDIO — MASTER VOLUME</div>
-              <div class="setting-desc">Overall output level for all game audio</div>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px;">
-              <input id="setting-vol-master" type="range" min="0" max="100" step="1" value="100" />
-              <span id="setting-vol-master-val" class="accent" style="min-width:38px;text-align:right;font-weight:700;">100%</span>
-            </div>
-          </div>
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-title">KEYBINDS</div>
+                    <div class="setting-desc">Configure Keyboard &amp; Mouse controls and Controller button bindings</div>
+                  </div>
+                  <button id="btn-open-keybinds" class="btn-small" style="border-color:var(--accent-bright);color:var(--accent-bright);">OPEN KEYBINDS →</button>
+                </div>
+              </div>
+            </details>
 
-          <div class="setting-row">
-            <div>
-              <div class="setting-title">AUDIO — GUNSHOTS</div>
-              <div class="setting-desc">Gunfire crack, tails &amp; mechanical action</div>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px;">
-              <input id="setting-vol-gun" type="range" min="0" max="100" step="1" value="100" />
-              <span id="setting-vol-gun-val" class="accent" style="min-width:38px;text-align:right;font-weight:700;">100%</span>
-            </div>
-          </div>
+            <details class="settings-section" open>
+              <summary class="settings-section-header">AUDIO MIXER</summary>
+              <div class="settings-section-body">
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-title">AUDIO — MASTER VOLUME</div>
+                    <div class="setting-desc">Overall output level for all game audio</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <input id="setting-vol-master" type="range" min="0" max="100" step="1" value="100" />
+                    <span id="setting-vol-master-val" class="accent" style="min-width:38px;text-align:right;font-weight:700;">100%</span>
+                  </div>
+                </div>
 
-          <div class="setting-row">
-            <div>
-              <div class="setting-title">AUDIO — FOOTSTEPS</div>
-              <div class="setting-desc">Movement, sprinting &amp; sliding</div>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px;">
-              <input id="setting-vol-foot" type="range" min="0" max="100" step="1" value="100" />
-              <span id="setting-vol-foot-val" class="accent" style="min-width:38px;text-align:right;font-weight:700;">100%</span>
-            </div>
-          </div>
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-title">AUDIO — GUNSHOTS</div>
+                    <div class="setting-desc">Gunfire crack, tails &amp; mechanical action</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <input id="setting-vol-gun" type="range" min="0" max="100" step="1" value="100" />
+                    <span id="setting-vol-gun-val" class="accent" style="min-width:38px;text-align:right;font-weight:700;">100%</span>
+                  </div>
+                </div>
 
-          <div class="setting-row">
-            <div>
-              <div class="setting-title">AUDIO — AMBIENT</div>
-              <div class="setting-desc">Wind, rain, rumble &amp; zone atmosphere loops</div>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px;">
-              <input id="setting-vol-ambient" type="range" min="0" max="100" step="1" value="100" />
-              <span id="setting-vol-ambient-val" class="accent" style="min-width:38px;text-align:right;font-weight:700;">100%</span>
-            </div>
-          </div>
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-title">AUDIO — FOOTSTEPS</div>
+                    <div class="setting-desc">Movement, sprinting &amp; sliding</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <input id="setting-vol-foot" type="range" min="0" max="100" step="1" value="100" />
+                    <span id="setting-vol-foot-val" class="accent" style="min-width:38px;text-align:right;font-weight:700;">100%</span>
+                  </div>
+                </div>
 
-          <div class="setting-row">
-            <div>
-              <div class="setting-title">AUDIO — SFX</div>
-              <div class="setting-desc">Hits, reloads, explosions, heals, alerts &amp; UI</div>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px;">
-              <input id="setting-vol-sfx" type="range" min="0" max="100" step="1" value="100" />
-              <span id="setting-vol-sfx-val" class="accent" style="min-width:38px;text-align:right;font-weight:700;">100%</span>
-            </div>
-          </div>
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-title">AUDIO — AMBIENT</div>
+                    <div class="setting-desc">Wind, rain, rumble &amp; zone atmosphere loops</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <input id="setting-vol-ambient" type="range" min="0" max="100" step="1" value="100" />
+                    <span id="setting-vol-ambient-val" class="accent" style="min-width:38px;text-align:right;font-weight:700;">100%</span>
+                  </div>
+                </div>
 
-          <div class="setting-row">
-            <div>
-              <div class="setting-title">MASTER AUDIO</div>
-              <div class="setting-desc">Toggle all gunfire, movement &amp; UI sound effects</div>
-            </div>
-            <button id="btn-setting-mute" class="btn-small">AUDIO: ON</button>
-          </div>
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-title">AUDIO — SFX</div>
+                    <div class="setting-desc">Hits, reloads, explosions, heals, alerts &amp; UI</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <input id="setting-vol-sfx" type="range" min="0" max="100" step="1" value="100" />
+                    <span id="setting-vol-sfx-val" class="accent" style="min-width:38px;text-align:right;font-weight:700;">100%</span>
+                  </div>
+                </div>
 
-          <div class="setting-row">
-            <div>
-              <div class="setting-title">SQUAD PVP (FRIENDLY FIRE)</div>
-              <div class="setting-desc">Allow squadmates in your party to damage and down each other</div>
-            </div>
-            <button id="btn-pvp-mode" class="btn-small">SQUAD PVP: OFF</button>
-          </div>
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-title">MASTER AUDIO</div>
+                    <div class="setting-desc">Toggle all gunfire, movement &amp; UI sound effects</div>
+                  </div>
+                  <button id="btn-setting-mute" class="btn-small">AUDIO: ON</button>
+                </div>
+              </div>
+            </details>
 
-          <div class="setting-row">
-            <div>
-              <div class="setting-title">DEVELOPER MODE (F9)</div>
-              <div class="setting-desc">Immortal HP, infinite ammo/plates/medkits, test animations anytime</div>
-            </div>
-            <div style="display:flex;gap:8px;">
-              <button id="btn-dev-mode" class="btn-small">DEV MODE: ON</button>
-              <button id="btn-dev-grant" class="btn-small">+DEV GEAR</button>
-            </div>
-          </div>
+            <details class="settings-section">
+              <summary class="settings-section-header">GAMEPLAY &amp; SQUAD</summary>
+              <div class="settings-section-body">
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-title">SQUAD PVP (FRIENDLY FIRE)</div>
+                    <div class="setting-desc">Allow squadmates in your party to damage and down each other</div>
+                  </div>
+                  <button id="btn-pvp-mode" class="btn-small">SQUAD PVP: OFF</button>
+                </div>
 
-          <div class="setting-row">
-            <div>
-              <div class="setting-title">RESET PROFILE SAVE</div>
-              <div class="setting-desc">Wipe credits, stash, raids, and restore default loadout</div>
-            </div>
-            <button id="btn-reset-save" class="btn-small btn-danger">RESET SAVE</button>
-          </div>
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-title">DEVELOPER MODE (F9)</div>
+                    <div class="setting-desc">Immortal HP, infinite ammo/plates/medkits, test animations anytime</div>
+                  </div>
+                  <div style="display:flex;gap:8px;">
+                    <button id="btn-dev-mode" class="btn-small">DEV MODE: ON</button>
+                    <button id="btn-dev-grant" class="btn-small">+DEV GEAR</button>
+                  </div>
+                </div>
+              </div>
+            </details>
 
-          <div class="setting-row">
-            <div>
-              <div class="setting-title">KEYBINDS</div>
-              <div class="setting-desc">Configure Keyboard &amp; Mouse controls and Controller button bindings</div>
-            </div>
-            <button id="btn-open-keybinds" class="btn-small" style="border-color:var(--accent-bright);color:var(--accent-bright);">OPEN KEYBINDS →</button>
+            <details class="settings-section">
+              <summary class="settings-section-header">PROFILE &amp; SAVE DATA</summary>
+              <div class="settings-section-body">
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-title">RESET PROFILE SAVE</div>
+                    <div class="setting-desc">Wipe credits, stash, raids, and restore default loadout</div>
+                  </div>
+                  <button id="btn-reset-save" class="btn-small btn-danger">RESET SAVE</button>
+                </div>
+              </div>
+            </details>
           </div>
-        </div>
       </section>
       </div>
     </main>
@@ -840,7 +860,7 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION with every new commit) -->
-  <script src="js/data.js?v=169"></script>
+  <script src="js/data.js?v=170"></script>
   <script src="js/net.js?v=123"></script>
   <script src="js/sfx_samples.js?v=21"></script>
   <script src="js/audio.js?v=139"></script>
@@ -857,6 +877,6 @@
   <script src="js/matchmaking.js?v=168"></script>
   <script src="js/ui.js?v=166"></script>
   <script src="js/console.js?v=117"></script>
-  <script src="js/main.js?v=169"></script>
+  <script src="js/main.js?v=170"></script>
 </body>
 </html>
