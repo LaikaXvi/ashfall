@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ASHFALL // 3D Extraction Looter-Shooter</title>
-  <link rel="stylesheet" href="css/style.css?v=181" />
+  <link rel="stylesheet" href="css/style.css?v=182" />
   <!-- Three.js r128 UMD for zero-build compatibility (works on both http:// and file://) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
@@ -22,7 +22,7 @@
     <!-- IMPORTANT: Update version in GAME_DATA.VERSION (js/data.js) and here with EVERY new commit -->
     <div class="menu-version-stack">
       <button id="menu-update-badge" class="menu-update-badge hidden" title="Click to reload into the latest version">NEW VERSION AVAILABLE</button>
-      <div id="menu-version-badge" class="menu-version-badge">v1.81</div>
+      <div id="menu-version-badge" class="menu-version-badge">v1.82</div>
     </div>
     <!-- Top Bar (visible inside utility tabs; hidden on clean Main Menu title card) -->
     <header id="menu-topbar" class="hideout-header hidden">
@@ -597,16 +597,25 @@
 
   <!-- ==================== IN-RAID HUD (COMPACT <=30% FOOTPRINT, NEVER COVERS CROSSHAIR) ==================== -->
   <div id="hud-screen" class="screen">
-    <!-- Top Left: Tactical Minimap + Raid Timer -->
+    <!-- Top Left: Tactical Minimap + Radiation Countdown + Sector Objective -->
     <div class="hud-top-left">
       <div class="minimap-wrap">
-        <canvas id="hud-minimap" width="144" height="144"></canvas>
+        <canvas id="hud-minimap" width="148" height="148"></canvas>
         <span class="minimap-north">N</span>
       </div>
-      <div class="raid-timer-box" style="margin-top:6px;">
-        <span class="timer-label">RAID</span>
-        <span id="hud-timer" class="timer-value">08:00</span>
-        <span id="hud-dev-badge" class="hidden" style="color:#69f0ae;font-size:10px;font-weight:700;margin-left:4px;">[DEV]</span>
+      <div class="raid-timer-box">
+        <span class="timer-label">RADIATION COUNTDOWN</span>
+        <div class="timer-val-row">
+          <span id="hud-timer" class="timer-value">08:00</span>
+          <span id="hud-dev-badge" class="hidden" style="color:#69f0ae;font-size:10px;font-weight:700;margin-left:6px;">[DEV]</span>
+        </div>
+      </div>
+      <div class="hud-mission-strip">
+        <span class="hud-mission-pin">◆</span>
+        <div class="hud-mission-copy">
+          <div class="hud-mission-title">OPERATION: ASHFALL</div>
+          <div class="hud-mission-sub">Secure high-value loot &amp; reach Exfil</div>
+        </div>
       </div>
     </div>
 
@@ -740,19 +749,22 @@
 
     <!-- Bottom Left: Vitals + Dynamic Stance Silhouette -->
     <div class="hud-bottom-left hud-vitals-wrap">
-      <div id="hud-stance-icon" class="stance-silhouette" title="Operator Stance"></div>
+      <div class="hud-op-portrait-col">
+        <div id="hud-stance-icon" class="stance-silhouette" title="Operator Stance"></div>
+        <span class="hud-squad-num">1</span>
+      </div>
       <div class="vitals-bars-col">
-        <div class="vital-row">
-          <span class="vital-label">HP</span>
-          <div class="bar-bg hp-bg"><div id="hud-hp-bar" class="bar-fill hp-fill"></div></div>
-          <span id="hud-hp-val" class="vital-val">100</span>
-        </div>
-        <div class="vital-row">
+        <div class="vital-row vital-row-plates">
           <span class="vital-label">PLATES</span>
           <div id="hud-plate-segments" class="plate-segments"></div>
           <span id="hud-armor-val" class="vital-val">0</span>
         </div>
-        <div class="vital-row">
+        <div class="vital-row vital-row-hp">
+          <span class="vital-label">HP</span>
+          <div class="bar-bg hp-bg"><div id="hud-hp-bar" class="bar-fill hp-fill"></div></div>
+          <span id="hud-hp-val" class="vital-val">100</span>
+        </div>
+        <div class="vital-row vital-row-stam">
           <span class="vital-label">STM</span>
           <div class="bar-bg stam-bg"><div id="hud-stam-bar" class="bar-fill stam-fill"></div></div>
           <span id="hud-stam-val" class="vital-val">100</span>
@@ -959,7 +971,7 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION with every new commit) -->
-  <script src="js/data.js?v=181"></script>
+  <script src="js/data.js?v=182"></script>
   <script src="js/net.js?v=123"></script>
   <script src="js/sfx_samples.js?v=21"></script>
   <script src="js/audio.js?v=179"></script>
