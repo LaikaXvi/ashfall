@@ -5541,7 +5541,32 @@ class GameUI {
     const H = window.innerHeight;
     const pw = cPanel.offsetWidth || 358;
     const ph = cPanel.offsetHeight || 220;
-    const margin = 10;
+    const margin = 12;
+
+    // Unanchor enemy/player operator body inventory from the 3D corpse and hang it cleanly on the left side of the screen
+    if (this.activeLootSource.operatorEquipment) {
+      let leftX = 18;
+      let topY = Math.round((H - ph) * 0.46);
+      topY = Math.max(margin, Math.min(H - ph - margin, topY));
+
+      const minimapEl = document.querySelector('.hud-top-left');
+      if (minimapEl && !minimapEl.classList.contains('hidden')) {
+        const mr = minimapEl.getBoundingClientRect();
+        if (mr.width > 2 && mr.height > 2 && topY < mr.bottom + 8) {
+          if (mr.bottom + 10 + ph <= H - margin) {
+            topY = Math.round(mr.bottom + 10);
+          } else {
+            leftX = Math.round(mr.right + 14);
+          }
+        }
+      }
+
+      cPanel.style.left = `${leftX}px`;
+      cPanel.style.top = `${topY}px`;
+      cPanel.style.bottom = 'auto';
+      cPanel.style.transform = 'none';
+      return;
+    }
 
     // 1. Project active container's 3D world position onto screen
     let targetCx = W * 0.36;
