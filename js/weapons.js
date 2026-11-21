@@ -23,6 +23,18 @@ class WeaponSystem {
 
     this.fireTimer = 0;
     this.recoilOffset = 0;
+    this.recoilZ = 0;
+    this.recoilPitch = 0;
+    this.recoilYaw = 0;
+    this.recoilRoll = 0;
+    this.recoilX = 0;
+    this._prevYaw = null;
+    this._prevPitch = null;
+    this.lookSwayX = 0;
+    this.lookSwayY = 0;
+    this.lookSwayRotY = 0;
+    this.lookSwayRotX = 0;
+    this.lookSwayRotZ = 0;
     this.boltKick = 0;
     this.currentSpread = 0.022;
     this.fireBloom = 0;
@@ -868,10 +880,10 @@ class WeaponSystem {
       handGroup.add(thumb, thumbTip);
     }
 
-    // Wrist anchor point
-    const wrist = new THREE.Mesh(new THREE.BoxGeometry(0.044, 0.044, 0.022), cuffMat);
-    wrist.position.set(isRight ? 0.008 : -0.010, -0.010, 0.034);
-    handGroup.add(wrist);
+    // Articulated spherical wrist joint (connects seamlessly to forearm cuff during lean, sway, recoil & reload!)
+    const wristJoint = new THREE.Mesh(new THREE.SphereGeometry(0.031, 14, 12), cuffMat);
+    wristJoint.position.set(isRight ? 0.008 : -0.010, -0.010, 0.034);
+    handGroup.add(wristJoint);
 
     return handGroup;
   }
@@ -882,15 +894,15 @@ class WeaponSystem {
     const cuffMat = new THREE.MeshLambertMaterial({ color: 0x1a1c19 });
 
     // Unit-length cylinder along +Z (0..1) so scaling Z stretches from shoulder to wrist
-    const sleeveGeo = new THREE.CylinderGeometry(0.030, 0.042, 1.0, 10);
+    const sleeveGeo = new THREE.CylinderGeometry(0.030, 0.042, 1.0, 12);
     sleeveGeo.rotateX(Math.PI / 2);
     sleeveGeo.translate(0, 0, 0.5);
     const sleeve = new THREE.Mesh(sleeveGeo, sleeveMat);
 
-    const cuffGeo = new THREE.CylinderGeometry(0.031, 0.032, 0.03, 10);
+    const cuffGeo = new THREE.CylinderGeometry(0.031, 0.033, 0.036, 12);
     cuffGeo.rotateX(Math.PI / 2);
     const cuff = new THREE.Mesh(cuffGeo, cuffMat);
-    cuff.position.set(0, 0, 0.985);
+    cuff.position.set(0, 0, 0.982);
 
     armGroup.add(sleeve, cuff);
     return armGroup;
@@ -1755,6 +1767,14 @@ class WeaponSystem {
         return;
       }
       if (this.ledgeHandsGroup) this.ledgeHandsGroup.visible = false;
+      if (player.isUsingDesignator) {
+        // Stow / hide weapon completely while Airstrike Binoculars / Laser Designator are equipped!
+        this.viewmodelGroup.visible = false;
+        if (this.plateRig) this.plateRig.visible = false;
+        if (this.medRig) this.medRig.visible = false;
+        if (this.tacFistRig) this.tacFistRig.visible = false;
+        return;
+      }
       if (!this.isThirdPerson && !this.isHealing) {
         this.viewmodelGroup.visible = true;
       }
@@ -2002,28 +2022,62 @@ class WeaponSystem {
     const leanAlignX = (!customRot && !isAdsActive) ? (-player.lean * 0.095 * leanClear) : 0;
     const leanCantY = (!customRot && !isAdsActive) ? (-player.lean * 0.09 * leanClear) : 0;
 
-    // Sprint tilt, DMZ Tactical Sprint high-port skyward carry, tactical slide cant (subtle when ADS), wall tuck & progressive corner-lean cant
+    // Smooth spring-damped physical weapon kick recovery (Z shoulder push, pitch, horizontal yaw/X & subtle roll)
+    const recDecay = Math.min(1, dt * 15);
+    this.recoilZ = THREE.MathUtils.lerp(this.recoilZ, 0, Math.min(1, dt * 18));
+    this.recoilPitch = THREE.MathUtils.lerp(this.recoilPitch, 0, recDecay);
+    this.recoilYaw = THREE.MathUtils.lerp(this.recoilYaw, 0, Math.min(1, dt * 14));
+    this.recoilRoll = THREE.MathUtils.lerp(this.recoilRoll, 0, Math.min(1, dt * 14));
+    this.recoilX = THREE.MathUtils.lerp(this.recoilX, 0, Math.min(1, dt * 16));
+
+    // Weighty camera-turn rotational & positional weapon/arm inertia sway
+    if (this._prevYaw === null) {
+      this._prevYaw = player.yaw;
+      this._prevPitch = player.pitch;
+    }
+    let dYaw = player.yaw - this._prevYaw;
+    while (dYaw > Math.PI) dYaw -= Math.PI * 2;
+    while (dYaw < -Math.PI) dYaw += Math.PI * 2;
+    const dPitch = player.pitch - this._prevPitch;
+    this._prevYaw = player.yaw;
+    this._prevPitch = player.pitch;
+
+    const wWeight = !weaponDef ? 0.75
+      : (weaponDef.slot === 'secondary' ? 0.72
+      : (weaponDef.id === 'mp5k' ? 0.86
+      : (weaponDef.id === 'm24' || weaponDef.id === 'm870' ? 1.24 : 1.05)));
+    const swayMult = (isAdsActive ? 0.28 : 1.0) * wWeight;
+    const clampedDY = THREE.MathUtils.clamp(dYaw, -0.16, 0.16);
+    const clampedDP = THREE.MathUtils.clamp(dPitch, -0.14, 0.14);
+    const swayLerpIn = Math.min(1, dt * 10);
+    this.lookSwayX = THREE.MathUtils.lerp(this.lookSwayX, THREE.MathUtils.clamp(clampedDY * 0.38 * swayMult, -0.045, 0.045), swayLerpIn);
+    this.lookSwayY = THREE.MathUtils.lerp(this.lookSwayY, THREE.MathUtils.clamp(-clampedDP * 0.28 * swayMult, -0.032, 0.032), swayLerpIn);
+    this.lookSwayRotY = THREE.MathUtils.lerp(this.lookSwayRotY, THREE.MathUtils.clamp(clampedDY * 1.35 * swayMult, -0.16, 0.16), swayLerpIn);
+    this.lookSwayRotX = THREE.MathUtils.lerp(this.lookSwayRotX, THREE.MathUtils.clamp(clampedDP * 1.05 * swayMult, -0.12, 0.12), swayLerpIn);
+    this.lookSwayRotZ = THREE.MathUtils.lerp(this.lookSwayRotZ, THREE.MathUtils.clamp(-clampedDY * 1.15 * swayMult, -0.14, 0.14), swayLerpIn);
+
+    // Sprint tilt, DMZ Tactical Sprint high-port skyward carry, tactical slide cant, wall tuck, progressive corner-lean cant (even while ADS!), recoil kick & camera sway
     const slideCantZ = (!customRot && player.isSliding) ? (isAdsActive ? -0.10 : -0.32) : 0;
     const slideCantY = (!customRot && player.isSliding) ? (isAdsActive ? 0.0 : 0.18) : 0;
     const sprintRotX = tacSprintingHip ? 0.86 : (sprintingHip ? -0.14 : 0);
     const sprintRotY = tacSprintingHip ? 0.16 : (sprintingHip ? 0.22 : 0);
     const sprintRotZ = tacSprintingHip ? -0.14 : (sprintingHip ? 0.08 : 0);
-    const leanRotZ = isAdsActive ? 0 : (-player.lean * 0.21);
-    const targetRotX = (customRot ? activeRotOff.x : (sprintRotX + swayRotX + this.recoilOffset * 1.8 + wallRotX)) + drawRot.x;
-    const targetRotY = (customRot ? activeRotOff.y : (sprintRotY + slideCantY + wallRotY + leanCantY)) + drawRot.y;
-    const targetRotZ = (customRot ? activeRotOff.z : (sprintRotZ + swayRotZ + slideCantZ + wallRotZ + leanRotZ)) + drawRot.z;
+    const leanRotZ = isAdsActive ? (-player.lean * 0.13) : (-player.lean * 0.22);
+    const targetRotX = (customRot ? activeRotOff.x : (sprintRotX + swayRotX + this.recoilPitch + this.lookSwayRotX + wallRotX)) + drawRot.x;
+    const targetRotY = (customRot ? activeRotOff.y : (sprintRotY + slideCantY + this.recoilYaw + this.lookSwayRotY + wallRotY + leanCantY)) + drawRot.y;
+    const targetRotZ = (customRot ? activeRotOff.z : (sprintRotZ + swayRotZ + slideCantZ + this.recoilRoll + this.lookSwayRotZ + wallRotZ + leanRotZ)) + drawRot.z;
 
     // MW2/DMZ One-Handed High-Port Tactical Sprint: weapon held UP in right hand, left fist pumping apart!
-    // When ADS with any Z-roll (e.g., slide cant), pivot around sightHeight so the red dot stays locked to exact screen center!
+    // When ADS with any Z-roll (e.g., lean or slide cant), pivot around sightHeight so the sight stays locked to exact screen center!
     const adsPivotX = (isAdsActive && !customRot) ? (Math.sin(targetRotZ) * this.sightHeight) : 0;
     const adsPivotY = (isAdsActive && !customRot) ? ((1 - Math.cos(targetRotZ)) * this.sightHeight) : 0;
     const basePosX = isAdsActive ? adsPivotX : (tacSprintingHip ? 0.24 : (sprintingHip ? 0.19 : 0.22));
     const basePosY = isAdsActive ? (-this.sightHeight + adsPivotY) : (tacSprintingHip ? -0.14 : (sprintingHip ? -0.235 : -0.20));
     const basePosZ = isAdsActive ? this.adsZ : (tacSprintingHip ? -0.34 : (sprintingHip ? -0.40 : -0.42));
 
-    const targetX = basePosX + activePosOff.x + wallPosX + leanAlignX + drawPos.x;
-    const targetY = basePosY + activePosOff.y + wallPosY + drawPos.y;
-    const targetZ = basePosZ + this.recoilOffset + activePosOff.z + wallPosZ + drawPos.z;
+    const targetX = basePosX + this.recoilX + this.lookSwayX + activePosOff.x + wallPosX + leanAlignX + drawPos.x;
+    const targetY = basePosY + this.lookSwayY + activePosOff.y + wallPosY + drawPos.y;
+    const targetZ = basePosZ + this.recoilZ + activePosOff.z + wallPosZ + drawPos.z;
 
     const lerpRate = this.isReloading ? 28 : ((this.isPlating || this.isHealing) ? 16 : (this.isInspecting ? 9 : (this.drawTimer > 0 ? 22 : 13)));
     this.viewmodelGroup.position.x = THREE.MathUtils.lerp(this.viewmodelGroup.position.x, targetX + bobX, Math.min(1, dt * lerpRate));
@@ -2077,16 +2131,32 @@ class WeaponSystem {
       this.charmPivot.rotation.x = THREE.MathUtils.lerp(this.charmPivot.rotation.x, targetCharmX, Math.min(1, dt * 10));
     }
 
-    // Aim forearms from shoulder anchors to each hand's wrist cuff
+    // Aim forearms from shoulder anchors to each hand's articulated wrist joint (shifting subtly with lean & camera turn inertia!)
+    const leanShX = -player.lean * 0.055;
+    const swayShX = -this.lookSwayX * 0.45;
     if (this.rightArm && this.rightHand) {
-      const rShoulder = new THREE.Vector3(0.16, -0.20, 0.36);
+      if (!customRot) {
+        this.rightHand.rotation.z = THREE.MathUtils.lerp(
+          this.rightHand.rotation.z,
+          this.rightHandRestRot.z - player.lean * 0.12 + this.lookSwayRotZ * 0.35 + this.recoilRoll * 0.5,
+          Math.min(1, dt * 16)
+        );
+      }
+      const rShoulder = new THREE.Vector3(0.16 + leanShX + swayShX, -0.20 - Math.abs(player.lean) * 0.02, 0.36);
       const rWrist = this.rightHand.position.clone().add(new THREE.Vector3(0.008, -0.010, 0.034));
       this._aimArm(this.rightArm, rShoulder, rWrist);
     }
     if (this.leftArm && this.leftHand) {
+      if (!customRot && !tacSprintingHip) {
+        this.leftHand.rotation.z = THREE.MathUtils.lerp(
+          this.leftHand.rotation.z,
+          this.leftHandRestRot.z - player.lean * 0.14 + this.lookSwayRotZ * 0.35 + this.recoilRoll * 0.5,
+          Math.min(1, dt * 16)
+        );
+      }
       const lShoulder = tacSprintingHip
         ? new THREE.Vector3(-0.62, -0.28, 0.26)
-        : new THREE.Vector3(-0.22, -0.20, 0.30);
+        : new THREE.Vector3(-0.22 + leanShX + swayShX, -0.20 - Math.abs(player.lean) * 0.02, 0.30);
       const lWrist = this.leftHand.position.clone().add(new THREE.Vector3(-0.010, -0.010, 0.034));
       this._aimArm(this.leftArm, lShoulder, lWrist);
     }
@@ -3448,7 +3518,17 @@ class WeaponSystem {
 
     weaponSlotState.mag -= 1;
     this.fireTimer = def.fireRate;
-    this.recoilOffset = Math.min(0.10, this.recoilOffset + 0.045);
+    const kickScale = player.isADS ? 0.58 : 1.0;
+    const hRec = def.horizRecoil != null ? def.horizRecoil : (def.recoil * 0.48);
+    const hSign = Math.random() < 0.56 ? 1 : -1;
+    // Physical rearward shoulder kick + controlled muzzle flip + horizontal recoil bounce
+    this.recoilOffset = Math.min(0.06, this.recoilOffset + 0.022 * kickScale);
+    const baseZKick = def.id === 'm870' ? 0.036 : (def.id === 'm24' ? 0.030 : (def.slot === 'secondary' ? 0.018 : 0.022));
+    this.recoilZ = Math.min(0.056, this.recoilZ + baseZKick * kickScale);
+    this.recoilPitch = Math.min(0.088, this.recoilPitch + def.recoil * 1.15 * kickScale);
+    this.recoilYaw = THREE.MathUtils.clamp(this.recoilYaw + hSign * hRec * 1.35 * kickScale, -0.045, 0.045);
+    this.recoilRoll = THREE.MathUtils.clamp(this.recoilRoll + (Math.random() - 0.5) * 0.062 * kickScale, -0.055, 0.055);
+    this.recoilX = THREE.MathUtils.clamp(this.recoilX + hSign * hRec * 0.32 * kickScale, -0.012, 0.012);
     if (def.slot === 'secondary' || def.id === 'mp5k' || def.id === 'ak74m') {
       this.boltKick = def.slot === 'secondary' ? 0.052 : 0.058;
     } else if (def.id === 'm870' && weaponSlotState.mag > 0) {
@@ -3460,10 +3540,12 @@ class WeaponSystem {
 
     window.soundEngine.playGunshot(def.id, 0, !!def.suppressed);
 
-    // Camera recoil kick & firing bloom
-    const recoilScale = player.isADS ? 0.65 : 1.0;
-    player.applyRecoil(def.recoil * recoilScale, (Math.random() - 0.5) * def.recoil * 0.45);
-    this.fireBloom = Math.min(0.055, this.fireBloom + def.recoil * 0.45);
+    // Reduced visual camera recoil + authentic vertical & horizontal recoil kick
+    const camRecScale = player.isADS ? 0.48 : 0.62;
+    const vertKick = def.recoil * camRecScale;
+    const horizKick = (Math.random() - 0.44) * hRec * 1.15 * camRecScale;
+    player.applyRecoil(vertKick, horizKick);
+    this.fireBloom = Math.min(0.055, this.fireBloom + def.recoil * 0.42);
 
     // Raycast pellets — hipfire accuracy directly matches live crosshair size unless using a laser
     let totalSpread;

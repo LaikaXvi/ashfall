@@ -1406,6 +1406,9 @@
     if (ov) ov.classList.add('hidden');
     const ch = document.getElementById('crosshair');
     if (ch) ch.classList.remove('hidden');
+    if (player) {
+      player.isUsingDesignator = !!designatorActive;
+    }
     if (weaponSystem && weaponSystem.viewmodelGroup) {
       weaponSystem.viewmodelGroup.visible = !designatorActive && !player.isThirdPerson;
     }
@@ -1415,6 +1418,7 @@
     }
     if (designatorActive) {
       player.isFiring = false;
+      player.isADS = false;
       ui.showCenterToast('DESIGNATOR EQUIPPED — HOLD [RMB / LT] TO ZOOM 4X', '#ff5252');
     }
   }
