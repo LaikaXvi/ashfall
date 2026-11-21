@@ -387,10 +387,8 @@ class ThrowableSystem {
     const distToPlayer = pos.distanceTo(player.position);
     window.soundEngine.playExplosion(distToPlayer);
 
-    // Visual explosion flash + blast sphere + sparks
-    const light = new THREE.PointLight(0xff8822, 9, 22);
-    light.position.copy(pos).add(new THREE.Vector3(0, 0.6, 0));
-    this.scene.add(light);
+    // Visual explosion flash + blast sphere (no dynamic PointLight to avoid WebGL shader recompile stutter!)
+    const light = null;
 
     const sphere = new THREE.Mesh(
       new THREE.SphereGeometry(0.6, 14, 12),
@@ -465,9 +463,7 @@ class ThrowableSystem {
     const distToPlayer = pos.distanceTo(player.position);
     window.soundEngine.playConcussion(distToPlayer);
 
-    const light = new THREE.PointLight(0x88ddff, 10, 20);
-    light.position.copy(pos).add(new THREE.Vector3(0, 0.5, 0));
-    this.scene.add(light);
+    const light = null;
 
     const ring = new THREE.Mesh(
       new THREE.RingGeometry(0.3, 0.7, 24),

@@ -252,7 +252,8 @@ class MultiplayerSession {
       pkt.type === 'enemy_hit' || pkt.type === 'enemies_sync' || pkt.type === 'enemy_shot' ||
       pkt.type === 'ground_drop' || pkt.type === 'ground_pickup' ||
       pkt.type === 'pvp_hit' || pkt.type === 'pvp_toggle' || pkt.type === 'revive_ping' ||
-      pkt.type === 'revive_progress' || pkt.type === 'revive_complete'
+      pkt.type === 'revive_progress' || pkt.type === 'revive_complete' ||
+      pkt.type === 'killstreak' || pkt.type === 'raid_timer'
     ) {
       this._handleDataPacket(peerId, pkt);
     }
@@ -296,15 +297,16 @@ class MultiplayerSession {
     }
   }
 
-  sendEnemiesSync(dt, enemyManager, isHost) {
+  sendEnemiesSync(dt, enemyManager, isHost, raidTimeLeft = null) {
     if (!this.active || !isHost || !enemyManager || this.partyMembers.length === 0) return;
+    const rt = (typeof raidTimeLeft === 'number') ? Math.round(raidTimeLeft * 10) / 10 : undefined;
     const hasRtc = this._hasAnyWebRTCConnected();
     if (hasRtc) {
       this._enemySyncAccum += dt;
       if (this._enemySyncAccum < 0.125) return; // 8Hz over direct P2P WebRTC
       this._enemySyncAccum = 0;
       const list = enemyManager.serializeSnapshot();
-      const json = JSON.stringify({ type: 'enemies_sync', fromId: this.myClientId, list });
+      const json = JSON.stringify({ type: 'enemies_sync', fromId: this.myClientId, list, rt });
       for (const [, p] of this.peers.entries()) {
         if (p.dc && p.dc.readyState === 'open') {
           try { p.dc.send(json); } catch (e) {}
@@ -315,7 +317,7 @@ class MultiplayerSession {
       if (this._enemyFallbackAccum < 0.25) return; // 4Hz over persistent WSS MQTT until WebRTC opens
       this._enemyFallbackAccum = 0;
       const list = enemyManager.serializeSnapshot();
-      this._postSignal({ type: 'enemies_sync', list });
+      this._postSignal({ type: 'enemies_sync', list, rt });
     }
   }
 

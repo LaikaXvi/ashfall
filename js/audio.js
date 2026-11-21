@@ -279,12 +279,14 @@ class SoundEngine {
     const airCutoff = Math.max(950, 14000 / (1 + distance * 0.09));
 
     // Play real CC0 firearm recording if decoded
-    const sampleBuf = this.gunBuffers[weaponId] || this.gunBuffers.ak74m;
+    const sampleKey = (weaponId === 'awm338' || weaponId === 'mosin9130') ? 'm24' : weaponId;
+    const sampleBuf = this.gunBuffers[sampleKey] || this.gunBuffers.ak74m;
     if (sampleBuf) {
       const src = this.ctx.createBufferSource();
       src.buffer = sampleBuf;
+      const baseRate = weaponId === 'awm338' ? 0.80 : (weaponId === 'mosin9130' ? 1.08 : 1.0);
       // Slight organic pitch variation so rapid fire never sounds robotic
-      src.playbackRate.setValueAtTime((suppressed ? 1.18 : 1.0) * (0.96 + Math.random() * 0.08), now);
+      src.playbackRate.setValueAtTime(baseRate * (suppressed ? 1.18 : 1.0) * (0.96 + Math.random() * 0.08), now);
 
       const lp = this.ctx.createBiquadFilter();
       lp.type = 'lowpass';
@@ -298,7 +300,9 @@ class SoundEngine {
         mp5k:  { hold: 0.048, end: 0.092 },
         ak74m: { hold: 0.052, end: 0.098 },
         m870:  { hold: 0.085, end: 0.240 },
-        m24:   { hold: 0.055, end: 0.115 }
+        m24:   { hold: 0.055, end: 0.115 },
+        mosin9130: { hold: 0.068, end: 0.145 },
+        awm338:    { hold: 0.075, end: 0.175 }
       };
       const trim = shotTrim[weaponId] || shotTrim.ak74m;
       const endDur = suppressed ? Math.min(trim.end, 0.085) : trim.end;
@@ -332,7 +336,9 @@ class SoundEngine {
       mp5k:  { snapFreq: 3100, bodyFreq: 1450, bodyQ: 0.8, bodyDur: 0.075, subFreq: 125, subGain: 0.42, tail: 0.12, gain: 0.82 },
       ak74m: { snapFreq: 2400, bodyFreq: 980,  bodyQ: 0.65, bodyDur: 0.145, subFreq: 95,  subGain: 0.72, tail: 0.24, gain: 1.05 },
       m870:  { snapFreq: 1700, bodyFreq: 540,  bodyQ: 0.55, bodyDur: 0.24,  subFreq: 72,  subGain: 1.05, tail: 0.30, gain: 1.20 },
-      m24:   { snapFreq: 2800, bodyFreq: 860,  bodyQ: 0.6, bodyDur: 0.22,  subFreq: 80,  subGain: 0.92, tail: 0.34, gain: 1.18 }
+      m24:       { snapFreq: 2800, bodyFreq: 860,  bodyQ: 0.6,  bodyDur: 0.22,  subFreq: 80,  subGain: 0.92, tail: 0.34, gain: 1.18 },
+      mosin9130: { snapFreq: 3000, bodyFreq: 940,  bodyQ: 0.62, bodyDur: 0.20,  subFreq: 86,  subGain: 0.88, tail: 0.32, gain: 1.16 },
+      awm338:    { snapFreq: 2500, bodyFreq: 720,  bodyQ: 0.55, bodyDur: 0.28,  subFreq: 66,  subGain: 1.15, tail: 0.42, gain: 1.28 }
     };
     const p = profiles[weaponId] || profiles.ak74m;
 

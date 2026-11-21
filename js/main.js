@@ -76,6 +76,8 @@
   let isMatchHost = true;
   let isModalOpen = false;
   let raidTimeLeft = 0;
+  let raidStartTimestamp = 0;
+  let raidEndTimestamp = 0;
   let raidElapsed = 0;
   let raidKills = 0;
   let raidXp = 0;
@@ -266,6 +268,39 @@
             if (!isMatchHost && enemyManager && Array.isArray(pkt.list)) {
               enemyManager.applyHostSnapshot(pkt.list);
             }
+            if (!isMatchHost && typeof pkt.rt === 'number') {
+              const localRem = Math.max(0, (raidEndTimestamp - Date.now()) / 1000);
+              if (Math.abs(localRem - pkt.rt) > 0.35) {
+                raidEndTimestamp = Date.now() + pkt.rt * 1000;
+                raidTimeLeft = pkt.rt;
+              }
+            }
+          } else if (pkt.type === 'raid_timer') {
+            if (!isMatchHost && typeof pkt.rt === 'number') {
+              raidEndTimestamp = Date.now() + pkt.rt * 1000;
+              raidTimeLeft = pkt.rt;
+            }
+          } else if (pkt.type === 'killstreak') {
+            if (pkt.kind === 'airstrike') {
+              const tPos = new THREE.Vector3(pkt.tx || 0, pkt.ty || 0, pkt.tz || 0);
+              const sDir = new THREE.Vector3(pkt.dx || 1, 0, pkt.dz || 0);
+              if (sDir.lengthSq() < 0.001) sDir.set(1, 0, 0);
+              else sDir.normalize();
+              _deployPrecisionAirstrike(tPos, {
+                isRemote: true,
+                callerName: pkt.fromName || 'SQUAD',
+                strikeDirOverride: sDir,
+                applyDamage: isMatchHost
+              });
+            } else if (pkt.kind === 'uav' && player) {
+              const dur = pkt.duration || 30.0;
+              player.uavTimer = Math.max(player.uavTimer || 0, dur);
+              if (window.soundEngine && window.soundEngine.playUavPhoneTap) {
+                window.soundEngine.playUavPhoneTap();
+              }
+              ui.showCenterToast(`${pkt.fromName || 'SQUAD'} ACTIVATED SQUAD UAV — ${Math.round(dur)}s`, '#69f0ae');
+              ui.addFeedMessage(`${pkt.fromName || 'SQUAD'} activated UAV Recon — 150m pulsing radar active!`, '#69f0ae');
+            }
           } else if (pkt.type === 'enemy_shot') {
             if (!isMatchHost && enemyManager && enemyManager.enemies && typeof pkt.enemyIdx === 'number') {
               const e = enemyManager.enemies[pkt.enemyIdx];
@@ -391,8 +426,17 @@
     ui.profile.raids += 1;
     ui.saveProfile();
 
+    raidStartTimestamp = Date.now();
+    raidEndTimestamp = raidStartTimestamp + zone.raidDuration * 1000;
     raidTimeLeft = zone.raidDuration;
     raidElapsed = 0;
+    if (mpSession && mpSession.active && isMatchHost) {
+      setTimeout(() => {
+        if (inRaid && mpSession && mpSession.active && isMatchHost) {
+          mpSession.sendEvent({ type: 'raid_timer', rt: Math.round(raidTimeLeft * 10) / 10 });
+        }
+      }, 1200);
+    }
     raidKills = 0;
     raidXp = 0;
     extractProgress = 0;
@@ -1354,7 +1398,11 @@
     return g;
   }
 
-  function _spawnAirstrikeExplosion(pos) {
+  const _ksFireGeo = new THREE.SphereGeometry(1.1, 8, 6);
+  const _ksSmokeGeo = new THREE.SphereGeometry(1.6, 8, 6);
+  const _ksFlashGeo = new THREE.SphereGeometry(0.75, 6, 5);
+
+  function _spawnAirstrikeExplosion(pos, applyDamage = true, callerName = null) {
     if (!scene) return;
     const dist = player ? player.position.distanceTo(pos) : 25;
     if (window.soundEngine && window.soundEngine.playExplosion) {
@@ -1367,27 +1415,29 @@
     }
 
     const fireMat = new THREE.MeshBasicMaterial({ color: 0xff8c1a, transparent: true, opacity: 0.95 });
-    const fireMesh = new THREE.Mesh(new THREE.SphereGeometry(1.1, 10, 8), fireMat);
+    const fireMesh = new THREE.Mesh(_ksFireGeo, fireMat);
     fireMesh.position.set(pos.x, pos.y + 0.9, pos.z);
     scene.add(fireMesh);
 
-    const smokeMat = new THREE.MeshLambertMaterial({ color: 0x262422, transparent: true, opacity: 0.75 });
-    const smokeMesh = new THREE.Mesh(new THREE.SphereGeometry(1.6, 8, 6), smokeMat);
+    const flashMat = new THREE.MeshBasicMaterial({ color: 0xfff0b0, transparent: true, opacity: 0.92 });
+    const flashMesh = new THREE.Mesh(_ksFlashGeo, flashMat);
+    flashMesh.position.set(pos.x, pos.y + 1.1, pos.z);
+    scene.add(flashMesh);
+
+    const smokeMat = new THREE.MeshLambertMaterial({ color: 0x262422, transparent: true, opacity: 0.72 });
+    const smokeMesh = new THREE.Mesh(_ksSmokeGeo, smokeMat);
     smokeMesh.position.set(pos.x, pos.y + 1.6, pos.z);
     scene.add(smokeMesh);
 
-    const light = new THREE.PointLight(0xffaa33, 5.5, 24);
-    light.position.set(pos.x, pos.y + 2.8, pos.z);
-    scene.add(light);
+    // No dynamic PointLight -> ZERO WebGL shader recompilations & zero lag spikes!
+    ksExplosions.push({ fireMesh, flashMesh, smokeMesh, light: null, age: 0, maxAge: 1.55 });
 
-    ksExplosions.push({ fireMesh, smokeMesh, light, age: 0, maxAge: 1.65 });
-
-    // Heavy AoE damage to enemies & enemy operators
+    // Heavy AoE damage to enemies & enemy operators (host/caller authoritative to avoid double damage)
     const blastRadius = 11.5;
-    if (enemyManager && enemyManager.enemies) {
+    if (applyDamage && enemyManager && enemyManager.enemies) {
       const attackerInfo = {
-        name: getPlayerCallsign(),
-        isPlayer: true,
+        name: callerName || getPlayerCallsign(),
+        isPlayer: !callerName,
         weaponId: 'ks_airstrike',
         weaponName: 'Precision Airstrike'
       };
@@ -1398,7 +1448,7 @@
           const falloff = 1 - (d / blastRadius) * 0.65;
           const dmg = Math.round(185 * falloff);
           const killed = e.takeDamage(dmg, pos, attackerInfo);
-          onThrowableHit(false, killed, e, attackerInfo);
+          if (!callerName) onThrowableHit(false, killed, e, attackerInfo);
         }
       }
     }
@@ -1638,11 +1688,30 @@
     }
   }
 
-  function _deployPrecisionAirstrike(targetPos) {
-    if (!window.DEV_MODE) player.killstreak = null;
-    ksCooldown = 2.0;
+  function _deployPrecisionAirstrike(targetPos, opts = {}) {
+    const isRemote = !!opts.isRemote;
+    const callerName = opts.callerName || null;
+    const applyDamage = opts.applyDamage !== undefined ? !!opts.applyDamage : (!isRemote || isMatchHost);
+    if (!isRemote) {
+      if (!window.DEV_MODE) player.killstreak = null;
+      ksCooldown = 2.0;
+    }
 
-    const strikeDir = new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw)).normalize();
+    const strikeDir = opts.strikeDirOverride
+      ? opts.strikeDirOverride.clone().normalize()
+      : new THREE.Vector3(Math.cos(player.yaw), 0, -Math.sin(player.yaw)).normalize();
+
+    if (!isRemote && mpSession && mpSession.active) {
+      mpSession.sendEvent({
+        type: 'killstreak',
+        kind: 'airstrike',
+        tx: Math.round(targetPos.x * 10) / 10,
+        ty: Math.round(targetPos.y * 10) / 10,
+        tz: Math.round(targetPos.z * 10) / 10,
+        dx: Math.round(strikeDir.x * 1000) / 1000,
+        dz: Math.round(strikeDir.z * 1000) / 1000
+      });
+    }
 
     const beaconGroup = new THREE.Group();
     const ring = new THREE.Mesh(
@@ -1684,6 +1753,8 @@
       strikeDir,
       beaconGroup,
       jets,
+      applyDamage,
+      callerName,
       elapsed: 0,
       maxDuration: 5.8
     });
@@ -1692,8 +1763,13 @@
       if (window.soundEngine.playDesignatorLock) window.soundEngine.playDesignatorLock();
       else if (window.soundEngine.playCookTick) window.soundEngine.playCookTick(true);
     }
-    ui.showCenterToast('PRECISION AIRSTRIKE INBOUND — 2.0s', '#ff5252');
-    ui.addFeedMessage('Precision Airstrike locked on laser designator coordinates!', '#ffca28');
+    if (isRemote) {
+      ui.showCenterToast(`${callerName || 'SQUAD'} PRECISION AIRSTRIKE INBOUND`, '#ff5252');
+      ui.addFeedMessage(`${callerName || 'SQUAD'} called in a Precision Airstrike!`, '#ffca28');
+    } else {
+      ui.showCenterToast('PRECISION AIRSTRIKE INBOUND — 2.0s', '#ff5252');
+      ui.addFeedMessage('Precision Airstrike locked on laser designator coordinates!', '#ffca28');
+    }
   }
 
   function activateKillstreak() {
@@ -1763,6 +1839,9 @@
         if (rig.userData.screenMat) rig.userData.screenMat.color.setHex(0x69f0ae);
         if (window.soundEngine && window.soundEngine.playUavPhoneTap) {
           window.soundEngine.playUavPhoneTap();
+        }
+        if (mpSession && mpSession.active) {
+          mpSession.sendEvent({ type: 'killstreak', kind: 'uav', duration: 30.0 });
         }
         ui.showCenterToast('UAV RECON ONLINE — 30s (150m RADAR)', '#69f0ae');
         ui.addFeedMessage('UAV Recon activated — 150m pulsing radar active on map & minimap (30s)', '#69f0ae');
@@ -1942,7 +2021,7 @@
         for (const bomb of jet.bombs) {
           if (!bomb.detonated && st.elapsed >= bomb.triggerTime) {
             bomb.detonated = true;
-            _spawnAirstrikeExplosion(bomb.pos);
+            _spawnAirstrikeExplosion(bomb.pos, st.applyDamage !== false, st.callerName || null);
           }
         }
       }
@@ -1969,12 +2048,25 @@
       ex.smokeMesh.position.y += dt * 3.4;
       ex.smokeMesh.material.opacity = Math.max(0, 0.72 * (1 - t));
 
-      ex.light.intensity = Math.max(0, 5.5 * (1 - t * 2.4));
+      if (ex.flashMesh) {
+        const flashScale = 1 + t * 4.4;
+        ex.flashMesh.scale.setScalar(flashScale);
+        ex.flashMesh.material.opacity = Math.max(0, 0.92 * (1 - t * 3.2));
+      }
+      if (ex.light) {
+        ex.light.intensity = Math.max(0, 5.5 * (1 - t * 2.4));
+      }
 
       if (ex.age >= ex.maxAge) {
         scene.remove(ex.fireMesh);
         scene.remove(ex.smokeMesh);
-        scene.remove(ex.light);
+        if (ex.fireMesh.material) ex.fireMesh.material.dispose();
+        if (ex.smokeMesh.material) ex.smokeMesh.material.dispose();
+        if (ex.flashMesh) {
+          scene.remove(ex.flashMesh);
+          if (ex.flashMesh.material) ex.flashMesh.material.dispose();
+        }
+        if (ex.light) scene.remove(ex.light);
         ksExplosions.splice(i, 1);
       }
     }
@@ -2464,8 +2556,10 @@
       }
 
       {
-        raidElapsed += dt;
-        raidTimeLeft -= dt;
+        // Real-time wall-clock raid timer (never slows on low FPS, pause, or open menus!)
+        const nowWallMs = Date.now();
+        raidElapsed = Math.max(0, (nowWallMs - raidStartTimestamp) / 1000);
+        raidTimeLeft = Math.max(0, (raidEndTimestamp - nowWallMs) / 1000);
         if (raidTimeLeft <= 0) {
           endRaid(false);
           return;
@@ -2482,7 +2576,7 @@
           mpSession.update(dt, player);
           if (squadManager) squadManager.syncRemotePlayers(mpSession);
           if (isMatchHost && enemyManager) {
-            mpSession.sendEnemiesSync(dt, enemyManager, true);
+            mpSession.sendEnemiesSync(dt, enemyManager, true, raidTimeLeft);
           }
         }
         weaponSystem.update(dt, player, wDef);

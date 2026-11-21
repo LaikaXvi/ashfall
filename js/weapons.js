@@ -46,6 +46,9 @@ class WeaponSystem {
     this.pumpDelayTimer = 0;
     this.pumpTimer = 0;
     this.pumpDuration = 0.40;
+    this.boltActionDelayTimer = 0;
+    this.boltActionTimer = 0;
+    this.boltActionDuration = 0.62;
     this.bobTimer = 0;
     this.muzzleTimer = 0;
 
@@ -276,8 +279,28 @@ class WeaponSystem {
         frontPivot.position.y = 0.024;
       }
       ironGroup.add(rearPivot, frontPivot);
+    } else if (weaponId === 'mosin9130') {
+      // M91/30 Mosin-Nagant: classic tangent leaf rear notch + hooded front globe post
+      const rearPivot = new THREE.Group();
+      rearPivot.position.set(0, 0.032, -0.09);
+      const rBase = new THREE.Mesh(new THREE.BoxGeometry(0.015, 0.005, 0.044), steelSightMat);
+      const leafL = new THREE.Mesh(new THREE.BoxGeometry(0.0046, 0.011, 0.008), sightMat);
+      leafL.position.set(-0.0042, 0.007, 0.014);
+      const leafR = new THREE.Mesh(new THREE.BoxGeometry(0.0046, 0.011, 0.008), sightMat);
+      leafR.position.set(0.0042, 0.007, 0.014);
+      rearPivot.add(rBase, leafL, leafR);
+
+      const frontPivot = new THREE.Group();
+      frontPivot.position.set(0, 0.025, -0.61);
+      const fBase = new THREE.Mesh(new THREE.BoxGeometry(0.010, 0.010, 0.018), steelSightMat);
+      const fHood = new THREE.Mesh(new THREE.TorusGeometry(0.0085, 0.0014, 6, 14), sightMat);
+      fHood.position.set(0, 0.013, 0);
+      const fPost = new THREE.Mesh(new THREE.BoxGeometry(0.0016, 0.012, 0.0025), sightMat);
+      fPost.position.set(0, 0.011, 0);
+      frontPivot.add(fBase, fHood, fPost);
+      ironGroup.add(rearPivot, frontPivot);
     } else {
-      // M24 Marksman: folding backup micro-peep rear + hooded front blade (always folded flat when optic mounted)
+      // M24 / AWM .338: folding backup micro-peep rear + hooded front blade (always folded flat when optic mounted)
       const rearPivot = new THREE.Group();
       rearPivot.position.set(0, 0.036, 0.11);
       const rBase = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.005, 0.018), steelSightMat);
@@ -494,31 +517,32 @@ class WeaponSystem {
     const matTan = new THREE.MeshLambertMaterial({ color: 0x6b5c43 });
 
     // 1. Optic (pass exact receiver top height so scope stanchions bolt flush to the receiver!)
-    const recTopY = weaponDef.id === 'm24' ? 0.036 : (weaponDef.id === 'ak74m' ? 0.034 : (weaponDef.id === 'm870' ? 0.028 : 0.029));
+    const isLongRifle = weaponDef.id === 'm24' || weaponDef.id === 'awm338' || weaponDef.id === 'mosin9130';
+    const recTopY = (weaponDef.id === 'm24' || weaponDef.id === 'awm338') ? 0.038 : (weaponDef.id === 'mosin9130' ? 0.032 : (weaponDef.id === 'ak74m' ? 0.034 : (weaponDef.id === 'm870' ? 0.028 : 0.029)));
     if (mods.optic === 'red_dot') {
       if (weaponDef.slot === 'secondary' && this.boltMesh) {
         const y = 0.036;
         this._addRedDot(this.boltMesh, y, 0.04);
         this.sightHeight = y + this.boltMesh.position.y;
       } else {
-        const y = weaponDef.id === 'm24' ? 0.064 : 0.056;
+        const y = isLongRifle ? 0.064 : 0.056;
         this._addRedDot(g, y, 0.02);
         this.sightHeight = y;
       }
     } else if (mods.optic === 'holo' && weaponDef.slot !== 'secondary') {
-      const y = weaponDef.id === 'm24' ? 0.068 : 0.060;
+      const y = isLongRifle ? 0.068 : 0.060;
       this._addHolo(g, y, 0.02);
       this.sightHeight = y;
     } else if (mods.optic === 'acog_2x' && weaponDef.slot !== 'secondary') {
-      const y = weaponDef.id === 'm24' ? 0.072 : 0.064;
+      const y = isLongRifle ? 0.072 : 0.064;
       this._addScope(g, y, 'acog', recTopY);
       this.sightHeight = y;
     } else if (mods.optic === 'lpvo_4x' && weaponDef.slot !== 'secondary') {
-      const y = weaponDef.id === 'm24' ? 0.074 : 0.066;
+      const y = isLongRifle ? 0.074 : 0.066;
       this._addScope(g, y, 'lpvo', recTopY);
       this.sightHeight = y;
     } else if (mods.optic === 'sniper_8x' && weaponDef.slot !== 'secondary') {
-      const y = weaponDef.id === 'm24' ? 0.078 : 0.070;
+      const y = isLongRifle ? 0.078 : 0.070;
       this._addScope(g, y, 'sniper', recTopY);
       this.sightHeight = y;
     }
@@ -1429,6 +1453,175 @@ class WeaponSystem {
       this._addWeaponIronSights(g, 'm870', this.sightHeight, hasOptic);
       this.muzzleMesh.position.set(0, 0.014, -0.61);
       this.muzzleFlash.position.set(0, 0.02, -0.65);
+    } else if (weaponDef.id === 'mosin9130') {
+      // M91/30 Mosin-Nagant Classic Clip-Fed Bolt-Action Rifle
+      const birchMat = new THREE.MeshLambertMaterial({ color: 0x6f4321 });
+      const darkWoodMat = new THREE.MeshLambertMaterial({ color: 0x523018 });
+      const bluedMat = new THREE.MeshLambertMaterial({ color: 0x1d2126 });
+
+      // Full-length wooden stock + forend + upper handguard + steel buttplate
+      const forend = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.044, 0.56), birchMat);
+      forend.position.set(0, -0.012, -0.14);
+      const upperHandguard = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.020, 0.36), darkWoodMat);
+      upperHandguard.position.set(0, 0.014, -0.22);
+      const wristStock = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.050, 0.18), birchMat);
+      wristStock.position.set(0, -0.030, 0.17);
+      wristStock.rotation.x = 0.16;
+      const buttStock = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.088, 0.22), birchMat);
+      buttStock.position.set(0, -0.046, 0.31);
+      const buttPlate = new THREE.Mesh(new THREE.BoxGeometry(0.039, 0.090, 0.010), bluedMat);
+      buttPlate.position.set(0, -0.046, 0.42);
+
+      // Barrel bands + steel cleaning rod under barrel
+      const bandRear = new THREE.Mesh(new THREE.BoxGeometry(0.046, 0.048, 0.018), bluedMat);
+      bandRear.position.set(0, -0.002, -0.18);
+      const bandFront = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.046, 0.018), bluedMat);
+      bandFront.position.set(0, -0.002, -0.37);
+      const cleaningRod = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, 0.44, 6), steelMat);
+      cleaningRod.rotation.x = Math.PI / 2;
+      cleaningRod.position.set(0, -0.002, -0.44);
+
+      // Receiver + long blued barrel + internal magazine floorplate
+      const receiver = new THREE.Mesh(new THREE.CylinderGeometry(0.020, 0.020, 0.22, 8), bluedMat);
+      receiver.rotation.x = Math.PI / 2;
+      receiver.position.set(0, 0.016, 0.02);
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.010, 0.012, 0.60, 10), bluedMat);
+      barrel.rotation.x = Math.PI / 2;
+      barrel.position.set(0, 0.016, -0.36);
+      const internalMag = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.036, 0.095), bluedMat);
+      internalMag.position.set(0, -0.044, -0.01);
+      addTriggerGuard(0.08, -0.034);
+
+      // Straight Mosin bolt handle with polished steel bolt body & round ball knob
+      const boltGroup = new THREE.Group();
+      const boltBody = new THREE.Mesh(new THREE.CylinderGeometry(0.010, 0.010, 0.10, 8), steelMat);
+      boltBody.rotation.x = Math.PI / 2;
+      boltBody.position.set(-0.022, 0.0, 0.0);
+      const boltStem = new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.008, 0.009), steelMat);
+      const boltKnob = new THREE.Mesh(new THREE.SphereGeometry(0.011, 8, 8), steelMat);
+      boltKnob.position.set(0.022, 0.0, 0);
+      boltGroup.add(boltBody, boltStem, boltKnob);
+      boltGroup.position.set(0.022, 0.018, 0.03);
+      this.boltMesh = boltGroup;
+      this.boltRestPos.copy(boltGroup.position);
+
+      // 5-round Brass Stripper Clip (hidden normally; animates into top of open receiver on reload!)
+      const clipGroup = new THREE.Group();
+      const clipRail = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.010, 0.068), steelMat);
+      clipRail.position.set(0, 0.028, 0);
+      clipGroup.add(clipRail);
+      for (let c = 0; c < 5; c++) {
+        const round = new THREE.Mesh(new THREE.CylinderGeometry(0.0042, 0.0048, 0.056, 6), brassMat);
+        round.rotation.x = Math.PI / 2;
+        round.position.set(0, 0.020 - c * 0.009, 0);
+        clipGroup.add(round);
+      }
+      clipGroup.position.set(0, 0.032, 0.0);
+      clipGroup.visible = false;
+      clipGroup.userData.isStripperClip = true;
+      this.magMesh = clipGroup;
+      this.magRestPos.copy(clipGroup.position);
+
+      this.rightHand = this._createHand(true, 'grip');
+      this.rightHand.position.set(0.0, -0.048, 0.148);
+      this.leftHand = this._createHand(false, 'supportRifle');
+      this.leftHand.position.set(0.0, -0.026, -0.22);
+      this.leftHandRestPos.copy(this.leftHand.position);
+      this.leftHandRestRot.copy(this.leftHand.rotation);
+
+      g.add(
+        forend, upperHandguard, wristStock, buttStock, buttPlate,
+        bandRear, bandFront, cleaningRod, receiver, barrel, internalMag,
+        boltGroup, clipGroup, this.rightHand, this.leftHand
+      );
+
+      this.sightHeight = 0.040;
+      this.adsZ = -0.24;
+      this._addWeaponIronSights(g, 'mosin9130', this.sightHeight, hasOptic);
+      this.muzzleMesh.position.set(0, 0.016, -0.66);
+      this.muzzleFlash.position.set(0, 0.02, -0.70);
+    } else if (weaponDef.id === 'awm338') {
+      // AWM .338 True Bolt-Action Precision Sniper Rifle (Accuracy International Thumbhole Chassis)
+      const chassisMat = new THREE.MeshLambertMaterial({ color: 0x3b4834 });
+      const darkChassis = new THREE.MeshLambertMaterial({ color: 0x1a1e1c });
+
+      const forend = new THREE.Mesh(new THREE.BoxGeometry(0.048, 0.056, 0.48), chassisMat);
+      forend.position.set(0, -0.012, -0.06);
+      const receiver = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.044, 0.26), darkMat);
+      receiver.position.set(0, 0.018, 0.04);
+      const topRail = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.008, 0.24), steelMat);
+      topRail.position.set(0, 0.042, 0.02);
+
+      // Thumbhole sniper chassis stock + adjustable cheek rest + rubber buttpad
+      const grip = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.098, 0.046), chassisMat);
+      grip.position.set(0, -0.068, 0.155);
+      grip.rotation.x = 0.22;
+      const thumbBridge = new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.022, 0.16), chassisMat);
+      thumbBridge.position.set(0, -0.092, 0.24);
+      const stockUpper = new THREE.Mesh(new THREE.BoxGeometry(0.040, 0.046, 0.22), chassisMat);
+      stockUpper.position.set(0, -0.008, 0.26);
+      const cheekRest = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.026, 0.12), darkChassis);
+      cheekRest.position.set(0, 0.022, 0.27);
+      const buttPad = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.112, 0.022), darkChassis);
+      buttPad.position.set(0, -0.042, 0.37);
+
+      // Heavy fluted barrel + rectangular multi-port .338 muzzle brake + folded bipod
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.016, 0.58, 10), darkMat);
+      barrel.rotation.x = Math.PI / 2;
+      barrel.position.set(0, 0.018, -0.40);
+      const muzzleBrake = new THREE.Mesh(new THREE.BoxGeometry(0.034, 0.026, 0.068), steelMat);
+      muzzleBrake.position.set(0, 0.018, -0.71);
+      const bipodMount = new THREE.Mesh(new THREE.BoxGeometry(0.044, 0.022, 0.036), darkChassis);
+      bipodMount.position.set(0, -0.048, -0.26);
+      const bipodL = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.20, 6), darkMat);
+      bipodL.rotation.x = Math.PI / 2;
+      bipodL.position.set(-0.026, -0.046, -0.36);
+      const bipodR = bipodL.clone();
+      bipodR.position.x = 0.026;
+
+      // Detachable 5-round .338 box magazine
+      const mag = new THREE.Group();
+      const magBody = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.098, 0.084), magMat);
+      const magTip = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.014, 0.072), brassMat);
+      magTip.position.set(0, 0.052, 0);
+      mag.add(magBody, magTip);
+      mag.position.set(0, -0.074, -0.02);
+      this.magMesh = mag;
+      this.magRestPos.copy(mag.position);
+      addTriggerGuard(0.095, -0.038);
+
+      // Oversized tactical sniper bolt handle
+      const boltGroup = new THREE.Group();
+      const boltStem = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.010, 0.011), steelMat);
+      const boltKnob = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.013, 0.024, 8), darkMat);
+      boltKnob.rotation.z = Math.PI / 2;
+      boltKnob.position.set(0.024, -0.004, 0);
+      boltGroup.add(boltStem, boltKnob);
+      boltGroup.position.set(0.024, 0.020, 0.045);
+      this.boltMesh = boltGroup;
+      this.boltRestPos.copy(boltGroup.position);
+
+      this.rightHand = this._createHand(true, 'grip');
+      this.rightHand.position.set(0.0, -0.058, 0.156);
+      this.leftHand = this._createHand(false, 'supportRifle');
+      this.leftHand.position.set(0.0, -0.032, -0.18);
+      this.leftHandRestPos.copy(this.leftHand.position);
+      this.leftHandRestRot.copy(this.leftHand.rotation);
+
+      g.add(
+        forend, receiver, topRail, grip, thumbBridge, stockUpper, cheekRest, buttPad,
+        barrel, muzzleBrake, bipodMount, bipodL, bipodR, mag, boltGroup,
+        this.rightHand, this.leftHand
+      );
+
+      this.sightHeight = 0.078;
+      this.adsZ = -0.20;
+      this._addWeaponIronSights(g, 'awm338', this.sightHeight, true);
+      if (!mods.optic || mods.optic === 'none') {
+        this._addScope(g, this.sightHeight, 'lpvo', 0.042);
+      }
+      this.muzzleMesh.position.set(0, 0.018, -0.75);
+      this.muzzleFlash.position.set(0, 0.02, -0.79);
     } else {
       // M24 Marksman Bolt-Action Rifle
       const chassis = new THREE.Mesh(new THREE.BoxGeometry(0.046, 0.054, 0.44), gunMat);
@@ -2098,7 +2291,50 @@ class WeaponSystem {
       }
     }
 
-    if (!this.isReloading && !this.isInspecting && this.boltMesh) {
+    let boltActionRoll = 0;
+    if (!this.isReloading && !this.isInspecting && !this.isPlating && !this.isHealing && weaponDef && weaponDef.boltAction) {
+      if (this.boltActionDelayTimer > 0) {
+        this.boltActionDelayTimer -= dt;
+        if (this.boltActionDelayTimer <= 0) {
+          this.boltActionTimer = this.boltActionDuration;
+          window.soundEngine.playRechamber();
+        }
+      } else if (this.boltActionTimer > 0) {
+        this.boltActionTimer = Math.max(0, this.boltActionTimer - dt);
+        const bt = 1 - (this.boltActionTimer / Math.max(0.01, this.boltActionDuration));
+        const smooth = (t) => t * t * (3 - 2 * t);
+        // 4-phase authentic bolt-action cycle: lift -> pull back -> push forward -> lock down
+        let lift = 0, pull = 0;
+        if (bt < 0.20) lift = smooth(bt / 0.20);
+        else if (bt < 0.80) lift = 1;
+        else lift = 1 - smooth((bt - 0.80) / 0.20);
+
+        if (bt >= 0.20 && bt < 0.52) pull = smooth((bt - 0.20) / 0.32);
+        else if (bt >= 0.52 && bt < 0.80) pull = 1 - smooth((bt - 0.52) / 0.28);
+
+        boltActionRoll = lift * 0.085;
+        if (this.boltMesh) {
+          this.boltMesh.rotation.z = this.boltRestRot.z + lift * 0.78;
+          this.boltMesh.position.z = this.boltRestPos.z + pull * 0.088;
+          if (this.rightHand) {
+            this.rightHand.position.set(
+              this.boltMesh.position.x + 0.022,
+              this.boltMesh.position.y + lift * 0.024 - 0.012,
+              this.boltMesh.position.z + 0.024
+            );
+          }
+        }
+      } else {
+        if (this.boltMesh) {
+          this.boltMesh.rotation.z = THREE.MathUtils.lerp(this.boltMesh.rotation.z, this.boltRestRot.z, Math.min(1, dt * 22));
+        }
+        if (this.rightHand) {
+          this.rightHand.position.lerp(this.rightHandRestPos, Math.min(1, dt * 20));
+        }
+      }
+    }
+
+    if (!this.isReloading && !this.isInspecting && this.boltMesh && !(weaponDef && weaponDef.boltAction && this.boltActionTimer > 0)) {
       const slotObj = player.getActiveWeaponSlot();
       const lockOpen = weaponDef && weaponDef.slot === 'secondary' && slotObj && slotObj.mag === 0;
       const offset = lockOpen ? 0.052 : (weaponDef && weaponDef.id === 'm870' ? pumpOffset : this.boltKick);
@@ -2220,7 +2456,7 @@ class WeaponSystem {
     const wWeight = !weaponDef ? 0.75
       : (weaponDef.slot === 'secondary' ? 0.72
       : (weaponDef.id === 'mp5k' ? 0.86
-      : (weaponDef.id === 'm24' || weaponDef.id === 'm870' ? 1.24 : 1.05)));
+      : (weaponDef.id === 'm24' || weaponDef.id === 'awm338' || weaponDef.id === 'mosin9130' || weaponDef.id === 'm870' ? 1.24 : 1.05)));
     const swayMult = (isAdsActive ? 0.28 : 1.0) * wWeight;
     const clampedDY = THREE.MathUtils.clamp(dYaw, -0.16, 0.16);
     const clampedDP = THREE.MathUtils.clamp(dPitch, -0.14, 0.14);
@@ -2240,7 +2476,7 @@ class WeaponSystem {
     const leanRotZ = isAdsActive ? (-player.lean * 0.13) : (-player.lean * 0.22);
     const targetRotX = (customRot && !this.isFistsMode ? activeRotOff.x : (sprintRotX + swayRotX + this.recoilPitch + this.lookSwayRotX + wallRotX)) + drawRot.x;
     const targetRotY = (customRot && !this.isFistsMode ? activeRotOff.y : (sprintRotY + slideCantY + this.recoilYaw + this.lookSwayRotY + wallRotY + leanCantY)) + drawRot.y;
-    const targetRotZ = (customRot && !this.isFistsMode ? activeRotOff.z : (sprintRotZ + swayRotZ + slideCantZ + this.recoilRoll + this.lookSwayRotZ + wallRotZ + leanRotZ)) + drawRot.z;
+    const targetRotZ = (customRot && !this.isFistsMode ? activeRotOff.z : (sprintRotZ + swayRotZ + slideCantZ + boltActionRoll + this.recoilRoll + this.lookSwayRotZ + wallRotZ + leanRotZ)) + drawRot.z;
 
     // MW2/DMZ One-Handed High-Port Tactical Sprint: weapon held UP in right hand, left fist pumping apart!
     // When in Fists mode, center the viewmodel horizontally so both hands come evenly from bottom-left & bottom-right!
@@ -2817,7 +3053,105 @@ class WeaponSystem {
       return;
     }
 
-    if (id === 'm24') {
+    if (id === 'mosin9130') {
+      // M91/30 Mosin-Nagant: Open Bolt -> Insert 5-Round Brass Stripper Clip From Top -> Press Rounds Down -> Flick Clip -> Close Bolt!
+      if (p > 0.06 && !this.reloadSfxFlags.magOut) {
+        this.reloadSfxFlags.magOut = true;
+        window.soundEngine.playRechamber();
+      }
+      if (p > 0.44 && !this.reloadSfxFlags.magIn) {
+        this.reloadSfxFlags.magIn = true;
+        window.soundEngine.playMagIn();
+      }
+      if (p > 0.72 && !this.reloadSfxFlags.rack) {
+        this.reloadSfxFlags.rack = true;
+        window.soundEngine.playRechamber();
+      }
+
+      if (p < 0.22) {
+        // Phase 1: Lift & pull straight bolt all the way back to expose top receiver bridge
+        const rawT = p / 0.22;
+        const lift = smooth(Math.min(1, rawT / 0.45));
+        const pull = rawT > 0.40 ? smooth((rawT - 0.40) / 0.60) : 0;
+        restLeftHand();
+        pos.x = -0.06 * lift; pos.y = 0.05 * lift;
+        rot.x = 0.14 * lift; rot.y = 0.24 * lift; rot.z = 0.22 * lift;
+        if (this.magMesh) this.magMesh.visible = false;
+        if (this.boltMesh) {
+          this.boltMesh.rotation.z = lift * 0.80;
+          this.boltMesh.position.z = this.boltRestPos.z + pull * 0.095;
+          moveRightHand(this.boltMesh.position.x + 0.022, this.boltMesh.position.y + lift * 0.022, this.boltMesh.position.z + 0.024);
+        }
+      } else if (p < 0.46) {
+        // Phase 2: Bring 5-round brass stripper clip down from above into receiver guide slot
+        const t = smooth((p - 0.22) / 0.24);
+        restLeftHand();
+        pos.x = -0.06; pos.y = 0.05;
+        rot.x = 0.16; rot.y = 0.28; rot.z = 0.26;
+        if (this.boltMesh) {
+          this.boltMesh.rotation.z = 0.80;
+          this.boltMesh.position.z = this.boltRestPos.z + 0.095;
+        }
+        if (this.magMesh) {
+          this.magMesh.visible = true;
+          this.magMesh.position.set(
+            THREE.MathUtils.lerp(0.11, 0.0, t),
+            THREE.MathUtils.lerp(0.16, 0.058, t),
+            this.magRestPos.z
+          );
+          this.magMesh.rotation.set(0, 0, THREE.MathUtils.lerp(-0.25, 0, t));
+          moveRightHand(this.magMesh.position.x + 0.022, this.magMesh.position.y + 0.024, this.magMesh.position.z + 0.02);
+        }
+      } else if (p < 0.68) {
+        // Phase 3: Thumb presses all 5 cartridges down into internal magazine, then clip flicks off
+        const rawT = (p - 0.46) / 0.22;
+        const press = smooth(Math.min(1, rawT / 0.72));
+        const jolt = rawT > 0.65 && rawT < 0.85 ? Math.sin(((rawT - 0.65) / 0.20) * Math.PI) : 0;
+        restLeftHand();
+        pos.x = -0.06; pos.y = 0.05 - jolt * 0.014;
+        rot.x = 0.16 - jolt * 0.04; rot.y = 0.28; rot.z = 0.26;
+        if (this.boltMesh) {
+          this.boltMesh.rotation.z = 0.80;
+          this.boltMesh.position.z = this.boltRestPos.z + 0.095;
+        }
+        if (this.magMesh) {
+          this.magMesh.visible = rawT < 0.82;
+          this.magMesh.position.set(0, THREE.MathUtils.lerp(0.058, 0.012, press), this.magRestPos.z);
+          moveRightHand(0.018, THREE.MathUtils.lerp(0.082, 0.036, press), this.magRestPos.z + 0.02);
+        }
+      } else if (p < 0.88) {
+        // Phase 4: Push bolt forward & lock handle down to chamber top round
+        const rawT = (p - 0.68) / 0.20;
+        const push = smooth(Math.min(1, rawT / 0.62));
+        const lock = rawT > 0.62 ? smooth((rawT - 0.62) / 0.38) : 0;
+        restLeftHand();
+        pos.x = THREE.MathUtils.lerp(-0.06, -0.03, rawT);
+        pos.y = THREE.MathUtils.lerp(0.05, 0.02, rawT);
+        rot.x = THREE.MathUtils.lerp(0.16, 0.06, rawT);
+        rot.y = THREE.MathUtils.lerp(0.28, 0.14, rawT);
+        rot.z = THREE.MathUtils.lerp(0.26, 0.12, rawT);
+        if (this.magMesh) this.magMesh.visible = false;
+        if (this.boltMesh) {
+          this.boltMesh.rotation.z = (1 - lock) * 0.80;
+          this.boltMesh.position.z = this.boltRestPos.z + (1 - push) * 0.095;
+          moveRightHand(this.boltMesh.position.x + 0.022, this.boltMesh.position.y + (1 - lock) * 0.022, this.boltMesh.position.z + 0.024);
+        }
+      } else {
+        const t = smooth((p - 0.88) / 0.12);
+        if (this.magMesh) this.magMesh.visible = false;
+        if (this.boltMesh) { this.boltMesh.position.copy(this.boltRestPos); this.boltMesh.rotation.copy(this.boltRestRot); }
+        restLeftHand();
+        restRightHand();
+        pos.x = THREE.MathUtils.lerp(-0.03, 0, t);
+        pos.y = THREE.MathUtils.lerp(0.02, 0, t);
+        rot.x = THREE.MathUtils.lerp(0.06, 0, t);
+        rot.y = THREE.MathUtils.lerp(0.14, 0, t);
+        rot.z = THREE.MathUtils.lerp(0.12, 0, t);
+      }
+      return;
+    }
+
+    if (id === 'm24' || id === 'awm338') {
       // M24 Marksman: Straight-axis box mag (Left Hand) + Right-Handed Bolt Lift, Pull, Push & Lock (Right Hand)
       if (p > 0.08 && !this.reloadSfxFlags.magOut) {
         this.reloadSfxFlags.magOut = true;
@@ -3004,7 +3338,7 @@ class WeaponSystem {
 
   _resetReloadParts() {
     if (this.magMesh) {
-      this.magMesh.visible = true;
+      this.magMesh.visible = !(this.magMesh.userData && this.magMesh.userData.isStripperClip);
       this.magMesh.position.copy(this.magRestPos);
       this.magMesh.rotation.copy(this.magRestRot);
     }
@@ -3729,6 +4063,8 @@ class WeaponSystem {
     this.lastShellLoadedIdx = -1;
     this.pumpDelayTimer = 0;
     this.pumpTimer = 0;
+    this.boltActionDelayTimer = 0;
+    this.boltActionTimer = 0;
     if (weaponDef.id === 'm870') {
       this.reloadDuration = 0.55 + this.reloadShellCount * 0.52 + (isEmpty ? 0.50 : 0);
     } else {
@@ -3743,6 +4079,8 @@ class WeaponSystem {
     this.reloadTimer = 0;
     this.pumpDelayTimer = 0;
     this.pumpTimer = 0;
+    this.boltActionDelayTimer = 0;
+    this.boltActionTimer = 0;
     this._resetReloadParts();
   }
 
@@ -3781,7 +4119,7 @@ class WeaponSystem {
     const hSign = Math.random() < 0.56 ? 1 : -1;
     // Physical rearward shoulder kick + controlled muzzle flip + horizontal recoil bounce
     this.recoilOffset = Math.min(0.06, this.recoilOffset + 0.022 * kickScale);
-    const baseZKick = def.id === 'm870' ? 0.036 : (def.id === 'm24' ? 0.030 : (def.slot === 'secondary' ? 0.018 : 0.022));
+    const baseZKick = def.id === 'm870' ? 0.036 : ((def.id === 'm24' || def.id === 'awm338' || def.id === 'mosin9130') ? 0.034 : (def.slot === 'secondary' ? 0.018 : 0.022));
     this.recoilZ = Math.min(0.056, this.recoilZ + baseZKick * kickScale);
     this.recoilPitch = Math.min(0.088, this.recoilPitch + def.recoil * 1.15 * kickScale);
     this.recoilYaw = THREE.MathUtils.clamp(this.recoilYaw + hSign * hRec * 1.35 * kickScale, -0.045, 0.045);
@@ -3793,6 +4131,9 @@ class WeaponSystem {
       this.boltKick = def.id === 'ak74m' ? 0.078 : (def.slot === 'secondary' ? 0.052 : 0.058);
     } else if (def.id === 'm870' && weaponSlotState.mag > 0) {
       this.pumpDelayTimer = 0.16;
+    } else if (def.boltAction && weaponSlotState.mag > 0) {
+      this.boltActionDuration = def.id === 'awm338' ? 0.72 : 0.60;
+      this.boltActionDelayTimer = 0.16;
     }
     this.muzzleFlash.intensity = 3.5;
     this.muzzleMesh.material.opacity = 0.92;

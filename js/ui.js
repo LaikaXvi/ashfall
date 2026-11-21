@@ -2895,7 +2895,7 @@ class GameUI {
 
     document.getElementById('btn-dev-grant').addEventListener('click', () => {
       this.profile.credits += 50000;
-      ['pm9', 'g17', 'mp5k', 'ak74m', 'm870', 'm24', 'vest_1plate', 'vest_2plate_gel', 'vest_2plate_helmet', 'vest_3plate', 'bag_large', 'bag_weapon', 'boss_key', 'melee_karambit', 'fu_dead_silence', 'ks_uav', 'ks_airstrike'].forEach(id => this.addToStash(id, 1));
+      ['pm9', 'g17', 'mp5k', 'ak74m', 'm870', 'mosin9130', 'm24', 'awm338', 'vest_1plate', 'vest_2plate_gel', 'vest_2plate_helmet', 'vest_3plate', 'bag_large', 'bag_weapon', 'boss_key', 'melee_karambit', 'fu_dead_silence', 'ks_uav', 'ks_airstrike'].forEach(id => this.addToStash(id, 1));
       this.addToStash('medkit', 5);
       this.addToStash('armor_plate', 6);
       this.addToStash('scrap_metal', 10);
@@ -3107,7 +3107,7 @@ class GameUI {
 
   _getItemShortTag(id, def) {
     const map = {
-      pm9: 'PM9', g17: 'G17', mp5k: 'MP5', ak74m: 'AK', m870: '870', m24: 'M24',
+      pm9: 'PM9', g17: 'G17', mp5k: 'MP5', ak74m: 'AK', m870: '870', m24: 'M24', mosin9130: 'M91', awm338: 'AWM',
       ammo_9x18: '918', ammo_9x19: '9MM', ammo_12g: '12G', ammo_545: '545', ammo_762: '762', ammo_rocket: 'RKT',
       medkit: 'MED', bandage: 'BND', painkillers: 'PK', self_revive: 'SR',
       armor_plate: 'PLT', vest_1plate: 'V1', vest_2plate: 'V2', vest_2plate_gel: 'V2G', vest_2plate_helmet: 'V2H', vest_3plate: 'V3',
@@ -4211,7 +4211,7 @@ class GameUI {
     if (key.includes('m870') || key.includes('shotgun')) {
       return '<svg viewBox="0 0 54 18" fill="currentColor" aria-hidden="true"><path d="M2 7.5l8.5-2h40.5v2h-11v1.2h5.5v1.8h-17v-.8h-6.5l-1.8 1.3h-3.5l-3.5 3.5H2.5l1.5-4.5H2v-2.5z"/></svg>';
     }
-    if (key.includes('m24') || key.includes('sniper')) {
+    if (key.includes('m24') || key.includes('awm') || key.includes('mosin') || key.includes('sniper')) {
       return '<svg viewBox="0 0 58 18" fill="currentColor" aria-hidden="true"><path d="M18 2h15v2.5h-3v1.5h26v1.8H35v1.4h-8.5l-2 1.8h-5.5l-3.5 3.5H2v-4l10-2.5h9V4.5h-3V2z"/></svg>';
     }
     if (key.includes('frag') || key.includes('grenade')) {

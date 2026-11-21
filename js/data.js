@@ -1,7 +1,7 @@
 // Game Item Database, 5-Tier Loot Rarity, Logical POI Tables, Workbench & Attachments
 // IMPORTANT: Update GAME_DATA.VERSION (and ?v= cache-busters in index.html) with EVERY new commit!
 window.GAME_DATA = {
-  VERSION: 'v1.74',
+  VERSION: 'v1.75',
   SQUAD_COLORS: ['#69f0ae', '#42a5f5', '#ffeb3b', '#ff69b4'], // Green, Blue, Yellow, Pink
 
   RARITIES: {
@@ -144,6 +144,7 @@ window.GAME_DATA = {
       damage: 88,
       fireRate: 1.05,
       auto: false,
+      boltAction: true,
       reloadTime: 2.6,
       spread: 0.035,
       adsSpread: 0.001,
@@ -153,6 +154,55 @@ window.GAME_DATA = {
       pellets: 1,
       color: 0x454a3a,
       desc: '7.62mm bolt-action rifle. High-zoom optics, lethal precision.'
+    },
+    mosin9130: {
+      id: 'mosin9130',
+      name: 'M91/30 Mosin',
+      type: 'weapon',
+      slot: 'primary',
+      rarity: 'rare',
+      value: 7400,
+      weight: 3.9,
+      ammoType: 'ammo_762',
+      magSize: 5,
+      damage: 94,
+      fireRate: 1.28,
+      auto: false,
+      boltAction: true,
+      clipFed: true,
+      reloadTime: 2.75,
+      spread: 0.036,
+      adsSpread: 0.0012,
+      recoil: 0.082,
+      adsFov: 44,
+      range: 250,
+      pellets: 1,
+      color: 0x6b4122,
+      desc: 'Classic 5-round stripper-clip bolt-action rifle. Hard-hitting iron sights.'
+    },
+    awm338: {
+      id: 'awm338',
+      name: 'AWM .338 Sniper',
+      type: 'weapon',
+      slot: 'primary',
+      rarity: 'epic',
+      value: 16500,
+      weight: 5.2,
+      ammoType: 'ammo_762',
+      magSize: 5,
+      damage: 118,
+      fireRate: 1.48,
+      auto: false,
+      boltAction: true,
+      reloadTime: 2.9,
+      spread: 0.042,
+      adsSpread: 0.0004,
+      recoil: 0.095,
+      adsFov: 24,
+      range: 340,
+      pellets: 1,
+      color: 0x3b4834,
+      desc: 'True bolt-action .338 precision sniper rifle. Devastating long-range stopping power.'
     },
 
     // === AMMO ===
@@ -599,7 +649,7 @@ window.GAME_DATA = {
   ],
 
   TRADER_STOCK: {
-    weapons: ['pm9', 'g17', 'mp5k', 'm870', 'ak74m', 'm24'],
+    weapons: ['pm9', 'g17', 'mp5k', 'm870', 'ak74m', 'mosin9130', 'm24', 'awm338'],
     ammo: ['ammo_9x18', 'ammo_9x19', 'ammo_12g', 'ammo_545', 'ammo_762', 'ammo_rocket'],
     gear: [
       'bandage', 'painkillers', 'medkit', 'self_revive', 'gas_mask', 'nvg_goggles', 'armor_plate',
@@ -672,6 +722,8 @@ window.GAME_DATA = {
       { id: 'intel_drive', min: 1, max: 1, w: 8 },
       { id: 'gpu_unit', min: 1, max: 1, w: 5 },
       { id: 'ak74m', min: 1, max: 1, w: 6 },
+      { id: 'mosin9130', min: 1, max: 1, w: 5 },
+      { id: 'awm338', min: 1, max: 1, w: 3 },
       { id: 'boss_key', min: 1, max: 1, w: 3 },
       { id: 'medkit', min: 1, max: 1, w: 5 }
     ],
@@ -692,7 +744,7 @@ window.GAME_DATA = {
     // Boss Encampment Key Room pools (ZERO common items!)
     boss_epic: ['vest_2plate_helmet', 'bag_large', 'bag_weapon', 'intel_drive', 'gold_watch', 'fu_dead_silence', 'ks_uav', 'melee_karambit', 'ammo_rocket'],
     boss_rare: ['vest_2plate_gel', 'bag_medium', 'water_filter', 'fuel_can', 'painkillers', 'medkit', 'fu_ammo_box', 'fu_trophy', 'ammo_762'],
-    boss_legendary_weapons: ['ak74m', 'm24', 'mp5k', 'm870']
+    boss_legendary_weapons: ['ak74m', 'm24', 'awm338', 'mosin9130', 'mp5k', 'm870']
   },
 
   getWeaponRarityAndValue(weaponId, mods = {}) {
@@ -739,7 +791,7 @@ window.GAME_DATA = {
 
     const isPistol = base.slot === 'secondary';
     const isShotgun = base.pellets && base.pellets > 1;
-    const isSniper = base.id === 'm24' || (base.adsFov && base.adsFov <= 35);
+    const isSniper = base.id === 'm24' || base.id === 'awm338' || base.id === 'mosin9130' || (base.adsFov && base.adsFov <= 35);
 
     for (const slot of chosenSlots) {
       const poolObj = this.ATTACHMENTS[slot];
