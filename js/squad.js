@@ -95,7 +95,17 @@ class SquadMate {
 
       built.chest.userData = { ally: this, part: 'torso' };
       built.skull.userData = { ally: this, part: 'head' };
-      this.hitboxes.push(built.chest, built.skull);
+      // Add full-body invisible PvP hitbox volumes (torso+legs & head) so teammate shots always register cleanly!
+      const bodyHitMat = new THREE.MeshBasicMaterial({ visible: false });
+      const bodyBox = new THREE.Mesh(new THREE.BoxGeometry(0.58, 1.32, 0.38), bodyHitMat);
+      bodyBox.position.set(0, 0.08, 0);
+      bodyBox.userData = { ally: this, part: 'torso' };
+      built.pelvis.add(bodyBox);
+      const headBox = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.32, 0.30), bodyHitMat);
+      headBox.position.set(0, 0.13, 0);
+      headBox.userData = { ally: this, part: 'head' };
+      built.head.add(headBox);
+      this.hitboxes.push(built.chest, built.skull, bodyBox, headBox);
 
       // Attach actual 3D equipped weapon model to right-hand weaponMount (held with both hands!)
       this._rebuildWeaponMesh(this.weaponId);

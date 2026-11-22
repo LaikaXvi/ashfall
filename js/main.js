@@ -438,7 +438,20 @@
               ui.addFeedMessage(`Revived by ${pkt.reviverName || 'SQUAD'}`, '#69f0ae');
             }
           } else if (pkt.type === 'pvp_hit') {
-            if (pkt.targetClientId === ui._clientId && window.SQUAD_PVP && player && !player.dead) {
+            if (pkt.targetClientId === ui._clientId && (window.SQUAD_PVP || pkt.forcePvp) && player && !player.dead) {
+              // Deduplicate hits in case both WebRTC and MQTT deliver the same hitId
+              if (pkt.hitId) {
+                if (!window._seenPvpHits) window._seenPvpHits = new Set();
+                if (window._seenPvpHits.has(pkt.hitId)) return;
+                window._seenPvpHits.add(pkt.hitId);
+                if (window._seenPvpHits.size > 120) window._seenPvpHits.clear();
+              }
+              if (pkt.forcePvp && !window.SQUAD_PVP) {
+                window.SQUAD_PVP = true;
+                window.DEV_MODE = false;
+                if (ui.syncSettingsUI) ui.syncSettingsUI();
+              }
+              player.godMode = false;
               ui.triggerDamageFlash();
               if (pkt.ax !== undefined) {
                 ui.triggerDirectionalDamage(player, new THREE.Vector3(pkt.ax, pkt.ay || 0, pkt.az));
@@ -449,6 +462,7 @@
                 weaponName: pkt.weaponName || 'AK-74M'
               };
               const res = player.takeDamage(pkt.dmg || 20, attackerInfo);
+              ui.updateHUD(player, raidTimeLeft, getActiveExtractProgress());
               if (res === 'downed') {
                 ui.addKillFeedEntry({
                   killerName: attackerInfo.name,
@@ -2422,9 +2436,12 @@
     }, isQuick, squadManager, (isHead, dmg, ally, attackerInfo) => {
       window.soundEngine.playHitmarker(isHead);
       ui.triggerHitmarker(isHead);
+      if (ally && ally.mw2Anim) ally.mw2Anim.triggerHitFlinch(Math.random() < 0.5 ? 1 : -1);
       if (ally && ally.isRemoteHuman && mpSession && mpSession.active && ally.clientId) {
         mpSession.sendEvent({
           type: 'pvp_hit',
+          hitId: `${ui._clientId}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          forcePvp: true,
           targetClientId: ally.clientId,
           dmg: dmg || 55,
           isHead: !!isHead,
@@ -2478,9 +2495,12 @@
     }, squadManager, (isHead, dmg, ally, attackerInfo) => {
       window.soundEngine.playHitmarker(isHead);
       ui.triggerHitmarker(isHead);
+      if (ally && ally.mw2Anim) ally.mw2Anim.triggerHitFlinch(Math.random() < 0.5 ? 1 : -1);
       if (ally && ally.isRemoteHuman && mpSession && mpSession.active && ally.clientId) {
         mpSession.sendEvent({
           type: 'pvp_hit',
+          hitId: `${ui._clientId}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          forcePvp: true,
           targetClientId: ally.clientId,
           dmg: dmg || 20,
           isHead: !!isHead,

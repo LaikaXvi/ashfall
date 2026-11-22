@@ -283,16 +283,24 @@ class MultiplayerSession {
     if (!this.active) return;
     const payload = { ...eventObj, fromId: this.myClientId, fromName: this.myCallsign };
     const json = JSON.stringify(payload);
-    let sentViaRtc = false;
-    for (const [, p] of this.peers.entries()) {
+    let targetReachedViaRtc = false;
+    let rtcCount = 0;
+    for (const [peerId, p] of this.peers.entries()) {
       if (p.dc && p.dc.readyState === 'open') {
         try {
           p.dc.send(json);
-          sentViaRtc = true;
+          rtcCount++;
+          if (eventObj.targetClientId && peerId === eventObj.targetClientId) {
+            targetReachedViaRtc = true;
+          }
         } catch (e) {}
       }
     }
-    if (!sentViaRtc) {
+    // Always fall back to MQTT signal if target peer isn't on an open WebRTC channel (or not all party members are on RTC)
+    const needSignal = eventObj.targetClientId
+      ? !targetReachedViaRtc
+      : (rtcCount < Math.max(1, this.partyMembers.length));
+    if (needSignal) {
       this._postSignal(payload);
     }
   }

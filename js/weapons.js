@@ -4327,14 +4327,19 @@ class WeaponSystem {
 
     // Find crosshair aim convergence point so bullets physically spawn from muzzleWorld and converge cleanly onto sight zero!
     const camFwd = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion).normalize();
-    const aimRay = new THREE.Raycaster(origin, camFwd, 0.5, def.range);
+    const aimRay = new THREE.Raycaster(origin, camFwd, 0.25, def.range);
     const enemyMeshes = enemyManager.getHitboxMeshes();
     const allyMeshes = (window.SQUAD_PVP && squadManager && squadManager.getHitboxMeshes) ? squadManager.getHitboxMeshes() : [];
     const aimHitsW = aimRay.intersectObjects(world.shootableMeshes, false);
     const aimHitsE = aimRay.intersectObjects(enemyMeshes, false);
+    const aimHitsA = allyMeshes.length > 0 ? aimRay.intersectObjects(allyMeshes, false) : [];
     const aimDistW = aimHitsW.length > 0 ? aimHitsW[0].distance : def.range;
     const aimDistE = aimHitsE.length > 0 ? aimHitsE[0].distance : def.range;
-    const convDist = Math.max(4.5, Math.min(aimDistW, aimDistE, zeroDist));
+    const aimDistA = aimHitsA.length > 0 ? aimHitsA[0].distance : def.range;
+    const minTargetDist = Math.min(aimDistE, aimDistA);
+    const convDist = minTargetDist < def.range
+      ? Math.max(1.2, Math.min(aimDistW, minTargetDist, zeroDist))
+      : Math.max(4.5, Math.min(aimDistW, zeroDist));
     const aimPoint = origin.clone().addScaledVector(camFwd, convDist);
 
     for (let p = 0; p < def.pellets; p++) {
