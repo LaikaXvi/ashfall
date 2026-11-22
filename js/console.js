@@ -483,6 +483,22 @@ class DevConsole {
       }
     });
 
+    this.registerCommand('exfil', {
+      aliases: ['extract', 'evac'],
+      usage: '/exfil',
+      desc: 'Immediately extract from the current raid, keeping all found-in-raid items and gear.',
+      handler: () => {
+        if (!this._requireRaid()) return;
+        this.log('Initiating Dev Exfil — securing all found-in-raid items & gear...', 'ok');
+        this.close();
+        if (this.ctx.devExfil) {
+          this.ctx.devExfil();
+        } else if (typeof window.devExfilRaid === 'function') {
+          window.devExfilRaid();
+        }
+      }
+    });
+
     this.registerCommand('pvp', {
       usage: '/pvp [on|off]',
       desc: 'Toggle or set Squad PvP (enabling PvP disables Dev Mode for all squadmates).',

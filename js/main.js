@@ -161,6 +161,7 @@
     isInRaid: () => inRaid,
     isMatchHost: () => isMatchHost,
     getCallsign: () => getPlayerCallsign(),
+    devExfil: (opts) => devExfil(opts),
     onOpenChange: (opened) => {
       if (!inRaid) return;
       if (opened) {
@@ -178,6 +179,9 @@
   }) : null;
   window.devConsole = devConsole;
   const gamepad = new GamepadController();
+  window.gamepadController = gamepad;
+  window.isInRaid = () => inRaid;
+  window.devExfilRaid = (opts) => devExfil(opts);
   let padPaused = false;
   gamepad.onStatusChange = (connected) => {
     if (inRaid) {
@@ -605,10 +609,17 @@
       }
     };
     ui.addFeedMessage(`Deployed to ${zone.name}`, '#69f0ae');
+    if (ui && ui.syncUpdateBadges) ui.syncUpdateBadges();
     canvas.requestPointerLock();
   }
 
-  function endRaid(extracted) {
+  function devExfil(opts = {}) {
+    if (!inRaid || !player) return false;
+    endRaid(true, opts);
+    return true;
+  }
+
+  function endRaid(extracted, opts = {}) {
     if (mpSession) mpSession.stop();
     if (ui && ui.setSelfPartyReady) ui.setSelfPartyReady(false);
     if (inRaid) {
@@ -674,7 +685,26 @@
     }
 
     ui.profile.xp = (ui.profile.xp || 0) + raidXp;
+    if (opts && opts.skipSummary) {
+      // Still credit Active Duty Operator exfil streak & trait points before saving to localStorage
+      if (ui._ensureActiveDutyOperators) {
+        const ops = ui._ensureActiveDutyOperators();
+        const curOp = ops[ui.profile.activeOperatorIdx || 0];
+        if (curOp && extracted) {
+          const prevDt = ui._getDogtagInfo(curOp.exfilStreak || 0);
+          curOp.exfilStreak = Math.min(10, (curOp.exfilStreak || 0) + 1);
+          const nextDt = ui._getDogtagInfo(curOp.exfilStreak);
+          if (nextDt.levelNum > prevDt.levelNum) {
+            curOp.traitPoints = (curOp.traitPoints || 0) + 2 * (nextDt.levelNum - prevDt.levelNum);
+          }
+        }
+      }
+      ui.saveProfile();
+      if (ui && ui.syncUpdateBadges) ui.syncUpdateBadges();
+      return;
+    }
     ui.saveProfile();
+    if (ui && ui.syncUpdateBadges) ui.syncUpdateBadges();
     ui.showSummary(extracted, raidElapsed, raidKills, recovered, totalVal);
   }
 

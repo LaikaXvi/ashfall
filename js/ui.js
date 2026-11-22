@@ -234,7 +234,7 @@ class GameUI {
           : (this._lootPlayer && this._lootPlayer.backpack && this._lootPlayer.backpack[idx]);
         if (item) {
           this._hoveredSlot = { context: ctxName, item, idx, el: this._selectedEl, inputMode: opts.inputMode || 'keyboard', mode: 'all' };
-          if (opts.inputMode === 'gamepad') {
+          if (opts.inputMode === 'gamepad' && this._isControllerConnected()) {
             this.showItemPopout(this._selectedEl, ctxName, item, idx, { inputMode: 'gamepad', mode: 'all' });
           }
         }
@@ -242,6 +242,19 @@ class GameUI {
         this.hideItemPopout();
       }
     }
+  }
+
+  _isControllerConnected() {
+    if (window.gamepadController && window.gamepadController.connected) return true;
+    if (typeof navigator !== 'undefined' && navigator.getGamepads) {
+      try {
+        const pads = navigator.getGamepads();
+        for (const p of pads) {
+          if (p && p.connected) return true;
+        }
+      } catch (e) {}
+    }
+    return false;
   }
 
   clearSelection() {
@@ -1101,6 +1114,7 @@ class GameUI {
     if (!badge) return;
 
     let latestAvailable = null;
+    const raidBadge = document.getElementById('raid-update-badge');
     const parseVer = (v) => String(v || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0);
     const isNewer = (remote, local) => {
       if (!remote || !local || remote === local) return false;
@@ -1115,27 +1129,58 @@ class GameUI {
       return remote !== local;
     };
 
+    const syncUpdateBadges = () => {
+      if (!latestAvailable) {
+        if (raidBadge) raidBadge.classList.add('hidden');
+        return;
+      }
+      const inRaidNow = typeof window.isInRaid === 'function' && window.isInRaid();
+      badge.textContent = `NEW VERSION AVAILABLE (${latestAvailable})`;
+      badge.style.opacity = '1';
+      badge.classList.remove('hidden');
+      if (raidBadge) {
+        if (inRaidNow) {
+          raidBadge.textContent = `NEW VERSION (${latestAvailable}) — EXFIL & UPDATE`;
+          raidBadge.style.opacity = '1';
+          raidBadge.classList.remove('hidden');
+        } else {
+          raidBadge.classList.add('hidden');
+        }
+      }
+    };
+    this.syncUpdateBadges = syncUpdateBadges;
+
     const reportRemoteVersion = (remoteVer) => {
       const localVer = (window.GAME_DATA && GAME_DATA.VERSION) || (verBadge && verBadge.textContent.trim()) || '';
       if (!remoteVer || !localVer) return false;
       if (isNewer(remoteVer, localVer)) {
+        const isFirstNotice = !latestAvailable;
         if (!latestAvailable || isNewer(remoteVer, latestAvailable)) {
           latestAvailable = remoteVer;
         }
-        badge.textContent = `NEW VERSION AVAILABLE (${latestAvailable})`;
-        badge.style.opacity = '1';
-        badge.classList.remove('hidden');
+        syncUpdateBadges();
+        if (isFirstNotice && typeof window.isInRaid === 'function' && window.isInRaid() && this.addFeedMessage) {
+          this.addFeedMessage(`Update ${latestAvailable} available — press ESC & click EXFIL & UPDATE to keep loot`, '#69f0ae');
+        }
         return true;
       }
       return false;
     };
     this._reportRemoteVersion = reportRemoteVersion;
 
-    badge.addEventListener('click', () => {
+    const triggerUpdateReload = () => {
+      const inRaidNow = typeof window.isInRaid === 'function' && window.isInRaid();
+      if (inRaidNow && typeof window.devExfilRaid === 'function') {
+        if (raidBadge) raidBadge.textContent = 'EXFIL SAVED — RELOADING...';
+        window.devExfilRaid({ skipSummary: true });
+      }
       const bust = encodeURIComponent(latestAvailable || Date.now());
       const base = window.location.origin + window.location.pathname;
       window.location.replace(`${base}?v=${bust}&t=${Date.now()}`);
-    });
+    };
+
+    badge.addEventListener('click', triggerUpdateReload);
+    if (raidBadge) raidBadge.addEventListener('click', triggerUpdateReload);
 
     const extractVer = (txt) => {
       if (!txt) return null;
@@ -7868,7 +7913,8 @@ class GameUI {
         : document.querySelector('#loot-backpack-items .inv-slot');
     }
     if (restoredEl && this.setSelectedElement) {
-      this.setSelectedElement(restoredEl, { inputMode: 'gamepad', silent: true });
+      const ctrlConnected = this._isControllerConnected();
+      this.setSelectedElement(restoredEl, { inputMode: ctrlConnected ? 'gamepad' : 'auto', silent: true });
     }
   }
 

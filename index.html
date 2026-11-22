@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ASHFALL // 3D Extraction Looter-Shooter</title>
-  <link rel="stylesheet" href="css/style.css?v=202" />
+  <link rel="stylesheet" href="css/style.css?v=226" />
   <!-- Three.js r128 UMD for zero-build compatibility (works on both http:// and file://) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
@@ -28,12 +28,15 @@
   <div id="ads-vignette"></div>
   <div id="damage-indicator-container"></div>
 
+  <!-- Global In-Raid Update Notifier (visible during raids; performs safe Dev Exfil & refresh) -->
+  <button id="raid-update-badge" class="menu-update-badge raid-update-badge hidden" title="Safe Dev Exfil (keeps all found-in-raid items &amp; gear) and reload into the latest version">NEW VERSION — EXFIL &amp; UPDATE</button>
+
   <!-- ==================== MAIN MENU & UTILITY TABS ==================== -->
   <div id="hideout-screen" class="screen active">
     <!-- IMPORTANT: Update version in GAME_DATA.VERSION (js/data.js) and here with EVERY new commit -->
     <div class="menu-version-stack">
       <button id="menu-update-badge" class="menu-update-badge hidden" title="Click to reload into the latest version">NEW VERSION AVAILABLE</button>
-      <div id="menu-version-badge" class="menu-version-badge">v2.25</div>
+      <div id="menu-version-badge" class="menu-version-badge">v2.26</div>
     </div>
     <!-- Minimal Sub-Menu Top Bar (Top-Left Back Button only — no redundant nav band) -->
     <header id="menu-topbar" class="hideout-header hidden">
@@ -1204,7 +1207,7 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION with every new commit) -->
-  <script src="js/data.js?v=225"></script>
+  <script src="js/data.js?v=226"></script>
   <script src="js/animation.js?v=211"></script>
   <script src="js/net.js?v=123"></script>
   <script src="js/sfx_samples.js?v=21"></script>
@@ -1221,8 +1224,8 @@
   <script src="js/gunsmith.js?v=195"></script>
   <script src="js/matchmaking.js?v=215"></script>
   <script src="js/hideout.js?v=223"></script>
-  <script src="js/ui.js?v=225"></script>
-  <script src="js/console.js?v=206"></script>
-  <script src="js/main.js?v=225"></script>
+  <script src="js/ui.js?v=226"></script>
+  <script src="js/console.js?v=226"></script>
+  <script src="js/main.js?v=226"></script>
 </body>
 </html>
