@@ -1634,7 +1634,7 @@
   const _ksFlashGeo = new THREE.RingGeometry(0.45, 1.05, 14);
   _ksFlashGeo.rotateX(-Math.PI / 2);
 
-  function _spawnAirstrikeExplosion(pos, applyDamage = true, callerName = null, fromJetPos = null) {
+  function _spawnAirstrikeExplosion(pos, applyDamage = true, callerName = null, fromJetPos = null, passIdx = 0, passHitSet = null) {
     if (!scene) return;
     const dist = player ? player.position.distanceTo(pos) : 25;
     if (window.soundEngine && window.soundEngine.playCannonImpact) {
@@ -1673,8 +1673,9 @@
     // No dynamic PointLight -> ZERO WebGL shader recompilations & butter-smooth FPS!
     ksExplosions.push({ fireMesh, flashMesh, smokeMesh, light: null, age: 0, maxAge: 1.35 });
 
-    // Dense 30mm HEI strafing corridor AoE damage (host/caller authoritative to avoid double damage)
-    const blastRadius = 8.5;
+    // Dense 30mm HEI strafing corridor AoE damage (Unified Operator Lethality: Pass 1 = Break Armor + Half HP, Pass 2 = Lethal Kill!)
+    const blastRadius = 9.0;
+    const hitSet = passHitSet || new Set();
     if (applyDamage && enemyManager && enemyManager.enemies) {
       const attackerInfo = {
         name: callerName || getPlayerCallsign(),
@@ -1683,26 +1684,59 @@
         weaponName: 'A-10 Warthog 30mm'
       };
       for (const e of enemyManager.enemies) {
-        if (e.dead) continue;
+        if (e.dead || hitSet.has(e)) continue;
         const d = Math.hypot(e.position.x - pos.x, e.position.z - pos.z);
         if (d <= blastRadius) {
-          const falloff = 1 - (d / blastRadius) * 0.55;
-          const dmg = Math.round(92 * falloff);
-          const killed = e.takeDamage(dmg, pos, attackerInfo);
-          if (!callerName) onThrowableHit(false, killed, e, attackerInfo);
+          hitSet.add(e);
+          if (e.isOperator) {
+            if (passIdx === 0) {
+              // Pass 1: Break all armor & drop to half health!
+              if (e.armor > 0) { e.armor = 0; e.justBrokeArmor = true; e.lastHitArmor = true; }
+              const halfHp = Math.max(1, Math.round(e.maxHp * 0.5));
+              if (e.hp > halfHp) e.hp = halfHp;
+              e.timeSinceDamaged = 0;
+              if (e.mw2Anim) e.mw2Anim.triggerHitFlinch(1);
+              if (!callerName) onThrowableHit(false, false, e, attackerInfo);
+            } else {
+              // Pass 2: Lethal kill!
+              e.armor = 0;
+              e.isDowned = false;
+              e.die();
+              if (!callerName) onThrowableHit(false, true, e, attackerInfo);
+            }
+          } else {
+            const falloff = 1 - (d / blastRadius) * 0.45;
+            const dmg = Math.round(125 * falloff);
+            const killed = e.takeDamage(dmg, pos, attackerInfo);
+            if (!callerName) onThrowableHit(false, killed, e, attackerInfo);
+          }
         }
       }
     }
 
-    // Mild self-damage if player stands directly inside the 30mm strafing corridor
-    if (player && !player.dead && !player.isDowned) {
+    // Unified Airstrike Lethality on Player (Pass 1 = Break Armor + Half HP, Pass 2 = Lethal Kill!)
+    if (player && !player.dead && !hitSet.has('player')) {
       const pd = Math.hypot(player.position.x - pos.x, player.position.z - pos.z);
-      if (pd < 6.5) {
-        const selfDmg = Math.round(24 * (1 - pd / 6.5));
-        if (selfDmg > 3) {
-          ui.triggerDamageFlash();
-          player.takeDamage(selfDmg, { name: 'A-10 CAS', weaponId: 'ks_airstrike', weaponName: 'A-10 Warthog 30mm' });
+      if (pd <= blastRadius) {
+        hitSet.add('player');
+        ui.triggerDamageFlash();
+        if (passIdx === 0) {
+          // Pass 1: Break all armor & drop to half health!
+          player.armor = 0;
+          const halfHp = Math.max(1, Math.round(player.maxHp * 0.5));
+          if (player.hp > halfHp) player.hp = halfHp;
+          player.timeSinceDamaged = 0;
+          ui.showCenterToast('A-10 PASS 1 — ARMOR SHATTERED!', '#ff6b6b');
+        } else {
+          // Pass 2: Lethal kill!
+          player.armor = 0;
+          player.isDowned = false;
+          player.takeDamage(999, { name: 'A-10 CAS', weaponId: 'ks_airstrike', weaponName: 'A-10 Warthog 30mm' });
+          if (player.isDowned) {
+            player.takeDamage(999, { name: 'A-10 CAS', weaponId: 'ks_airstrike', weaponName: 'A-10 Warthog 30mm' });
+          }
         }
+        ui.updateHUD(player, raidTimeLeft, getActiveExtractProgress());
       }
     }
   }
@@ -2348,7 +2382,8 @@
         for (const bomb of jet.bombs) {
           if (!bomb.detonated && st.elapsed >= bomb.triggerTime) {
             bomb.detonated = true;
-            _spawnAirstrikeExplosion(bomb.pos, st.applyDamage !== false, st.callerName || null, jetNoseWorld);
+            if (!jet.passHitSet) jet.passHitSet = new Set();
+            _spawnAirstrikeExplosion(bomb.pos, st.applyDamage !== false, st.callerName || null, jetNoseWorld, jet.passIdx, jet.passHitSet);
           }
         }
       }

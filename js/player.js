@@ -285,9 +285,10 @@ class Player {
     this.padSprint = false;
     this.padLean = 0;
 
-    // Vitals (DMZ 1-3 Plate Armor System + Tourniquet Disabled/Temporary Health & 2.5s Regen)
-    this.maxHp = 100;
-    this.hp = 100;
+    // Vitals (Unified Operator Health: 75 HP + 35 Armor per Plate + Tourniquet Disabled/Temporary Health & 2.5s Regen)
+    const opStats = GAME_DATA.OPERATOR_STATS || { maxHp: 75, plateArmor: 35 };
+    this.maxHp = opStats.maxHp;
+    this.hp = opStats.maxHp;
     this.disabledHp = 0;           // Red disabled max HP segment from Tourniquet self-revives
     this.tempHealthRestored = 0;   // Yellow temporarily restored HP from Bandage / Painkillers
     this.tempHealthTimer = 0;      // Remaining duration of Bandage / Painkiller temp HP
@@ -310,8 +311,9 @@ class Player {
     this.isRevivingAlly = false;
     this.isDraggingAlly = false;
     const armorDef = loadoutState.armor ? GAME_DATA.ITEMS[loadoutState.armor] : null;
+    const perPlate = (GAME_DATA.OPERATOR_STATS && GAME_DATA.OPERATOR_STATS.plateArmor) || 35;
     this.plateSlots = armorDef ? (armorDef.plateSlots || Math.ceil(armorDef.maxArmor / 50)) : 0;
-    this.maxArmor = this.plateSlots * 50;
+    this.maxArmor = this.plateSlots * perPlate;
     this.armor = this.maxArmor;
     this.armorId = loadoutState.armor || null;
     this.plates = Math.min(6, loadoutState.plates !== undefined ? loadoutState.plates : 3);

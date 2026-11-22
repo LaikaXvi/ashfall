@@ -13,6 +13,7 @@ class GamepadController {
     this.adsLean = 0; // -1 left, 0 center, +1 right (toggled via L3/R3 while ADS)
     this.deadzone = 0.15;
     this._wasSliding = false;
+    this._lockUntilRelease = new Set(); // Prevents UI A/B presses from leaking into gameplay Jump/Crouch!
     this._slideRumbleTimer = 0;
     this._menuNavCooldown = 0;
     this._focusedEl = null;
@@ -231,6 +232,15 @@ class GamepadController {
     const bInspect = gb.inspect ?? 14;
     const bKillstreak = gb.killstreak ?? 15;
 
+    // Clear any button release latches once the player physically releases the button
+    if (this._lockUntilRelease && this._lockUntilRelease.size > 0) {
+      for (const idx of Array.from(this._lockUntilRelease)) {
+        if (!this._isDown(pad, idx)) {
+          this._lockUntilRelease.delete(idx);
+        }
+      }
+    }
+
     // Start (9): Toggle Pause
     if (this._justPressed(pad, bPause) && actions.togglePause) {
       actions.togglePause();
@@ -349,8 +359,9 @@ class GamepadController {
         if (ui && ui.finishDragToSelected) ui.finishDragToSelected();
       }
 
-      // A (0) / Cross: Confirm highlighted weapon-switch slot, drop weapon (on Primary/Secondary/BagWeapon), or activate slot
+      // A (0) / Cross: Stow / Accept / Confirm in Inventory & Container UI
       if (this._justPressed(pad, 0) && ui && !this._modalRtDragging) {
+        this._lockUntilRelease.add(0);
         const handledInv = ui.handleGamepadInventoryAction ? ui.handleGamepadInventoryAction('a_cross') : false;
         if (!handledInv) {
           ui.activateSelectedElement({ inputMode: 'gamepad' });
@@ -367,8 +378,9 @@ class GamepadController {
           ui.handleSlotAction('drop');
         }
       }
-      // B (1) / Circle: Cancel weapon-switch picker -> Cancel drag -> Close Backpack/Container menu
+      // B (1) / Circle: Close / Back (Cancel weapon-switch picker -> Cancel drag -> Close Backpack/Container menu)
       if (this._justPressed(pad, 1)) {
+        this._lockUntilRelease.add(1);
         if (ui && ui._raidWeaponPick && ui.closeRaidWeaponPickMode) {
           ui.closeRaidWeaponPickMode();
         } else if (this._modalRtDragging) {
@@ -460,16 +472,18 @@ class GamepadController {
     }
     player.padSprint = this.sprintToggled && player.padMoveY > 0.35;
 
-    // === A / CROSS: JUMP / STAND UP / SLIDE-CANCEL ===
-    if (this._justPressed(pad, bJump)) {
+    // === A / CROSS: JUMP / STAND UP / SLIDE-CANCEL (Strictly ignored if latched from closing UI!) ===
+    if (!this._lockUntilRelease.has(bJump) && this._justPressed(pad, bJump)) {
       player.onJumpKeyDown();
     }
 
-    // === B / CIRCLE: TAP = CROUCH / SLIDE, HOLD = PRONE ===
-    if (this._justPressed(pad, bCrouch)) {
-      player.onCrouchKeyDown();
-    } else if (this._justReleased(pad, bCrouch)) {
-      player.onCrouchKeyUp();
+    // === B / CIRCLE: TAP = CROUCH / SLIDE, HOLD = PRONE (Strictly ignored if latched from closing UI!) ===
+    if (!this._lockUntilRelease.has(bCrouch)) {
+      if (this._justPressed(pad, bCrouch)) {
+        player.onCrouchKeyDown();
+      } else if (this._justReleased(pad, bCrouch)) {
+        player.onCrouchKeyUp();
+      }
     }
 
     // === X / SQUARE: LOOT / INTERACT OR RELOAD ===
@@ -668,6 +682,7 @@ class GamepadController {
 
       // A (0) / Cross: Universal Accept / Confirm on the currently highlighted menu button, card, or inventory slot!
       if (this._justPressed(pad, 0) && !this._menuRtDragging) {
+        this._lockUntilRelease.add(0);
         if (!ui._selectedEl || !document.body.contains(ui._selectedEl)) {
           ui.ensureInitialSelection({ inputMode: 'gamepad' });
         }
@@ -700,6 +715,7 @@ class GamepadController {
 
     // B (1) / Circle: Universal Escape-equivalent — pops the topmost open UI layer one step at a time!
     if (this._justPressed(pad, 1)) {
+      this._lockUntilRelease.add(1);
       const opCtx = document.getElementById('op-context-menu');
       const opSkin = document.getElementById('op-skin-modal');
       const opTraits = document.getElementById('op-traits-modal');

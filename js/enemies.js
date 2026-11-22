@@ -171,8 +171,10 @@ class Enemy {
       // Real vest armor + player-identical health/tourniquet/self-revive/backpack capacity state!
       const vestDef = GAME_DATA.ITEMS[this.operatorEquipment.armor];
       const bagDef = GAME_DATA.ITEMS[this.operatorEquipment.backpack];
+      const perPlate = (GAME_DATA.OPERATOR_STATS && GAME_DATA.OPERATOR_STATS.plateArmor) || 35;
+      const plateSlots = vestDef ? (vestDef.plateSlots || Math.ceil((vestDef.maxArmor || 100) / 50)) : 2;
       this.bagCapacity = (bagDef && bagDef.slots) || 8;
-      this.maxArmor = vestDef ? (vestDef.maxArmor || ((vestDef.plateSlots || 2) * 50)) : 100;
+      this.maxArmor = plateSlots * perPlate;
       this.armor = this.maxArmor;
       this.disabledHp = 0;         // Red disabled max HP from Tourniquet self-revives (identical to player!)
       this.tempHealthRestored = 0; // Yellow temporary HP from Bandage / Painkillers
