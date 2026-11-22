@@ -3038,6 +3038,7 @@
         weaponSystem,
         throwableSystem,
         enemyManager,
+        squadManager,
         ui,
         isPaused,
         isModalOpen,

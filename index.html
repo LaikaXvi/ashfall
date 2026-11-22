@@ -33,7 +33,7 @@
     <!-- IMPORTANT: Update version in GAME_DATA.VERSION (js/data.js) and here with EVERY new commit -->
     <div class="menu-version-stack">
       <button id="menu-update-badge" class="menu-update-badge hidden" title="Click to reload into the latest version">NEW VERSION AVAILABLE</button>
-      <div id="menu-version-badge" class="menu-version-badge">v2.24</div>
+      <div id="menu-version-badge" class="menu-version-badge">v2.25</div>
     </div>
     <!-- Minimal Sub-Menu Top Bar (Top-Left Back Button only — no redundant nav band) -->
     <header id="menu-topbar" class="hideout-header hidden">
@@ -602,11 +602,41 @@
                 <div class="setting-row">
                   <div>
                     <div class="setting-title">CONTROLLER SENSITIVITY</div>
-                    <div class="setting-desc">Adjust right-stick aim &amp; look rotation speed (0.4x – 2.5x)</div>
+                    <div class="setting-desc">Adjust right-stick aim &amp; look rotation speed (0.2x – 3.0x)</div>
                   </div>
                   <div style="display:flex;align-items:center;gap:10px;">
-                    <input id="setting-ctrl-sens" type="range" min="0.4" max="2.5" step="0.1" value="1.0" />
-                    <span id="setting-ctrl-sens-val" class="accent" style="min-width:38px;text-align:right;font-weight:700;">1.0x</span>
+                    <input id="setting-ctrl-sens" type="range" min="0.2" max="3.0" step="0.1" value="1.0" />
+                    <span id="setting-ctrl-sens-val" class="accent" style="min-width:42px;text-align:right;font-weight:700;">1.0x</span>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-title">LEFT STICK DEADZONE</div>
+                    <div class="setting-desc">Inner deadzone for movement stick drift prevention (2% – 40%)</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <input id="setting-ctrl-ls-dz" type="range" min="0.02" max="0.40" step="0.01" value="0.12" />
+                    <span id="setting-ctrl-ls-dz-val" class="accent" style="min-width:42px;text-align:right;font-weight:700;">12%</span>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-title">RIGHT STICK DEADZONE</div>
+                    <div class="setting-desc">Inner deadzone for aim stick precision &amp; drift elimination (2% – 40%)</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <input id="setting-ctrl-rs-dz" type="range" min="0.02" max="0.40" step="0.01" value="0.10" />
+                    <span id="setting-ctrl-rs-dz-val" class="accent" style="min-width:42px;text-align:right;font-weight:700;">10%</span>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-title">ROTATIONAL AIM ASSIST</div>
+                    <div class="setting-desc">CoD-style rotational tracking &amp; ADS target slowdown (0% = Off, 100% = Full)</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <input id="setting-ctrl-aa" type="range" min="0" max="100" step="5" value="85" />
+                    <span id="setting-ctrl-aa-val" class="accent" style="min-width:42px;text-align:right;font-weight:700;">85%</span>
                   </div>
                 </div>
                 <div style="margin-top:6px;">
@@ -1174,7 +1204,7 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION with every new commit) -->
-  <script src="js/data.js?v=224"></script>
+  <script src="js/data.js?v=225"></script>
   <script src="js/animation.js?v=211"></script>
   <script src="js/net.js?v=123"></script>
   <script src="js/sfx_samples.js?v=21"></script>
@@ -1187,12 +1217,12 @@
   <script src="js/squad.js?v=216"></script>
   <script src="js/multiplayer.js?v=218"></script>
   <script src="js/player.js?v=224"></script>
-  <script src="js/gamepad.js?v=223"></script>
+  <script src="js/gamepad.js?v=225"></script>
   <script src="js/gunsmith.js?v=195"></script>
   <script src="js/matchmaking.js?v=215"></script>
   <script src="js/hideout.js?v=223"></script>
-  <script src="js/ui.js?v=219"></script>
+  <script src="js/ui.js?v=225"></script>
   <script src="js/console.js?v=206"></script>
-  <script src="js/main.js?v=223"></script>
+  <script src="js/main.js?v=225"></script>
 </body>
 </html>

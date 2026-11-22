@@ -17,6 +17,9 @@ window.CONTROLLER_SENS = (() => {
     return Number.isFinite(v) ? v : 1.0;
   } catch (e) { return 1.0; }
 })();
+window.CONTROLLER_LS_DEADZONE = (typeof _savedUserSettings.ctrlLsDz === 'number' && Number.isFinite(_savedUserSettings.ctrlLsDz)) ? _savedUserSettings.ctrlLsDz : 0.12;
+window.CONTROLLER_RS_DEADZONE = (typeof _savedUserSettings.ctrlRsDz === 'number' && Number.isFinite(_savedUserSettings.ctrlRsDz)) ? _savedUserSettings.ctrlRsDz : 0.10;
+window.CONTROLLER_AA_STRENGTH = (typeof _savedUserSettings.ctrlAa === 'number' && Number.isFinite(_savedUserSettings.ctrlAa)) ? _savedUserSettings.ctrlAa : 0.85;
 window.GFX_SETTINGS = (() => {
   try {
     const parsed = _savedUserSettings.gfx || JSON.parse(localStorage.getItem('ashfall_gfx_settings') || 'null');
@@ -44,6 +47,9 @@ window.saveAllUserSettings = function saveAllUserSettings() {
       baseFov: window.BASE_FOV || 75,
       mouseSens: window.MOUSE_SENS || 1.0,
       ctrlSens: window.CONTROLLER_SENS || 1.0,
+      ctrlLsDz: window.CONTROLLER_LS_DEADZONE ?? 0.12,
+      ctrlRsDz: window.CONTROLLER_RS_DEADZONE ?? 0.10,
+      ctrlAa: window.CONTROLLER_AA_STRENGTH ?? 0.85,
       gfx: window.GFX_SETTINGS || { lod: 3, lighting: 3, shadows: 3, textures: 3 },
       devMode: !!window.DEV_MODE,
       squadPvp: !!window.SQUAD_PVP,
@@ -2648,6 +2654,24 @@ class GameUI {
       if (ctrlSensEl) ctrlSensEl.value = ctrlSens;
       if (ctrlSensVal) ctrlSensVal.textContent = `${ctrlSens.toFixed(1)}x`;
 
+      const lsDz = Number.isFinite(window.CONTROLLER_LS_DEADZONE) ? window.CONTROLLER_LS_DEADZONE : 0.14;
+      const lsDzEl = document.getElementById('setting-ctrl-ls-dz');
+      const lsDzVal = document.getElementById('setting-ctrl-ls-dz-val');
+      if (lsDzEl) lsDzEl.value = lsDz;
+      if (lsDzVal) lsDzVal.textContent = `${Math.round(lsDz * 100)}%`;
+
+      const rsDz = Number.isFinite(window.CONTROLLER_RS_DEADZONE) ? window.CONTROLLER_RS_DEADZONE : 0.14;
+      const rsDzEl = document.getElementById('setting-ctrl-rs-dz');
+      const rsDzVal = document.getElementById('setting-ctrl-rs-dz-val');
+      if (rsDzEl) rsDzEl.value = rsDz;
+      if (rsDzVal) rsDzVal.textContent = `${Math.round(rsDz * 100)}%`;
+
+      const aaStr = Number.isFinite(window.CONTROLLER_AA_STRENGTH) ? window.CONTROLLER_AA_STRENGTH : 1.0;
+      const aaEl = document.getElementById('setting-ctrl-aa');
+      const aaVal = document.getElementById('setting-ctrl-aa-val');
+      if (aaEl) aaEl.value = aaStr;
+      if (aaVal) aaVal.textContent = `${Math.round(aaStr * 100)}%`;
+
       const gfx = window.GFX_SETTINGS || { lod: 3, lighting: 3, shadows: 3, textures: 3 };
       const lvl4 = ['', 'LOW', 'MEDIUM', 'HIGH', 'ULTRA'];
       const lvlShadow = ['OFF', 'LOW', 'MEDIUM', 'HIGH'];
@@ -2698,6 +2722,30 @@ class GameUI {
     if (ctrlSensInp) {
       ctrlSensInp.addEventListener('input', () => {
         window.CONTROLLER_SENS = parseFloat(ctrlSensInp.value) || 1.0;
+        if (window.saveAllUserSettings) window.saveAllUserSettings();
+        syncSettingsUI();
+      });
+    }
+    const lsDzInp = document.getElementById('setting-ctrl-ls-dz');
+    if (lsDzInp) {
+      lsDzInp.addEventListener('input', () => {
+        window.CONTROLLER_LS_DEADZONE = Math.min(0.40, Math.max(0.02, parseFloat(lsDzInp.value) || 0.12));
+        if (window.saveAllUserSettings) window.saveAllUserSettings();
+        syncSettingsUI();
+      });
+    }
+    const rsDzInp = document.getElementById('setting-ctrl-rs-dz');
+    if (rsDzInp) {
+      rsDzInp.addEventListener('input', () => {
+        window.CONTROLLER_RS_DEADZONE = Math.min(0.40, Math.max(0.02, parseFloat(rsDzInp.value) || 0.10));
+        if (window.saveAllUserSettings) window.saveAllUserSettings();
+        syncSettingsUI();
+      });
+    }
+    const aaInp = document.getElementById('setting-ctrl-aa');
+    if (aaInp) {
+      aaInp.addEventListener('input', () => {
+        window.CONTROLLER_AA_STRENGTH = Math.min(1.0, Math.max(0.0, (parseFloat(aaInp.value) || 0) / 100));
         if (window.saveAllUserSettings) window.saveAllUserSettings();
         syncSettingsUI();
       });

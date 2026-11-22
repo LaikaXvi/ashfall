@@ -68,10 +68,11 @@ class GamepadController {
     return !this._isDown(pad, idx) && !!this.prevButtons[idx];
   }
 
-  _applyStickCurve(x, y) {
+  _applyStickCurve(x, y, deadzoneOverride = null) {
+    const dz = deadzoneOverride !== null ? deadzoneOverride : this.deadzone;
     const mag = Math.hypot(x, y);
-    if (mag < this.deadzone) return { x: 0, y: 0, mag: 0 };
-    const norm = Math.min(1, (mag - this.deadzone) / (1 - this.deadzone));
+    if (mag < dz) return { x: 0, y: 0, mag: 0 };
+    const norm = Math.min(1, (mag - dz) / Math.max(0.01, 1 - dz));
     const curved = Math.pow(norm, 1.45);
     return { x: (x / mag) * curved, y: (y / mag) * curved, mag: curved };
   }
@@ -131,9 +132,24 @@ class GamepadController {
     this.rumble(dur, strong, weak);
   }
 
-  _applyRotationalAimAssist(dt, player, enemyManager, ls, rs) {
-    if (!enemyManager || !enemyManager.enemies) return 1.0;
-    const engaged = ls.mag > 0.12 || rs.mag > 0.08;
+  _applyRotationalAimAssist(dt, player, enemyManager, ls, rs, squadManager = null) {
+    const aaStrength = (typeof window.CONTROLLER_AA_STRENGTH === 'number') ? window.CONTROLLER_AA_STRENGTH : 0.85;
+    if (aaStrength <= 0.01) return 1.0;
+    const candidates = [];
+    if (enemyManager && enemyManager.enemies) {
+      for (const e of enemyManager.enemies) {
+        if (e && !e.dead && !e.extracted) candidates.push(e);
+      }
+    }
+    if (window.SQUAD_PVP && squadManager && squadManager.allies) {
+      for (const a of squadManager.allies) {
+        if (a && !a.dead && !a.extracted) candidates.push(a);
+      }
+    }
+    if (candidates.length === 0) return 1.0;
+
+    // Rotational Aim Assist activates when strafing/moving left stick OR tracking with right stick!
+    const engaged = ls.mag > 0.08 || rs.mag > 0.05;
 
     const eyePos = player.position;
     const sinY = Math.sin(player.yaw);
@@ -142,14 +158,15 @@ class GamepadController {
     const lookDir = new THREE.Vector3(-sinY * cosP, Math.sin(player.pitch), -cosY * cosP).normalize();
 
     let bestTarget = null;
-    let bestAngle = 0.21; // ~12 deg outer assist cone
+    let bestAngle = 0.22; // ~12.6 deg outer assist bubble
 
-    for (const e of enemyManager.enemies) {
-      if (e.dead) continue;
-      const aimPt = new THREE.Vector3(e.position.x, e.position.y + 1.25, e.position.z);
+    for (let i = 0; i < candidates.length; i++) {
+      const e = candidates[i];
+      const chestOff = e.isProne ? 0.38 : (e.isDowned ? 0.55 : 1.25);
+      const aimPt = new THREE.Vector3(e.position.x, e.position.y + chestOff, e.position.z);
       const toEnemy = aimPt.clone().sub(eyePos);
       const dist = toEnemy.length();
-      if (dist > 38 || dist < 0.8) continue;
+      if (dist > 48 || dist < 0.8) continue;
       const dir = toEnemy.divideScalar(dist);
       const dot = THREE.MathUtils.clamp(lookDir.dot(dir), -1, 1);
       const angle = Math.acos(dot);
@@ -161,12 +178,13 @@ class GamepadController {
 
     if (!bestTarget) return 1.0;
 
-    // Aim slowdown factor inside inner cone (~7.5 deg) for precise tracking
-    const slowdown = bestTarget.angle < 0.13
-      ? THREE.MathUtils.lerp(0.56, 1.0, bestTarget.angle / 0.13)
+    // Aim slowdown factor inside inner cone (~7.5 deg) for sticky precision tracking
+    const minSlow = THREE.MathUtils.lerp(1.0, 0.50, aaStrength);
+    const slowdown = bestTarget.angle < 0.135
+      ? THREE.MathUtils.lerp(minSlow, 1.0, bestTarget.angle / 0.135)
       : 1.0;
 
-    // Rotational Aim Assist (active while strafing/moving left stick or tracking with right stick)
+    // Rotational Aim Assist (scales with user-configured strength slider)
     if (engaged) {
       const dx = bestTarget.aimPt.x - eyePos.x;
       const dy = bestTarget.aimPt.y - eyePos.y;
@@ -176,19 +194,17 @@ class GamepadController {
       const desiredYaw = Math.atan2(-dx, -dz);
       const desiredPitch = Math.atan2(dy, horiz);
 
-      // Shortest signed angle difference for yaw
       let dYaw = desiredYaw - player.yaw;
       while (dYaw > Math.PI) dYaw -= Math.PI * 2;
       while (dYaw < -Math.PI) dYaw += Math.PI * 2;
       const dPitch = desiredPitch - player.pitch;
 
-      // Smooth falloff from center to cone edge
-      const falloff = Math.pow(1 - bestTarget.angle / 0.21, 1.2);
-      const strength = (player.isADS ? 4.4 : 2.3) * falloff;
+      const falloff = Math.pow(1 - bestTarget.angle / 0.22, 1.15);
+      const strength = (player.isADS ? 5.2 : 2.8) * aaStrength * falloff;
       const pull = Math.min(1, dt * strength);
 
       player.yaw += dYaw * pull;
-      player.pitch = THREE.MathUtils.clamp(player.pitch + dPitch * pull * 0.75, -Math.PI / 2 + 0.08, Math.PI / 2 - 0.08);
+      player.pitch = THREE.MathUtils.clamp(player.pitch + dPitch * pull * 0.78, -Math.PI / 2 + 0.08, Math.PI / 2 - 0.08);
     }
 
     return slowdown;
@@ -199,8 +215,10 @@ class GamepadController {
     if (!pad) return;
 
     const { player, weaponSystem, throwableSystem, ui, actions } = ctx;
-    const ls = this._applyStickCurve(pad.axes[0] || 0, pad.axes[1] || 0);
-    const rs = this._applyStickCurve(pad.axes[2] || 0, pad.axes[3] || 0);
+    const lsDz = (typeof window.CONTROLLER_LS_DEADZONE === 'number') ? window.CONTROLLER_LS_DEADZONE : this.deadzone;
+    const rsDz = (typeof window.CONTROLLER_RS_DEADZONE === 'number') ? window.CONTROLLER_RS_DEADZONE : this.deadzone;
+    const ls = this._applyStickCurve(pad.axes[0] || 0, pad.axes[1] || 0, lsDz);
+    const rs = this._applyStickCurve(pad.axes[2] || 0, pad.axes[3] || 0, rsDz);
 
     // Detect any active controller input to enable seamless controller play without pointer lock
     let anyInput = ls.mag > 0 || rs.mag > 0;
@@ -413,7 +431,7 @@ class GamepadController {
     }
 
     // === ROTATIONAL AIM ASSIST + ADS SLOWDOWN ===
-    const slowdown = this._applyRotationalAimAssist(dt, player, ctx.enemyManager, ls, rs);
+    const slowdown = this._applyRotationalAimAssist(dt, player, ctx.enemyManager, ls, rs, ctx.squadManager);
 
     // === RIGHT STICK: ANALOG LOOK (YAW & PITCH) ===
     if (rs.mag > 0 && !player.dead) {
@@ -621,8 +639,10 @@ class GamepadController {
 
     if (this._menuNavCooldown > 0) this._menuNavCooldown = Math.max(0, this._menuNavCooldown - dt);
 
-    const ls = this._applyStickCurve(pad.axes[0] || 0, pad.axes[1] || 0);
-    const rs = this._applyStickCurve(pad.axes[2] || 0, pad.axes[3] || 0);
+    const lsDz = Number.isFinite(window.CONTROLLER_LS_DEADZONE) ? window.CONTROLLER_LS_DEADZONE : this.deadzone;
+    const rsDz = Number.isFinite(window.CONTROLLER_RS_DEADZONE) ? window.CONTROLLER_RS_DEADZONE : this.deadzone;
+    const ls = this._applyStickCurve(pad.axes[0] || 0, pad.axes[1] || 0, lsDz);
+    const rs = this._applyStickCurve(pad.axes[2] || 0, pad.axes[3] || 0, rsDz);
 
     // Gunsmith 3D camera orbit & zoom with Right Stick + LT/RT
     if (gunsmith && gunsmith.isOpen) {
@@ -792,8 +812,10 @@ class GamepadController {
       }
     }
 
-    const ls = this._applyStickCurve(pad.axes[0] || 0, pad.axes[1] || 0);
-    const rs = this._applyStickCurve(pad.axes[2] || 0, pad.axes[3] || 0);
+    const lsDz = (typeof window.CONTROLLER_LS_DEADZONE === 'number') ? window.CONTROLLER_LS_DEADZONE : this.deadzone;
+    const rsDz = (typeof window.CONTROLLER_RS_DEADZONE === 'number') ? window.CONTROLLER_RS_DEADZONE : this.deadzone;
+    const ls = this._applyStickCurve(pad.axes[0] || 0, pad.axes[1] || 0, lsDz);
+    const rs = this._applyStickCurve(pad.axes[2] || 0, pad.axes[3] || 0, rsDz);
     const gb = window.GAMEPAD_BINDS || {};
     const bPause = gb.pause ?? 9;
     const bSprint = gb.sprint ?? 10;
