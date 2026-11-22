@@ -1549,16 +1549,19 @@ class Enemy {
             }
           }
           if (this._activeLootGoal) {
+            this._lootGoalTimer = (this._lootGoalTimer || 0) + dt;
             const ld = Math.hypot(this.position.x - this._activeLootGoal.x, this.position.z - this._activeLootGoal.z);
             const ldy = Math.abs(this.position.y - (this._activeLootGoal.y || this.position.y));
-            if (ld < 2.1 && ldy < 1.8) {
+            if ((ld < 2.1 && ldy < 1.8) || this._lootGoalTimer > 12.0) {
               this._activeLootGoal = null;
-            } else {
-              this._moveToward(this._activeLootGoal, this.speed * 0.85, dt);
+              this._lootGoalTimer = 0;
             }
+          } else {
+            this._lootGoalTimer = 0;
           }
         } else {
           this._activeLootGoal = null;
+          this._lootGoalTimer = 0;
         }
       }
     }
@@ -1967,7 +1970,11 @@ class Enemy {
       return;
     }
 
-    // === NON-COMBAT: OPERATOR SQUAD OBJECTIVES (POI -> EXTRACT) & FORMATION COHESION ===
+    // === NON-COMBAT: OPERATOR LOOTING -> SQUAD OBJECTIVES (POI -> EXTRACT) & FORMATION COHESION ===
+    if (this.isOperator && this._activeLootGoal) {
+      this._moveToward(this._activeLootGoal, this.speed * 0.88, dt);
+      return;
+    }
     if (this.isOperator && squadGoal) {
       const distGoal = Math.hypot(squadGoal.x - this.position.x, squadGoal.z - this.position.z);
       if (distGoal > 2.2) {

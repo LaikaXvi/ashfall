@@ -119,9 +119,11 @@
     const visorMat = new THREE.MeshLambertMaterial({ color: isHeavy ? 0x4a1d1d : 0x101820, emissive: isHeavy ? 0x220808 : 0x061018 });
 
     const root = new THREE.Group();
+    // Local character forward is -Z; rotate root (NOT rigPivot!) by PI so rigPivot's local X/Y/Z pitch/roll/lean
+    // is 100% identical between Player 3P, Enemy Operators, NPCs & Squadmates (never inverted by XYZ Euler order!)
+    if (opts.faceForwardZ) root.rotation.y = Math.PI;
     const rigPivot = new THREE.Group();
-    // Local character forward is -Z; faceForwardZ rotates root by PI so enemy/NPC +Z forward matches seamlessly
-    if (opts.faceForwardZ) rigPivot.rotation.y = Math.PI;
+    rigPivot.rotation.order = 'YXZ';
     root.add(rigPivot);
 
     // 1. PELVIS (Center of Mass / Lower-Body Root)
