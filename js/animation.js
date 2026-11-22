@@ -195,22 +195,31 @@
     vestGroup.visible = vestId !== 'none';
     torso.add(vestGroup);
 
-    // Backpack
+    // Backpack (unified sculpted 3D mesh matching inventory icons!)
     const packGroup = new THREE.Group();
     const bagId = opts.bagId || (isScav ? 'none' : (isRaider ? 'bag_small' : 'bag_medium'));
-    const packMat = new THREE.MeshLambertMaterial({ color: bagId === 'bag_large' ? 0x353b31 : 0x3f433a });
-    const packMain = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.36, 0.13), packMat);
-    packMain.position.set(0, 0.20, 0.20);
-    const packTopPouch = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.10, 0.075), strapMat);
-    packTopPouch.position.set(0, 0.30, 0.275);
-    const packLargeExtras = new THREE.Group();
-    const sidePouchL = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.20, 0.10), strapMat);
-    sidePouchL.position.set(-0.17, 0.17, 0.20);
-    const sidePouchR = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.20, 0.10), strapMat);
-    sidePouchR.position.set(0.17, 0.17, 0.20);
-    packLargeExtras.add(sidePouchL, sidePouchR);
-    packLargeExtras.visible = bagId === 'bag_large';
-    packGroup.add(packMain, packTopPouch, packLargeExtras);
+    packGroup.userData.bagId = bagId;
+    let packMat = null;
+    let packLargeExtras = null;
+    if (bagId !== 'none' && typeof window.buildTacticalBackpackMesh === 'function') {
+      const sculpted = window.buildTacticalBackpackMesh(bagId, { forIcon: false });
+      sculpted.position.set(0, 0.22, 0.16);
+      packGroup.add(sculpted);
+    } else {
+      packMat = new THREE.MeshLambertMaterial({ color: bagId === 'bag_large' ? 0x353b31 : 0x3f433a });
+      const packMain = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.36, 0.13), packMat);
+      packMain.position.set(0, 0.20, 0.20);
+      const packTopPouch = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.10, 0.075), strapMat);
+      packTopPouch.position.set(0, 0.30, 0.275);
+      packLargeExtras = new THREE.Group();
+      const sidePouchL = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.20, 0.10), strapMat);
+      sidePouchL.position.set(-0.17, 0.17, 0.20);
+      const sidePouchR = new THREE.Mesh(new THREE.BoxGeometry(0.065, 0.20, 0.10), strapMat);
+      sidePouchR.position.set(0.17, 0.17, 0.20);
+      packLargeExtras.add(sidePouchL, sidePouchR);
+      packLargeExtras.visible = bagId === 'bag_large';
+      packGroup.add(packMain, packTopPouch, packLargeExtras);
+    }
     packGroup.visible = bagId !== 'none';
     torso.add(packGroup);
 

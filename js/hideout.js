@@ -509,7 +509,7 @@ class HideoutBunker {
       let rig = null;
       let anim = null;
       if (window.MW2Rig && window.MW2Rig.buildCharacterRig) {
-        rig = window.MW2Rig.buildCharacterRig({ archetype: 'operator', faceForwardZ: false });
+        rig = window.MW2Rig.buildCharacterRig({ archetype: 'operator', faceForwardZ: false, bagId: 'bag_medium' });
         if (rig && rig.weaponMount) {
           const rifle = new THREE.Mesh(
             new THREE.BoxGeometry(0.07, 0.09, 0.62),

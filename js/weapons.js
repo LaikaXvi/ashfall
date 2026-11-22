@@ -1014,11 +1014,15 @@ class WeaponSystem {
 
     handGroup.userData.handStyle = style;
     handGroup.userData.isRight = isRight;
-    if (this.fpArms && !this.fpArms.disabled && window.RigAssets && window.RigAssets.ready && !this._buildVisibleHands) {
+    if (!this._buildVisibleHands) {
+      const hideLegacy = !!(this.fpArms && !this.fpArms.disabled && window.RigAssets && window.RigAssets.ready);
       handGroup.traverse((m) => {
-        if (m.isMesh && m.material && m.material !== window.RigAssets.hiddenMaterial) {
-          m.userData._origMat = m.material;
-          m.material = window.RigAssets.hiddenMaterial;
+        if (m.isMesh) {
+          m.userData._isLegacyFpPart = true;
+          if (hideLegacy && m.material && m.material !== window.RigAssets.hiddenMaterial) {
+            m.userData._origMat = m.material;
+            m.material = window.RigAssets.hiddenMaterial;
+          }
         }
       });
     }
@@ -1043,11 +1047,15 @@ class WeaponSystem {
     cuff.position.set(0, 0, 0.982);
 
     armGroup.add(sleeve, cuff);
-    if (this.fpArms && !this.fpArms.disabled && window.RigAssets && window.RigAssets.ready && !this._buildVisibleHands) {
+    if (!this._buildVisibleHands) {
+      const hideLegacy = !!(this.fpArms && !this.fpArms.disabled && window.RigAssets && window.RigAssets.ready);
       armGroup.traverse((m) => {
-        if (m.isMesh && m.material && m.material !== window.RigAssets.hiddenMaterial) {
-          m.userData._origMat = m.material;
-          m.material = window.RigAssets.hiddenMaterial;
+        if (m.isMesh) {
+          m.userData._isLegacyFpPart = true;
+          if (hideLegacy && m.material && m.material !== window.RigAssets.hiddenMaterial) {
+            m.userData._origMat = m.material;
+            m.material = window.RigAssets.hiddenMaterial;
+          }
         }
       });
     }
@@ -1071,6 +1079,20 @@ class WeaponSystem {
     if (!this.fpArms && window.RigAssets && window.RigAssets.ready && window.RiggedFPArms) {
       try {
         this.fpArms = new window.RiggedFPArms(this);
+        if (this.fpArms && !this.fpArms.disabled && this.vmCamera) {
+          const skipRoot = this.fpArms.wrapper;
+          const hideTraverse = (obj) => {
+            if (!obj || obj === skipRoot) return;
+            if (obj.isMesh && obj.userData && obj.userData._isLegacyFpPart && obj.material && obj.material !== window.RigAssets.hiddenMaterial) {
+              obj.userData._origMat = obj.material;
+              obj.material = window.RigAssets.hiddenMaterial;
+            }
+            if (obj.children) {
+              for (let i = 0; i < obj.children.length; i++) hideTraverse(obj.children[i]);
+            }
+          };
+          hideTraverse(this.vmCamera);
+        }
       } catch (e) {
         console.warn('[WeaponSystem] Failed to init RiggedFPArms, keeping legacy hands:', e);
         this._restoreLegacyHands();
@@ -2114,10 +2136,14 @@ class WeaponSystem {
       const thumbTip = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.014, 0.016), skinMat);
       thumbTip.position.set(0.002, -0.014, 0.019);
       plateHand.add(palm, knuckle, thumb, thumbTip);
-      if (this.fpArms && !this.fpArms.disabled && window.RigAssets && window.RigAssets.ready && !this._buildVisibleHands) {
+      if (!this._buildVisibleHands) {
+        const hideLegacy = !!(this.fpArms && !this.fpArms.disabled && window.RigAssets && window.RigAssets.ready);
         [palm, knuckle, thumb, thumbTip].forEach((m) => {
-          m.userData._origMat = m.material;
-          m.material = window.RigAssets.hiddenMaterial;
+          m.userData._isLegacyFpPart = true;
+          if (hideLegacy && m.material && m.material !== window.RigAssets.hiddenMaterial) {
+            m.userData._origMat = m.material;
+            m.material = window.RigAssets.hiddenMaterial;
+          }
         });
       }
       plateHand.scale.setScalar(1.22);

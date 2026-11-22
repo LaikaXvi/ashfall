@@ -803,8 +803,13 @@ class ItemIconRenderer {
       return g;
     }
 
-    // 5. BACKPACKS (Front-facing upright tactical rucksack matching reference!)
+    // 5. BACKPACKS (Unified sculpted tactical backpack matching operator rig & UI icons!)
     if (def && def.type === 'backpack') {
+      if (typeof window.buildTacticalBackpackMesh === 'function') {
+        const bp = window.buildTacticalBackpackMesh(id, { forIcon: true });
+        bp.rotation.set(0.06, -0.14, 0);
+        return bp;
+      }
       const isWpnBag = id === 'bag_weapon';
       const s = (id === 'bag_large' || isWpnBag) ? 1.14 : (id === 'bag_medium' ? 1.0 : 0.88);
       const col = isWpnBag ? 0x4c5866 : (id === 'bag_large' ? 0x8e7c5a : (id === 'bag_medium' ? 0x879282 : 0x626b5c));

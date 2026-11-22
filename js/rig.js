@@ -1,7 +1,7 @@
 // ============================================================================
-// ASHFALL // Rigged 3D Character Pipeline & World-Space 2-Bone IK (v2.40)
-// Loads Mixamo "Vanguard" soldier.glb with Idle/Walk/Run mocap clips,
-// retargets onto the MW2 proxy rig for 3P entities, and provides RiggedFPArms.
+// ASHFALL // Rigged 3D Character Pipeline, World-Space 2-Bone IK & Tactical Packs
+// Loads tactical_soldier.glb with Idle/Walk/Run/TPose clips, retargets onto
+// MW2 proxy rigs for 3P entities, drives RiggedFPArms, and builds unified 3D packs.
 // Set localStorage.ashfall_disable_rig = '1' to force legacy procedural rigs.
 // ============================================================================
 (function () {
@@ -158,6 +158,9 @@
         } else {
           obj.material = makeLambert(obj.material);
         }
+        if (obj.geometry) {
+          obj.geometry.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 95), 250);
+        }
         obj.frustumCulled = false;
         obj.castShadow = true;
       });
@@ -194,8 +197,10 @@
       bone.updateMatrixWorld(true);
     },
 
-    solveTwoBone(upper, lower, end, target, pole) {
+    solveTwoBone(upper, lower, end, target, pole, bindUpperQ = null, bindLowerQ = null) {
       if (!upper || !lower || !end || !upper.parent) return;
+      if (bindUpperQ) upper.quaternion.copy(bindUpperQ);
+      if (bindLowerQ) lower.quaternion.copy(bindLowerQ);
       upper.parent.updateWorldMatrix(true, false);
       upper.updateMatrixWorld(true);
 
@@ -209,7 +214,7 @@
       if (lab < 1e-4 || lbc < 1e-4 || rawDist < 1e-5) return;
 
       const minD = Math.abs(lab - lbc) + 1e-4;
-      const maxD = (lab + lbc) * 0.9995;
+      const maxD = (lab + lbc) * 0.998;
       const d = THREE.MathUtils.clamp(rawDist, minD, maxD);
 
       const dir = _v4.subVectors(target, _v1).normalize();
@@ -225,7 +230,6 @@
       const cosA = THREE.MathUtils.clamp((lab * lab + d * d - lbc * lbc) / (2 * lab * d), -1, 1);
       const sinA = Math.sqrt(Math.max(0, 1 - cosA * cosA));
 
-      // Desired elbow position stored safely in _v7-free temp via clone or inline math on target
       const ex = _v1.x + dir.x * cosA * lab + pd.x * sinA * lab;
       const ey = _v1.y + dir.y * cosA * lab + pd.y * sinA * lab;
       const ez = _v1.z + dir.z * cosA * lab + pd.z * sinA * lab;
@@ -234,7 +238,6 @@
       const toU = _v3.set(ex - _v1.x, ey - _v1.y, ez - _v1.z);
       this.rotateBoneWorld(upper, fromU, toU);
 
-      // Recompute pb' and pc' after rotating upper
       upper.getWorldPosition(_v1);
       lower.getWorldPosition(_v2);
       end.getWorldPosition(_v3);
@@ -270,20 +273,46 @@
       const idx = B[side + 'handindex1'];
       const pnk = B[side + 'handpinky1'];
       if (!handBone || !mid || !idx || !pnk) {
-        return { fLocal: new THREE.Vector3(0, 1, 0), iLocal: new THREE.Vector3(1, 0, 0) };
+        const fLocal = new THREE.Vector3(side === 'left' ? -1 : 1, 0, 0);
+        const bLocal = new THREE.Vector3(0, 1, 0);
+        const uLocal = new THREE.Vector3().crossVectors(bLocal, fLocal).normalize();
+        return { fLocal, uLocal, bLocal };
       }
+      handBone.updateMatrixWorld(true);
       const hp = handBone.getWorldPosition(new THREE.Vector3());
       const mp = mid.getWorldPosition(new THREE.Vector3());
       const ip = idx.getWorldPosition(new THREE.Vector3());
       const pp = pnk.getWorldPosition(new THREE.Vector3());
       const hqInv = handBone.getWorldQuaternion(new THREE.Quaternion()).invert();
 
-      const fWorld = mp.sub(hp).normalize();
-      const iWorld = ip.sub(pp).normalize();
-      return {
-        fLocal: fWorld.applyQuaternion(hqInv).normalize(),
-        iLocal: iWorld.applyQuaternion(hqInv).normalize()
-      };
+      const fW = mp.sub(hp).normalize();
+      const tRaw = ip.sub(pp);
+      const tW = tRaw.addScaledVector(fW, -tRaw.dot(fW)).normalize();
+      // Right-hand cross (f x thumbSide) = dorsal back; Left-hand cross (thumbSide x f) = dorsal back
+      const bW = (side === 'right'
+        ? new THREE.Vector3().crossVectors(fW, tW)
+        : new THREE.Vector3().crossVectors(tW, fW)
+      ).normalize();
+      const fLocal = fW.clone().applyQuaternion(hqInv).normalize();
+      const bLocal = bW.clone().applyQuaternion(hqInv).normalize();
+      const uLocal = new THREE.Vector3().crossVectors(bLocal, fLocal).normalize();
+      bLocal.crossVectors(fLocal, uLocal).normalize();
+      return { fLocal, uLocal, bLocal };
+    },
+
+    handBasisQuat(hb, fWorld, backWorld, out) {
+      const fw = _v1.copy(fWorld).normalize();
+      const bw = _v2.copy(backWorld).addScaledVector(fw, -backWorld.dot(fw));
+      if (bw.lengthSq() < 1e-6) bw.set(0, 1, 0).addScaledVector(fw, -fw.y);
+      if (bw.lengthSq() < 1e-6) bw.set(1, 0, 0);
+      bw.normalize();
+      const uw = _v3.crossVectors(bw, fw).normalize();
+      bw.crossVectors(fw, uw).normalize();
+
+      _m1.makeBasis(fw, uw, bw);
+      _m2.makeBasis(hb.fLocal, hb.uLocal, hb.bLocal).transpose();
+      _m3.multiplyMatrices(_m1, _m2);
+      return (out || new THREE.Quaternion()).setFromRotationMatrix(_m3);
     },
 
     buildFingerCurl(B, side) {
@@ -294,27 +323,38 @@
       const entries = [];
       if (!handBone || !mid || !idx || !pnk) return entries;
 
+      handBone.updateMatrixWorld(true);
       const hp = handBone.getWorldPosition(new THREE.Vector3());
       const mp = mid.getWorldPosition(new THREE.Vector3());
       const ip = idx.getWorldPosition(new THREE.Vector3());
       const pp = pnk.getWorldPosition(new THREE.Vector3());
 
       const fW = mp.sub(hp).normalize();
-      const iW = ip.sub(pp).addScaledVector(fW, -ip.clone().sub(pp).dot(fW)).normalize();
+      const tRaw = ip.sub(pp);
+      const iW = tRaw.addScaledVector(fW, -tRaw.dot(fW)).normalize();
       const palm = new THREE.Vector3().crossVectors(fW, iW).normalize();
       if (side === 'right') palm.multiplyScalar(-1);
 
       const fingers = ['index', 'middle', 'ring', 'pinky', 'thumb'];
       for (const fName of fingers) {
+        let lastDir = null;
         for (let j = 1; j <= 3; j++) {
           const bone = B[side + 'hand' + fName + j];
+          if (!bone) continue;
           const child = B[side + 'hand' + fName + (j + 1)];
-          if (!bone || !child) continue;
-          const bp = bone.getWorldPosition(new THREE.Vector3());
-          const cp = child.getWorldPosition(new THREE.Vector3());
-          const boneDir = cp.sub(bp);
-          if (boneDir.lengthSq() < 1e-8) continue;
-          boneDir.normalize();
+          let boneDir = null;
+          if (child) {
+            const bp = bone.getWorldPosition(new THREE.Vector3());
+            const cp = child.getWorldPosition(new THREE.Vector3());
+            const d = cp.sub(bp);
+            if (d.lengthSq() >= 1e-8) {
+              boneDir = d.normalize();
+              lastDir = boneDir;
+            }
+          } else if (lastDir) {
+            boneDir = lastDir.clone();
+          }
+          if (!boneDir) continue;
           const axisWorld = new THREE.Vector3().crossVectors(boneDir, palm);
           if (axisWorld.lengthSq() < 1e-6) continue;
           axisWorld.normalize();
@@ -344,6 +384,199 @@
       }
     }
   };
+
+  // ============================================================================
+  // UNIFIED SCULPTED 3D TACTICAL BACKPACK BUILDER (v2.44)
+  // Shared between Worn Operator Rigs (3P), Legacy Rigs, and Inventory Icons!
+  // Coordinate frame: +Y Up, +Z Outward back face, z = 0 flush against rear vest.
+  // ============================================================================
+  function buildTacticalBackpackMesh(bagId = 'bag_medium', opts = {}) {
+    const id = String(bagId || 'bag_medium');
+    const isWpn = id === 'bag_weapon' || id.includes('weapon');
+    const isLarge = id === 'bag_large' || id.includes('large') || id.includes('scav');
+    const isSmall = id === 'bag_small' || id.includes('small');
+    const isMed = !isWpn && !isLarge && !isSmall;
+    const forIcon = !!opts.forIcon;
+
+    const g = new THREE.Group();
+    g.userData.bagId = id;
+
+    const mkMat = (color, spec = 0x000000, shine = 18) => (
+      forIcon
+        ? new THREE.MeshPhongMaterial({ color, specular: spec, shininess: shine })
+        : new THREE.MeshLambertMaterial({ color })
+    );
+
+    const mkRoundedRectShape = (w, h, r) => {
+      const hw = w * 0.5;
+      const hh = h * 0.5;
+      const rr = Math.min(r, hw * 0.45, hh * 0.45);
+      const s = new THREE.Shape();
+      s.moveTo(-hw + rr, -hh);
+      s.lineTo(hw - rr, -hh);
+      s.quadraticCurveTo(hw, -hh, hw, -hh + rr);
+      s.lineTo(hw, hh - rr);
+      s.quadraticCurveTo(hw, hh, hw - rr, hh);
+      s.lineTo(-hw + rr, hh);
+      s.quadraticCurveTo(-hw, hh, -hw, hh - rr);
+      s.lineTo(-hw, -hh + rr);
+      s.quadraticCurveTo(-hw, -hh, -hw + rr, -hh);
+      return s;
+    };
+
+    const mkChamferedShell = (w, h, depth, r, bevel, mat) => {
+      const bev = Math.min(bevel, depth * 0.32, w * 0.14, h * 0.14);
+      const innerD = Math.max(0.008, depth - bev * 2);
+      const geo = new THREE.ExtrudeGeometry(mkRoundedRectShape(w - bev * 2, h - bev * 2, r), {
+        depth: innerD,
+        bevelEnabled: bev > 0.001,
+        bevelThickness: bev,
+        bevelSize: bev,
+        bevelSegments: 2
+      });
+      geo.translate(0, 0, bev); // z = 0..depth so back face sits flush at z = 0!
+      return new THREE.Mesh(geo, mat);
+    };
+
+    // Palette synced to UI reference icons & tactical soldier Cordura
+    const mainCol = isWpn ? 0x414b57 : (isLarge ? 0x8d7b59 : (isMed ? 0x87917e : 0x5d6653));
+    const darkCol = isWpn ? 0x222830 : 0x2e342f;
+    const strapCol = isWpn ? 0x1b2026 : 0x242825;
+    const hardwareCol = 0x171a1c;
+    const accentCol = 0xe89424;
+
+    const mMain = mkMat(mainCol, 0x222628, 22);
+    const mDark = mkMat(darkCol, 0x181c1e, 26);
+    const mStrap = mkMat(strapCol, 0x16181a, 24);
+    const mMetal = mkMat(0x525a62, 0x6c757d, 48);
+    const mPad = mkMat(hardwareCol, 0x121416, 14);
+    const mAccent = mkMat(accentCol, 0x5c3600, 40);
+
+    const packW = isWpn ? 0.34 : (isLarge ? 0.36 : (isMed ? 0.32 : 0.27));
+    const packH = isWpn ? 0.48 : (isLarge ? 0.48 : (isMed ? 0.43 : 0.37));
+    const packD = isWpn ? 0.14 : (isLarge ? 0.16 : (isMed ? 0.135 : 0.11));
+
+    // Breathable spine back-pad at z = 0
+    const backPad = mkChamferedShell(packW * 0.94, packH * 0.94, 0.022, 0.03, 0.006, mPad);
+    g.add(backPad);
+
+    // Main sculpted contoured rucksack shell
+    const body = mkChamferedShell(packW, packH, packD, 0.045, 0.016, mMain);
+    body.position.z = 0.008;
+    g.add(body);
+
+    // Sculpted upper hood / rain-flap lid
+    const hood = mkChamferedShell(packW * 0.96, packH * 0.24, packD * 0.94, 0.035, 0.014, isWpn ? mDark : mStrap);
+    hood.position.set(0, packH * 0.36, 0.016);
+    g.add(hood);
+
+    // Top paracord grab handle
+    const handle = new THREE.Mesh(
+      new THREE.TorusGeometry(packW * 0.16, 0.013, 6, 12, Math.PI),
+      mStrap
+    );
+    handle.position.set(0, packH * 0.48, packD * 0.52);
+    g.add(handle);
+
+    if (isWpn) {
+      // Weapon Backpack: Armored Tech Carrier (matches DMZ screenshot dark armored shell + amber rail strip!)
+      const armorShell = mkChamferedShell(packW * 0.78, packH * 0.58, 0.038, 0.03, 0.012, mDark);
+      armorShell.position.set(0, -packH * 0.04, packD + 0.002);
+      g.add(armorShell);
+
+      // Center locking latch spine + metallic clasp
+      const spineBar = mkChamferedShell(0.055, packH * 0.46, 0.018, 0.008, 0.004, mStrap);
+      spineBar.position.set(0, -packH * 0.03, packD + 0.032);
+      const clasp = mkChamferedShell(0.068, 0.052, 0.020, 0.006, 0.004, mMetal);
+      clasp.position.set(0, packH * 0.10, packD + 0.036);
+      g.add(spineBar, clasp);
+
+      // Twin vertical reinforced frame rails + buckles
+      for (const sx of [-packW * 0.30, packW * 0.30]) {
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(0.032, packH * 0.86, 0.022), mPad);
+        rail.position.set(sx, -0.01, packD + 0.006);
+        const bkl = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.026, 0.026), mMetal);
+        bkl.position.set(sx, packH * 0.14, packD + 0.014);
+        g.add(rail, bkl);
+      }
+
+      // Weapon scabbard side tube & signature amber tactical ID tag
+      const scabbard = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.028, packH * 0.78, 10), mPad);
+      scabbard.position.set(packW * 0.50, -0.02, packD * 0.56);
+      const clampU = new THREE.Mesh(new THREE.BoxGeometry(0.064, 0.026, 0.072), mMetal);
+      clampU.position.set(packW * 0.48, packH * 0.18, packD * 0.56);
+      const clampL = clampU.clone();
+      clampL.position.y = -packH * 0.20;
+      const badge = mkChamferedShell(0.14, 0.034, 0.014, 0.004, 0.003, mAccent);
+      badge.position.set(0, packH * 0.29, packD + 0.022);
+      g.add(scabbard, clampU, clampL, badge);
+    } else {
+      // Tactical Assault / Expedition Rucksack (Small / Medium / Large)
+      // Lower contoured MOLLE kangaroo pocket
+      const pocketH = isSmall ? packH * 0.38 : packH * 0.42;
+      const pocketD = isSmall ? 0.040 : 0.056;
+      const pocket = mkChamferedShell(packW * 0.76, pocketH, pocketD, 0.028, 0.010, isMed ? mMain : mDark);
+      pocket.position.set(0, -packH * 0.18, packD + 0.002);
+      g.add(pocket);
+
+      // PALS horizontal MOLLE webbing strips across front pouch
+      const rowCount = isSmall ? 2 : 3;
+      for (let r = 0; r < rowCount; r++) {
+        const ry = (-packH * 0.28) + r * 0.044;
+        const slat = new THREE.Mesh(new THREE.BoxGeometry(packW * 0.66, 0.016, 0.010), mStrap);
+        slat.position.set(0, ry, packD + pocketD + 0.001);
+        g.add(slat);
+      }
+
+      // Twin vertical compression straps + quick-release buckles (matches DMZ screenshot!)
+      const strapSpan = packW * 0.27;
+      for (const sx of [-strapSpan, strapSpan]) {
+        const strap = new THREE.Mesh(new THREE.BoxGeometry(0.028, packH * 0.88, 0.016), mStrap);
+        strap.position.set(sx, -0.01, packD + 0.012);
+        const buckle = new THREE.Mesh(new THREE.BoxGeometry(0.038, 0.028, 0.022), mPad);
+        buckle.position.set(sx, packH * 0.16, packD + 0.020);
+        g.add(strap, buckle);
+      }
+
+      // Velcro ID strip on hood
+      const velcro = new THREE.Mesh(new THREE.BoxGeometry(packW * 0.46, 0.036, 0.012), mPad);
+      velcro.position.set(0, packH * 0.34, packD + 0.014);
+      g.add(velcro);
+
+      if (isMed || isLarge) {
+        // Side compression & utility pouches
+        const sideW = isLarge ? 0.072 : 0.044;
+        const sideH = isLarge ? packH * 0.56 : packH * 0.44;
+        for (const sign of [-1, 1]) {
+          const sp = mkChamferedShell(sideW, sideH, packD * 0.72, 0.018, 0.007, mDark);
+          sp.position.set(sign * (packW * 0.50 + sideW * 0.34), -packH * 0.08, packD * 0.16);
+          g.add(sp);
+        }
+      }
+
+      if (isLarge) {
+        // Expedition bedroll cylinder lashed to top crown + reinforced hip belt fins
+        const bedroll = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.048, 0.048, packW * 0.92, 12),
+          mDark
+        );
+        bedroll.rotation.z = Math.PI / 2;
+        bedroll.position.set(0, packH * 0.52, packD * 0.44);
+        g.add(bedroll);
+      }
+    }
+
+    // Worn shoulder-strap harness loops arching gently onto rear plate carrier (-Z)
+    if (!forIcon) {
+      for (const sx of [-packW * 0.28, packW * 0.28]) {
+        const harness = new THREE.Mesh(new THREE.BoxGeometry(0.046, 0.09, 0.05), mStrap);
+        harness.position.set(sx, packH * 0.38, -0.016);
+        g.add(harness);
+      }
+    }
+
+    return g;
+  }
 
   const ARCHETYPE_TINTS = {
     operator: 0xffffff,
@@ -459,6 +692,38 @@
         left: RigIK.buildFingerCurl(B, 'left'),
         right: RigIK.buildFingerCurl(B, 'right')
       };
+      this.bindLocal = {
+        leftarm: B.leftarm ? B.leftarm.quaternion.clone() : null,
+        leftforearm: B.leftforearm ? B.leftforearm.quaternion.clone() : null,
+        rightarm: B.rightarm ? B.rightarm.quaternion.clone() : null,
+        rightforearm: B.rightforearm ? B.rightforearm.quaternion.clone() : null,
+        leftupleg: B.leftupleg ? B.leftupleg.quaternion.clone() : null,
+        leftleg: B.leftleg ? B.leftleg.quaternion.clone() : null,
+        rightupleg: B.rightupleg ? B.rightupleg.quaternion.clone() : null,
+        rightleg: B.rightleg ? B.rightleg.quaternion.clone() : null
+      };
+
+      // Mount sculpted 3D backpack flush on Spine2 rear SAPI plate
+      this.backpackMount = null;
+      this.backpackMesh = null;
+      this._bagId = null;
+      if (B.spine2) {
+        B.spine2.updateMatrixWorld(true);
+        const spQ = B.spine2.getWorldQuaternion(new THREE.Quaternion());
+        const spS = B.spine2.getWorldScale(new THREE.Vector3());
+        const rootQ = rig.root.getWorldQuaternion(new THREE.Quaternion());
+        const mountW = rig.root.localToWorld(new THREE.Vector3(0, 1.32, 0.198));
+        this.backpackMount = new THREE.Group();
+        B.spine2.add(this.backpackMount);
+        this.backpackMount.position.copy(B.spine2.worldToLocal(mountW));
+        this.backpackMount.quaternion.copy(spQ.clone().invert().multiply(rootQ));
+        this.backpackMount.scale.set(
+          1 / Math.max(1e-4, spS.x),
+          1 / Math.max(1e-4, spS.y),
+          1 / Math.max(1e-4, spS.z)
+        );
+        this.setBackpack(opts.bagId !== undefined ? opts.bagId : 'bag_medium');
+      }
 
       // Locomotion mixer (Idle / Walk / Run)
       this.mixer = new THREE.AnimationMixer(this.model);
@@ -474,7 +739,7 @@
       if (this.actions.walk) { this.actions.walk.setEffectiveWeight(0); this.actions.walk.play(); }
       if (this.actions.run) { this.actions.run.setEffectiveWeight(0); this.actions.run.play(); }
 
-      // Hide proxy geometry via hiddenMaterial while keeping hitboxes/props intact
+      // Hide proxy geometry via hiddenMaterial while keeping hitboxes/weapon/props intact
       this._hiddenMeshes = [];
       const skipRoots = new Set([
         this.wrapper,
@@ -482,9 +747,7 @@
         rig.plateProp,
         rig.handMag,
         rig.handShell,
-        rig.inventoryTablet,
-        rig.packGroup,
-        rig.heavyExtras
+        rig.inventoryTablet
       ].filter(Boolean));
       const hideTraverse = (node) => {
         if (!node || skipRoots.has(node)) return;
@@ -525,6 +788,22 @@
       this._proxyFwd = new THREE.Vector3();
 
       RigRegistry.add(this);
+    }
+
+    setBackpack(bagId) {
+      if (!this.backpackMount) return;
+      const normId = (bagId && bagId !== 'none') ? String(bagId) : '';
+      if (normId === this._bagId) return;
+      this._bagId = normId;
+      if (this.backpackMesh) {
+        this.backpackMount.remove(this.backpackMesh);
+        this.backpackMesh = null;
+      }
+      if (normId) {
+        const mesh = buildTacticalBackpackMesh(normId, { forIcon: false });
+        this.backpackMount.add(mesh);
+        this.backpackMesh = mesh;
+      }
     }
 
     disable() {
@@ -655,7 +934,11 @@
         const ankleW = legProxy.ankle.getWorldPosition(new THREE.Vector3());
         const kneeW = legProxy.knee.getWorldPosition(new THREE.Vector3());
         const pole = kneeW.addScaledVector(this._proxyFwd, 0.4);
-        RigIK.solveTwoBone(bUp, bLeg, bFoot, ankleW, pole);
+        RigIK.solveTwoBone(
+          bUp, bLeg, bFoot, ankleW, pole,
+          this.bindLocal && this.bindLocal[side + 'upleg'],
+          this.bindLocal && this.bindLocal[side + 'leg']
+        );
 
         const ankQ = legProxy.ankle.getWorldQuaternion(new THREE.Quaternion());
         RigIK.setWorldQuat(bFoot, ankQ.multiply(this.corr[side + 'foot']));
@@ -670,7 +953,7 @@
       solveLeg('left');
       solveLeg('right');
 
-      // 8. Arms: 2-bone IK from proxy shoulder/elbow/wrist + hand orientation & curled fingers
+      // 8. Arms: stateless 2-bone IK from proxy shoulder/elbow/wrist + chirality-safe hand orientation
       const solveArm = (side) => {
         const armProxy = side === 'left' ? r.leftArm : r.rightArm;
         const bUp = B[side + 'arm'];
@@ -687,13 +970,19 @@
           out.set(side === 'left' ? -0.4 : 0.4, -0.3, 0.4);
         }
         const pole = elW.add(out);
-        RigIK.solveTwoBone(bUp, bLow, bHand, wrW, pole);
+        RigIK.solveTwoBone(
+          bUp, bLow, bHand, wrW, pole,
+          this.bindLocal && this.bindLocal[side + 'arm'],
+          this.bindLocal && this.bindLocal[side + 'forearm']
+        );
 
         const wrQ = armProxy.wrist.getWorldQuaternion(new THREE.Quaternion());
         const fW = new THREE.Vector3(0, -1, 0).applyQuaternion(wrQ);
-        const iW = new THREE.Vector3(0, 0, -1).applyQuaternion(wrQ);
-        const hb = this.handBasis[side];
-        const handQ = RigIK.basisQuat(hb.fLocal, hb.iLocal, fW, iW, new THREE.Quaternion());
+        const backLocal = side === 'right'
+          ? new THREE.Vector3(0.75, 0, 0.65)
+          : new THREE.Vector3(-0.35, 0, 0.94);
+        const backW = backLocal.applyQuaternion(wrQ);
+        const handQ = RigIK.handBasisQuat(this.handBasis[side], fW, backW, _q3);
         RigIK.setWorldQuat(bHand, handQ);
 
         if (s.dead || s.isDowned) {
@@ -772,15 +1061,15 @@
     }
   };
 
-  // ==================== FIRST-PERSON RIGGED ARMS (v2.41) ====================
+  // ==================== FIRST-PERSON RIGGED ARMS (v2.44) ====================
   const FP_HAND_STYLES = {
-    grip:          { f: new THREE.Vector3(0.0,  0.35, -1.0), i: new THREE.Vector3(0, 1, 0),  curl: [0.95, 1.05, 0.70], thumb: 0.5 },
-    rightFist:     { f: new THREE.Vector3(0.0,  0.00, -1.0), i: new THREE.Vector3(0, 1, 0),  curl: [1.40, 1.50, 1.10], thumb: 0.9 },
-    leftFist:      { f: new THREE.Vector3(0.0,  0.00, -1.0), i: new THREE.Vector3(0, 1, 0),  curl: [1.40, 1.50, 1.10], thumb: 0.9 },
-    supportPistol: { f: new THREE.Vector3(0.35, 0.10, -1.0), i: new THREE.Vector3(0, 1, 0),  curl: [0.80, 0.90, 0.60], thumb: 0.3 },
-    foregrip:      { f: new THREE.Vector3(0.25, 0.00, -1.0), i: new THREE.Vector3(0, 1, 0),  curl: [0.95, 1.05, 0.70], thumb: 0.5 },
-    supportRifle:  { f: new THREE.Vector3(0.55, 0.15, -0.8), i: new THREE.Vector3(0, 0, -1), curl: [0.60, 0.70, 0.45], thumb: 0.2 },
-    plate:         { f: new THREE.Vector3(0.0, -0.60, -0.8), i: new THREE.Vector3(1, 0, 0),  curl: [0.50, 0.60, 0.40], thumb: 0.6 }
+    grip:          { f: new THREE.Vector3(-0.22, -0.08, -0.97), back: new THREE.Vector3( 0.97,  0.08, -0.22), palmOffset: new THREE.Vector3( 0.018,  0.000, 0.004), curl: [1.05, 1.15, 0.75], thumb: 0.65 },
+    rightFist:     { f: new THREE.Vector3(-0.18,  0.00, -0.98), back: new THREE.Vector3( 0.98,  0.00, -0.18), palmOffset: new THREE.Vector3( 0.006,  0.000, 0.002), curl: [1.45, 1.55, 1.15], thumb: 0.95 },
+    leftFist:      { f: new THREE.Vector3( 0.18,  0.00, -0.98), back: new THREE.Vector3(-0.98,  0.00, -0.18), palmOffset: new THREE.Vector3(-0.006,  0.000, 0.002), curl: [1.45, 1.55, 1.15], thumb: 0.95 },
+    supportPistol: { f: new THREE.Vector3( 0.40,  0.05, -0.91), back: new THREE.Vector3(-0.88, -0.22, -0.42), palmOffset: new THREE.Vector3(-0.014, -0.008, 0.004), curl: [0.88, 0.96, 0.65], thumb: 0.40 },
+    foregrip:      { f: new THREE.Vector3( 0.24,  0.00, -0.97), back: new THREE.Vector3(-0.97,  0.00, -0.24), palmOffset: new THREE.Vector3(-0.018,  0.000, 0.004), curl: [1.05, 1.15, 0.75], thumb: 0.65 },
+    supportRifle:  { f: new THREE.Vector3( 0.38,  0.18, -0.91), back: new THREE.Vector3(-0.32, -0.93, -0.18), palmOffset: new THREE.Vector3(-0.008, -0.020, 0.004), curl: [0.72, 0.82, 0.55], thumb: 0.35 },
+    plate:         { f: new THREE.Vector3( 0.00, -0.25, -0.97), back: new THREE.Vector3( 0.00,  0.97, -0.25), palmOffset: new THREE.Vector3( 0.000,  0.012, 0.006), curl: [0.55, 0.65, 0.45], thumb: 0.55 }
   };
 
   function isEffectivelyVisible(obj, stopAt) {
@@ -789,13 +1078,14 @@
       if (cur.visible === false) return false;
       cur = cur.parent;
     }
-    return true;
+    return cur === stopAt;
   }
 
   class RiggedFPArms {
     constructor(weaponSystem) {
       this.weaponSystem = weaponSystem;
-      this.poses = [];
+      this._poseByArm = new Map();
+      this._poseSeq = 0;
       this._uShowL = { value: 0.0 };
       this._uShowR = { value: 0.0 };
       this.disabled = false;
@@ -812,6 +1102,7 @@
 
       // Clone geometry so per-vertex armSide attribute never mutates shared Soldier geometry
       const geom = this.body.geometry.clone();
+      geom.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 95), 250);
       this.body.geometry = geom;
       const skinIdx = geom.attributes.skinIndex;
       const skinWt = geom.attributes.skinWeight;
@@ -896,12 +1187,12 @@
       const B = this.bones;
       this.wrapper.updateMatrixWorld(true);
 
-      // Scale so total arm length |arm->forearm| + |forearm->hand| = 0.46
+      // Scale so total arm length |arm->forearm| + |forearm->hand| = 0.38m (proportional FP glove scale)
       const pArm = B.rightarm.getWorldPosition(new THREE.Vector3());
       const pFore = B.rightforearm.getWorldPosition(new THREE.Vector3());
       const pHand = B.righthand.getWorldPosition(new THREE.Vector3());
       const rawReach = pArm.distanceTo(pFore) + pFore.distanceTo(pHand);
-      const scaleF = 0.46 / Math.max(0.1, rawReach);
+      const scaleF = 0.38 / Math.max(0.1, rawReach);
       this.wrapper.scale.setScalar(scaleF);
       this.wrapper.updateMatrixWorld(true);
 
@@ -915,6 +1206,7 @@
         fwdXZ.normalize();
         this.wrapper.rotation.y = Math.atan2(-fwdXZ.x, -fwdXZ.z);
       }
+      this.wrapper.updateMatrixWorld(true);
 
       this.handBasis = {
         left: RigIK.computeHandBasis(B.lefthand, B, 'left'),
@@ -924,11 +1216,22 @@
         left: RigIK.buildFingerCurl(B, 'left'),
         right: RigIK.buildFingerCurl(B, 'right')
       };
+      this.bindLocal = {
+        leftarm: B.leftarm ? B.leftarm.quaternion.clone() : null,
+        leftforearm: B.leftforearm ? B.leftforearm.quaternion.clone() : null,
+        lefthand: B.lefthand ? B.lefthand.quaternion.clone() : null,
+        rightarm: B.rightarm ? B.rightarm.quaternion.clone() : null,
+        rightforearm: B.rightforearm ? B.rightforearm.quaternion.clone() : null,
+        righthand: B.righthand ? B.righthand.quaternion.clone() : null
+      };
 
       const pArm2 = B.rightarm.getWorldPosition(new THREE.Vector3());
       const pFore2 = B.rightforearm.getWorldPosition(new THREE.Vector3());
       const pHand2 = B.righthand.getWorldPosition(new THREE.Vector3());
       this.reach = pArm2.distanceTo(pFore2) + pFore2.distanceTo(pHand2);
+      this.palmCenterDist = (B.righthand && B.righthandmiddle1)
+        ? pHand2.distanceTo(B.righthandmiddle1.getWorldPosition(new THREE.Vector3())) * 0.52
+        : 0.055;
 
       // Mount inside vmCamera with head placed at camera-local (0, -0.05, 0.12)
       const cam = weaponSystem.vmCamera;
@@ -945,10 +1248,14 @@
       if (this.disabled || !armGroup || !armGroup.parent) return;
       const side = armGroup.userData && armGroup.userData.fpSide;
       if (!side) return;
-      armGroup.parent.updateWorldMatrix(true, false);
-      const shoulderW = armGroup.parent.localToWorld(shoulderLocal.clone());
-      const wristW = armGroup.parent.localToWorld(wristLocal.clone());
-      this.poses.push({ side, armGroup, shoulderW, wristW, handObj });
+      this._poseByArm.set(armGroup, {
+        side,
+        armGroup,
+        shoulderLocal: shoulderLocal.clone(),
+        wristLocal: wristLocal.clone(),
+        handObj: handObj || null,
+        seq: ++this._poseSeq
+      });
     }
 
     update(dt) {
@@ -960,12 +1267,14 @@
 
         let poseL = null;
         let poseR = null;
-        for (let i = 0; i < this.poses.length; i++) {
-          const p = this.poses[i];
-          if (!p || !p.armGroup) continue;
-          if (!isEffectivelyVisible(p.armGroup, cam)) continue;
-          if (p.side === 'left') poseL = p;
-          else if (p.side === 'right') poseR = p;
+        for (const [armGrp, p] of this._poseByArm.entries()) {
+          if (!armGrp || !armGrp.parent) {
+            this._poseByArm.delete(armGrp);
+            continue;
+          }
+          if (!isEffectivelyVisible(armGrp, cam)) continue;
+          if (p.side === 'left' && (!poseL || p.seq >= poseL.seq)) poseL = p;
+          else if (p.side === 'right' && (!poseR || p.seq >= poseR.seq)) poseR = p;
         }
 
         cam.updateMatrixWorld(true);
@@ -979,16 +1288,39 @@
           const bArm = B[side + 'arm'];
           const bFore = B[side + 'forearm'];
           const bHand = B[side + 'hand'];
-          if (!pose || !bArm || !bFore || !bHand) return false;
+          if (!pose || !bArm || !bFore || !bHand || !pose.armGroup.parent) return false;
+
+          pose.armGroup.parent.updateWorldMatrix(true, false);
+          const shoulderW = pose.armGroup.parent.localToWorld(pose.shoulderLocal.clone());
+          const wristW = pose.armGroup.parent.localToWorld(pose.wristLocal.clone());
+
+          const handObj = pose.handObj;
+          const styleKey = (handObj && handObj.userData && handObj.userData.handStyle) || 'grip';
+          const style = FP_HAND_STYLES[styleKey] || FP_HAND_STYLES.grip;
+          let handWQ = camQ;
+          let handWPos = null;
+          if (handObj) {
+            handObj.updateWorldMatrix(true, false);
+            handWQ = handObj.getWorldQuaternion(new THREE.Quaternion());
+            handWPos = handObj.getWorldPosition(new THREE.Vector3());
+          }
+          const fW = style.f.clone().applyQuaternion(handWQ).normalize();
+          const backW = style.back.clone().applyQuaternion(handWQ).normalize();
+
+          let wristTarget = wristW;
+          if (handWPos) {
+            const palmTargetW = handWPos.add(style.palmOffset.clone().applyQuaternion(handWQ));
+            wristTarget = palmTargetW.addScaledVector(fW, -this.palmCenterDist);
+          }
 
           const sideSign = side === 'left' ? -1 : 1;
-          const shOff = new THREE.Vector3(sideSign * 0.03, -0.03, 0.10).applyQuaternion(camQ);
-          const anchor = pose.shoulderW.clone().add(shOff);
+          const camSh = cam.localToWorld(new THREE.Vector3(sideSign * 0.22, -0.29, 0.14));
+          const anchor = shoulderW.clone().lerp(camSh, 0.50);
 
-          const dist = anchor.distanceTo(pose.wristW);
-          const maxReach = this.reach * 0.995;
+          const dist = anchor.distanceTo(wristTarget);
+          const maxReach = this.reach * 0.985;
           if (dist > maxReach && dist > 1e-5) {
-            anchor.addScaledVector(pose.wristW.clone().sub(anchor).normalize(), dist - maxReach);
+            anchor.addScaledVector(wristTarget.clone().sub(anchor).normalize(), dist - maxReach);
           }
 
           if (bArm.parent) {
@@ -998,24 +1330,17 @@
           }
 
           const pole = anchor.clone()
-            .addScaledVector(camRight, sideSign * 0.35)
-            .addScaledVector(camDown, 0.5)
-            .addScaledVector(camBack, 0.05);
+            .addScaledVector(camRight, sideSign * 0.42)
+            .addScaledVector(camDown, 0.48)
+            .addScaledVector(camBack, 0.04);
 
-          RigIK.solveTwoBone(bArm, bFore, bHand, pose.wristW, pole);
+          RigIK.solveTwoBone(
+            bArm, bFore, bHand, wristTarget, pole,
+            this.bindLocal && this.bindLocal[side + 'arm'],
+            this.bindLocal && this.bindLocal[side + 'forearm']
+          );
 
-          const handObj = pose.handObj;
-          const styleKey = (handObj && handObj.userData && handObj.userData.handStyle) || 'grip';
-          const style = FP_HAND_STYLES[styleKey] || FP_HAND_STYLES.grip;
-          let handWQ = camQ;
-          if (handObj) {
-            handObj.updateMatrixWorld(true);
-            handWQ = handObj.getWorldQuaternion(new THREE.Quaternion());
-          }
-          const fW = style.f.clone().applyQuaternion(handWQ);
-          const iW = style.i.clone().applyQuaternion(handWQ);
-          const hb = this.handBasis[side];
-          const qHand = RigIK.basisQuat(hb.fLocal, hb.iLocal, fW, iW, new THREE.Quaternion());
+          const qHand = RigIK.handBasisQuat(this.handBasis[side], fW, backW, new THREE.Quaternion());
           RigIK.setWorldQuat(bHand, qHand);
           RigIK.applyFingerCurl(this.fingerCurls[side], style.curl, style.thumb);
           return true;
@@ -1023,7 +1348,6 @@
 
         this._uShowL.value = applySide('left', poseL) ? 1.0 : 0.0;
         this._uShowR.value = applySide('right', poseR) ? 1.0 : 0.0;
-        this.poses.length = 0;
         this.model.updateMatrixWorld(true);
       } catch (err) {
         console.warn('[RiggedFPArms] update error; restoring legacy FP hands:', err);
@@ -1042,4 +1366,5 @@
   window.RiggedCharacter = RiggedCharacter;
   window.RigRegistry = RigRegistry;
   window.RiggedFPArms = RiggedFPArms;
+  window.buildTacticalBackpackMesh = buildTacticalBackpackMesh;
 })();

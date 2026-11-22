@@ -411,8 +411,8 @@ class Player {
       const rig = window.MW2Rig.buildCharacterRig({
         archetype: 'operator',
         uniformColor: 0x3b4437,
-        vestId: this.armorVest || 'vest_2',
-        bagId: this.backpack || 'bag_medium',
+        vestId: this.armorId || this.armorVest || 'vest_2',
+        bagId: this.backpackId || 'bag_small',
         faceForwardZ: false
       });
       rig.root.visible = false;
@@ -665,7 +665,7 @@ class Player {
     if (!this.avatarParts) return;
     const p = this.avatarParts;
     // Reflect equipped Armor Vest accurately on the player model
-    const vestId = this.armorVest;
+    const vestId = this.armorId || this.armorVest || null;
     if (p.vestGroup) {
       p.vestGroup.visible = !!vestId;
       if (vestId) {
@@ -676,11 +676,23 @@ class Player {
         if (p.heavyExtras) p.heavyExtras.visible = isHeavy;
       }
     }
-    // Reflect equipped Backpack accurately on the player model
-    const bagId = this.backpack;
+    // Reflect equipped Backpack accurately on the player model (RiggedCharacter skin + procedural fallback)
+    const bagId = this.backpackId || null;
+    if (p.skin && typeof p.skin.setBackpack === 'function') {
+      p.skin.setBackpack(bagId);
+    }
     if (p.packGroup) {
       p.packGroup.visible = !!bagId;
-      if (bagId) {
+      if (bagId && typeof window.buildTacticalBackpackMesh === 'function') {
+        if (p.packGroup.userData.bagId !== bagId) {
+          while (p.packGroup.children.length) p.packGroup.remove(p.packGroup.children[0]);
+          const sculpted = window.buildTacticalBackpackMesh(bagId, { forIcon: false });
+          sculpted.position.set(0, p.isMW2Rig ? 0.22 : 0.28, 0.16);
+          p.packGroup.add(sculpted);
+          p.packGroup.userData.bagId = bagId;
+          p.packGroup.scale.set(1, 1, 1);
+        }
+      } else if (bagId) {
         const isLarge = bagId === 'bag_large' || bagId === 'bag_scavenger' || bagId === 'bag_weapon' || bagId.includes('large') || bagId.includes('weapon');
         const isMed = bagId === 'bag_medium' || bagId.includes('med');
         const s = isLarge ? 1.18 : (isMed ? 1.0 : 0.78);
