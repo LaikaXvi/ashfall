@@ -1,7 +1,7 @@
 // Game Item Database, 5-Tier Loot Rarity, Logical POI Tables, Workbench & Attachments
 // IMPORTANT: Update GAME_DATA.VERSION (and ?v= cache-busters in index.html) with EVERY new commit!
 window.GAME_DATA = {
-  VERSION: 'v2.37',
+  VERSION: 'v2.38',
   OPERATOR_STATS: {
     maxHp: 75,
     plateArmor: 35,
@@ -945,5 +945,14 @@ window.GAME_DATA = {
       cube: { id: 'cube', name: 'Lucky Die', price: 1600, desc: 'Weighted tactical die charm.' },
       grenade: { id: 'grenade', name: 'Mini Frag', price: 2200, desc: 'Miniature olive frag grenade charm.' }
     }
-  }
+  },
+
+  MISSIONS: [
+    { id: 'm_scav_hunt', faction: 'VANGUARD', title: 'SECTOR SWEEP', type: 'kills', target: 5, rewardCredits: 4500, rewardXp: 350, desc: 'Eliminate 5 hostile combatants in any sector.' },
+    { id: 'm_loot_run', faction: 'PHANTOM', title: 'SALVAGE RUN', type: 'loot', target: 6, rewardCredits: 3500, rewardXp: 250, desc: 'Open and search 6 loot containers across Sector 7.' },
+    { id: 'm_clean_exfil', faction: 'VANGUARD', title: 'CLEAN EXTRACTION', type: 'extracts', target: 1, rewardCredits: 5000, rewardXp: 400, desc: 'Successfully extract from an active operation.' },
+    { id: 'm_heavy_haul', faction: 'BLACKWOOD', title: 'HIGH-VALUE HAUL', type: 'value', target: 12000, rewardCredits: 7500, rewardXp: 600, desc: 'Extract with ₽12,000+ in recovered loot value.' },
+    { id: 'm_operator_bounty', faction: 'BLACKWOOD', title: 'OPERATOR BOUNTY', type: 'kills', target: 12, rewardCredits: 10000, rewardXp: 900, desc: 'Eliminate 12 hostiles across Sector 7 operations.' },
+    { id: 'm_supply_chain', faction: 'PHANTOM', title: 'SUPPLY CHAIN', type: 'extracts', target: 3, rewardCredits: 12000, rewardXp: 1100, desc: 'Complete 3 successful extractions from the wasteland.' }
+  ]
 };

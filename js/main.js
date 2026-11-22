@@ -195,6 +195,55 @@
   const hideoutBunker = (typeof HideoutBunker !== 'undefined') ? new HideoutBunker() : null;
   window.hideoutBunker = hideoutBunker;
   let hideoutHadPointerLock = false;
+  let _lastFobPosBroadcast = 0;
+
+  function dismissFobOverlay(enterRoam = true) {
+    const ov = document.getElementById('fob-enter-overlay');
+    if (ov) ov.classList.add('hidden');
+    if (window.soundEngine) {
+      try {
+        window.soundEngine.init();
+        if (window.soundEngine.playUiConfirm) window.soundEngine.playUiConfirm();
+      } catch (e) {}
+    }
+    if (enterRoam) {
+      enterHideoutRoam();
+    } else {
+      exitHideoutRoam(true);
+    }
+  }
+
+  function openFobStation(station) {
+    if (!station) return;
+    let targetTab = station.tab;
+    if (targetTab === 'map' && ui && ui.isPartyLeader && !ui.isPartyLeader()) {
+      if (ui._showSocialToast) ui._showSocialToast('Only Party Leader can choose operation zone — Ready up at Armory!');
+      if (window.soundEngine && window.soundEngine.playUiError) {
+        try { window.soundEngine.playUiError(); } catch (err) {}
+      }
+      targetTab = 'deploy';
+    }
+    exitHideoutRoam(targetTab === 'home');
+    if (window.soundEngine && window.soundEngine.playClick) {
+      try { window.soundEngine.playClick(); } catch (err) {}
+    }
+    if (targetTab !== 'home') {
+      ui.openMenuTab(targetTab);
+    } else if (ui) {
+      ui.openMenuTab('home');
+    }
+  }
+
+  // Boot directly into DMZ-style FOB Entry Overlay over live 3D Hangar & Helipad
+  const _fobOvInit = document.getElementById('fob-enter-overlay');
+  if (_fobOvInit && hideoutBunker) {
+    const hs = document.getElementById('hideout-screen');
+    if (hs) hs.classList.add('hideout-roam-mode');
+    const btnEnterFob = document.getElementById('btn-enter-fob');
+    if (btnEnterFob) btnEnterFob.addEventListener('click', () => dismissFobOverlay(true));
+    const btnFobMenu = document.getElementById('btn-fob-menu');
+    if (btnFobMenu) btnFobMenu.addEventListener('click', () => dismissFobOverlay(false));
+  }
 
   function enterHideoutRoam() {
     if (!hideoutBunker || inRaid || (gunsmith && gunsmith.isOpen)) return;
@@ -816,6 +865,13 @@
     }
 
     ui.profile.xp = (ui.profile.xp || 0) + raidXp;
+    if (ui.recordMissionProgress) {
+      if (raidKills > 0) ui.recordMissionProgress('kills', raidKills);
+      if (extracted) {
+        ui.recordMissionProgress('extracts', 1);
+        if (totalVal > 0) ui.recordMissionProgress('value', totalVal);
+      }
+    }
     if (opts && opts.skipSummary) {
       // Still credit Active Duty Operator exfil streak & trait points before saving to localStorage
       if (ui._ensureActiveDutyOperators) {
@@ -923,12 +979,7 @@
           return;
         }
         if (e.button === 0 && hideoutBunker.hoveredStation) {
-          const targetTab = hideoutBunker.hoveredStation.tab;
-          exitHideoutRoam(false);
-          if (window.soundEngine && window.soundEngine.playClick) {
-            try { window.soundEngine.playClick(); } catch (err) {}
-          }
-          ui.openMenuTab(targetTab);
+          openFobStation(hideoutBunker.hoveredStation);
         }
       }
       return;
@@ -1029,6 +1080,17 @@
     if (!inRaid) {
       const tag = document.activeElement && document.activeElement.tagName;
       const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+      const fobOv = document.getElementById('fob-enter-overlay');
+      if (fobOv && !fobOv.classList.contains('hidden')) {
+        if (e.code === 'Space' || e.code === 'Enter') {
+          e.preventDefault();
+          dismissFobOverlay(true);
+        } else if (e.code === 'KeyM' || e.code === 'Escape') {
+          e.preventDefault();
+          dismissFobOverlay(false);
+        }
+        return;
+      }
       if (hideoutBunker && hideoutBunker.activeRoam) {
         hideoutBunker.keys[e.code] = true;
         const kb = window.KEYBINDS || {};
@@ -1039,12 +1101,7 @@
         }
         if ((e.code === (kb.interact || 'KeyE') || e.code === 'KeyE') && hideoutBunker.hoveredStation) {
           e.preventDefault();
-          const targetTab = hideoutBunker.hoveredStation.tab;
-          exitHideoutRoam(false);
-          if (window.soundEngine && window.soundEngine.playClick) {
-            try { window.soundEngine.playClick(); } catch (err) {}
-          }
-          ui.openMenuTab(targetTab);
+          openFobStation(hideoutBunker.hoveredStation);
           return;
         }
         return;
@@ -1352,6 +1409,7 @@
     if (c && world && world.openContainer) {
       const newlyOpened = world.openContainer(c);
       if (newlyOpened) {
+        if (ui && ui.recordMissionProgress) ui.recordMissionProgress('loot', 1);
         if (window.soundEngine) {
           try {
             if (window.soundEngine.playContainerOpen) window.soundEngine.playContainerOpen(c.kind);
@@ -3641,16 +3699,26 @@
       }
       // Enable full controller navigation in Main Menu, Stash, Operator, Settings, Gunsmith & Summary screens!
       if (hideoutBunker && hideoutBunker.activeRoam) {
+        // Broadcast live FOB position to party members at ~10Hz
+        if (ui && ui._sendSocialPacket && ui.partyMembers && ui.partyMembers.length > 1) {
+          const nowMs = performance.now();
+          if (nowMs - _lastFobPosBroadcast >= 100) {
+            _lastFobPosBroadcast = nowMs;
+            ui._sendSocialPacket({
+              type: 'fob_pos',
+              clientId: ui._clientId,
+              from: getPlayerCallsign(),
+              partyId: ui.partyId || null,
+              x: Math.round(hideoutBunker.pos.x * 100) / 100,
+              y: Math.round(hideoutBunker.pos.y * 100) / 100,
+              z: Math.round(hideoutBunker.pos.z * 100) / 100,
+              yaw: Math.round(hideoutBunker.yaw * 1000) / 1000
+            });
+          }
+        }
         gamepad.updateHideoutRoam(dt, hideoutBunker, {
           onOpenMenu: () => exitHideoutRoam(true),
-          onInteractStation: (st) => {
-            if (!st) return;
-            exitHideoutRoam(false);
-            if (window.soundEngine && window.soundEngine.playClick) {
-              try { window.soundEngine.playClick(); } catch (err) {}
-            }
-            ui.openMenuTab(st.tab);
-          }
+          onInteractStation: (st) => openFobStation(st)
         });
       } else {
         gamepad.updateMenu(dt, { ui, gunsmith });

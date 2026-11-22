@@ -922,6 +922,11 @@ class GameUI {
       xp: 0,
       raids: 0,
       extracts: 0,
+      missions: {
+        active: ['m_scav_hunt', 'm_clean_exfil'],
+        progress: {},
+        completed: []
+      },
       loadout: {
         primary: 'mp5k',
         secondary: 'pm9',
@@ -1356,6 +1361,22 @@ class GameUI {
 
       if (msg.type === 'version_announce' && msg.version) {
         if (this._reportRemoteVersion) this._reportRemoteVersion(msg.version);
+        return;
+      }
+
+      if (msg.type === 'fob_pos') {
+        const sameParty = (msg.partyId && this.partyId && msg.partyId === this.partyId) ||
+          (Array.isArray(this.partyMembers) && this.partyMembers.some(m => m.clientId === msg.clientId));
+        if (sameParty && window.hideoutBunker && window.hideoutBunker.upsertRemoteAvatar) {
+          window.hideoutBunker.upsertRemoteAvatar(
+            msg.clientId,
+            msg.from || 'SQUAD',
+            Number(msg.x) || 0,
+            Number(msg.y) || 0,
+            Number(msg.z) || 0,
+            Number(msg.yaw) || 0
+          );
+        }
         return;
       }
 
@@ -2415,7 +2436,7 @@ class GameUI {
     if (topbar) topbar.classList.toggle('hidden', isHome);
     if (homeView) homeView.classList.toggle('hidden', !isHome);
 
-    ['deploy', 'traders', 'map', 'matchmaking', 'workbench', 'stash', 'operator', 'settings', 'keybinds'].forEach((t) => {
+    ['deploy', 'traders', 'map', 'matchmaking', 'workbench', 'stash', 'operator', 'missions', 'settings', 'keybinds'].forEach((t) => {
       const el = document.getElementById(`menu-view-${t}`);
       if (el) el.classList.toggle('hidden', tabName !== t);
     });
@@ -2437,6 +2458,7 @@ class GameUI {
       this.renderPreMatchLoadout();
     }
     if (tabName === 'workbench') this.renderWorkbench();
+    if (tabName === 'missions') this.renderMissions();
   }
 
   _bindWeaponStagingModal() {
@@ -4135,6 +4157,139 @@ class GameUI {
         `;
         matEl.appendChild(row);
       });
+    }
+  }
+
+  _ensureMissions() {
+    if (!this.profile) return { active: [], progress: {}, completed: [] };
+    if (!this.profile.missions || typeof this.profile.missions !== 'object') {
+      this.profile.missions = { active: ['m_scav_hunt', 'm_clean_exfil'], progress: {}, completed: [] };
+    }
+    if (!Array.isArray(this.profile.missions.active)) this.profile.missions.active = [];
+    if (!this.profile.missions.progress || typeof this.profile.missions.progress !== 'object') this.profile.missions.progress = {};
+    if (!Array.isArray(this.profile.missions.completed)) this.profile.missions.completed = [];
+    return this.profile.missions;
+  }
+
+  recordMissionProgress(eventType, amount = 1) {
+    if (!amount || amount <= 0) return;
+    const ms = this._ensureMissions();
+    const defs = GAME_DATA.MISSIONS || [];
+    let changed = false;
+    for (const id of ms.active) {
+      const def = defs.find(m => m.id === id);
+      if (!def || def.type !== eventType) continue;
+      const prev = ms.progress[id] || 0;
+      if (prev >= def.target) continue;
+      const next = eventType === 'value'
+        ? Math.max(prev, Math.floor(amount))
+        : Math.min(def.target, prev + Math.floor(amount));
+      if (next !== prev) {
+        ms.progress[id] = next;
+        changed = true;
+        if (next >= def.target) {
+          if (this.addFeedMessage) this.addFeedMessage(`CONTRACT COMPLETE: ${def.title} — Claim reward at FOB Missions Board!`, '#ffca28');
+          if (this.showCenterToast) this.showCenterToast(`CONTRACT COMPLETE: ${def.title}`, '#ffca28');
+        }
+      }
+    }
+    if (changed) this.saveProfile();
+  }
+
+  renderMissions() {
+    const activeEl = document.getElementById('missions-active-list');
+    const availEl = document.getElementById('missions-available-list');
+    const countEl = document.getElementById('missions-active-count');
+    if (!activeEl || !availEl) return;
+
+    const ms = this._ensureMissions();
+    const defs = GAME_DATA.MISSIONS || [];
+    if (countEl) countEl.textContent = `${ms.active.length} / 3 ACTIVE`;
+
+    activeEl.innerHTML = '';
+    if (ms.active.length === 0) {
+      activeEl.innerHTML = '<p class="hint" style="padding:12px;">No active contracts. Accept up to 3 contracts from the Sector 7 Contract Board.</p>';
+    } else {
+      for (const id of ms.active) {
+        const def = defs.find(m => m.id === id);
+        if (!def) continue;
+        const prog = Math.min(def.target, ms.progress[id] || 0);
+        const pct = Math.min(100, Math.round((prog / Math.max(1, def.target)) * 100));
+        const ready = prog >= def.target;
+        const card = document.createElement('div');
+        card.className = `mission-card${ready ? ' done' : ''}`;
+        card.innerHTML = `
+          <div class="mission-card-head">
+            <span class="mission-faction">${def.faction} CONTRACT</span>
+            <span class="mission-faction" style="color:${ready ? '#69f0ae' : '#9ec0d4'};">${prog.toLocaleString()} / ${def.target.toLocaleString()}</span>
+          </div>
+          <div class="mission-title">${def.title}</div>
+          <div class="mission-desc">${def.desc}</div>
+          <div class="mission-bar-wrap"><div class="mission-bar-fill" style="width:${pct}%"></div></div>
+          <div class="mission-card-foot">
+            <span>REWARD: ₽${def.rewardCredits.toLocaleString()} · ${def.rewardXp} XP</span>
+            <button class="btn-small ${ready ? 'accent-btn' : ''}">${ready ? 'CLAIM REWARD' : 'ABANDON'}</button>
+          </div>
+        `;
+        card.querySelector('button').addEventListener('click', () => {
+          if (ready) {
+            this.profile.credits = (this.profile.credits || 0) + def.rewardCredits;
+            this.profile.xp = (this.profile.xp || 0) + def.rewardXp;
+            ms.active = ms.active.filter(x => x !== id);
+            if (!ms.completed.includes(id)) ms.completed.push(id);
+            if (window.soundEngine && window.soundEngine.playPurchase) {
+              try { window.soundEngine.playPurchase(); } catch (e) {}
+            }
+          } else {
+            ms.active = ms.active.filter(x => x !== id);
+            if (window.soundEngine && window.soundEngine.playUiBack) {
+              try { window.soundEngine.playUiBack(); } catch (e) {}
+            }
+          }
+          this.saveProfile();
+          this.renderHideout();
+          this.renderMissions();
+        });
+        activeEl.appendChild(card);
+      }
+    }
+
+    availEl.innerHTML = '';
+    for (const def of defs) {
+      const isActive = ms.active.includes(def.id);
+      const isDone = ms.completed.includes(def.id);
+      const card = document.createElement('div');
+      card.className = `mission-card${isDone ? ' done' : ''}`;
+      card.innerHTML = `
+        <div class="mission-card-head">
+          <span class="mission-faction">${def.faction}</span>
+          <span class="mission-faction" style="color:${isDone ? '#69f0ae' : (isActive ? '#f5a623' : '#9ec0d4')};">${isDone ? 'COMPLETED ✓' : (isActive ? 'ACTIVE' : 'AVAILABLE')}</span>
+        </div>
+        <div class="mission-title">${def.title}</div>
+        <div class="mission-desc">${def.desc}</div>
+        <div class="mission-card-foot">
+          <span>REWARD: ₽${def.rewardCredits.toLocaleString()} · ${def.rewardXp} XP</span>
+          ${(!isActive && !isDone) ? `<button class="btn-small" ${ms.active.length >= 3 ? 'disabled' : ''}>ACCEPT</button>` : ''}
+        </div>
+      `;
+      const btn = card.querySelector('button');
+      if (btn) {
+        btn.addEventListener('click', () => {
+          if (ms.active.length >= 3) {
+            if (window.soundEngine && window.soundEngine.playUiError) {
+              try { window.soundEngine.playUiError(); } catch (e) {}
+            }
+            return;
+          }
+          ms.active.push(def.id);
+          if (window.soundEngine && window.soundEngine.playUiConfirm) {
+            try { window.soundEngine.playUiConfirm(); } catch (e) {}
+          }
+          this.saveProfile();
+          this.renderMissions();
+        });
+      }
+      availEl.appendChild(card);
     }
   }
 

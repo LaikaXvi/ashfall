@@ -1,14 +1,14 @@
-// ASHFALL // 3D Walkable Hideout Base & Physical Utility Stations (v1.93)
+// ASHFALL // 3D Walkable DMZ-Style FOB Social Hub, Exfil Helipad & Live Party Avatars (v2.38)
 class HideoutBunker {
   constructor() {
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x0b0f13);
-    this.scene.fog = new THREE.FogExp2(0x0b0f13, 0.032);
+    this.scene.background = new THREE.Color(0x0c1014);
+    this.scene.fog = new THREE.FogExp2(0x0c1014, 0.022);
 
-    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.08, 90);
+    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.08, 120);
     this.activeRoam = false;
     this.keys = {};
-    this.pos = new THREE.Vector3(0, 1.68, 2.2);
+    this.pos = new THREE.Vector3(0, 1.68, 3.2);
     this.velY = 0;
     this.onGround = true;
     this.yaw = 0;
@@ -19,33 +19,36 @@ class HideoutBunker {
     this.stations = [];
     this.hoveredStation = null;
     this.stepAccum = 0;
+    this.heloMainRotor = null;
+    this.heloTailRotor = null;
+    this.remoteAvatars = new Map();
 
     this._buildLighting();
     this._buildArchitecture();
+    this._buildHelipadAndChopper();
     this._buildStations();
     this._buildAmbientProps();
   }
 
   _buildLighting() {
-    const hemi = new THREE.HemisphereLight(0x9ab8cc, 0x1a1e22, 0.72);
+    const hemi = new THREE.HemisphereLight(0xa0b9cc, 0x1b1f22, 0.85);
     this.scene.add(hemi);
 
-    const keyDir = new THREE.DirectionalLight(0xffdfb8, 0.85);
-    keyDir.position.set(5, 11, 4);
+    const keyDir = new THREE.DirectionalLight(0xffdfb4, 0.90);
+    keyDir.position.set(8, 15, 6);
     this.scene.add(keyDir);
 
-    const fillDir = new THREE.DirectionalLight(0x5da9d9, 0.42);
-    fillDir.position.set(-8, 7, -6);
+    const fillDir = new THREE.DirectionalLight(0x5fa4d4, 0.45);
+    fillDir.position.set(-10, 8, -14);
     this.scene.add(fillDir);
 
-    // Subtle warm central overhead bunker light + cool ops-table bounce (static only!)
-    const warmHub = new THREE.PointLight(0xffb86c, 0.95, 22, 1.6);
-    warmHub.position.set(0, 4.4, 0.5);
+    const warmHub = new THREE.PointLight(0xffb86c, 1.0, 28, 1.5);
+    warmHub.position.set(0, 5.6, 0.5);
     this.scene.add(warmHub);
 
-    const opsGlow = new THREE.PointLight(0x4fc3f7, 0.7, 14, 1.6);
-    opsGlow.position.set(0, 2.6, -6.5);
-    this.scene.add(opsGlow);
+    const heloGlow = new THREE.PointLight(0x69f0ae, 0.85, 20, 1.6);
+    heloGlow.position.set(0, 4.2, -16.5);
+    this.scene.add(heloGlow);
   }
 
   _addBox(w, h, d, x, y, z, mat, solid = false) {
@@ -64,19 +67,19 @@ class HideoutBunker {
   }
 
   _buildArchitecture() {
-    const floorMat = new THREE.MeshStandardMaterial({ color: 0x1b2024, roughness: 0.9, metalness: 0.1 });
-    const concreteMat = new THREE.MeshStandardMaterial({ color: 0x262c31, roughness: 0.92, metalness: 0.08 });
-    const trimMat = new THREE.MeshStandardMaterial({ color: 0x14181c, roughness: 0.75, metalness: 0.35 });
-    const steelMat = new THREE.MeshStandardMaterial({ color: 0x353d44, roughness: 0.55, metalness: 0.6 });
-    const ceilMat = new THREE.MeshStandardMaterial({ color: 0x14181b, roughness: 0.95, metalness: 0.15 });
+    const floorMat = new THREE.MeshLambertMaterial({ color: 0x202529 });
+    const concreteMat = new THREE.MeshLambertMaterial({ color: 0x2d3338 });
+    const trimMat = new THREE.MeshLambertMaterial({ color: 0x171b1f });
+    const steelMat = new THREE.MeshLambertMaterial({ color: 0x3b444c });
+    const ceilMat = new THREE.MeshLambertMaterial({ color: 0x161a1d });
     const lampMat = new THREE.MeshBasicMaterial({ color: 0xffe4b8 });
-    const stripeMat = new THREE.MeshBasicMaterial({ color: 0xd9822b, transparent: true, opacity: 0.55 });
+    const stripeMat = new THREE.MeshBasicMaterial({ color: 0xd9822b, transparent: true, opacity: 0.62 });
 
-    const W = 24;
-    const D = 20;
-    const H = 5.4;
+    const W = 34;
+    const D = 28;
+    const H = 6.8;
 
-    // Floor & ceiling
+    // Hangar concrete slab floor & roof
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), floorMat);
     floor.rotation.x = -Math.PI / 2;
     this.scene.add(floor);
@@ -86,56 +89,140 @@ class HideoutBunker {
     ceil.position.y = H;
     this.scene.add(ceil);
 
-    // Subtle tactical grid markings on bunker floor
-    const grid = new THREE.GridHelper(22, 22, 0x3a4854, 0x222a30);
+    // Tactical grid markings on hangar floor
+    const grid = new THREE.GridHelper(32, 32, 0x3d4c58, 0x242c33);
     grid.position.y = 0.01;
     this.scene.add(grid);
 
-    // Perimeter safety stripes leading toward the central Ops Table
-    const laneL = new THREE.Mesh(new THREE.PlaneGeometry(0.14, 11.5), stripeMat);
+    // Safety guide lanes leading from central Armory straight out to North Exfil Helipad
+    const laneL = new THREE.Mesh(new THREE.PlaneGeometry(0.18, 22), stripeMat);
     laneL.rotation.x = -Math.PI / 2;
-    laneL.position.set(-2.4, 0.015, -1.0);
+    laneL.position.set(-3.2, 0.015, -3.5);
     this.scene.add(laneL);
     const laneR = laneL.clone();
-    laneR.position.x = 2.4;
+    laneR.position.x = 3.2;
     this.scene.add(laneR);
 
-    // Perimeter concrete bunker walls
-    this._addBox(W, H, 0.6, 0, H / 2, -D / 2, concreteMat, true);
-    this._addBox(W, H, 0.6, 0, H / 2, D / 2, concreteMat, true);
-    this._addBox(0.6, H, D, -W / 2, H / 2, 0, concreteMat, true);
-    this._addBox(0.6, H, D, W / 2, H / 2, 0, concreteMat, true);
+    // South, West & East Hangar Walls
+    this._addBox(W, H, 0.7, 0, H / 2, D / 2, concreteMat, true);
+    this._addBox(0.7, H, D, -W / 2, H / 2, 0, concreteMat, true);
+    this._addBox(0.7, H, D, W / 2, H / 2, 0, concreteMat, true);
 
-    // Wall dado wainscot trim
-    this._addBox(W - 0.8, 0.16, 0.12, 0, 1.15, -D / 2 + 0.36, trimMat, false);
-    this._addBox(W - 0.8, 0.16, 0.12, 0, 1.15, D / 2 - 0.36, trimMat, false);
-    this._addBox(0.12, 0.16, D - 0.8, -W / 2 + 0.36, 1.15, 0, trimMat, false);
-    this._addBox(0.12, 0.16, D - 0.8, W / 2 - 0.36, 1.15, 0, trimMat, false);
+    // North Wall with wide 12m open Hangar Bay Gate leading to the Exfil Helipad
+    this._addBox(11.0, H, 0.7, -11.5, H / 2, -D / 2, concreteMat, true);
+    this._addBox(11.0, H, 0.7, 11.5, H / 2, -D / 2, concreteMat, true);
+    this._addBox(12.2, 1.8, 0.7, 0, H - 0.9, -D / 2, steelMat, false);
+    // Hazard header bar above hangar bay opening
+    this._addBox(12.2, 0.16, 0.82, 0, H - 1.82, -D / 2, stripeMat, false);
 
-    // Structural steel ceiling beams & overhead fluorescent/tungsten light strips
-    for (let z = -7; z <= 7; z += 4.6) {
-      this._addBox(W - 0.8, 0.32, 0.34, 0, H - 0.16, z, steelMat, false);
-      for (const lx of [-5.5, 0, 5.5]) {
-        this._addBox(2.2, 0.08, 0.24, lx, H - 0.34, z, trimMat, false);
-        this._addBox(2.0, 0.04, 0.14, lx, H - 0.39, z, lampMat, false);
+    // Dado wall trim
+    this._addBox(W - 0.8, 0.18, 0.14, 0, 1.2, D / 2 - 0.42, trimMat, false);
+    this._addBox(0.14, 0.18, D - 0.8, -W / 2 + 0.42, 1.2, 0, trimMat, false);
+    this._addBox(0.14, 0.18, D - 0.8, W / 2 - 0.42, 1.2, 0, trimMat, false);
+
+    // Structural steel ceiling trusses & warm hangar lamps
+    for (let z = -10.5; z <= 10.5; z += 5.25) {
+      this._addBox(W - 0.8, 0.38, 0.36, 0, H - 0.19, z, steelMat, false);
+      for (const lx of [-9.5, 0, 9.5]) {
+        this._addBox(2.6, 0.10, 0.28, lx, H - 0.42, z, trimMat, false);
+        this._addBox(2.4, 0.05, 0.16, lx, H - 0.48, z, lampMat, false);
       }
     }
 
-    // 4 Corner Structural Pillars
-    const pillarCoords = [[-11.2, -9.2], [11.2, -9.2], [-11.2, 9.2], [11.2, 9.2]];
-    for (const [px, pz] of pillarCoords) {
+    // Structural hangar columns
+    for (const [px, pz] of [[-15.8, -12.8], [15.8, -12.8], [-15.8, 12.8], [15.8, 12.8], [-15.8, 0], [15.8, 0]]) {
       this._addBox(1.1, H, 1.1, px, H / 2, pz, trimMat, true);
     }
   }
 
-  _registerStation(id, tab, title, subtitle, x, y, z, accentHex, radius = 3.6) {
-    // Subtle glowing floor interaction ring
-    const ringGeo = new THREE.RingGeometry(0.95, 1.08, 28);
+  _buildHelipadAndChopper() {
+    const tarmacMat = new THREE.MeshLambertMaterial({ color: 0x1a1e22 });
+    const yellowMat = new THREE.MeshBasicMaterial({ color: 0xe8b236 });
+    const greenLamp = new THREE.MeshBasicMaterial({ color: 0x69f0ae });
+    const redLamp = new THREE.MeshBasicMaterial({ color: 0xff5252 });
+    const fenceMat = new THREE.MeshLambertMaterial({ color: 0x2c3238 });
+    const heloOlive = new THREE.MeshLambertMaterial({ color: 0x384534 });
+    const heloDark = new THREE.MeshLambertMaterial({ color: 0x1b1f22 });
+    const glassMat = new THREE.MeshLambertMaterial({ color: 0x263f4d });
+
+    // Outdoor concrete tarmac apron north of hangar (z = -14 to -28)
+    const apron = new THREE.Mesh(new THREE.PlaneGeometry(34, 15), tarmacMat);
+    apron.rotation.x = -Math.PI / 2;
+    apron.position.set(0, -0.01, -21.5);
+    this.scene.add(apron);
+
+    // Painted Helipad Ring + Yellow 'H' at (0, -19.5)
+    const padRing = new THREE.Mesh(new THREE.RingGeometry(4.4, 4.75, 24), yellowMat);
+    padRing.rotation.x = -Math.PI / 2;
+    padRing.position.set(0, 0.02, -19.5);
+    this.scene.add(padRing);
+    this._addBox(0.32, 0.02, 2.8, -1.0, 0.02, -19.5, yellowMat, false);
+    this._addBox(0.32, 0.02, 2.8, 1.0, 0.02, -19.5, yellowMat, false);
+    this._addBox(2.0, 0.02, 0.32, 0, 0.02, -19.5, yellowMat, false);
+
+    // Perimeter landing lights & low blast barriers
+    for (const [bx, bz] of [[-5.6, -15.2], [5.6, -15.2], [-5.6, -24.0], [5.6, -24.0]]) {
+      this._addBox(0.35, 0.35, 0.35, bx, 0.18, bz, heloDark, false);
+      this._addBox(0.22, 0.16, 0.22, bx, 0.42, bz, bz > -18 ? greenLamp : redLamp, false);
+    }
+    this._addBox(34, 1.3, 0.5, 0, 0.65, -26.5, fenceMat, true);
+
+    // Low-poly PS2 Exfil Transport Helicopter parked on pad at (0, 0, -20.2)
+    const helo = new THREE.Group();
+    helo.position.set(0, 0, -20.2);
+    helo.rotation.y = 0.28;
+
+    const fuselage = new THREE.Mesh(new THREE.BoxGeometry(2.3, 1.85, 5.4), heloOlive);
+    fuselage.position.set(0, 1.65, 0);
+    const nose = new THREE.Mesh(new THREE.BoxGeometry(1.9, 1.35, 1.5), heloOlive);
+    nose.position.set(0, 1.4, 3.2);
+    const canopy = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.85, 1.3), glassMat);
+    canopy.position.set(0, 2.0, 2.65);
+    const tailBoom = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.68, 4.8), heloOlive);
+    tailBoom.position.set(0, 2.15, -4.8);
+    const tailFin = new THREE.Mesh(new THREE.BoxGeometry(0.22, 1.65, 0.9), heloOlive);
+    tailFin.position.set(0, 2.75, -7.0);
+    const rotorMast = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.75, 8), heloDark);
+    rotorMast.position.set(0, 2.85, 0.2);
+    const skidL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.14, 4.8), heloDark);
+    skidL.position.set(-1.35, 0.12, 0.2);
+    const skidR = skidL.clone();
+    skidR.position.x = 1.35;
+    for (const sx of [-1.2, 1.2]) {
+      for (const sz of [-1.1, 1.4]) {
+        const strut = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.85, 0.12), heloDark);
+        strut.position.set(sx, 0.52, sz);
+        helo.add(strut);
+      }
+    }
+
+    const mainRotor = new THREE.Group();
+    mainRotor.position.set(0, 3.22, 0.2);
+    const bladeA = new THREE.Mesh(new THREE.BoxGeometry(9.2, 0.05, 0.34), heloDark);
+    const bladeB = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.05, 9.2), heloDark);
+    mainRotor.add(bladeA, bladeB);
+    this.heloMainRotor = mainRotor;
+
+    const tailRotor = new THREE.Group();
+    tailRotor.position.set(0.22, 3.1, -7.1);
+    const tBlade = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.5, 0.16), heloDark);
+    tailRotor.add(tBlade);
+    this.heloTailRotor = tailRotor;
+
+    helo.add(fuselage, nose, canopy, tailBoom, tailFin, rotorMast, skidL, skidR, mainRotor, tailRotor);
+    this.scene.add(helo);
+
+    // Collider around chopper so player walks up to the boarding ramp without clipping through
+    this.colliders.push({ minX: -2.4, maxX: 2.4, minZ: -23.5, maxZ: -16.8 });
+  }
+
+  _registerStation(id, tab, title, subtitle, x, y, z, accentHex, radius = 3.8) {
+    const ringGeo = new THREE.RingGeometry(0.95, 1.12, 24);
     const ringMat = new THREE.MeshBasicMaterial({
       color: accentHex,
       side: THREE.DoubleSide,
       transparent: true,
-      opacity: 0.42
+      opacity: 0.44
     });
     const ring = new THREE.Mesh(ringGeo, ringMat);
     ring.rotation.x = -Math.PI / 2;
@@ -158,130 +245,203 @@ class HideoutBunker {
   }
 
   _buildStations() {
-    const darkSteel = new THREE.MeshStandardMaterial({ color: 0x20262c, roughness: 0.5, metalness: 0.65 });
-    const gunmetal = new THREE.MeshStandardMaterial({ color: 0x323b44, roughness: 0.42, metalness: 0.72 });
-    const woodMat = new THREE.MeshStandardMaterial({ color: 0x5c422c, roughness: 0.82, metalness: 0.08 });
-    const oliveMat = new THREE.MeshStandardMaterial({ color: 0x3b4836, roughness: 0.78, metalness: 0.18 });
+    const darkSteel = new THREE.MeshLambertMaterial({ color: 0x22282e });
+    const gunmetal = new THREE.MeshLambertMaterial({ color: 0x353f48 });
+    const woodMat = new THREE.MeshLambertMaterial({ color: 0x5c422c });
+    const oliveMat = new THREE.MeshLambertMaterial({ color: 0x3d4b37 });
     const amberGlow = new THREE.MeshBasicMaterial({ color: 0xf5a623 });
     const cyanGlow = new THREE.MeshBasicMaterial({ color: 0x4fc3f7 });
     const greenGlow = new THREE.MeshBasicMaterial({ color: 0x69f0ae });
     const redGlow = new THREE.MeshBasicMaterial({ color: 0xff6b6b });
 
-    // 1. DEPLOY // SECTOR 7 OPS TABLE (North Center: 0, 0, -6.4)
+    // 1. ARMORY // LOADOUT (Center North: 0, -5.2)
     {
-      const sx = 0, sz = -6.4;
-      this._addBox(3.6, 0.92, 2.0, sx, 0.46, sz, darkSteel, true);
-      this._addBox(3.75, 0.1, 2.15, sx, 0.95, sz, gunmetal, false);
-      // Glowing holographic tactical map surface
+      const sx = 0, sz = -6.6;
+      this._addBox(3.8, 0.92, 2.0, sx, 0.46, sz, darkSteel, true);
+      this._addBox(3.95, 0.1, 2.15, sx, 0.95, sz, gunmetal, false);
       const mapMat = new THREE.MeshBasicMaterial({ color: 0x1e5c78, transparent: true, opacity: 0.85 });
-      this._addBox(3.1, 0.04, 1.6, sx, 1.02, sz, mapMat, false);
-      // Miniature 3D terrain hills & compound blocks on map
-      const holoMat = new THREE.MeshBasicMaterial({ color: 0x4fc3f7, transparent: true, opacity: 0.75 });
-      this._addBox(0.42, 0.24, 0.36, sx - 0.7, 1.14, sz - 0.2, holoMat, false);
-      this._addBox(0.56, 0.18, 0.48, sx + 0.55, 1.11, sz + 0.15, holoMat, false);
-      this._addBox(0.28, 0.34, 0.28, sx + 0.05, 1.19, sz - 0.35, amberGlow, false);
-      // Back wall mission display board
-      this._addBox(4.2, 2.1, 0.14, sx, 2.65, -9.55, darkSteel, false);
-      this._addBox(3.9, 1.8, 0.06, sx, 2.65, -9.45, new THREE.MeshBasicMaterial({ color: 0x112530 }), false);
-      this._addBox(3.6, 0.08, 0.08, sx, 3.35, -9.4, amberGlow, false);
-      this._registerStation('deploy', 'deploy', 'OPS TABLE // DEPLOY', 'Configure loadout & launch raid', sx, 1.0, sz + 1.45, 0xf5a623, 3.9);
+      this._addBox(3.2, 0.04, 1.6, sx, 1.02, sz, mapMat, false);
+      this._addBox(0.45, 0.25, 0.35, sx - 0.7, 1.14, sz - 0.2, cyanGlow, false);
+      this._addBox(0.32, 0.32, 0.32, sx + 0.1, 1.18, sz - 0.3, amberGlow, false);
+      this._registerStation('armory', 'deploy', 'ARMORY // LOADOUT', 'Equip weapons, armor & ready up', sx, 1.0, sz + 1.6, 0xf5a623, 4.1);
     }
 
-    // 2. GUNSMITH // ARMORY BENCH (North-West: -7.4, 0, -5.0)
+    // 2. EXFIL HELIPAD // DEPLOY (North Helipad: 0, -14.8)
     {
-      const sx = -7.4, sz = -5.0;
-      this._addBox(3.2, 0.92, 1.1, sx, 0.46, sz, darkSteel, true);
-      this._addBox(3.3, 0.08, 1.2, sx, 0.96, sz, woodMat, false);
-      // Pegboard rifle wall behind bench
-      this._addBox(3.4, 2.2, 0.14, sx, 2.2, sz - 0.72, gunmetal, false);
-      // 3D stylized rifles mounted on pegboard & resting on vise
+      const sx = 0, sz = -14.8;
+      this._addBox(0.55, 1.3, 0.55, sx - 2.6, 0.65, sz, darkSteel, true);
+      this._addBox(0.38, 0.24, 0.12, sx - 2.6, 1.42, sz + 0.22, greenGlow, false);
+      this._registerStation('exfil', 'map', 'EXFIL HELIPAD // DEPLOY', 'Select operation zone & infil', sx, 1.0, sz, 0x69f0ae, 4.6);
+    }
+
+    // 3. MISSIONS // CONTRACT BOARD (North-West Wall: -8.2, -12.6)
+    {
+      const sx = -8.2, sz = -12.8;
+      this._addBox(4.0, 2.2, 0.18, sx, 2.0, sz, darkSteel, true);
+      this._addBox(3.7, 1.9, 0.08, sx, 2.0, sz + 0.12, new THREE.MeshBasicMaterial({ color: 0x17242b }), false);
+      this._addBox(3.4, 0.10, 0.10, sx, 2.75, sz + 0.18, amberGlow, false);
+      this._addBox(0.85, 0.65, 0.06, sx - 1.0, 1.85, sz + 0.18, cyanGlow, false);
+      this._addBox(0.85, 0.65, 0.06, sx + 0.0, 1.85, sz + 0.18, greenGlow, false);
+      this._addBox(0.85, 0.65, 0.06, sx + 1.0, 1.85, sz + 0.18, redGlow, false);
+      this._registerStation('missions', 'missions', 'MISSIONS // CONTRACTS', 'Accept faction contracts & claim rewards', sx, 1.0, sz + 1.6, 0xffca28, 4.0);
+    }
+
+    // 4. GUNSMITH BENCH (West North: -14.2, -5.2)
+    {
+      const sx = -14.4, sz = -5.2;
+      this._addBox(1.2, 0.92, 3.4, sx, 0.46, sz, darkSteel, true);
+      this._addBox(1.3, 0.08, 3.5, sx, 0.96, sz, woodMat, false);
+      this._addBox(0.16, 2.2, 3.6, sx - 0.72, 2.2, sz, gunmetal, false);
       for (const ry of [1.75, 2.35, 2.85]) {
-        this._addBox(1.55, 0.12, 0.09, sx - 0.2, ry, sz - 0.6, darkSteel, false);
-        this._addBox(0.14, 0.26, 0.08, sx - 0.35, ry - 0.14, sz - 0.6, gunmetal, false);
+        this._addBox(0.09, 0.12, 1.55, sx - 0.58, ry, sz, darkSteel, false);
       }
-      // Rifle on bench vise + amber work strip
-      this._addBox(1.15, 0.14, 0.12, sx, 1.12, sz, darkSteel, false);
-      this._addBox(2.6, 0.05, 0.08, sx, 3.22, sz - 0.62, amberGlow, false);
-      this._registerStation('gunsmith', 'gunsmith', 'GUNSMITH BENCH', '3D weapon mods & camos', sx, 1.0, sz + 1.15, 0xf5a623, 3.6);
+      this._addBox(0.12, 0.08, 2.6, sx - 0.62, 3.15, sz, amberGlow, false);
+      this._registerStation('gunsmith', 'gunsmith', 'GUNSMITH BENCH', '3D weapon mods, optics & camos', sx + 1.5, 1.0, sz, 0xf5a623, 3.8);
     }
 
-    // 3. WORKBENCH // CRAFTING STATION (West: -9.6, 0, 1.2)
+    // 5. CRAFTING WORKBENCH (West South: -14.2, 2.8)
     {
-      const sx = -9.6, sz = 1.2;
-      this._addBox(1.25, 0.92, 3.2, sx, 0.46, sz, darkSteel, true);
-      this._addBox(1.35, 0.08, 3.3, sx, 0.96, sz, gunmetal, false);
-      // Red mechanics tool chest + parts bins
-      this._addBox(0.85, 0.72, 0.95, sx - 0.1, 1.36, sz - 0.85, new THREE.MeshStandardMaterial({ color: 0x7c2525, roughness: 0.55, metalness: 0.4 }), false);
-      this._addBox(0.55, 0.38, 0.55, sx + 0.05, 1.19, sz + 0.65, oliveMat, false);
-      this._addBox(0.08, 0.06, 2.4, sx - 0.5, 2.55, sz, greenGlow, false);
-      this._registerStation('workbench', 'workbench', 'CRAFTING WORKBENCH', 'Craft gear & recycle salvage', sx + 1.25, 1.0, sz, 0x69f0ae, 3.6);
+      const sx = -14.4, sz = 2.8;
+      this._addBox(1.2, 0.92, 3.4, sx, 0.46, sz, darkSteel, true);
+      this._addBox(1.3, 0.08, 3.5, sx, 0.96, sz, woodMat, false);
+      this._addBox(0.65, 0.62, 0.75, sx, 1.32, sz - 0.9, gunmetal, false);
+      this._addBox(0.50, 0.45, 0.65, sx, 1.24, sz + 0.85, oliveMat, false);
+      this._addBox(0.10, 0.08, 2.6, sx - 0.62, 2.6, sz, greenGlow, false);
+      this._registerStation('workbench', 'workbench', 'CRAFTING WORKBENCH', 'Craft gear, meds & recycle salvage', sx + 1.5, 1.0, sz, 0x69f0ae, 3.8);
     }
 
-    // 4. ACTIVE DUTY // OPERATOR LOCKER (South-West: -7.2, 0, 7.6)
+    // 6. QUARTERMASTER // "RUSTY" (East North: 14.4, -5.2)
     {
-      const sx = -7.2, sz = 7.6;
-      // 3 Vertical Active Duty Operator Locker Bays
-      for (let i = -1; i <= 1; i++) {
-        const lx = sx + i * 1.15;
-        this._addBox(1.02, 2.45, 0.85, lx, 1.225, sz, oliveMat, true);
-        this._addBox(0.84, 1.85, 0.12, lx, 1.25, sz - 0.4, darkSteel, false);
-        // Hanging plate carrier silhouette inside each bay
-        this._addBox(0.46, 0.56, 0.16, lx, 1.35, sz - 0.45, gunmetal, false);
-        // Helmet on top shelf
-        this._addBox(0.32, 0.24, 0.32, lx, 2.02, sz - 0.42, darkSteel, false);
-      }
-      this._addBox(3.3, 0.06, 0.08, sx, 2.58, sz - 0.42, cyanGlow, false);
-      this._registerStation('operator', 'operator', 'ACTIVE DUTY LOCKER', 'Operators, dogtags & equipped gear', sx, 1.0, sz - 1.2, 0x4fc3f7, 3.8);
+      const sx = 14.4, sz = -5.2;
+      this._addBox(1.3, 1.02, 3.6, sx, 0.51, sz, darkSteel, true);
+      this._addBox(1.4, 0.08, 3.7, sx, 1.04, sz, woodMat, false);
+      this._addBox(0.65, 0.55, 0.85, sx + 0.15, 1.35, sz - 0.8, oliveMat, false);
+      this._addBox(0.55, 0.50, 0.68, sx + 0.15, 1.30, sz + 0.75, gunmetal, false);
+      this._addBox(0.10, 0.10, 2.6, sx + 0.62, 2.7, sz, amberGlow, false);
+      this._registerStation('traders', 'traders', 'QUARTERMASTER // "RUSTY"', 'Black Market arms, ammo & gear', sx - 1.5, 1.0, sz, 0xf5a623, 3.8);
     }
 
-    // 5. TRADER // BLACK MARKET COMMS TERMINAL (East-North: 9.2, 0, -3.4)
+    // 7. HIDEOUT STASH VAULT (East South: 14.4, 2.8)
     {
-      const sx = 9.2, sz = -3.4;
-      this._addBox(1.3, 0.92, 2.8, sx, 0.46, sz, darkSteel, true);
-      this._addBox(1.38, 0.08, 2.9, sx, 0.96, sz, gunmetal, false);
-      // Dual encrypted monitors + radio tower box
-      this._addBox(0.14, 0.62, 0.92, sx + 0.22, 1.44, sz - 0.52, darkSteel, false);
-      this._addBox(0.06, 0.52, 0.82, sx + 0.14, 1.44, sz - 0.52, new THREE.MeshBasicMaterial({ color: 0x1d4a3a }), false);
-      this._addBox(0.14, 0.62, 0.92, sx + 0.22, 1.44, sz + 0.52, darkSteel, false);
-      this._addBox(0.06, 0.52, 0.82, sx + 0.14, 1.44, sz + 0.52, new THREE.MeshBasicMaterial({ color: 0x4a3318 }), false);
-      this._addBox(0.08, 0.06, 2.1, sx + 0.38, 2.15, sz, amberGlow, false);
-      this._registerStation('traders', 'traders', 'TRADER // "RUSTY"', 'Black Market arms & supplies', sx - 1.25, 1.0, sz, 0xf5a623, 3.6);
+      const sx = 14.4, sz = 2.8;
+      this._addBox(1.4, 2.3, 3.6, sx, 1.15, sz, gunmetal, true);
+      this._addBox(0.12, 1.9, 3.2, sx - 0.72, 1.15, sz, darkSteel, false);
+      this._addBox(0.08, 0.12, 2.4, sx - 0.78, 2.05, sz, greenGlow, false);
+      this._registerStation('stash', 'stash', 'VAULT // STASH', 'Secure stash inventory & valuables', sx - 1.6, 1.0, sz, 0x69f0ae, 3.8);
     }
 
-    // 6. STASH // VAULT STORAGE CRATES (East-South: 8.8, 0, 3.6)
+    // 8. ACTIVE DUTY LOCKERS (South-West: -8.6, 12.2)
     {
-      const sx = 8.8, sz = 3.6;
-      this._addBox(1.4, 2.2, 2.6, sx, 1.1, sz, oliveMat, true);
-      // Heavy stacked pelican weapon cases in front
-      this._addBox(1.0, 0.44, 1.35, sx - 0.95, 0.22, sz - 0.45, darkSteel, true);
-      this._addBox(0.92, 0.38, 1.15, sx - 0.95, 0.62, sz - 0.45, gunmetal, false);
-      this._addBox(0.08, 0.06, 2.2, sx - 0.72, 2.28, sz, greenGlow, false);
-      this._registerStation('stash', 'stash', 'HIDEOUT STASH', 'Vault inventory & valuables', sx - 1.65, 1.0, sz + 0.4, 0x69f0ae, 3.8);
+      const sx = -8.6, sz = 12.2;
+      this._addBox(3.4, 2.3, 1.0, sx, 1.15, sz, oliveMat, true);
+      this._addBox(3.2, 0.08, 0.12, sx, 2.36, sz - 0.52, cyanGlow, false);
+      this._registerStation('operator', 'operator', 'ACTIVE DUTY LOCKERS', 'Operators, dogtags & streaks', sx, 1.0, sz - 1.5, 0x4fc3f7, 3.8);
     }
 
-    // 7. SETTINGS // DIAGNOSTIC SERVER CONSOLE (South Center: 0, 0, 7.8)
+    // 9. COMMS // SQUAD TERMINAL (South Center: 0, 12.2)
     {
-      const sx = 0, sz = 7.8;
-      this._addBox(2.2, 1.9, 0.95, sx, 0.95, sz, darkSteel, true);
-      this._addBox(1.8, 0.65, 0.08, sx, 1.42, sz - 0.49, new THREE.MeshBasicMaterial({ color: 0x172b3a }), false);
-      this._addBox(1.6, 0.06, 0.08, sx, 1.88, sz - 0.49, cyanGlow, false);
-      // Blinking status LEDs
-      this._addBox(0.12, 0.08, 0.08, sx - 0.6, 0.78, sz - 0.49, greenGlow, false);
-      this._addBox(0.12, 0.08, 0.08, sx - 0.35, 0.78, sz - 0.49, amberGlow, false);
-      this._addBox(0.12, 0.08, 0.08, sx - 0.1, 0.78, sz - 0.49, redGlow, false);
-      this._registerStation('settings', 'settings', 'SYSTEM CONSOLE', 'Controls, audio, FOV & settings', sx, 1.0, sz - 1.15, 0x90caf9, 3.6);
+      const sx = 0, sz = 12.2;
+      this._addBox(3.0, 1.0, 1.1, sx, 0.5, sz, darkSteel, true);
+      this._addBox(1.8, 0.9, 0.14, sx, 1.55, sz, gunmetal, false);
+      this._addBox(1.6, 0.7, 0.06, sx, 1.55, sz - 0.08, new THREE.MeshBasicMaterial({ color: 0x102820 }), false);
+      this._addBox(1.5, 0.08, 0.08, sx, 1.88, sz - 0.10, greenGlow, false);
+      this._registerStation('comms', 'home', 'COMMS // SQUAD HUB', 'Party invites, friends & lobby menu', sx, 1.0, sz - 1.5, 0x69f0ae, 3.8);
+    }
+
+    // 10. SYSTEM CONSOLE // SETTINGS (South-East: 8.6, 12.2)
+    {
+      const sx = 8.6, sz = 12.2;
+      this._addBox(2.4, 1.0, 1.1, sx, 0.5, sz, darkSteel, true);
+      this._addBox(1.5, 0.85, 0.12, sx, 1.52, sz, gunmetal, false);
+      this._addBox(1.3, 0.65, 0.06, sx, 1.52, sz - 0.08, new THREE.MeshBasicMaterial({ color: 0x122230 }), false);
+      this._addBox(1.2, 0.07, 0.08, sx, 1.82, sz - 0.10, cyanGlow, false);
+      this._registerStation('settings', 'settings', 'SYSTEM CONSOLE', 'PS2 graphics, audio & controls', sx, 1.0, sz - 1.5, 0x90caf9, 3.8);
     }
   }
 
   _buildAmbientProps() {
-    const crateMat = new THREE.MeshStandardMaterial({ color: 0x3b4435, roughness: 0.85, metalness: 0.15 });
-    const darkCrate = new THREE.MeshStandardMaterial({ color: 0x252b30, roughness: 0.78, metalness: 0.32 });
+    const crateMat = new THREE.MeshLambertMaterial({ color: 0x3b4435 });
+    const darkCrate = new THREE.MeshLambertMaterial({ color: 0x252b30 });
+    this._addBox(1.2, 0.78, 1.2, -13.2, 0.39, -11.5, crateMat, true);
+    this._addBox(0.88, 0.58, 0.88, -13.2, 1.06, -11.5, darkCrate, false);
+    this._addBox(1.3, 0.82, 1.1, 13.2, 0.41, -11.4, crateMat, true);
+    this._addBox(1.1, 0.72, 1.3, 13.4, 0.36, 9.6, darkCrate, true);
+    this._addBox(1.1, 0.72, 1.1, -13.4, 0.36, 9.6, crateMat, true);
+  }
 
-    // Corner supply crates & sandbag stacks for atmosphere
-    this._addBox(1.1, 0.72, 1.1, -9.8, 0.36, -8.0, crateMat, true);
-    this._addBox(0.82, 0.55, 0.82, -9.8, 1.0, -8.0, darkCrate, false);
-    this._addBox(1.2, 0.8, 1.0, 9.6, 0.4, -7.8, crateMat, true);
-    this._addBox(1.0, 0.68, 1.2, 9.6, 0.34, 7.6, darkCrate, true);
+  _makeNameTagSprite(name) {
+    const c = document.createElement('canvas');
+    c.width = 256;
+    c.height = 48;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = 'rgba(10, 14, 18, 0.82)';
+    ctx.fillRect(4, 6, 248, 36);
+    ctx.strokeStyle = '#69f0ae';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(4, 6, 248, 36);
+    ctx.fillStyle = '#e8f5e9';
+    ctx.font = 'bold 20px monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(name || 'SQUAD').slice(0, 18), 128, 25);
+    const tex = new THREE.CanvasTexture(c);
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestFilter;
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+    const sp = new THREE.Sprite(mat);
+    sp.scale.set(1.55, 0.30, 1);
+    return sp;
+  }
+
+  upsertRemoteAvatar(clientId, callsign, x, y, z, yaw = 0) {
+    if (!clientId) return;
+    let av = this.remoteAvatars.get(clientId);
+    if (!av) {
+      const grp = new THREE.Group();
+      const bodyMat = new THREE.MeshLambertMaterial({ color: 0x3b4836 });
+      const vestMat = new THREE.MeshLambertMaterial({ color: 0x222624 });
+      const skinMat = new THREE.MeshLambertMaterial({ color: 0xc99c7a });
+      const helmMat = new THREE.MeshLambertMaterial({ color: 0x2d332c });
+
+      const legs = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.82, 0.24), vestMat);
+      legs.position.y = 0.41;
+      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.62, 0.28), bodyMat);
+      torso.position.y = 1.12;
+      const vest = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.46, 0.32), vestMat);
+      vest.position.y = 1.14;
+      const head = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.25, 0.24), skinMat);
+      head.position.y = 1.56;
+      const helm = new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.14, 0.27), helmMat);
+      helm.position.y = 1.66;
+      const tag = this._makeNameTagSprite(callsign);
+      tag.position.set(0, 2.08, 0);
+
+      grp.add(legs, torso, vest, head, helm, tag);
+      grp.position.set(x || 0, 0, z || 0);
+      this.scene.add(grp);
+      av = {
+        group: grp,
+        callsign,
+        targetPos: new THREE.Vector3(x || 0, 0, z || 0),
+        targetYaw: yaw || 0,
+        lastSeen: performance.now()
+      };
+      this.remoteAvatars.set(clientId, av);
+    } else {
+      av.targetPos.set(x || 0, 0, z || 0);
+      av.targetYaw = yaw || 0;
+      av.lastSeen = performance.now();
+    }
+  }
+
+  pruneRemoteAvatars(maxAgeMs = 4500) {
+    const now = performance.now();
+    for (const [id, av] of this.remoteAvatars.entries()) {
+      if (now - av.lastSeen > maxAgeMs) {
+        if (av.group) this.scene.remove(av.group);
+        this.remoteAvatars.delete(id);
+      }
+    }
   }
 
   onResize() {
@@ -315,8 +475,8 @@ class HideoutBunker {
 
   _resolveCollisions(nextPos) {
     const r = 0.42;
-    nextPos.x = THREE.MathUtils.clamp(nextPos.x, -11.1, 11.1);
-    nextPos.z = THREE.MathUtils.clamp(nextPos.z, -9.1, 9.1);
+    nextPos.x = THREE.MathUtils.clamp(nextPos.x, -16.0, 16.0);
+    nextPos.z = THREE.MathUtils.clamp(nextPos.z, -24.5, 13.0);
     for (const c of this.colliders) {
       const cx = THREE.MathUtils.clamp(nextPos.x, c.minX, c.maxX);
       const cz = THREE.MathUtils.clamp(nextPos.z, c.minZ, c.maxZ);
@@ -336,15 +496,25 @@ class HideoutBunker {
     if (!renderer) return;
     this.idleOrbitTime += dt;
 
+    // Spin Exfil Helicopter idle rotors
+    if (this.heloMainRotor) this.heloMainRotor.rotation.y += dt * 4.2;
+    if (this.heloTailRotor) this.heloTailRotor.rotation.x += dt * 11.0;
+
+    // Interpolate live party avatars inside FOB
+    for (const av of this.remoteAvatars.values()) {
+      av.group.position.lerp(av.targetPos, Math.min(1, dt * 10));
+      av.group.rotation.y = av.targetYaw;
+    }
+    this.pruneRemoteAvatars(4500);
+
     // Pulse station floor rings gently
     for (const st of this.stations) {
       const isHov = this.hoveredStation === st;
-      st.ringMat.opacity = isHov ? 0.88 : (0.30 + 0.14 * Math.sin(this.idleOrbitTime * 2.6 + st.pos.x));
+      st.ringMat.opacity = isHov ? 0.90 : (0.30 + 0.14 * Math.sin(this.idleOrbitTime * 2.6 + st.pos.x));
       st.ring.scale.setScalar(isHov ? 1.12 : 1.0);
     }
 
     if (this.activeRoam) {
-      // First-person walkable movement inside Hideout
       const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
       const right = new THREE.Vector3(Math.cos(this.yaw), 0, -Math.sin(this.yaw));
       const move = new THREE.Vector3();
@@ -357,7 +527,7 @@ class HideoutBunker {
 
       const isMoving = move.lengthSq() > 0.001;
       const isSprinting = !!(this.keys['ShiftLeft'] || this.keys['ShiftRight'] || this.padSprint);
-      const speed = this.isCrouching ? 2.4 : (isSprinting ? 6.2 : 3.9);
+      const speed = this.isCrouching ? 2.6 : (isSprinting ? 6.6 : 4.2);
       if (isMoving) {
         if (move.lengthSq() > 1) move.normalize();
         move.multiplyScalar(speed * dt);
@@ -370,7 +540,7 @@ class HideoutBunker {
         if (this.stepAccum >= 2.15 && this.onGround) {
           this.stepAccum = 0;
           if (window.soundEngine && window.soundEngine.playFootstep) {
-            try { window.soundEngine.playFootstep(speed > 5); } catch (e) {}
+            try { window.soundEngine.playFootstep(speed > 5, 'concrete'); } catch (e) {}
           }
         }
       }
@@ -397,7 +567,6 @@ class HideoutBunker {
       this.camera.rotation.x = this.pitch;
       this.camera.rotation.z = 0;
 
-      // Find nearest station in front of the player within interaction radius
       const lookDir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion).normalize();
       let best = null;
       let bestScore = Infinity;
@@ -406,7 +575,7 @@ class HideoutBunker {
         if (d <= st.radius) {
           const toSt = st.labelPos.clone().sub(this.camera.position).normalize();
           const dot = toSt.dot(lookDir);
-          if (dot > 0.35 || d < 1.8) {
+          if (dot > 0.35 || d < 2.0) {
             const score = d - dot * 1.4;
             if (score < bestScore) {
               bestScore = score;
@@ -417,11 +586,11 @@ class HideoutBunker {
       }
       this.hoveredStation = best;
     } else {
-      // Gentle cinematic overview camera behind player position when Menu Overlay is open
-      const swayX = Math.sin(this.idleOrbitTime * 0.22) * 1.1;
-      const swayZ = Math.cos(this.idleOrbitTime * 0.17) * 0.6;
-      this.camera.position.set(this.pos.x + swayX, 2.35, Math.min(8.2, this.pos.z + 2.4 + swayZ));
-      this.camera.lookAt(0, 1.35, -3.5);
+      // Wide cinematic FOB hangar overview looking toward Armory & North Exfil Helipad
+      const swayX = Math.sin(this.idleOrbitTime * 0.20) * 1.4;
+      const swayZ = Math.cos(this.idleOrbitTime * 0.15) * 0.7;
+      this.camera.position.set(this.pos.x + swayX, 2.85, Math.min(10.5, this.pos.z + 3.4 + swayZ));
+      this.camera.lookAt(0, 1.65, -10.5);
       this.hoveredStation = null;
     }
 
@@ -451,7 +620,6 @@ class HideoutBunker {
     const W = window.innerWidth;
     const H = window.innerHeight;
 
-    // Ensure marker DOM nodes exist once
     if (layer.childElementCount !== this.stations.length) {
       layer.innerHTML = '';
       for (const st of this.stations) {

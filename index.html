@@ -4,13 +4,26 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ASHFALL // 3D Extraction Looter-Shooter</title>
-  <link rel="stylesheet" href="css/style.css?v=228" />
+  <link rel="stylesheet" href="css/style.css?v=238" />
   <!-- Three.js r128 UMD for zero-build compatibility (works on both http:// and file://) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
   <!-- 3D Viewport -->
   <canvas id="game-canvas"></canvas>
+
+  <!-- DMZ-Style FOB Social Hub Entry Overlay (shown on boot over live 3D hangar & helipad) -->
+  <div id="fob-enter-overlay" class="fob-enter-overlay">
+    <div class="fob-enter-card">
+      <div class="fob-enter-eyebrow">SECTOR 7 // FORWARD OPERATING BASE</div>
+      <h1 class="fob-enter-title">ASHFALL <span class="accent">// FOB</span></h1>
+      <p class="fob-enter-sub">SOCIAL HUB · ARMORY · CONTRACTS · GUNSMITH · EXFIL HELIPAD</p>
+      <div class="fob-enter-actions">
+        <button id="btn-enter-fob" class="btn-primary fob-enter-btn">ENTER FOB [CLICK / SPACE]</button>
+        <button id="btn-fob-menu" class="btn-small fob-menu-btn">OPEN TAC-MENU [M]</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Walkable 3D Hideout HUD (Visible in Free-Roam Hideout Mode) -->
   <div id="hideout-roam-hud" class="hideout-roam-hud hidden">
@@ -36,7 +49,7 @@
     <!-- IMPORTANT: Update version in GAME_DATA.VERSION (js/data.js) and here with EVERY new commit -->
     <div class="menu-version-stack">
       <button id="menu-update-badge" class="menu-update-badge hidden" title="Click to reload into the latest version">NEW VERSION AVAILABLE</button>
-      <div id="menu-version-badge" class="menu-version-badge">v2.37</div>
+      <div id="menu-version-badge" class="menu-version-badge">v2.38</div>
     </div>
     <!-- Minimal Sub-Menu Top Bar (Top-Left Back Button only — no redundant nav band) -->
     <header id="menu-topbar" class="hideout-header hidden">
@@ -221,6 +234,14 @@
           <span class="opt-label">SETTINGS</span>
           <span class="opt-hint">Controls, audio, FOV &amp; dev</span>
         </button>
+        <button class="menu-option dock-tile" data-menu-action="missions">
+          <div class="dock-tile-top">
+            <span class="opt-num">07</span>
+            <svg class="dock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 12h6M9 16h4"/></svg>
+          </div>
+          <span class="opt-label">MISSIONS</span>
+          <span class="opt-hint">Faction contracts &amp; rewards</span>
+        </button>
       </nav>
     </section>
 
@@ -326,6 +347,24 @@
           <button id="btn-sell-materials" class="btn-small">BULK SELL MATERIALS</button>
         </div>
         <div id="workbench-materials" class="item-list"></div>
+      </section>
+    </main>
+
+    <!-- VIEW 1E: MISSIONS & FACTION CONTRACTS BOARD -->
+    <main id="menu-view-missions" class="menu-tab-view two-col-grid hidden">
+      <section class="panel">
+        <div class="panel-header">
+          <h2>ACTIVE CONTRACTS</h2>
+          <span id="missions-active-count" class="sub">0 / 3 ACTIVE</span>
+        </div>
+        <div id="missions-active-list" class="item-list"></div>
+      </section>
+      <section class="panel">
+        <div class="panel-header">
+          <h2>SECTOR 7 CONTRACT BOARD</h2>
+          <span class="sub">ACCEPT UP TO 3 CONTRACTS</span>
+        </div>
+        <div id="missions-available-list" class="item-list"></div>
       </section>
     </main>
 
@@ -1218,7 +1257,7 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION with every new commit) -->
-  <script src="js/data.js?v=237"></script>
+  <script src="js/data.js?v=238"></script>
   <script src="js/animation.js?v=211"></script>
   <script src="js/net.js?v=123"></script>
   <script src="js/sfx_samples.js?v=21"></script>
@@ -1234,9 +1273,9 @@
   <script src="js/gamepad.js?v=228"></script>
   <script src="js/gunsmith.js?v=195"></script>
   <script src="js/matchmaking.js?v=215"></script>
-  <script src="js/hideout.js?v=234"></script>
-  <script src="js/ui.js?v=236"></script>
+  <script src="js/hideout.js?v=238"></script>
+  <script src="js/ui.js?v=238"></script>
   <script src="js/console.js?v=226"></script>
-  <script src="js/main.js?v=236"></script>
+  <script src="js/main.js?v=238"></script>
 </body>
 </html>

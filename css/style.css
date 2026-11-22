@@ -6456,3 +6456,136 @@ input[type="range"].gp-focus {
   z-index: 3;
   pointer-events: none;
 }
+
+/* ==================== DMZ-STYLE FOB ENTRY OVERLAY & MISSIONS ==================== */
+.fob-enter-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 26;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at center, rgba(10, 14, 18, 0.25) 0%, rgba(6, 9, 12, 0.72) 100%);
+  pointer-events: auto;
+}
+
+.fob-enter-overlay.hidden {
+  display: none !important;
+}
+
+.fob-enter-card {
+  text-align: center;
+  padding: 32px 44px;
+  background: rgba(12, 16, 20, 0.86);
+  border: 1px solid rgba(245, 166, 35, 0.45);
+  border-top: 3px solid #f5a623;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  max-width: 540px;
+}
+
+.fob-enter-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 2.6px;
+  color: #69f0ae;
+  margin-bottom: 8px;
+}
+
+.fob-enter-title {
+  font-family: var(--font-mono);
+  font-size: 38px;
+  letter-spacing: 4px;
+  margin: 0 0 10px;
+  color: #f0f4f8;
+}
+
+.fob-enter-sub {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 1.6px;
+  color: rgba(210, 224, 234, 0.78);
+  margin: 0 0 22px;
+}
+
+.fob-enter-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.fob-enter-btn {
+  padding: 12px 26px !important;
+  font-size: 13px !important;
+  letter-spacing: 2px !important;
+}
+
+.fob-menu-btn {
+  padding: 11px 18px !important;
+}
+
+.mission-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: rgba(18, 24, 28, 0.84);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-left: 3px solid #f5a623;
+  margin-bottom: 8px;
+}
+
+.mission-card.done {
+  border-left-color: #69f0ae;
+}
+
+.mission-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.mission-faction {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 1.4px;
+  color: #ffca28;
+}
+
+.mission-title {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 800;
+  color: #eef4f8;
+}
+
+.mission-desc {
+  font-size: 12px;
+  color: rgba(210, 222, 230, 0.8);
+}
+
+.mission-bar-wrap {
+  width: 100%;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.mission-bar-fill {
+  height: 100%;
+  background: #69f0ae;
+  transition: width 0.2s ease;
+}
+
+.mission-card-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: #9ec0d4;
+}
