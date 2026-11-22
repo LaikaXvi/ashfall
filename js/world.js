@@ -1162,6 +1162,235 @@ class WastelandWorld {
     return mesh;
   }
 
+  _rng(seed) {
+    let a = (seed >>> 0) || 1;
+    return () => {
+      a |= 0;
+      a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  _addDecor(x, y, z, w, h, d, mat, rotY = 0) {
+    const geo = new THREE.BoxGeometry(w, h, d);
+    const tile = (mat && mat.userData && mat.userData.tile) || 2.0;
+    this._applyWorldUVs(geo, w, h, d, tile);
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.position.set(x, y, z);
+    if (rotY) mesh.rotation.y = rotY;
+    mesh.castShadow = false;
+    mesh.receiveShadow = true;
+    mesh.updateMatrix();
+    mesh.matrixAutoUpdate = false;
+    this.scene.add(mesh);
+    return mesh;
+  }
+
+  _addPartition(x1, z1, x2, z2, baseY, h, gaps = []) {
+    const alongX = Math.abs(z2 - z1) < Math.abs(x2 - x1);
+    const t = 0.2;
+    const mat = this._materials.interiorPlaster;
+    const sorted = [...gaps].sort((a, b) => a.at - b.at);
+    const lintelH = Math.max(0.35, h - 2.65);
+    const lintelY = baseY + 2.65 + lintelH * 0.5;
+
+    if (alongX) {
+      const z = (z1 + z2) * 0.5;
+      let cur = Math.min(x1, x2);
+      const end = Math.max(x1, x2);
+      for (const gap of sorted) {
+        const gw = gap.w || 1.7;
+        const gStart = Math.max(cur, gap.at - gw * 0.5);
+        const gEnd = Math.min(end, gap.at + gw * 0.5);
+        if (gStart - cur > 0.05) {
+          this._addBox((cur + gStart) * 0.5, baseY + h * 0.5, z, gStart - cur, h, t, mat, true);
+        }
+        if (gEnd > gStart) {
+          this._addBox((gStart + gEnd) * 0.5, lintelY, z, gEnd - gStart, lintelH, t, mat, true);
+          if (gap.door) {
+            this._addDoor((gStart + gEnd) * 0.5, baseY + 0.16, z, gEnd - gStart, 2.6, 0, gap.label || 'Door', gap.door);
+          }
+        }
+        cur = Math.max(cur, gEnd);
+      }
+      if (end - cur > 0.05) {
+        this._addBox((cur + end) * 0.5, baseY + h * 0.5, z, end - cur, h, t, mat, true);
+      }
+    } else {
+      const x = (x1 + x2) * 0.5;
+      let cur = Math.min(z1, z2);
+      const end = Math.max(z1, z2);
+      for (const gap of sorted) {
+        const gw = gap.w || 1.7;
+        const gStart = Math.max(cur, gap.at - gw * 0.5);
+        const gEnd = Math.min(end, gap.at + gw * 0.5);
+        if (gStart - cur > 0.05) {
+          this._addBox(x, baseY + h * 0.5, (cur + gStart) * 0.5, t, h, gStart - cur, mat, true);
+        }
+        if (gEnd > gStart) {
+          this._addBox(x, lintelY, (gStart + gEnd) * 0.5, t, lintelH, gEnd - gStart, mat, true);
+          if (gap.door) {
+            this._addDoor(x, baseY + 0.16, (gStart + gEnd) * 0.5, gEnd - gStart, 2.6, Math.PI / 2, gap.label || 'Door', gap.door);
+          }
+        }
+        cur = Math.max(cur, gEnd);
+      }
+      if (end - cur > 0.05) {
+        this._addBox(x, baseY + h * 0.5, (cur + end) * 0.5, t, h, end - cur, mat, true);
+      }
+    }
+  }
+
+  _decorateFacade(cx, cz, w, d, h, baseY, opts = {}) {
+    const doorSide = opts.doorSide || 'south';
+    const wallMat = opts.wallMat || this._materials.concrete;
+    const seed = opts.seed !== undefined ? opts.seed : (((cx * 73856093) ^ (cz * 19349663)) >>> 0);
+    const rng = this._rng(seed);
+    const doorW = opts.doorW || 2.0;
+
+    // 1. Exterior plinth band (0.9m tall, 0.08 proud on every exterior face; split around entrance door!)
+    const plinthT = 0.08;
+    const plinthY = baseY + 0.45;
+    const outerX = w * 0.5 + 0.25 + plinthT * 0.5;
+    const outerZ = d * 0.5 + 0.25 + plinthT * 0.5;
+    const fullW = w + 0.5 + plinthT * 2;
+    const fullD = d + 0.5 + plinthT * 2;
+    const addHorizPlinth = (pz, hasDoorGap) => {
+      if (!hasDoorGap) {
+        this._addDecor(cx, plinthY, pz, fullW, 0.9, plinthT, this._materials.darkConcrete);
+      } else {
+        const segLen = (fullW - doorW - 0.1) * 0.5;
+        if (segLen > 0.1) {
+          this._addDecor(cx - (doorW * 0.5 + 0.05 + segLen * 0.5), plinthY, pz, segLen, 0.9, plinthT, this._materials.darkConcrete);
+          this._addDecor(cx + (doorW * 0.5 + 0.05 + segLen * 0.5), plinthY, pz, segLen, 0.9, plinthT, this._materials.darkConcrete);
+        }
+      }
+    };
+    const addVertPlinth = (px, hasDoorGap) => {
+      if (!hasDoorGap) {
+        this._addDecor(px, plinthY, cz, plinthT, 0.9, fullD, this._materials.darkConcrete);
+      } else {
+        const segLen = (fullD - doorW - 0.1) * 0.5;
+        if (segLen > 0.1) {
+          this._addDecor(px, plinthY, cz - (doorW * 0.5 + 0.05 + segLen * 0.5), plinthT, 0.9, segLen, this._materials.darkConcrete);
+          this._addDecor(px, plinthY, cz + (doorW * 0.5 + 0.05 + segLen * 0.5), plinthT, 0.9, segLen, this._materials.darkConcrete);
+        }
+      }
+    };
+    addHorizPlinth(cz - outerZ, doorSide === 'north' && !opts.skipDoorFrame);
+    if (!(doorSide === 'south' && opts.skipDoorFrame)) {
+      addHorizPlinth(cz + outerZ, doorSide === 'south');
+    }
+    addVertPlinth(cx - outerX, doorSide === 'west' && !opts.skipDoorFrame);
+    addVertPlinth(cx + outerX, doorSide === 'east' && !opts.skipDoorFrame);
+
+    // 2. Corner pilasters (0.6 x h x 0.6)
+    const pilMat = (wallMat === this._materials.concrete) ? this._materials.darkConcrete : this._materials.bossDark;
+    for (const sx of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        this._addDecor(cx + sx * (w * 0.5), baseY + h * 0.5, cz + sz * (d * 0.5), 0.6, h, 0.6, pilMat);
+      }
+    }
+
+    // 3. Cornice band (0.35m tall, 0.12 proud at top of exterior walls)
+    const cornT = 0.12;
+    const cornY = baseY + h - 0.175;
+    const cornX = w * 0.5 + 0.25 + cornT * 0.5;
+    const cornZ = d * 0.5 + 0.25 + cornT * 0.5;
+    this._addDecor(cx, cornY, cz - cornZ, w + 0.5 + cornT * 2, 0.35, cornT, this._materials.concrete);
+    this._addDecor(cx, cornY, cz + cornZ, w + 0.5 + cornT * 2, 0.35, cornT, this._materials.concrete);
+    this._addDecor(cx - cornX, cornY, cz, cornT, 0.35, d + 0.5, this._materials.concrete);
+    this._addDecor(cx + cornX, cornY, cz, cornT, 0.35, d + 0.5, this._materials.concrete);
+
+    // 4. Rooftop Parapet (0.9m tall, 0.3m thick WITH colliders for roof cover + 0.08m cap)
+    const roofTopY = baseY + h + (opts.roofOffset !== undefined ? opts.roofOffset : 0.30);
+    const paraH = 0.9;
+    const paraT = 0.3;
+    this._addBox(cx, roofTopY + paraH * 0.5, cz - d * 0.5, w + 0.3, paraH, paraT, wallMat, true);
+    this._addBox(cx, roofTopY + paraH * 0.5, cz + d * 0.5, w + 0.3, paraH, paraT, wallMat, true);
+    this._addBox(cx - w * 0.5, roofTopY + paraH * 0.5, cz, paraT, paraH, Math.max(0.4, d - 0.3), wallMat, true);
+    this._addBox(cx + w * 0.5, roofTopY + paraH * 0.5, cz, paraT, paraH, Math.max(0.4, d - 0.3), wallMat, true);
+
+    const capY = roofTopY + paraH + 0.04;
+    this._addDecor(cx, capY, cz - d * 0.5, w + 0.42, 0.08, 0.36, this._materials.darkConcrete);
+    this._addDecor(cx, capY, cz + d * 0.5, w + 0.42, 0.08, 0.36, this._materials.darkConcrete);
+    this._addDecor(cx - w * 0.5, capY, cz, 0.36, 0.08, Math.max(0.4, d - 0.3), this._materials.darkConcrete);
+    this._addDecor(cx + w * 0.5, capY, cz, 0.36, 0.08, Math.max(0.4, d - 0.3), this._materials.darkConcrete);
+
+    // 5. Seeded Rooftop Clutter (at least 1.2m inside parapet)
+    const spanX = Math.max(0.8, w * 0.5 - 2.1);
+    const spanZ = Math.max(0.8, d * 0.5 - 2.1);
+    if (!this._acFanGeo) this._acFanGeo = new THREE.CylinderGeometry(0.32, 0.32, 0.08, 12);
+    const acCount = 1 + Math.floor(rng() * 2);
+    for (let i = 0; i < acCount; i++) {
+      const ax = cx + (rng() * 2 - 1) * spanX;
+      const az = cz + (rng() * 2 - 1) * spanZ;
+      this._addDecor(ax, roofTopY + 0.45, az, 1.4, 0.9, 1.0, this._materials.metal);
+      const fan = new THREE.Mesh(this._acFanGeo, this._materials.windowFrame);
+      fan.position.set(ax, roofTopY + 0.94, az);
+      fan.updateMatrix();
+      fan.matrixAutoUpdate = false;
+      this.scene.add(fan);
+    }
+    for (let i = 0; i < 2; i++) {
+      const vx = cx + (rng() * 2 - 1) * spanX;
+      const vz = cz + (rng() * 2 - 1) * spanZ;
+      this._addDecor(vx, roofTopY + 0.4, vz, 0.2, 0.8, 0.2, this._materials.metal);
+      this._addDecor(vx, roofTopY + 0.84, vz, 0.32, 0.1, 0.32, this._materials.darkConcrete);
+    }
+    const hx = cx + (rng() * 2 - 1) * spanX * 0.8;
+    const hz = cz + (rng() * 2 - 1) * spanZ * 0.8;
+    this._addDecor(hx, roofTopY + 0.2, hz, 1.0, 0.4, 1.0, this._materials.doorSteel);
+
+    // 6. Entrance door frame + sloped awning + small wall lamp
+    if (!this._lampMat) this._lampMat = new THREE.MeshBasicMaterial({ color: 0xfff1c4 });
+    const awW = doorW + 1.2;
+    let dx = cx, dz = cz, awRot = 0, outX = 0, outZ = 0;
+    if (doorSide === 'north') { dz = cz - d * 0.5; awRot = 0; outZ = -1; }
+    else if (doorSide === 'south') { dz = cz + d * 0.5; awRot = 0; outZ = 1; }
+    else if (doorSide === 'west') { dx = cx - w * 0.5; awRot = Math.PI / 2; outX = -1; }
+    else if (doorSide === 'east') { dx = cx + w * 0.5; awRot = Math.PI / 2; outX = 1; }
+
+    if (!opts.skipDoorFrame) {
+      if (outZ !== 0) {
+        this._addDecor(dx - (doorW * 0.5 + 0.075), baseY + 1.4, dz, 0.15, 2.8, 0.62, this._materials.windowFrame);
+        this._addDecor(dx + (doorW * 0.5 + 0.075), baseY + 1.4, dz, 0.15, 2.8, 0.62, this._materials.windowFrame);
+        this._addDecor(dx, baseY + 2.75, dz, doorW + 0.32, 0.18, 0.62, this._materials.windowFrame);
+      } else {
+        this._addDecor(dx, baseY + 1.4, dz - (doorW * 0.5 + 0.075), 0.62, 2.8, 0.15, this._materials.windowFrame);
+        this._addDecor(dx, baseY + 1.4, dz + (doorW * 0.5 + 0.075), 0.62, 2.8, 0.15, this._materials.windowFrame);
+        this._addDecor(dx, baseY + 2.75, dz, 0.62, 0.18, doorW + 0.32, this._materials.windowFrame);
+      }
+      // Sloped exterior awning
+      const awMesh = this._addDecor(dx + outX * 0.85, baseY + 3.0, dz + outZ * 0.85, awW, 0.12, 1.4, this._materials.metal, awRot);
+      if (outZ !== 0) awMesh.rotation.x = outZ * 0.16;
+      else awMesh.rotation.x = -outX * 0.16;
+      awMesh.updateMatrix();
+    }
+    // Exterior entrance wall lamp
+    const lampY = opts.skipDoorFrame ? (baseY + h - 0.55) : (baseY + 3.35);
+    this._addDecor(dx + outX * 0.42, lampY, dz + outZ * 0.42, 0.25, 0.25, 0.25, this._lampMat);
+
+    // 7. Interior ceiling light panels (skip if skipLights; optionally ground floor only via lightH)
+    if (!opts.skipLights) {
+      if (!this._ceilLightMat) this._ceilLightMat = new THREE.MeshBasicMaterial({ color: 0xf4f1e6 });
+      const lh = opts.lightH || h;
+      const ly = baseY + lh - 0.05;
+      const nx = Math.max(1, Math.round(w / 6));
+      const nz = Math.max(1, Math.round(d / 6));
+      for (let ix = 0; ix < nx; ix++) {
+        for (let iz = 0; iz < nz; iz++) {
+          const lx = cx - w * 0.5 + ((ix + 0.5) / nx) * w;
+          const lz = cz - d * 0.5 + ((iz + 0.5) / nz) * d;
+          if (opts.stairwellAvoidX !== undefined && lx >= opts.stairwellAvoidX) continue;
+          this._addDecor(lx, ly, lz, 1.2, 0.06, 0.5, this._ceilLightMat);
+        }
+      }
+    }
+  }
+
   _createSignTexture(type) {
     const canvas = document.createElement('canvas');
     canvas.width = 512;
@@ -1286,16 +1515,27 @@ class WastelandWorld {
   }
 
   _addWindow(x, y, z, w, h, rotY = 0) {
+    if (!this._winGlassDouble) {
+      this._winGlassDouble = this._materials.windowGlass.clone();
+      this._winGlassDouble.side = THREE.DoubleSide;
+    }
     const grp = new THREE.Group();
     grp.position.set(x, y, z);
     grp.rotation.y = rotY;
-    const glass = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.08), this._materials.windowGlass);
+    const glass = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.08), this._winGlassDouble);
+    const glassInner = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.04), this._winGlassDouble);
+    glassInner.position.z = -0.55;
     const topBar = new THREE.Mesh(new THREE.BoxGeometry(w + 0.18, 0.12, 0.16), this._materials.windowFrame);
     topBar.position.y = h / 2;
     const botBar = topBar.clone();
     botBar.position.y = -h / 2;
     const midBar = new THREE.Mesh(new THREE.BoxGeometry(0.09, h, 0.14), this._materials.windowFrame);
-    grp.add(glass, topBar, botBar, midBar);
+    const horizMullion = new THREE.Mesh(new THREE.BoxGeometry(w, 0.07, 0.12), this._materials.windowFrame);
+    const sill = new THREE.Mesh(new THREE.BoxGeometry(w + 0.3, 0.1, 0.22), this._materials.darkConcrete);
+    sill.position.y = -h / 2 - 0.08;
+    const lintel = new THREE.Mesh(new THREE.BoxGeometry(w + 0.3, 0.16, 0.2), this._materials.concrete);
+    lintel.position.y = h / 2 + 0.1;
+    grp.add(glass, glassInner, topBar, botBar, midBar, horizMullion, sill, lintel);
     grp.updateMatrix();
     grp.matrixAutoUpdate = false;
     this.scene.add(grp);
@@ -1451,15 +1691,15 @@ class WastelandWorld {
     }
   }
 
-  _addBuilding(cx, cz, w, d, h = 4.5, doorSide = 'south', wallMatOverride = null) {
+  _addBuilding(cx, cz, w, d, h = 4.5, doorSide = 'south', wallMatOverride = null, layout = null) {
     const t = 0.5;
     const doorW = 2.0;
     const baseY = this.getTerrainHeight(cx, cz);
     const wMat = wallMatOverride || this._materials.concrete;
 
     this._addBox(cx, baseY - 0.5, cz, w + 0.6, 1.0, d + 0.6, this._materials.darkConcrete, false);
-    this._addBox(cx, baseY + 0.08, cz, w, 0.16, d, this._materials.darkConcrete, false);
-    this._addBox(cx, baseY + h + 0.15, cz, w + 0.4, 0.3, d + 0.4, this._materials.darkConcrete, true);
+    this._addBox(cx, baseY + 0.08, cz, w, 0.16, d, this._materials.floorTile, false);
+    this._addBox(cx, baseY + h + 0.15, cz, w + 0.4, 0.3, d + 0.4, this._materials.roofTar, true);
 
     const buildWallWithDoor = (wx, wz, length, isHorizontal, rotY) => {
       const sideLen = (length - doorW) / 2;
@@ -1478,8 +1718,8 @@ class WastelandWorld {
     if (doorSide === 'north') buildWallWithDoor(cx, cz - d / 2, w, true, 0);
     else {
       this._addBox(cx, baseY + h / 2, cz - d / 2, w, h, t, wMat);
-      this._addWindow(cx - w * 0.24, baseY + h * 0.54, cz - d / 2 - 0.24, 2.2, 1.35, 0);
-      this._addWindow(cx + w * 0.24, baseY + h * 0.54, cz - d / 2 - 0.24, 2.2, 1.35, 0);
+      this._addWindow(cx - w * 0.24, baseY + h * 0.54, cz - d / 2 - 0.24, 2.2, 1.35, Math.PI);
+      this._addWindow(cx + w * 0.24, baseY + h * 0.54, cz - d / 2 - 0.24, 2.2, 1.35, Math.PI);
     }
 
     if (doorSide === 'south') buildWallWithDoor(cx, cz + d / 2, w, true, 0);
@@ -1492,8 +1732,8 @@ class WastelandWorld {
     if (doorSide === 'west') buildWallWithDoor(cx - w / 2, cz, d, false, Math.PI / 2);
     else {
       this._addBox(cx - w / 2, baseY + h / 2, cz, t, h, d, wMat);
-      this._addWindow(cx - w / 2 - 0.24, baseY + h * 0.54, cz - d * 0.22, 2.1, 1.35, Math.PI / 2);
-      this._addWindow(cx - w / 2 - 0.24, baseY + h * 0.54, cz + d * 0.22, 2.1, 1.35, Math.PI / 2);
+      this._addWindow(cx - w / 2 - 0.24, baseY + h * 0.54, cz - d * 0.22, 2.1, 1.35, -Math.PI / 2);
+      this._addWindow(cx - w / 2 - 0.24, baseY + h * 0.54, cz + d * 0.22, 2.1, 1.35, -Math.PI / 2);
     }
 
     if (doorSide === 'east') buildWallWithDoor(cx + w / 2, cz, d, false, Math.PI / 2);
@@ -1502,6 +1742,11 @@ class WastelandWorld {
       this._addWindow(cx + w / 2 + 0.24, baseY + h * 0.54, cz - d * 0.22, 2.1, 1.35, Math.PI / 2);
       this._addWindow(cx + w / 2 + 0.24, baseY + h * 0.54, cz + d * 0.22, 2.1, 1.35, Math.PI / 2);
     }
+
+    if (typeof layout === 'function') {
+      layout(baseY, h);
+    }
+    this._decorateFacade(cx, cz, w, d, h, baseY, { doorSide, wallMat: wMat });
   }
 
   _addContainer(x, z, rotY = 0, mat = this._materials.rustRed) {
@@ -1677,30 +1922,6 @@ class WastelandWorld {
       }
     }
 
-    // === 8 DRAMATICALLY EXPANDED TACTICAL POIs (>= 278m BETWEEN EVERY PAIR OF POIs!) ===
-
-    // 1. Military Compound (NW Sector: -320, -240)
-    {
-      const cx = -320, cz = -240;
-      this._addBuilding(cx, cz, 18, 16, 5.0, 'east');
-      this.pois.push({ name: 'COMPOUND', x: cx, z: cz, color: '#ab47bc', threat: 'high' });
-      this._addGunLocker(cx - 8.1, cz - 3.0, Math.PI / 2, 'military', 'Compound Rifle Locker');
-      this._addGunLocker(cx - 8.1, cz + 2.5, Math.PI / 2, 'military', 'Compound Armory Locker');
-      this._addLootContainer(cx - 5.2, 0.16, cz + 6.2, 'supply', 'Compound Materials Crate');
-      this._addWallFirstAidKit(cx + 4.0, cz + 7.45, 'south', 'Compound Wall First Aid Kit');
-      this._addMetalShelf(cx - 2.0, cz - 6.9, 0, [
-        { id: 'ammo_545', qty: 30 }, { id: 'armor_plate', qty: 2 }, { id: 'frag_grenade', qty: 1 }
-      ]);
-      this._addMetalShelf(cx + 3.0, cz - 6.9, 0, [
-        { id: 'ammo_762', qty: 20 }, { id: 'gunpowder', qty: 2 }, { id: 'polymer_parts', qty: 2 }
-      ]);
-      this._addWorkbenchTable(cx + 0.5, cz, 0, [
-        { id: 'armor_plate', qty: 2 }, { id: 'scrap_metal', qty: 3 }
-      ]);
-      this._addContainer(cx + 18, cz - 10, 0, this._materials.rustOlive);
-      this._addBarrier(cx + 15, cz + 9, true);
-    }
-
     // Helper: Walkable staircase (stepH <= 0.30m so player._getSupportHeightAt walks smoothly up!)
     const addStaircase = (startX, baseY, startZ, steps, stepW, totalH, totalRun, dir = 'north') => {
       const stepH = totalH / steps;
@@ -1747,20 +1968,53 @@ class WastelandWorld {
     // Helper: Military Canvas Tent with pitched roof & open front/back for lockers & crates
     const addMilitaryTent = (tx, by, tz, w = 8.5, d = 6.2) => {
       const h = 3.2;
-      // Corner & ridge support poles
       for (const sx of [-w / 2 + 0.2, w / 2 - 0.2]) {
         for (const sz of [-d / 2 + 0.2, d / 2 - 0.2]) {
           this._addBox(tx + sx, by + h * 0.42, tz + sz, 0.16, h * 0.84, 0.16, this._materials.metal, false);
         }
       }
-      // Side canvas walls (left & right)
       this._addBox(tx - w / 2, by + h * 0.38, tz, 0.14, h * 0.76, d, this._materials.rustOlive, true);
       this._addBox(tx + w / 2, by + h * 0.38, tz, 0.14, h * 0.76, d, this._materials.rustOlive, true);
-      // Pitched canvas roof (two stepped ridge slabs)
       this._addBox(tx - w * 0.25, by + h * 0.85, tz, w * 0.56, 0.14, d + 0.3, this._materials.rustOlive, false);
       this._addBox(tx + w * 0.25, by + h * 0.85, tz, w * 0.56, 0.14, d + 0.3, this._materials.rustOlive, false);
       this._addBox(tx, by + h * 0.98, tz, w * 0.42, 0.18, d + 0.3, this._materials.crateMil, false);
     };
+
+    // === 8 DRAMATICALLY EXPANDED TACTICAL POIs (>= 278m BETWEEN EVERY PAIR OF POIs!) ===
+
+    // 1. Military Compound (NW Sector: -320, -240)
+    {
+      const cx = -320, cz = -240;
+      this._addBuilding(cx, cz, 18, 16, 5.0, 'east', null, (by, bh) => {
+        // West Armory Wing
+        this._addPartition(cx - 4.0, cz - 8.0, cx - 4.0, cz + 8.0, by, bh, [
+          { at: cz, w: 1.8, door: 'steel', label: 'Armory Door' }
+        ]);
+        // NE Security Office
+        this._addPartition(cx + 4.6, cz - 3.2, cx + 9.0, cz - 3.2, by, bh, []);
+        this._addPartition(cx + 4.6, cz - 8.0, cx + 4.6, cz - 3.2, by, bh, [
+          { at: cz - 4.4, w: 1.7, door: 'wood', label: 'Office Door' }
+        ]);
+        addDeskProp(cx + 7.0, by + 0.16, cz - 6.6);
+        this._addLootContainer(cx + 7.4, 0.16, cz - 4.4, 'supply', 'Compound Office Safe');
+      });
+      this.pois.push({ name: 'COMPOUND', x: cx, z: cz, color: '#ab47bc', threat: 'high' });
+      this._addGunLocker(cx - 8.1, cz - 3.0, Math.PI / 2, 'military', 'Compound Rifle Locker');
+      this._addGunLocker(cx - 8.1, cz + 2.5, Math.PI / 2, 'military', 'Compound Armory Locker');
+      this._addLootContainer(cx - 6.0, 0.16, cz + 6.2, 'supply', 'Compound Materials Crate');
+      this._addWallFirstAidKit(cx + 4.0, cz + 7.45, 'south', 'Compound Wall First Aid Kit');
+      this._addMetalShelf(cx - 2.0, cz - 6.9, 0, [
+        { id: 'ammo_545', qty: 30 }, { id: 'armor_plate', qty: 2 }, { id: 'frag_grenade', qty: 1 }
+      ]);
+      this._addMetalShelf(cx + 3.0, cz - 6.9, 0, [
+        { id: 'ammo_762', qty: 20 }, { id: 'gunpowder', qty: 2 }, { id: 'polymer_parts', qty: 2 }
+      ]);
+      this._addWorkbenchTable(cx + 0.5, cz, 0, [
+        { id: 'armor_plate', qty: 2 }, { id: 'scrap_metal', qty: 3 }
+      ]);
+      this._addContainer(cx + 18, cz - 10, 0, this._materials.rustOlive);
+      this._addBarrier(cx + 15, cz + 9, true);
+    }
 
     // 2. Large Multi-Room Field Hospital & Clinic (East Meadow: 340, 20) — 28m x 20m White Hospital + Ambulance Canopy + 6 Patient Rooms!
     {
@@ -1778,8 +2032,8 @@ class WastelandWorld {
       this._addSignBoard(cx, by + 6.2, cz - 10.3, 8.6, 3.2, Math.PI, 'clinic');
       this._addSignBoard(cx, by + 6.2, cz + 10.3, 8.6, 3.2, 0, 'clinic');
       // Extra panoramic hospital windows along West front facade
-      this._addWindow(cx - 14.24, by + 2.5, cz - 6.0, 3.2, 1.55, Math.PI / 2);
-      this._addWindow(cx - 14.24, by + 2.5, cz + 6.0, 3.2, 1.55, Math.PI / 2);
+      this._addWindow(cx - 14.24, by + 2.5, cz - 6.0, 3.2, 1.55, -Math.PI / 2);
+      this._addWindow(cx - 14.24, by + 2.5, cz + 6.0, 3.2, 1.55, -Math.PI / 2);
 
       // Front Triage & Reception Desk
       this._addBox(cx - 9.8, by + 0.55, cz - 3.0, 1.3, 1.1, 4.6, this._materials.crateMed, true);
@@ -1823,7 +2077,7 @@ class WastelandWorld {
 
       const pw = 24, pd = 18, ph = 4.4;
       this._addBox(pcx, pby - 0.5, pcz, pw + 0.8, 1.0, pd + 0.8, this._materials.darkConcrete, false);
-      this._addBox(pcx, pby + 0.08, pcz, pw, 0.16, pd, this._materials.darkConcrete, false);
+      this._addBox(pcx, pby + 0.08, pcz, pw, 0.16, pd, this._materials.floorTile, false);
       // Limestone lower base + Navy-Blue 2-story precinct walls
       this._addBox(pcx, pby + ph, pcz - pd / 2, pw, ph * 2, 0.52, this._materials.policeNavy, true);
       this._addBox(pcx, pby + ph, pcz + pd / 2, pw, ph * 2, 0.52, this._materials.policeNavy, true);
@@ -1840,9 +2094,9 @@ class WastelandWorld {
       this._addBox(pcx + pw / 2 + 4.2, pby + 1.85, pcz + 2.6, 0.42, 3.7, 0.42, this._materials.whiteWall, true);
       // 1st & 2nd Floor Exterior Windows
       for (const wy of [pby + 2.4, pby + ph + 2.4]) {
-        this._addWindow(pcx - 6.0, wy, pcz - pd / 2 - 0.25, 2.8, 1.45, 0);
-        this._addWindow(pcx + 0.0, wy, pcz - pd / 2 - 0.25, 2.8, 1.45, 0);
-        this._addWindow(pcx + 6.0, wy, pcz - pd / 2 - 0.25, 2.8, 1.45, 0);
+        this._addWindow(pcx - 6.0, wy, pcz - pd / 2 - 0.25, 2.8, 1.45, Math.PI);
+        this._addWindow(pcx + 0.0, wy, pcz - pd / 2 - 0.25, 2.8, 1.45, Math.PI);
+        this._addWindow(pcx + 6.0, wy, pcz - pd / 2 - 0.25, 2.8, 1.45, Math.PI);
         this._addWindow(pcx - 6.0, wy, pcz + pd / 2 + 0.25, 2.8, 1.45, 0);
         this._addWindow(pcx + 6.0, wy, pcz + pd / 2 + 0.25, 2.8, 1.45, 0);
         this._addWindow(pcx + pw / 2 + 0.25, wy, pcz - 5.2, 2.6, 1.45, Math.PI / 2);
@@ -1858,7 +2112,7 @@ class WastelandWorld {
       this._addBox(pcx - 4.2, pby + ph, pcz, 15.6, 0.28, pd - 0.4, this._materials.darkConcrete, true);
       this._addBox(pcx + 9.4, pby + ph, pcz, 5.0, 0.28, pd - 0.4, this._materials.darkConcrete, true);
       this._addBox(pcx + 5.2, pby + ph, pcz - 5.5, 3.4, 0.28, 6.6, this._materials.darkConcrete, true);
-      this._addBox(pcx, pby + ph * 2 + 0.15, pcz, pw + 0.6, 0.32, pd + 0.6, this._materials.darkConcrete, true);
+      this._addBox(pcx, pby + ph * 2 + 0.15, pcz, pw + 0.6, 0.32, pd + 0.6, this._materials.roofTar, true);
 
       // Ground Floor: Grand Booking Desk & Holding Area
       this._addBox(pcx + 1.2, pby + 0.55, pcz - 3.6, 1.2, 1.1, 5.2, this._materials.wood, true);
@@ -1866,7 +2120,7 @@ class WastelandWorld {
       for (let cell = 0; cell < 4; cell++) {
         const czCell = pcz - 6.3 + cell * 4.2;
         if (cell > 0) {
-          this._addBox(pcx - 9.2, pby + 2.1, czCell - 2.1, 5.0, 4.2, 0.22, this._materials.concrete, true);
+          this._addBox(pcx - 9.2, pby + 2.1, czCell - 2.1, 5.0, 4.2, 0.22, this._materials.interiorPlaster, true);
         }
         for (let b = 0; b < 5; b++) {
           this._addBox(pcx - 6.7, pby + 2.1, czCell - 1.5 + b * 0.48, 0.09, 4.2, 0.09, this._materials.metal, true);
@@ -1889,14 +2143,21 @@ class WastelandWorld {
       addDeskProp(pcx - 1.8, f2y, pcz + 3.6);
 
       // 2nd Floor: Evidence Processing Room & Vault WITH INTERACTIVE STEEL DOOR!
-      this._addBox(pcx - 5.2, f2y + 2.1, pcz - 2.8, 0.24, 4.2, 11.4, this._materials.concrete, true);
-      this._addBox(pcx - 9.4, f2y + 2.1, pcz + 2.8, 4.6, 4.2, 0.24, this._materials.concrete, true);
+      this._addBox(pcx - 5.2, f2y + 2.1, pcz - 2.8, 0.24, 4.2, 11.4, this._materials.interiorPlaster, true);
+      this._addBox(pcx - 9.4, f2y + 2.1, pcz + 2.8, 4.6, 4.2, 0.24, this._materials.interiorPlaster, true);
       this._addDoor(pcx - 6.1, f2y, pcz + 2.8, 1.8, 2.6, 0, 'Evidence Room Door', 'steel');
       this._addLootContainer(pcx - 10.2, ph + 0.16, pcz - 6.4, 'military', 'Evidence Locker Vault');
       this._addLootContainer(pcx - 10.2, ph + 0.16, pcz - 1.6, 'police_fire', 'Evidence Processing Case');
       this._addWorkbenchTable(pcx - 8.2, pcz - 3.8, 0, [
         { id: 'intel_drive', qty: 1 }, { id: 'armor_plate', qty: 2 }, { id: 'medkit', qty: 1 }
       ]);
+      this._decorateFacade(pcx, pcz, pw, pd, ph * 2, pby, {
+        doorSide: 'east',
+        wallMat: this._materials.policeNavy,
+        roofOffset: 0.31,
+        lightH: ph - 0.14,
+        stairwellAvoidX: pcx + 3.0
+      });
     }
 
     // 3B. Large 3-Bay Fire Station + Living Wing + Spacious 8m x 8m Climbable Watch Tower (SW East Pad: -195, 315)
@@ -1907,18 +2168,18 @@ class WastelandWorld {
 
       const fw = 22, fd = 16, fh = 5.6;
       this._addBox(fcx, fby - 0.5, fcz, fw + 0.8, 1.0, fd + 0.8, this._materials.darkConcrete, false);
-      this._addBox(fcx, fby + 0.08, fcz, fw, 0.16, fd, this._materials.darkConcrete, false);
+      this._addBox(fcx, fby + 0.08, fcz, fw, 0.16, fd, this._materials.floorTile, false);
       // Clean watertight Fire Red brick-style outer walls
       this._addBox(fcx, fby + fh / 2, fcz - fd / 2, fw, fh, 0.52, this._materials.fireRed, true);
       this._addBox(fcx - fw / 2, fby + fh / 2, fcz, 0.52, fh, fd, this._materials.fireRed, true);
       this._addBox(fcx + fw / 2, fby + fh / 2, fcz, 0.52, fh, fd, this._materials.fireRed, true);
       // Crisp white architectural cornice trim & rear/side windows
       this._addBox(fcx, fby + fh - 0.2, fcz + fd / 2 + 0.28, fw, 0.4, 0.18, this._materials.whiteWall, false);
-      this._addWindow(fcx - 6.5, fby + 3.0, fcz - fd / 2 - 0.25, 2.8, 1.5, 0);
-      this._addWindow(fcx + 0.0, fby + 3.0, fcz - fd / 2 - 0.25, 2.8, 1.5, 0);
-      this._addWindow(fcx + 6.5, fby + 3.0, fcz - fd / 2 - 0.25, 2.8, 1.5, 0);
-      this._addWindow(fcx - fw / 2 - 0.25, fby + 3.0, fcz - 3.0, 2.8, 1.5, Math.PI / 2);
-      this._addWindow(fcx - fw / 2 - 0.25, fby + 3.0, fcz + 3.0, 2.8, 1.5, Math.PI / 2);
+      this._addWindow(fcx - 6.5, fby + 3.0, fcz - fd / 2 - 0.25, 2.8, 1.5, Math.PI);
+      this._addWindow(fcx + 0.0, fby + 3.0, fcz - fd / 2 - 0.25, 2.8, 1.5, Math.PI);
+      this._addWindow(fcx + 6.5, fby + 3.0, fcz - fd / 2 - 0.25, 2.8, 1.5, Math.PI);
+      this._addWindow(fcx - fw / 2 - 0.25, fby + 3.0, fcz - 3.0, 2.8, 1.5, -Math.PI / 2);
+      this._addWindow(fcx - fw / 2 - 0.25, fby + 3.0, fcz + 3.0, 2.8, 1.5, -Math.PI / 2);
       // Giant FIRE DEPT sign over 3 wide garage bays!
       this._addSignBoard(fcx, fby + fh + 1.75, fcz + fd / 2 + 0.3, 9.6, 3.3, 0, 'fire');
       this._addSignBoard(fcx, fby + fh + 1.75, fcz - fd / 2 - 0.3, 9.6, 3.3, Math.PI, 'fire');
@@ -1928,7 +2189,13 @@ class WastelandWorld {
       this._addBox(fcx + 3.6, fby + fh / 2, fcz + fd / 2, 1.3, fh, 0.52, this._materials.fireRed, true);
       this._addBox(fcx + fw / 2 - 0.9, fby + fh / 2, fcz + fd / 2, 1.8, fh, 0.52, this._materials.fireRed, true);
       this._addBox(fcx, fby + fh - 0.7, fcz + fd / 2, fw, 1.4, 0.56, this._materials.whiteWall, true);
-      this._addBox(fcx, fby + fh + 0.16, fcz, fw + 0.5, 0.32, fd + 0.5, this._materials.darkConcrete, true);
+      this._addBox(fcx, fby + fh + 0.16, fcz, fw + 0.5, 0.32, fd + 0.5, this._materials.roofTar, true);
+      this._decorateFacade(fcx, fcz, fw, fd, fh, fby, {
+        doorSide: 'south',
+        wallMat: this._materials.fireRed,
+        roofOffset: 0.32,
+        skipDoorFrame: true
+      });
 
       // Garage Equipment Lockers, Bunks & Workbench
       this._addGunLocker(fcx - 9.8, fcz - 3.0, Math.PI / 2, 'police_fire', 'Fire & Rescue Gear Locker');
@@ -1997,7 +2264,7 @@ class WastelandWorld {
       // B. Massive 24m x 20m 2-Story Central Command Center + Rooftop Radar Tower & Helipad!
       const ccw = 24, ccd = 20, cch = 4.6;
       this._addBox(cx, by - 0.5, cz - 2, ccw + 0.8, 1.0, ccd + 0.8, this._materials.darkConcrete, false);
-      this._addBox(cx, by + 0.08, cz - 2, ccw, 0.16, ccd, this._materials.darkConcrete, false);
+      this._addBox(cx, by + 0.08, cz - 2, ccw, 0.16, ccd, this._materials.floorTile, false);
       this._addBox(cx - ccw / 2, by + cch, cz - 2, 0.55, cch * 2, ccd, this._materials.bossDark, true);
       this._addBox(cx + ccw / 2, by + cch, cz - 2, 0.55, cch * 2, ccd, this._materials.bossDark, true);
       this._addBox(cx - 6.6, by + cch / 2, cz - 2 + ccd / 2, 10.8, cch, 0.55, this._materials.bossDark, true);
@@ -2010,14 +2277,14 @@ class WastelandWorld {
       for (const wy of [by + 2.5, by + cch + 2.5]) {
         this._addWindow(cx - 6.8, wy, cz - 2 + ccd / 2 + 0.28, 3.0, 1.35, 0);
         this._addWindow(cx + 6.8, wy, cz - 2 + ccd / 2 + 0.28, 3.0, 1.35, 0);
-        this._addWindow(cx - ccw / 2 - 0.28, wy, cz - 6, 3.2, 1.35, Math.PI / 2);
-        this._addWindow(cx - ccw / 2 - 0.28, wy, cz + 2, 3.2, 1.35, Math.PI / 2);
+        this._addWindow(cx - ccw / 2 - 0.28, wy, cz - 6, 3.2, 1.35, -Math.PI / 2);
+        this._addWindow(cx - ccw / 2 - 0.28, wy, cz + 2, 3.2, 1.35, -Math.PI / 2);
         this._addWindow(cx + ccw / 2 + 0.28, wy, cz - 6, 3.2, 1.35, Math.PI / 2);
         this._addWindow(cx + ccw / 2 + 0.28, wy, cz + 2, 3.2, 1.35, Math.PI / 2);
       }
       // Roof + Giant COMMAND HQ Signs + Tall Rooftop Radar Mast
       const roofY = by + cch * 2 + 0.15;
-      this._addBox(cx, roofY, cz - 2, ccw + 0.6, 0.34, ccd + 0.6, this._materials.darkConcrete, true);
+      this._addBox(cx, roofY, cz - 2, ccw + 0.6, 0.34, ccd + 0.6, this._materials.roofTar, true);
       this._addBox(cx, roofY + 0.38, cz - 2 + ccd / 2 + 0.15, ccw + 0.6, 0.4, 0.25, this._materials.hazardAmber, false);
       this._addSignBoard(cx, roofY + 2.0, cz - 2 + ccd / 2 + 0.35, 10.6, 3.6, 0, 'boss');
       this._addSignBoard(cx - ccw / 2 - 0.35, roofY + 2.0, cz - 2, 9.6, 3.4, -Math.PI / 2, 'boss');
@@ -2039,10 +2306,17 @@ class WastelandWorld {
       this._addGunLocker(cx - 10.8, cz - 2.5, Math.PI / 2, 'military', 'Command Center Armory Locker');
       this._addWallFirstAidKit(cx - 11.45, cz + 2.4, 'west', 'Command Center First Aid Kit');
       addDeskProp(cx - 2.0, by + cch + 0.16, cz - 6.5);
-      this._addBox(cx - 4.6, by + cch + 2.2, cz - 7.2, 0.24, 4.2, 8.8, this._materials.bossDark, true);
+      this._addBox(cx - 4.6, by + cch + 2.2, cz - 7.2, 0.24, 4.2, 8.8, this._materials.interiorPlaster, true);
       this._addDoor(cx - 4.6, by + cch + 0.16, cz - 1.8, 1.8, 2.6, Math.PI / 2, 'Command Vault Door', 'steel');
       this._addLootContainer(cx - 8.4, cch + 0.18, cz - 9.2, 'boss_key_room', 'Boss Command Vault [KEY ROOM]', 'boss_key');
       this._addLootContainer(cx + 3.2, cch + 0.18, cz - 9.2, 'military', 'Command Center Weapons Case');
+      this._decorateFacade(cx, cz - 2, ccw, ccd, cch * 2, by, {
+        doorSide: 'south',
+        wallMat: this._materials.bossDark,
+        roofOffset: 0.32,
+        lightH: cch - 0.15,
+        stairwellAvoidX: cx + 4.2
+      });
 
       // Boss Spawn inside 2nd Floor Command Center + 5 Armored Boss Guard Spawns
       this.bossSpawnPos = new THREE.Vector3(cx - 1.5, by + cch + 0.2, cz - 2.5);
@@ -2056,7 +2330,13 @@ class WastelandWorld {
 
       // C. Compound Barracks Building (16m x 12m, West-South)
       const bx = cx - 22, bz = cz + 16;
-      this._addBuilding(bx, bz, 16, 12, 4.4, 'east', this._materials.rustOlive);
+      this._addBuilding(bx, bz, 16, 12, 4.4, 'east', this._materials.rustOlive, (bBaseY, bH) => {
+        this._addPartition(bx - 1.8, bz - 6.0, bx - 1.8, bz + 6.0, bBaseY, bH, [
+          { at: bz, w: 1.8, door: null }
+        ]);
+        this._addBox(bx - 2.8, bBaseY + 0.41, bz - 1.7, 0.9, 0.5, 0.5, this._materials.crateMil, true);
+        this._addBox(bx - 2.8, bBaseY + 0.41, bz + 1.7, 0.9, 0.5, 0.5, this._materials.crateMil, true);
+      });
       addHospitalBed(bx - 4.6, by, bz - 3.4, Math.PI / 2);
       addHospitalBed(bx - 4.6, by, bz + 0.0, Math.PI / 2);
       addHospitalBed(bx - 4.6, by, bz + 3.4, Math.PI / 2);
@@ -2084,7 +2364,23 @@ class WastelandWorld {
     {
       const cx = 0, cz = 0;
       const by = this.getTerrainHeight(cx, cz);
-      this._addBuilding(cx, cz, 28, 18, 6.2, 'south');
+      this._addBuilding(cx, cz, 28, 18, 6.2, 'south', null, (wBy, wH) => {
+        // SW Foreman Office
+        this._addPartition(-8.5, 2.5, -8.5, 9.0, wBy, wH, [
+          { at: 5.5, w: 1.7, door: 'wood', label: 'Foreman Office' }
+        ]);
+        this._addPartition(-14.0, 2.5, -8.5, 2.5, wBy, wH, []);
+        addDeskProp(-11.6, wBy + 0.16, 5.2);
+        this._addLootContainer(-12.2, 0.16, 7.4, 'supply', "Foreman's Office Safe");
+
+        // Supply Pallet Stacks for Interior Cover
+        this._addBox(-5.5, wBy + 0.7, 5.0, 2.4, 1.4, 1.2, this._materials.crateSup, true);
+        this._addBox(5.5, wBy + 0.7, 5.0, 2.4, 1.4, 1.2, this._materials.crateSup, true);
+
+        // Catwalk Railing (x: -12.5..8.0 and 10.4..12.5, leaving 2.4m arrival gap at stairs!)
+        this._addBox(-2.25, wBy + 3.85, -5.05, 20.5, 1.0, 0.08, this._materials.metal, true);
+        this._addBox(11.45, wBy + 3.85, -5.05, 2.1, 1.0, 0.08, this._materials.metal, true);
+      });
       this.pois.push({ name: 'WAREHOUSE', x: cx, z: cz, color: '#ff9800', threat: 'low' });
       // Interior Walkable Steel Catwalk Mezzanine along North Wall + Gentle Stairs
       this._addBox(cx, by + 3.2, cz - 6.8, 25.0, 0.24, 3.6, this._materials.metal, true);
@@ -2106,7 +2402,11 @@ class WastelandWorld {
     // 6. Fuel & Radio Outpost (SE Low-Threat Hilltop: 270, 290)
     {
       const cx = 270, cz = 290;
-      this._addBuilding(cx, cz, 14, 12, 4.4, 'west');
+      this._addBuilding(cx, cz, 14, 12, 4.4, 'west', null, (rBy, rH) => {
+        this._addPartition(cx + 3.4, cz - 6.0, cx + 3.4, cz + 6.0, rBy, rH, [
+          { at: cz + 1.0, w: 1.7, door: 'wood', label: 'Comms Room Door' }
+        ]);
+      });
       this.pois.push({ name: 'RADIO OUTPOST', x: cx, z: cz, color: '#26c6da', threat: 'low' });
       this._addGunLocker(cx + 6.1, cz - 1.8, -Math.PI / 2, 'military', 'Outpost Comms Locker');
       this._addLootContainer(cx + 5.2, 0.16, cz + 3.8, 'supply', 'Fuel & Parts Supply Crate');
@@ -2135,7 +2435,12 @@ class WastelandWorld {
     // 8. Northern Watchtower Bunker (North Highland Ridge: -60, -340)
     {
       const cx = -60, cz = -340;
-      this._addBuilding(cx, cz, 12, 10, 4.5, 'south');
+      this._addBuilding(cx, cz, 12, 10, 4.5, 'south', null, (bBy, bH) => {
+        // Interior blast wall forcing flank routes left/right on entry
+        this._addBox(cx, bBy + bH * 0.5, cz + 2.2, 4.0, bH, 0.35, this._materials.concrete, true);
+        // Sandbag firing cover
+        this._addBox(cx - 3.4, bBy + 0.55, cz - 1.2, 2.2, 1.1, 0.6, this._materials.crateSup, true);
+      });
       this.pois.push({ name: 'NORTH BUNKER', x: cx, z: cz, color: '#ec407a', threat: 'high' });
       this._addGunLocker(cx - 5.1, cz - 0.5, Math.PI / 2, 'military', 'Bunker Marksman Locker');
       this._addLootContainer(cx + 4.2, 0.16, cz - 3.2, 'military', 'Bunker Munitions Case');
