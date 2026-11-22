@@ -1,10 +1,31 @@
 // Offscreen 3D Studio Icon Renderer for All Game Items (Cached WebGL Data URLs)
+const ITEM_MODEL_MAP = {
+  medkit:       { model: 'medical_box' },
+  bandage:      { model: 'medical_tape' },
+  fuel_can:     { model: 'plastic_jerrycan' },
+  gold_watch:   { model: 'vintage_pocket_watch' },
+  gas_mask:     { model: 'old_gas_mask' },
+  ammo_9x18:    { model: 'ammo_box', tint: 0xc9b27a },
+  ammo_9x19:    { model: 'ammo_box', tint: 0xb0b6a0 },
+  ammo_545:     { model: 'ammo_box', tint: 0x8f9a6a },
+  ammo_12g:     { model: 'ammo_box', tint: 0xb04a3a },
+  ammo_762:     { model: 'ammo_box', tint: 0x7a8a5a },
+  fu_ammo_box:  { model: 'ammo_box', tint: 0xffffff },
+  ammo_rocket:  { model: 'wooden_military_crate' },
+  gunpowder:    { model: 'oil_tin' },
+  ks_uav:       { model: 'vintage_radio_transceiver' },
+  ks_airstrike: { model: 'vintage_radio_transceiver' }
+};
+
 class ItemIconRenderer {
   constructor() {
     this.cache = {};
+    this._itemModels = {};
+    this._itemModelsPromise = null;
+    this._portraitCache = null;
     this.canvas = document.createElement('canvas');
-    this.canvas.width = 160;
-    this.canvas.height = 160;
+    this.canvas.width = 144;
+    this.canvas.height = 144;
     try {
       this.renderer = new THREE.WebGLRenderer({
         canvas: this.canvas,
@@ -53,19 +74,19 @@ class ItemIconRenderer {
     const cacheKey = `${itemId}|${wide ? 'W' : 'S'}|${modsKey}`;
     if (this.cache[cacheKey]) return this.cache[cacheKey];
 
-    // 2D Warzone-style vector silhouette icons with highlighted attachments for all weapons
-    if (def && def.type === 'weapon') {
-      const url2d = this._render2DWeaponIcon(itemId, mods, wide);
-      if (url2d) {
-        this.cache[cacheKey] = url2d;
-        return url2d;
+    if (!this.renderer) {
+      if (def && def.type === 'weapon') {
+        const url2d = this._render2DWeaponIcon(itemId, mods, wide);
+        if (url2d) {
+          this.cache[cacheKey] = url2d;
+          return url2d;
+        }
       }
+      return '';
     }
 
-    if (!this.renderer) return '';
-
-    const w = wide ? 384 : 192;
-    const h = 192;
+    const w = wide ? 304 : 144;
+    const h = 144;
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
@@ -74,8 +95,17 @@ class ItemIconRenderer {
       this.stage.remove(this.stage.children[0]);
     }
 
-    const mesh = this._buildItemMesh(itemId, opts.mods || {});
-    if (!mesh) return '';
+    const mesh = this._buildItemMesh(itemId, mods);
+    if (!mesh) {
+      if (def && def.type === 'weapon') {
+        const url2d = this._render2DWeaponIcon(itemId, mods, wide);
+        if (url2d) {
+          this.cache[cacheKey] = url2d;
+          return url2d;
+        }
+      }
+      return '';
+    }
     this.stage.add(mesh);
 
     // Auto-frame bounding box cleanly inside icon viewport
@@ -92,10 +122,11 @@ class ItemIconRenderer {
     const fovRad = (this.camera.fov * Math.PI) / 180;
     const distV = (maxDimY * 0.5) / Math.tan(fovRad * 0.5);
     const distH = (maxDimX * 0.5) / (Math.tan(fovRad * 0.5) * this.camera.aspect);
-    const padMult = wide ? 1.10 : 1.28;
+    const padMult = 1.04;
     const dist = Math.max(distV, distH) * padMult + size.z * (wide ? 0.38 : 0.55);
+    const isWeapon = !!(def && def.type === 'weapon');
 
-    this.camera.position.set(0, 0, Math.max(0.32, dist));
+    this.camera.position.set(0, isWeapon ? dist * 0.08 : 0, Math.max(0.32, dist));
     this.camera.lookAt(0, 0, 0);
 
     this.renderer.render(this.scene, this.camera);
@@ -545,13 +576,48 @@ class ItemIconRenderer {
     if (def && def.type === 'weapon') {
       const wb = this._ensureWeaponBuilder();
       if (wb && wb.buildThirdPersonWeapon) {
-        const built = wb.buildThirdPersonWeapon(def, mods);
-        if (built && built.group) {
-          built.group.rotation.set(0.02, Math.PI / 2 - 0.04, 0.0);
-          g.add(built.group);
-          return g;
+        try {
+          const built = wb.buildThirdPersonWeapon(def, mods);
+          if (built && built.group) {
+            built.group.rotation.set(0.04, Math.PI / 2, 0.0);
+            g.add(built.group);
+            return g;
+          }
+        } catch (e) {
+          console.warn('[ItemIconRenderer] 3D weapon icon build failed, using 2D fallback:', id, e);
         }
       }
+      return null;
+    }
+
+    // 1B. LOADED CC0 POLY HAVEN 3D MODELS
+    const modelSpec = ITEM_MODEL_MAP[id];
+    if (modelSpec && this._itemModels[modelSpec.model]) {
+      const src = this._itemModels[modelSpec.model];
+      const clone = (typeof THREE.SkeletonUtils !== 'undefined' && THREE.SkeletonUtils.clone)
+        ? THREE.SkeletonUtils.clone(src)
+        : src.clone(true);
+      if (modelSpec.tint !== undefined && modelSpec.tint !== 0xffffff) {
+        const tintCol = new THREE.Color(modelSpec.tint);
+        clone.traverse((child) => {
+          if (child.isMesh && child.material) {
+            if (Array.isArray(child.material)) {
+              child.material = child.material.map((m) => {
+                const cm = m.clone();
+                if (cm.color) cm.color.multiply(tintCol);
+                return cm;
+              });
+            } else {
+              const cm = child.material.clone();
+              if (cm.color) cm.color.multiply(tintCol);
+              child.material = cm;
+            }
+          }
+        });
+      }
+      clone.rotation.set(0.35, -0.6, 0);
+      g.add(clone);
+      return g;
     }
 
     // 2. MELEE WEAPONS
@@ -1020,6 +1086,202 @@ class ItemIconRenderer {
     fallback.rotation.set(0.35, -0.45, 0);
     g.add(fallback);
     return g;
+  }
+
+  loadItemModels() {
+    if (this._itemModelsPromise) return this._itemModelsPromise;
+    if (typeof THREE === 'undefined' || typeof THREE.GLTFLoader !== 'function') {
+      this._itemModelsPromise = Promise.resolve(this._itemModels);
+      return this._itemModelsPromise;
+    }
+
+    const byModel = {};
+    Object.keys(ITEM_MODEL_MAP).forEach((itemId) => {
+      const mName = ITEM_MODEL_MAP[itemId].model;
+      if (!byModel[mName]) byModel[mName] = [];
+      byModel[mName].push(itemId);
+    });
+
+    const loader = new THREE.GLTFLoader();
+    const convertMat = (orig) => {
+      if (!orig) return new THREE.MeshLambertMaterial({ color: 0xffffff });
+      if (orig.map) {
+        orig.map.encoding = THREE.LinearEncoding;
+        orig.map.needsUpdate = true;
+      }
+      const col = orig.color ? orig.color.clone() : new THREE.Color(0xffffff);
+      const lambert = new THREE.MeshLambertMaterial({
+        map: orig.map || null,
+        color: col
+      });
+      if (orig.transparent) {
+        lambert.transparent = true;
+        lambert.opacity = orig.opacity;
+      }
+      if (orig.side !== undefined) lambert.side = orig.side;
+      if (typeof orig.dispose === 'function') {
+        try { orig.dispose(); } catch (e) {}
+      }
+      return lambert;
+    };
+
+    const promises = Object.keys(byModel).map((modelName) => new Promise((resolve) => {
+      const itemIds = byModel[modelName];
+      const url = `assets/models/items/${modelName}/${modelName}_1k.gltf`;
+      try {
+        loader.load(
+          url,
+          (gltf) => {
+            try {
+              if (gltf && gltf.scene) {
+                gltf.scene.traverse((obj) => {
+                  if (!obj.isMesh || !obj.material) return;
+                  if (Array.isArray(obj.material)) {
+                    obj.material = obj.material.map(convertMat);
+                  } else {
+                    obj.material = convertMat(obj.material);
+                  }
+                });
+                this._itemModels[modelName] = gltf.scene;
+                this.invalidate(itemIds);
+              }
+            } catch (e) {
+              console.warn('[ItemIconRenderer] Failed processing GLTF model', modelName, e);
+            }
+            resolve();
+          },
+          undefined,
+          (err) => {
+            console.warn('[ItemIconRenderer] Failed loading GLTF model', url, err);
+            resolve();
+          }
+        );
+      } catch (e) {
+        console.warn('[ItemIconRenderer] GLTFLoader threw for', url, e);
+        resolve();
+      }
+    }));
+
+    this._itemModelsPromise = Promise.all(promises).then(() => this._itemModels);
+    return this._itemModelsPromise;
+  }
+
+  invalidate(ids) {
+    if (!Array.isArray(ids) || !ids.length) return;
+    const keys = Object.keys(this.cache);
+    ids.forEach((id) => {
+      const prefix = `${id}|`;
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i];
+        if (k === id || k.startsWith(prefix)) {
+          delete this.cache[k];
+        }
+      }
+      if (typeof document !== 'undefined') {
+        document.querySelectorAll(`img[data-icon-id="${id}"]`).forEach((img) => {
+          const url = this.getIcon(id, { wide: img.dataset.iconWide === '1' });
+          if (url) img.src = url;
+        });
+      }
+    });
+  }
+
+  getOperatorPortrait() {
+    if (this._portraitCache) return this._portraitCache;
+    if (!this.renderer || !window.RigAssets || !window.RigAssets.ready || !window.RigAssets.soldier) {
+      return null;
+    }
+
+    let cloned = null;
+    let mixer = null;
+    let idleAction = null;
+    let idleClip = null;
+    try {
+      cloned = window.RigAssets.cloneSoldier();
+      if (!cloned || !cloned.bones || !cloned.bones.hips) return null;
+
+      const anims = window.RigAssets.soldier.animations || [];
+      idleClip = anims.find((c) => /idle/i.test(c.name || '')) || anims[0] || null;
+      if (idleClip) {
+        mixer = new THREE.AnimationMixer(cloned.model);
+        idleAction = mixer.clipAction(idleClip);
+        idleAction.play();
+        mixer.update(0.4);
+      }
+
+      const B = cloned.bones;
+      cloned.wrapper.updateMatrixWorld(true);
+      const vTmp = new THREE.Vector3();
+      const headY0 = B.headtopend ? B.headtopend.getWorldPosition(vTmp).y : 1.75;
+      const lToeY0 = B.lefttoeend ? B.lefttoeend.getWorldPosition(vTmp).y : 0;
+      const rToeY0 = B.righttoeend ? B.righttoeend.getWorldPosition(vTmp).y : 0;
+      const lowToe0 = Math.min(lToeY0, rToeY0);
+      const sFactor = 1.78 / Math.max(0.25, headY0 - lowToe0);
+      cloned.wrapper.scale.setScalar(sFactor);
+      cloned.wrapper.updateMatrixWorld(true);
+
+      const lToe1 = B.lefttoeend ? B.lefttoeend.getWorldPosition(vTmp).y : 0;
+      const rToe1 = B.righttoeend ? B.righttoeend.getWorldPosition(vTmp).y : 0;
+      cloned.wrapper.position.y -= Math.min(lToe1, rToe1);
+
+      const lfP = B.leftfoot ? B.leftfoot.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(-0.1, 0, 0);
+      const ltbP = B.lefttoebase ? B.lefttoebase.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(-0.1, 0, 0.1);
+      const rfP = B.rightfoot ? B.rightfoot.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(0.1, 0, 0);
+      const rtbP = B.righttoebase ? B.righttoebase.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(0.1, 0, 0.1);
+      const fwdXZ = new THREE.Vector3((ltbP.x - lfP.x) + (rtbP.x - rfP.x), 0, (ltbP.z - lfP.z) + (rtbP.z - rfP.z));
+      if (fwdXZ.lengthSq() > 1e-6) {
+        fwdXZ.normalize();
+        cloned.wrapper.rotation.y = -Math.atan2(fwdXZ.x, fwdXZ.z) + 0.35;
+      } else {
+        cloned.wrapper.rotation.y = 0.35;
+      }
+      cloned.wrapper.updateMatrixWorld(true);
+
+      const headY = B.headtopend ? B.headtopend.getWorldPosition(new THREE.Vector3()).y : 1.78;
+      const hipsY = B.hips.getWorldPosition(new THREE.Vector3()).y;
+      const midY = (hipsY + headY) * 0.52;
+      const spanY = Math.max(0.55, headY - hipsY + 0.18);
+
+      const pScene = new THREE.Scene();
+      pScene.add(new THREE.HemisphereLight(0xf0f4f8, 0x1e2226, 0.95));
+      const pKey = new THREE.DirectionalLight(0xffffff, 1.35);
+      pKey.position.set(1.8, 2.8, 3.2);
+      const pRim = new THREE.DirectionalLight(0x9ec8f0, 0.85);
+      pRim.position.set(-2.6, 2.0, -2.0);
+      pScene.add(pKey, pRim, cloned.wrapper);
+
+      const pCam = new THREE.PerspectiveCamera(28, 240 / 300, 0.05, 20);
+      const fovRad = (28 * Math.PI) / 180;
+      const dist = ((spanY * 0.5) / Math.tan(fovRad * 0.5)) * 1.12;
+      pCam.position.set(0, midY + 0.03, Math.max(0.8, dist));
+      pCam.lookAt(0, midY, 0);
+
+      this.renderer.setSize(240, 300, false);
+      this.renderer.setClearColor(0x000000, 0);
+      this.renderer.render(pScene, pCam);
+      const dataUrl = this.canvas.toDataURL('image/png');
+      this._portraitCache = dataUrl;
+      return dataUrl;
+    } catch (e) {
+      console.warn('[ItemIconRenderer] getOperatorPortrait failed:', e);
+      return null;
+    } finally {
+      if (idleAction) { try { idleAction.stop(); } catch (e) {} }
+      if (mixer) {
+        try {
+          if (idleClip) mixer.uncacheClip(idleClip);
+          if (cloned && cloned.model) mixer.uncacheRoot(cloned.model);
+        } catch (e) {}
+      }
+      if (cloned && cloned.wrapper) {
+        cloned.wrapper.traverse((obj) => {
+          if (obj.isMesh && obj.material) {
+            const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+            mats.forEach((m) => { if (m && typeof m.dispose === 'function') m.dispose(); });
+          }
+        });
+      }
+    }
   }
 }
 

@@ -227,9 +227,12 @@ class GamepadController {
         if (this._isDown(pad, i)) { anyInput = true; break; }
       }
     }
-    if (anyInput && !this.active) {
-      this.active = true;
-      if (actions.onControllerActivate) actions.onControllerActivate();
+    if (anyInput) {
+      window._lastInputMode = 'gamepad';
+      if (!this.active) {
+        this.active = true;
+        if (actions.onControllerActivate) actions.onControllerActivate();
+      }
     }
 
     const gb = window.GAMEPAD_BINDS || {};

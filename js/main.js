@@ -235,6 +235,8 @@
   }
 
   // Boot directly into DMZ-style FOB Entry Overlay over live 3D Hangar & Helipad
+  window.addEventListener('keydown', () => { window._lastInputMode = 'kbm'; });
+  window.addEventListener('mousedown', () => { window._lastInputMode = 'kbm'; });
   const _fobOvInit = document.getElementById('fob-enter-overlay');
   if (_fobOvInit && hideoutBunker) {
     const hs = document.getElementById('hideout-screen');
@@ -260,6 +262,9 @@
         }
         if (hideoutBunker && hideoutBunker.rebuildAvatars) {
           hideoutBunker.rebuildAvatars();
+        }
+        if (window.itemIcons && window.itemIcons.loadItemModels) {
+          window.itemIcons.loadItemModels();
         }
       });
     }
@@ -3652,6 +3657,31 @@
         if (!window._lastInteractCheckMs || now - window._lastInteractCheckMs >= 55) {
           window._lastInteractCheckMs = now;
           checkInteractions();
+        }
+        if (!window._lastPlatePromptMs || now - window._lastPlatePromptMs >= 150) {
+          window._lastPlatePromptMs = now;
+          const ppEl = document.getElementById('plate-prompt');
+          if (ppEl && player) {
+            const hasBagPlate = Array.isArray(player.backpack) && player.backpack.some(it => it && it.id === 'armor_plate' && (it.qty || 0) > 0);
+            const hasPlate = (player.plates || 0) > 0 || hasBagPlate;
+            const needsPlate = (player.maxArmor || 0) > 0 && (player.armor || 0) < player.maxArmor;
+            const busyPlating = !!(weaponSystem && weaponSystem.isPlating);
+            const showPlate = hasPlate && needsPlate && !busyPlating && !player.dead && !player.isDowned && !player.isMenuBlocked;
+            ppEl.classList.toggle('hidden', !showPlate);
+            if (showPlate) {
+              const keySpan = ppEl.querySelector('.pp-key');
+              if (keySpan) {
+                const isGp = window._lastInputMode === 'gamepad';
+                const plateBind = (window.KEYBINDS && window.KEYBINDS.plates) || 'KeyG';
+                keySpan.textContent = isGp ? 'Y' : (ui && ui._formatKeyCode ? ui._formatKeyCode(plateBind) : 'G');
+              }
+              const iconImg = ppEl.querySelector('.pp-icon');
+              if (iconImg && window.itemIcons && window.itemIcons.getIcon) {
+                const plateUrl = window.itemIcons.getIcon('armor_plate');
+                if (plateUrl && iconImg.src !== plateUrl) iconImg.src = plateUrl;
+              }
+            }
+          }
         }
         checkExtraction(dt);
         ui.updateSearchReveal(dt);

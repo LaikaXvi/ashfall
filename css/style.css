@@ -6589,3 +6589,531 @@ input[type="range"].gp-focus {
   font-size: 11px;
   color: #9ec0d4;
 }
+
+/* === DMZ INVENTORY v2.42 === */
+#loot-modal .inv-slot,
+#loot-modal .op-slot-card,
+#menu-view-deploy .inv-slot,
+#menu-view-deploy .op-slot-card {
+  --rar: rgba(255, 255, 255, 0.35);
+  position: relative;
+  border-radius: 0;
+  background: rgba(28, 31, 31, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: none;
+  padding: 4px;
+  overflow: hidden;
+  z-index: 1;
+}
+
+#loot-modal .rarity-common,
+#menu-view-deploy .rarity-common { --rar: #5fae3a; }
+#loot-modal .rarity-rare,
+#menu-view-deploy .rarity-rare { --rar: #3f8fd8; }
+#loot-modal .rarity-epic,
+#menu-view-deploy .rarity-epic { --rar: #9a4fd0; }
+#loot-modal .rarity-legendary,
+#menu-view-deploy .rarity-legendary { --rar: #e8902a; }
+#loot-modal .rarity-ultra,
+#menu-view-deploy .rarity-ultra { --rar: #d83a3a; }
+
+#loot-modal .inv-slot:not(.empty-slot):not(.searching)::before,
+#loot-modal .op-slot-card:not(.empty-slot-card):not(.searching)::before,
+#menu-view-deploy .inv-slot:not(.empty-slot)::before,
+#menu-view-deploy .op-slot-card:not(.empty-slot-card)::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 4px;
+  background: var(--rar);
+  pointer-events: none;
+  z-index: 2;
+}
+
+#loot-modal .inv-slot:not(.empty-slot):not(.searching)::after,
+#loot-modal .op-slot-card:not(.empty-slot-card):not(.searching)::after,
+#menu-view-deploy .inv-slot:not(.empty-slot)::after,
+#menu-view-deploy .op-slot-card:not(.empty-slot-card)::after {
+  content: '';
+  position: absolute;
+  inset: 4px 0 0 0;
+  background-image: radial-gradient(circle, var(--rar) 0.9px, transparent 1.3px);
+  background-size: 4px 4px;
+  background-position: 0 0;
+  opacity: 0.55;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, transparent 65%);
+  mask-image: linear-gradient(to bottom, #000 0%, transparent 65%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+#loot-modal .inv-slot .slot-icon-img,
+#loot-modal .op-slot-card .op-slot-icon,
+#menu-view-deploy .inv-slot .slot-icon-img,
+#menu-view-deploy .op-slot-card .op-slot-icon {
+  position: relative;
+  z-index: 1;
+  margin-top: 0;
+}
+
+#loot-modal .op-slot-card .op-slot-icon,
+#menu-view-deploy .op-slot-card .op-slot-icon {
+  position: absolute;
+  left: 50%;
+  top: 52%;
+  transform: translate(-50%, -50%);
+}
+
+#loot-modal .slot-top-bar,
+#loot-modal .op-slot-top,
+#loot-modal .slot-wpn-tag,
+#loot-modal .op-slot-val,
+#loot-modal .op-slot-sub,
+#menu-view-deploy .slot-top-bar,
+#menu-view-deploy .op-slot-top,
+#menu-view-deploy .slot-wpn-tag,
+#menu-view-deploy .op-slot-val,
+#menu-view-deploy .op-slot-sub {
+  display: none !important;
+}
+
+#loot-modal .slot-qty,
+#menu-view-deploy .slot-qty {
+  position: absolute;
+  top: 6px;
+  right: 5px;
+  bottom: auto;
+  left: auto;
+  z-index: 2;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  color: #ffffff;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+}
+
+#loot-modal .slot-cat-glyph,
+#menu-view-deploy .slot-cat-glyph {
+  position: absolute;
+  left: 5px;
+  bottom: 4px;
+  z-index: 2;
+  width: 12px;
+  height: 12px;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+#loot-modal .slot-cat-glyph .slot-cat-svg,
+#menu-view-deploy .slot-cat-glyph .slot-cat-svg {
+  width: 12px;
+  height: 12px;
+  display: block;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.85));
+}
+
+#loot-modal .slot-ammo,
+#menu-view-deploy .slot-ammo {
+  position: absolute;
+  left: 5px;
+  bottom: 4px;
+  z-index: 2;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  color: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+  pointer-events: none;
+}
+
+#loot-modal .slot-ammo-bars,
+#menu-view-deploy .slot-ammo-bars {
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+#loot-modal .slot-pips,
+#menu-view-deploy .slot-pips {
+  position: absolute;
+  top: 6px;
+  right: 5px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  pointer-events: none;
+}
+
+#loot-modal .slot-pip,
+#menu-view-deploy .slot-pip {
+  display: inline-block;
+  width: 7px;
+  height: 10px;
+  background: var(--rar);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.65);
+}
+
+#loot-modal .inv-slot.empty-slot,
+#loot-modal .op-slot-card.empty-slot-card,
+#menu-view-deploy .inv-slot.empty-slot,
+#menu-view-deploy .op-slot-card.empty-slot-card {
+  opacity: 1 !important;
+  background: transparent !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-style: solid !important;
+}
+
+#loot-modal .op-slot-card.dmz-deco-empty,
+#menu-view-deploy .op-slot-card.dmz-deco-empty {
+  cursor: default !important;
+}
+
+#loot-modal .empty-slot-glyph,
+#menu-view-deploy .empty-slot-glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: rgba(255, 255, 255, 0.28);
+  pointer-events: none;
+  z-index: 1;
+}
+
+#loot-modal .empty-slot-svg,
+#menu-view-deploy .empty-slot-svg {
+  width: 32px;
+  height: 32px;
+  display: block;
+}
+
+#loot-modal .inv-slot:hover,
+#loot-modal .inv-slot.ui-selected,
+#loot-modal .inv-slot.gp-focus,
+#loot-modal .inv-slot.gp-hover,
+#loot-modal .op-slot-card:not(.dmz-deco-empty):hover,
+#loot-modal .op-slot-card.ui-selected,
+#loot-modal .op-slot-card.gp-focus,
+#menu-view-deploy .inv-slot:hover,
+#menu-view-deploy .inv-slot.ui-selected,
+#menu-view-deploy .inv-slot.gp-focus,
+#menu-view-deploy .op-slot-card:not(.dmz-deco-empty):hover,
+#menu-view-deploy .op-slot-card.ui-selected,
+#menu-view-deploy .op-slot-card.gp-focus {
+  border-color: rgba(255, 255, 255, 0.8) !important;
+  outline: 1px dotted rgba(255, 255, 255, 0.85);
+  outline-offset: -1px;
+  box-shadow: inset 0 0 12px rgba(255, 255, 255, 0.22), 0 0 8px rgba(255, 255, 255, 0.18) !important;
+  transform: none;
+  z-index: 3;
+}
+
+.inv-overlay #inv-operator-panel.dmz-operator-stack {
+  background: transparent;
+  border: none;
+  padding: 0;
+  box-shadow: none;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: fit-content;
+  min-width: 0;
+}
+
+.dmz-panel {
+  background: rgba(18, 20, 20, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 10px;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.dmz-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.dmz-pack-tab {
+  background: rgba(210, 210, 210, 0.22);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: #ffffff;
+  padding: 4px 18px;
+  line-height: 1.25;
+}
+
+.dmz-bag-count-inline {
+  font-size: 11px;
+  opacity: 0.75;
+  margin-left: 6px;
+}
+
+.dmz-pack-head-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dmz-bag-val {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.dmz-sort-head {
+  width: 72px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.dmz-ghost-btn {
+  background: transparent !important;
+  border: 1px solid rgba(255, 255, 255, 0.25) !important;
+  color: rgba(255, 255, 255, 0.78) !important;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.8px;
+  padding: 3px 8px;
+  border-radius: 0 !important;
+}
+
+.dmz-ghost-btn:hover {
+  border-color: rgba(255, 255, 255, 0.8) !important;
+  color: #ffffff !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.dmz-bag-row {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.inv-overlay .inv-grid.dmz-bag-grid {
+  grid-template-columns: repeat(4, 72px);
+  grid-auto-rows: 72px;
+  gap: 8px;
+  width: 312px;
+  padding: 0;
+}
+
+.inv-overlay #loot-container-items {
+  grid-template-columns: repeat(4, 72px);
+  grid-auto-rows: 72px;
+  gap: 8px;
+  width: fit-content;
+  min-width: 312px;
+  padding: 0;
+}
+
+.inv-overlay .inv-slot {
+  width: 72px;
+  height: 72px;
+  min-width: 72px;
+  max-width: 72px;
+  min-height: 72px;
+  max-height: 72px;
+}
+
+.inv-overlay .inv-slot.weapon-slot-wide {
+  width: 152px;
+  min-width: 152px;
+  max-width: 152px;
+  height: 72px;
+  min-height: 72px;
+  max-height: 72px;
+}
+
+.dmz-sort-col {
+  width: 72px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(24, 27, 27, 0.55);
+}
+
+.dmz-sort-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 7px;
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(235, 240, 240, 0.9);
+}
+
+.dmz-sort-ico {
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  opacity: 0.92;
+}
+
+.dmz-sort-ico svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+.dmz-sort-val {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.4px;
+}
+
+.dmz-sort-max {
+  background: rgba(10, 12, 12, 0.78);
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 4px 0;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  color: rgba(220, 226, 226, 0.75);
+}
+
+.dmz-loadout-title {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: rgba(245, 245, 245, 0.92);
+}
+
+.dmz-loadout-credits {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #ffffff;
+}
+
+.op-tactical-grid {
+  position: relative;
+}
+
+.inv-overlay .op-tactical-grid {
+  grid-template-columns: repeat(5, 72px);
+  grid-auto-rows: 72px;
+  gap: 8px;
+  width: 392px;
+}
+
+.inv-overlay .op-tactical-grid .op-slot-card {
+  width: 72px;
+  height: 72px;
+  min-height: 72px;
+  max-height: 72px;
+}
+
+.inv-overlay .op-tactical-grid .op-slot-card.span-2 {
+  width: 152px;
+}
+
+#menu-view-deploy .op-tactical-grid {
+  grid-auto-rows: var(--deploy-slot);
+}
+
+.op-portrait-bg {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  transform: translateX(-50%);
+  height: 232px;
+  width: auto;
+  max-width: 196px;
+  object-fit: contain;
+  opacity: 0.85;
+  pointer-events: none;
+  z-index: 0;
+}
+
+#menu-view-deploy .op-portrait-bg {
+  height: calc(var(--deploy-slot) * 3 + var(--deploy-gap) * 2);
+}
+
+.dmz-prompt-pill {
+  position: fixed;
+  left: 50%;
+  bottom: 30%;
+  transform: translateX(-50%);
+  z-index: 42;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: rgba(40, 42, 42, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  padding: 8px 22px 8px 8px;
+  pointer-events: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
+.dmz-prompt-pill.hidden {
+  display: none !important;
+}
+
+.dmz-prompt-pill .pp-key {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 2px solid #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 800;
+  color: #ffffff;
+  flex-shrink: 0;
+}
+
+.dmz-prompt-pill .pp-icon {
+  width: 28px;
+  height: 34px;
+  object-fit: contain;
+  flex-shrink: 0;
+  filter: drop-shadow(0 0 6px rgba(255, 193, 7, 0.55));
+}
+
+.dmz-prompt-pill .pp-label {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: #e8e8e8;
+  text-transform: uppercase;
+  white-space: nowrap;
+}

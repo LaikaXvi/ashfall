@@ -3471,23 +3471,89 @@ class GameUI {
     return '<svg class="slot-cat-svg" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8L13.5 5v6L8 14.2 2.5 11V5L8 1.8zm0 1.6L4.2 5.6 8 7.8l3.8-2.2L8 3.4z" fill="currentColor"/></svg>';
   }
 
+  _getWeaponModCount(item, def = null) {
+    const wId = (item && item.id) || (def && def.id);
+    if (!wId) return 0;
+    const mods = (item && item.mods)
+      || (this.profile && this.profile.weaponMods && this.profile.weaponMods[wId])
+      || {};
+    const slotKeys = ['optic', 'muzzle', 'underbarrel', 'magazine', 'stock'];
+    let count = 0;
+    for (let i = 0; i < slotKeys.length; i++) {
+      const v = mods[slotKeys[i]];
+      if (v && v !== 'none') count++;
+    }
+    return count;
+  }
+
+  _resolveItemRarity(item, def = null) {
+    if (!def && item && item.id && window.GAME_DATA && GAME_DATA.ITEMS) {
+      def = GAME_DATA.ITEMS[item.id];
+    }
+    if (item && item.rarityOverride) return item.rarityOverride;
+    if (def && def.type === 'weapon' && window.GAME_DATA && GAME_DATA.getWeaponRarityAndValue) {
+      const mods = (item && item.mods)
+        || (this.profile && this.profile.weaponMods && this.profile.weaponMods[def.id])
+        || {};
+      const info = GAME_DATA.getWeaponRarityAndValue(def.id, mods);
+      if (info && info.rarity) return info.rarity;
+    }
+    return (def && def.rarity) || 'common';
+  }
+
+  _getEmptySlotGlyphSVG(kind) {
+    const svgs = {
+      selfRevive: '<svg class="empty-slot-svg" viewBox="0 0 28 28" aria-hidden="true"><path d="M10 4h8M14 4v20M9 8c-2 1.2-2 3.8 1 4.8l8 2.4c3 1 3 3.6 1 4.8M19 8c2 1.2 2 3.8-1 4.8l-8 2.4c-3 1-3 3.6-1 4.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
+      plates: '<svg class="empty-slot-svg" viewBox="0 0 28 28" aria-hidden="true"><path d="M9.5 4h9L22 8.5V24H6V8.5L9.5 4zM10 10h8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
+      headgear: '<svg class="empty-slot-svg" viewBox="0 0 28 28" aria-hidden="true"><path d="M7 11a7 7 0 0 1 14 0v5l-3.5 4.5h-7L7 16v-5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="10.8" cy="12" r="2.2" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="17.2" cy="12" r="2.2" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="14" cy="21" r="2.6" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>',
+      medical: '<svg class="empty-slot-svg" viewBox="0 0 28 28" aria-hidden="true"><path d="M3 14h4.5l2.2-5.5 3.6 11 2.7-7.5 1.8 2H25" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+      lethal: '<svg class="empty-slot-svg" viewBox="0 0 28 28" aria-hidden="true"><path d="M12 4h4v3h-4zM16 5.5l3 1.5-1 2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><ellipse cx="14" cy="15.5" rx="6" ry="7.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M9 13h10M9 18h10M14 8.5v14" fill="none" stroke="currentColor" stroke-width="1.1"/></svg>',
+      tactical: '<svg class="empty-slot-svg" viewBox="0 0 28 28" aria-hidden="true"><rect x="10" y="7" width="8" height="16" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M11.5 7V4.5h5V7M10 12h8" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
+      backpack: '<svg class="empty-slot-svg" viewBox="0 0 28 28" aria-hidden="true"><path d="M10.5 6.5a3.5 3.5 0 0 1 7 0M8 8.5h12a2 2 0 0 1 2 2V22a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V10.5a2 2 0 0 1 2-2z" fill="none" stroke="currentColor" stroke-width="1.5"/><rect x="9.5" y="14" width="9" height="6" rx="1" fill="none" stroke="currentColor" stroke-width="1.3"/></svg>',
+      helmet: '<svg class="empty-slot-svg" viewBox="0 0 28 28" aria-hidden="true"><path d="M6 16a8 8 0 0 1 16 0v3H6v-3zM10 19v3M18 19v3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
+      killstreak: '<svg class="empty-slot-svg" viewBox="0 0 28 28" aria-hidden="true"><path d="M14 4l3 6.2 6.8 1-4.9 4.8 1.2 6.8L14 19.6l-6.1 3.2 1.2-6.8-4.9-4.8 6.8-1L14 4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
+      fieldUpgrade: '<svg class="empty-slot-svg" viewBox="0 0 28 28" aria-hidden="true"><path d="M5 13a9 9 0 0 1 18 0c-2-1.5-4-1.5-6 0-2-1.5-4-1.5-6 0-2-1.5-4-1.5-6 0zM5.5 13l8.5 10.5L22.5 13M11 13l3 10.5L17 13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>',
+      melee: '<svg class="empty-slot-svg" viewBox="0 0 28 28" aria-hidden="true"><path d="M4 22l5.5-5.5-1.4-1.4 1.6-1.6 1.4 1.4 9.5-9.5c1.8 1.8.8 5.2-1.8 7.8l-5.8 5.8 1.4 1.4-1.5 1.5-1.4-1.4L6 24 4 22z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
+      armor: '<svg class="empty-slot-svg" viewBox="0 0 28 28" aria-hidden="true"><path d="M9 5h3l2 2.5L16 5h3l3 4-2 2v12H8V11L6 9l3-4z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>'
+    };
+    return svgs[kind] || '';
+  }
+
   _renderInvSlotInner(item, def, opts = {}) {
     const wide = !!(opts.wide);
+    const isWpn = !!(def && def.type === 'weapon');
     const catGlyph = this._getCategoryGlyphSVG(def);
     const totalVal = (def.value || 0) * (item.qty || 1);
     const valLbl = this._formatShortValue(totalVal);
     const iconCls = wide ? 'slot-icon-img wide-weapon-icon' : 'slot-icon-img';
-    const wpnTag = (wide && def && def.type === 'weapon')
+    const wpnTag = (wide && isWpn)
       ? `<span class="slot-wpn-tag">${def.name}</span>`
       : '';
+    let pipsHtml = '';
+    let ammoHtml = '';
+    let catBottomHtml = '';
+    if (wide && isWpn) {
+      const attCount = this._getWeaponModCount(item, def);
+      if (attCount > 0) {
+        pipsHtml = `<span class="slot-pips">${'<span class="slot-pip"></span>'.repeat(Math.min(5, attCount))}</span>`;
+      }
+      const magVal = (item && item.mag !== undefined) ? item.mag : ((def && def.magSize) || 0);
+      ammoHtml = `<span class="slot-ammo"><span class="slot-ammo-bars" aria-hidden="true">≡</span>${magVal}</span>`;
+    } else if (!isWpn) {
+      catBottomHtml = `<span class="slot-cat-glyph">${catGlyph}</span>`;
+    }
+    const showQty = (item.qty > 1 || opts.forceQty) && item.qty > 0;
     return `
       <div class="slot-top-bar">
         <span class="slot-type-icon">${catGlyph}</span>
         ${valLbl ? `<span class="slot-price">${valLbl}</span>` : ''}
       </div>
       ${this._renderItemIconHTML(item.id, def, { wide, cls: iconCls, mods: item.mods })}
+      ${pipsHtml}
+      ${ammoHtml}
+      ${catBottomHtml}
       ${wpnTag}
-      ${item.qty > 1 ? `<span class="slot-qty">${item.qty}</span>` : ''}
+      ${showQty ? `<span class="slot-qty">${item.qty}</span>` : ''}
     `;
   }
 
@@ -3502,7 +3568,7 @@ class GameUI {
       const url = window.itemIcons.getIcon(id, { wide, mods });
       if (url) {
         const alt = (def && def.name) ? def.name.replace(/"/g, '&quot;') : id;
-        return `<img class="${cls}" src="${url}" alt="${alt}" draggable="false" />`;
+        return `<img class="${cls}" data-icon-id="${id}" data-icon-wide="${wide ? '1' : '0'}" src="${url}" alt="${alt}" draggable="false" />`;
       }
     }
     return `<span class="slot-name">${this._getItemShortTag(id, def)}</span>`;
@@ -3573,7 +3639,7 @@ class GameUI {
         cell.className = 'inv-slot weapon-slot-wide';
         if (wItem && GAME_DATA.ITEMS[wItem.id]) {
           const def = GAME_DATA.ITEMS[wItem.id];
-          const rar = def.rarity || 'common';
+          const rar = this._resolveItemRarity(wItem, def);
           cell.classList.add(`rarity-${rar}`);
           cell.innerHTML = this._renderInvSlotInner(wItem, def, { wide: true, typeLabel: 'WPN' });
           cell.title = `${def.name} (₽${(def.value || 0).toLocaleString()}) — Click to Stage & Select Weapon Slot`;
@@ -3596,7 +3662,7 @@ class GameUI {
       cell.className = 'inv-slot';
       if (item && GAME_DATA.ITEMS[item.id]) {
         const def = GAME_DATA.ITEMS[item.id];
-        const rar = def.rarity || 'common';
+        const rar = this._resolveItemRarity(item, def);
         cell.classList.add(`rarity-${rar}`);
         cell.innerHTML = this._renderInvSlotInner(item, def);
         cell.title = `${def.name}${item.qty > 1 ? ' x' + item.qty : ''} (₽${(def.value * item.qty).toLocaleString()}) — Click to Equip or Pack`;
@@ -3609,8 +3675,11 @@ class GameUI {
       stashGrid.appendChild(cell);
     }
 
-    // 2. Operator Equipment Slots — 5-Column Tactical Grid (Cash/Plates/Dogtag/Headgear/Self-Revive | Primary/Vest/Secondary | Tactical/Lethal/Backpack/FieldUpgrade/Killstreak | Melee)
+    // 2. Operator Equipment Slots — 5-Column DMZ Loadout Grid
     const myCallsign = (this.profile && this.profile.social && this.profile.social.callsign) || 'OPERATOR';
+    const pmMods = (this.profile && this.profile.weaponMods) || {};
+    const pmPDef = L.primary ? GAME_DATA.ITEMS[L.primary] : null;
+    const pmSDef = L.secondary ? GAME_DATA.ITEMS[L.secondary] : null;
     this._renderOperatorTacticalGrid(opSlotsEl, {
       cash: this.profile.credits || 0,
       cashLabel: 'CREDITS',
@@ -3620,8 +3689,14 @@ class GameUI {
       headgear: L.headgear,
       selfRevive: L.selfRevive,
       primary: L.primary,
+      primaryMods: L.primary ? (pmMods[L.primary] || {}) : {},
+      primaryMag: pmPDef ? (pmPDef.magSize || 0) : undefined,
+      primaryRarity: L.primary ? this._resolveItemRarity({ id: L.primary }, pmPDef) : undefined,
       armor: L.armor,
       secondary: L.secondary,
+      secondaryMods: L.secondary ? (pmMods[L.secondary] || {}) : {},
+      secondaryMag: pmSDef ? (pmSDef.magSize || 0) : undefined,
+      secondaryRarity: L.secondary ? this._resolveItemRarity({ id: L.secondary }, pmSDef) : undefined,
       tactical: L.tactical,
       tacticalQty: L.tacticalQty || 0,
       lethal: L.lethal,
@@ -3676,8 +3751,9 @@ class GameUI {
       wSlot.className = 'inv-slot weapon-slot-wide backpack-weapon-slot';
       if (L.backpackWeapon && GAME_DATA.ITEMS[L.backpackWeapon]) {
         const wDef = GAME_DATA.ITEMS[L.backpackWeapon];
-        wSlot.classList.add(`rarity-${wDef.rarity || 'common'}`);
-        wSlot.innerHTML = this._renderInvSlotInner({ id: L.backpackWeapon, qty: 1 }, wDef, { wide: true, typeLabel: 'WPN SLOT' });
+        const wItem = { id: L.backpackWeapon, qty: 1, mods: (this.profile.weaponMods && this.profile.weaponMods[L.backpackWeapon]) || {} };
+        wSlot.classList.add(`rarity-${this._resolveItemRarity(wItem, wDef)}`);
+        wSlot.innerHTML = this._renderInvSlotInner(wItem, wDef, { wide: true, typeLabel: 'WPN SLOT' });
         wSlot.title = `${wDef.name} (Backpack Weapon Slot) — Click to return to Weapon Stash`;
         wSlot.addEventListener('click', () => {
           if (this._deployWeaponPick && this._deployWeaponPick.validTargets.includes('backpackWeapon')) {
@@ -3707,8 +3783,10 @@ class GameUI {
       cell.className = 'inv-slot';
       if (item && GAME_DATA.ITEMS[item.id]) {
         const def = GAME_DATA.ITEMS[item.id];
-        cell.classList.add(`rarity-${def.rarity || 'common'}`);
-        cell.innerHTML = this._renderInvSlotInner(item, def);
+        const isWpn = def.type === 'weapon';
+        if (isWpn) cell.classList.add('weapon-slot-wide');
+        cell.classList.add(`rarity-${this._resolveItemRarity(item, def)}`);
+        cell.innerHTML = this._renderInvSlotInner(item, def, { wide: isWpn });
         cell.title = `${def.name}${item.qty > 1 ? ' x' + item.qty : ''} — Click to return to Stash`;
         cell.addEventListener('click', () => {
           this.addToStash(item.id, item.qty);
@@ -7893,6 +7971,7 @@ class GameUI {
     const card = (opts) => {
       const def = opts.id ? itemDef(opts.id) : null;
       const hasVal = !!(def || opts.hasValue);
+      const posAttr = opts.posStyle ? ` style="${opts.posStyle}"` : '';
 
       // If searching an unsearched enemy operator, hide unrevealed occupied slots behind circular search reveal!
       if (revealConfig && hasVal && !(revealConfig.revealedMap && revealConfig.revealedMap[opts.key])) {
@@ -7909,19 +7988,44 @@ class GameUI {
                <span class="reveal-q">?</span>
              </div>`
           : `<span class="reveal-q queued">?</span>`;
-        return `<div class="${cls}" data-op-key="${opts.key}" data-unrevealed="1">${inner}</div>`;
+        return `<div class="${cls}" data-op-key="${opts.key}" data-unrevealed="1"${posAttr}>${inner}</div>`;
       }
 
-      const rar = opts.rarity || (def ? (def.rarity || 'common') : 'common');
+      const mods = opts.mods || (def && def.type === 'weapon' && this.profile && this.profile.weaponMods && this.profile.weaponMods[def.id]) || {};
+      const rar = opts.rarity || this._resolveItemRarity({ id: opts.id, mods }, def);
       const val = opts.text !== undefined ? opts.text : (def ? def.name : 'EMPTY');
       const iconId = opts.iconId !== undefined ? opts.iconId : opts.id;
       const showIcon = !!(hasVal && iconId && window.itemIcons && typeof window.itemIcons.getIcon === 'function');
       const iconHtml = showIcon
-        ? this._renderItemIconHTML(iconId, def, { wide: opts.span === 2, cls: 'op-slot-icon' })
+        ? this._renderItemIconHTML(iconId, def, { wide: opts.span === 2, cls: 'op-slot-icon', mods })
+        : '';
+      const isWideWeapon = !!(hasVal && def && def.type === 'weapon' && opts.span === 2);
+      let pipsHtml = '';
+      let ammoHtml = '';
+      let catGlyphHtml = '';
+      if (isWideWeapon) {
+        const attCount = this._getWeaponModCount({ id: opts.id, mods }, def);
+        if (attCount > 0) {
+          pipsHtml = `<span class="slot-pips">${'<span class="slot-pip"></span>'.repeat(Math.min(5, attCount))}</span>`;
+        }
+        const magCount = (opts.mag !== undefined) ? opts.mag : ((def && def.magSize) || 0);
+        ammoHtml = `<span class="slot-ammo"><span class="slot-ammo-bars" aria-hidden="true">≡</span>${magCount}</span>`;
+      } else if (hasVal && def) {
+        catGlyphHtml = `<span class="slot-cat-glyph">${this._getCategoryGlyphSVG(def)}</span>`;
+      } else if (hasVal && iconId === 'armor_plate') {
+        const plDef = GAME_DATA.ITEMS.armor_plate || { type: 'plate', id: 'armor_plate' };
+        catGlyphHtml = `<span class="slot-cat-glyph">${this._getCategoryGlyphSVG(plDef)}</span>`;
+      }
+      const qtyNum = opts.qty || 0;
+      const qtyHtml = (hasVal && (qtyNum > 1 || (opts.forceQty && qtyNum > 0)))
+        ? `<span class="slot-qty">${qtyNum}</span>`
+        : '';
+      const emptyGlyphHtml = (!hasVal)
+        ? `<span class="empty-slot-glyph">${this._getEmptySlotGlyphSVG(opts.emptyKey || opts.key)}</span>`
         : '';
       const badgeText = opts.sub || (showIcon && opts.badge ? opts.badge : '');
       const sub = badgeText ? `<span class="op-slot-sub">${badgeText}</span>` : '';
-      const valHtml = showIcon ? '' : `<span class="op-slot-val">${val}</span>`;
+      const valHtml = (showIcon || !hasVal) ? '' : `<span class="op-slot-val">${val}</span>`;
       const cls = [
         'op-slot-card',
         hasVal ? `rarity-${rar}` : 'empty-slot-card',
@@ -7934,46 +8038,60 @@ class GameUI {
       const tip = clickable ? `${tipName} — ${tooltipText}` : tipName;
       const itemVal = opts.value !== undefined ? opts.value : (def ? (def.value || 0) * (opts.qty || 1) : 0);
       const priceStr = (hasVal && itemVal > 0 && opts.key !== 'cash') ? this._formatShortValue(itemVal) : '';
-      return `<div class="${cls}" data-op-key="${opts.key}" title="${tip.replace(/"/g, '&quot;')}" style="cursor:${clickable ? 'pointer' : 'default'};">
+      return `<div class="${cls}" data-op-key="${opts.key}" title="${tip.replace(/"/g, '&quot;')}" style="${opts.posStyle || ''}cursor:${clickable ? 'pointer' : 'default'};">
         <div class="op-slot-top">
           <span class="op-slot-label">${opts.label}</span>
           ${priceStr ? `<span class="op-slot-price">${priceStr}</span>` : ''}
         </div>
+        ${emptyGlyphHtml}
         ${iconHtml}
         ${valHtml}
+        ${pipsHtml}
+        ${ammoHtml}
+        ${catGlyphHtml}
+        ${qtyHtml}
         ${sub}
       </div>`;
     };
 
     const pDef = itemDef(data.primary);
     const sDef = itemDef(data.secondary);
-    const tacDef = itemDef(data.tactical);
-    const lethDef = itemDef(data.lethal);
+    const portraitUrl = (!revealConfig && window.itemIcons && typeof window.itemIcons.getOperatorPortrait === 'function')
+      ? window.itemIcons.getOperatorPortrait()
+      : null;
+    const portraitHtml = portraitUrl
+      ? `<img class="op-portrait-bg" src="${portraitUrl}" alt="" draggable="false" />`
+      : '';
+    const decoEmpty = (col, row, glyphKey) =>
+      `<div class="op-slot-card empty-slot-card dmz-deco-empty" style="grid-column:${col};grid-row:${row};" aria-hidden="true"><span class="empty-slot-glyph">${this._getEmptySlotGlyphSVG(glyphKey)}</span></div>`;
 
     containerEl.innerHTML = `
       <div class="op-tactical-grid">
-        <!-- Row 1: Cash | Plates | DOGTAG (Center) | Headgear | Self-Revive -->
-        ${card({ key: 'cash', label: data.cashLabel || 'CASH', iconId: 'cash', text: `₽${(data.cash || 0).toLocaleString()}`, badge: this._formatShortValue(data.cash || 0) || '₽0', hasValue: (data.cash || 0) > 0, rarity: 'legendary' })}
-        ${card({ key: 'plates', label: 'PLATES', iconId: 'armor_plate', value: (data.plates || 0) * ((GAME_DATA.ITEMS.armor_plate && GAME_DATA.ITEMS.armor_plate.value) || 400), text: `${data.plates || 0} / 6`, badge: `${data.plates || 0}/6`, hasValue: (data.plates || 0) > 0, rarity: 'rare' })}
-        ${card({ key: 'dogtag', label: 'DOGTAG', id: data.dogtag, text: data.dogtag ? (data.dogtagText || 'Operator Tag') : 'LOOTED', hasValue: !!data.dogtag, rarity: 'rare', spine: true })}
-        ${card({ key: 'headgear', label: 'HEAD', id: data.headgear, text: itemDef(data.headgear) ? itemDef(data.headgear).name : 'MASK / NVG' })}
-        ${card({ key: 'selfRevive', label: 'REVIVE', id: data.selfRevive })}
+        ${portraitHtml}
+        <!-- Row 1: Self-Revive | Plates | [Col 3 Empty for Portrait / Enemy Dogtag] | Gas Mask | Medical -->
+        ${card({ key: 'selfRevive', label: 'REVIVE', id: data.selfRevive, emptyKey: 'selfRevive', posStyle: 'grid-column:1;grid-row:1;' })}
+        ${card({ key: 'plates', label: 'PLATES', iconId: 'armor_plate', value: (data.plates || 0) * ((GAME_DATA.ITEMS.armor_plate && GAME_DATA.ITEMS.armor_plate.value) || 400), qty: data.plates || 0, forceQty: true, text: `${data.plates || 0} / 6`, badge: `${data.plates || 0}/6`, hasValue: (data.plates || 0) > 0, rarity: 'common', emptyKey: 'plates', posStyle: 'grid-column:2;grid-row:1;' })}
+        ${revealConfig && data.dogtag ? card({ key: 'dogtag', label: 'DOGTAG', id: data.dogtag, text: data.dogtagText || 'Operator Tag', hasValue: true, rarity: 'rare', spine: true, posStyle: 'grid-column:3;grid-row:1;' }) : ''}
+        ${card({ key: 'headgear', label: 'HEAD', id: data.headgear, text: itemDef(data.headgear) ? itemDef(data.headgear).name : 'MASK / NVG', emptyKey: 'headgear', posStyle: 'grid-column:4;grid-row:1;' })}
+        ${decoEmpty(5, 1, 'medical')}
 
-        <!-- Row 2: PRIMARY (2 cols) | VEST (Center) | SECONDARY (2 cols) -->
-        ${card({ key: 'primary', label: 'PRIMARY', id: data.primary, rarity: data.primaryRarity || undefined, sub: pDef && data.primaryMag !== undefined ? `${data.primaryMag} RDS` : '', span: 2 })}
-        ${card({ key: 'armor', label: 'VEST', id: data.armor, spine: true })}
-        ${card({ key: 'secondary', label: 'SECONDARY', id: data.secondary, rarity: data.secondaryRarity || undefined, sub: sDef && data.secondaryMag !== undefined ? `${data.secondaryMag} RDS` : '', span: 2 })}
+        <!-- Row 2: PRIMARY (Cols 1-2) | VEST (Col 3) | SECONDARY (Cols 4-5) -->
+        ${card({ key: 'primary', label: 'PRIMARY', id: data.primary, mods: data.primaryMods, mag: data.primaryMag !== undefined ? data.primaryMag : (pDef ? pDef.magSize : undefined), rarity: data.primaryRarity || undefined, sub: pDef && data.primaryMag !== undefined ? `${data.primaryMag} RDS` : '', span: 2, posStyle: 'grid-column:1 / span 2;grid-row:2;' })}
+        ${card({ key: 'armor', label: 'VEST', id: data.armor, spine: true, emptyKey: 'armor', posStyle: 'grid-column:3;grid-row:2;' })}
+        ${card({ key: 'secondary', label: 'SECONDARY', id: data.secondary, mods: data.secondaryMods, mag: data.secondaryMag !== undefined ? data.secondaryMag : (sDef ? sDef.magSize : undefined), rarity: data.secondaryRarity || undefined, sub: sDef && data.secondaryMag !== undefined ? `${data.secondaryMag} RDS` : '', span: 2, posStyle: 'grid-column:4 / span 2;grid-row:2;' })}
 
-        <!-- Row 3: Tactical | Lethal | BACKPACK (Center) | Field Upgrade | Killstreak -->
-        ${card({ key: 'tactical', label: 'TAC', id: data.tactical, qty: data.tacticalQty || 1, text: tacDef ? `${tacDef.name.split(' ')[0]}${data.tacticalQty ? ' x' + data.tacticalQty : ''}` : 'EMPTY', badge: tacDef && data.tacticalQty ? `x${data.tacticalQty}` : '' })}
-        ${card({ key: 'lethal', label: 'LETH', id: data.lethal, qty: data.lethalQty || 1, text: lethDef ? `${lethDef.name.split(' ')[0]}${data.lethalQty ? ' x' + data.lethalQty : ''}` : 'EMPTY', badge: lethDef && data.lethalQty ? `x${data.lethalQty}` : '' })}
-        ${card({ key: 'backpack', label: 'PACK', id: data.backpack, spine: true })}
-        ${card({ key: 'fieldUpgrade', label: 'UPG', id: data.fieldUpgrade })}
-        ${card({ key: 'killstreak', label: 'STRK', id: data.killstreak })}
+        <!-- Row 3: Lethal | Tactical | BACKPACK (Col 3) | Helmet/Gear | Melee-Glyph -->
+        ${card({ key: 'lethal', label: 'LETH', id: data.lethal, qty: data.lethalQty || 1, text: 'LETHAL', badge: data.lethalQty ? `x${data.lethalQty}` : '', emptyKey: 'lethal', posStyle: 'grid-column:1;grid-row:3;' })}
+        ${card({ key: 'tactical', label: 'TAC', id: data.tactical, qty: data.tacticalQty || 1, text: 'TACTICAL', badge: data.tacticalQty ? `x${data.tacticalQty}` : '', emptyKey: 'tactical', posStyle: 'grid-column:2;grid-row:3;' })}
+        ${card({ key: 'backpack', label: 'PACK', id: data.backpack, spine: true, emptyKey: 'backpack', posStyle: 'grid-column:3;grid-row:3;' })}
+        ${decoEmpty(4, 3, 'helmet')}
+        ${decoEmpty(5, 3, 'melee')}
 
-        <!-- Row 4: Melee (bottom-right 2 cols, matching reference) -->
-        <div class="span-3" style="grid-column:span 3;"></div>
-        ${card({ key: 'melee', label: 'MELEE', id: data.melee, span: 2 })}
+        <!-- Row 4: Killstreak | Field Upgrade | [Col 3 Empty / Enemy Cash] | MELEE (Cols 4-5) -->
+        ${card({ key: 'killstreak', label: 'STRK', id: data.killstreak, emptyKey: 'killstreak', posStyle: 'grid-column:1;grid-row:4;' })}
+        ${card({ key: 'fieldUpgrade', label: 'UPG', id: data.fieldUpgrade, emptyKey: 'fieldUpgrade', posStyle: 'grid-column:2;grid-row:4;' })}
+        ${revealConfig && (data.cash || 0) > 0 ? card({ key: 'cash', label: data.cashLabel || 'CASH', iconId: 'cash', text: `₽${(data.cash || 0).toLocaleString()}`, badge: this._formatShortValue(data.cash || 0) || '₽0', hasValue: true, rarity: 'legendary', posStyle: 'grid-column:3;grid-row:4;' }) : ''}
+        ${card({ key: 'melee', label: 'MELEE', id: data.melee, span: 2, emptyKey: 'melee', posStyle: 'grid-column:4 / span 2;grid-row:4;' })}
       </div>
     `;
 
@@ -8040,12 +8158,14 @@ class GameUI {
         headgear: player.headgear,
         selfRevive: player.selfRevive,
         primary: pSlot ? pSlot.id : null,
+        primaryMods: pSlot ? (pSlot.mods || {}) : {},
         primaryMag: pSlot ? pSlot.mag : undefined,
-        primaryRarity: pSlot ? pSlot.rarityOverride : null,
+        primaryRarity: pSlot ? (pSlot.rarityOverride || this._resolveItemRarity(pSlot)) : null,
         armor: player.armorId,
         secondary: sSlot ? sSlot.id : null,
+        secondaryMods: sSlot ? (sSlot.mods || {}) : {},
         secondaryMag: sSlot ? sSlot.mag : undefined,
-        secondaryRarity: sSlot ? sSlot.rarityOverride : null,
+        secondaryRarity: sSlot ? (sSlot.rarityOverride || this._resolveItemRarity(sSlot)) : null,
         tactical: player.tactical,
         tacticalQty: player.tacticalQty,
         lethal: player.lethal,
@@ -8152,10 +8272,12 @@ class GameUI {
           headgear: eq.headgear,
           selfRevive: eq.selfRevive,
           primary: eq.primary,
-          primaryRarity: eq.primaryRarity || null,
+          primaryMods: eq.primaryMods || {},
+          primaryRarity: eq.primaryRarity || (eq.primary ? this._resolveItemRarity({ id: eq.primary, mods: eq.primaryMods || {} }) : null),
           armor: eq.armor,
           secondary: eq.secondary,
-          secondaryRarity: eq.secondaryRarity || null,
+          secondaryMods: eq.secondaryMods || {},
+          secondaryRarity: eq.secondaryRarity || (eq.secondary ? this._resolveItemRarity({ id: eq.secondary, mods: eq.secondaryMods || {} }) : null),
           tactical: eq.tactical,
           lethal: eq.lethal,
           backpack: eq.backpack,
@@ -8312,7 +8434,7 @@ class GameUI {
                    <span class="slot-val">SEARCHING</span>`
                 : `<span class="reveal-q queued">?</span><span class="slot-val">QUEUED</span>`;
             } else {
-              const effRar = item.rarityOverride || def.rarity || 'common';
+              const effRar = this._resolveItemRarity(item, def);
               slot.classList.add(`rarity-${effRar}`);
               slot.innerHTML = this._renderInvSlotInner(item, def, { wide: isWpn });
               slot.title = isWpn
@@ -8335,9 +8457,18 @@ class GameUI {
       }
     }
 
-    // 3. Backpack Grid (Right / Lower Centered — strictly capped to backpackMaxSlots, zero weight!)
+    // 3. Backpack Grid + DMZ Pack Header + Sort Category Counters + Loadout Credits
     const maxSlots = player.backpackMaxSlots || 8;
     const hasWeaponBag = player.hasWeaponBackpack();
+    const packNameEl = document.getElementById('bag-pack-name');
+    if (packNameEl) {
+      const bDef = player.backpackId && GAME_DATA.ITEMS[player.backpackId];
+      packNameEl.textContent = (bDef && bDef.name) ? bDef.name.toUpperCase() : 'BASIC PACK';
+    }
+    const loadoutCreditsEl = document.getElementById('dmz-loadout-credits');
+    if (loadoutCreditsEl) {
+      loadoutCreditsEl.textContent = `₽ ${(player.cash || 0).toLocaleString()}`;
+    }
     const usedEl = document.getElementById('bag-slots-used');
     const maxEl = document.getElementById('bag-slots-max');
     if (usedEl) usedEl.textContent = Math.min(maxSlots, player.backpack.length);
@@ -8347,6 +8478,36 @@ class GameUI {
         : maxSlots;
     }
     document.getElementById('bag-total-val').textContent = `₽ ${player.getBackpackValue().toLocaleString()}`;
+
+    // Sort counts: Docs (keys/intel), Chips (electronics), Chem (meds/gunpowder/fuel), Gear (materials/misc)
+    let cntDocs = 0, cntChips = 0, cntChem = 0, cntGear = 0;
+    const bagItems = Array.isArray(player.backpack) ? player.backpack : [];
+    for (let i = 0; i < bagItems.length; i++) {
+      const it = bagItems[i];
+      if (!it || !it.id) continue;
+      const d = GAME_DATA.ITEMS[it.id];
+      const q = Math.max(1, it.qty || 1);
+      if (it.id === 'gpu_unit' || it.id === 'intel_drive' || it.id === 'black_box') {
+        cntChips += q;
+      } else if ((d && d.type === 'key') || it.id === 'boss_key' || it.id === 'dogtag') {
+        cntDocs += q;
+      } else if ((d && d.type === 'med') || it.id === 'self_revive' || it.id === 'gunpowder' || it.id === 'fuel_can') {
+        cntChem += q;
+      } else {
+        cntGear += q;
+      }
+    }
+    const pad3 = (n) => String(Math.min(999, Math.max(0, n))).padStart(3, '0');
+    const sDocsEl = document.getElementById('sort-docs');
+    const sChipsEl = document.getElementById('sort-chips');
+    const sChemEl = document.getElementById('sort-chem');
+    const sGearEl = document.getElementById('sort-gear');
+    const sMaxEl = document.getElementById('sort-max');
+    if (sDocsEl) sDocsEl.textContent = pad3(cntDocs);
+    if (sChipsEl) sChipsEl.textContent = pad3(cntChips);
+    if (sChemEl) sChemEl.textContent = pad3(cntChem);
+    if (sGearEl) sGearEl.textContent = pad3(cntGear);
+    if (sMaxEl) sMaxEl.textContent = `MAX ${maxSlots}`;
 
     if (bList) {
       bList.innerHTML = '';
@@ -8411,8 +8572,10 @@ class GameUI {
 
         if (item && GAME_DATA.ITEMS[item.id]) {
           const def = GAME_DATA.ITEMS[item.id];
-          slot.classList.add(`rarity-${item.rarityOverride || def.rarity || 'common'}`);
-          slot.innerHTML = this._renderInvSlotInner(item, def);
+          const isWpn = def.type === 'weapon';
+          if (isWpn) slot.classList.add('weapon-slot-wide');
+          slot.classList.add(`rarity-${this._resolveItemRarity(item, def)}`);
+          slot.innerHTML = this._renderInvSlotInner(item, def, { wide: isWpn });
           slot.title = `${def.name}${item.qty > 1 ? ' x' + item.qty : ''} (₽${(def.value * item.qty).toLocaleString()}) — Left-Click: Details/Equip · Right-Click: Drop to Ground / Split`;
           slot.addEventListener('click', (e) => {
             e.stopPropagation();
