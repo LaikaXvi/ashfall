@@ -352,11 +352,15 @@ class HideoutBunker {
       if (this.keys['KeyS'] || this.keys['ArrowDown']) move.sub(fwd);
       if (this.keys['KeyD'] || this.keys['ArrowRight']) move.add(right);
       if (this.keys['KeyA'] || this.keys['ArrowLeft']) move.sub(right);
+      if (this.padMoveY) move.addScaledVector(fwd, this.padMoveY);
+      if (this.padMoveX) move.addScaledVector(right, this.padMoveX);
 
       const isMoving = move.lengthSq() > 0.001;
-      const speed = (this.keys['ShiftLeft'] || this.keys['ShiftRight']) ? 6.2 : 3.9;
+      const isSprinting = !!(this.keys['ShiftLeft'] || this.keys['ShiftRight'] || this.padSprint);
+      const speed = this.isCrouching ? 2.4 : (isSprinting ? 6.2 : 3.9);
       if (isMoving) {
-        move.normalize().multiplyScalar(speed * dt);
+        if (move.lengthSq() > 1) move.normalize();
+        move.multiplyScalar(speed * dt);
         const nextPos = this.pos.clone().add(move);
         this._resolveCollisions(nextPos);
         this.pos.x = nextPos.x;
@@ -371,14 +375,17 @@ class HideoutBunker {
         }
       }
 
-      if (this.keys['Space'] && this.onGround) {
+      if ((this.keys['Space'] || this.padJump) && this.onGround) {
+        this.isCrouching = false;
         this.velY = 4.6;
         this.onGround = false;
       }
+      this.padJump = false;
       this.velY -= 14.0 * dt;
+      const targetEyeY = this.isCrouching ? 1.12 : 1.68;
       this.pos.y += this.velY * dt;
-      if (this.pos.y <= 1.68) {
-        this.pos.y = 1.68;
+      if (this.pos.y <= targetEyeY) {
+        this.pos.y = targetEyeY;
         this.velY = 0;
         this.onGround = true;
       }

@@ -755,6 +755,8 @@ class GamepadController {
         } else {
           ui.openMenuTab('home');
         }
+      } else if (ui && ui.activeMenuTab === 'home' && typeof window.onCloseHideoutOverlayTo3D === 'function') {
+        window.onCloseHideoutOverlayTo3D();
       }
     }
 
@@ -770,6 +772,82 @@ class GamepadController {
           ui.openMenuTab(tabs[(cur + dir + tabs.length) % tabs.length]);
           this._setMenuFocus(null);
         }
+      }
+    }
+
+    this._snapshot(pad);
+  }
+
+  // Full native gameplay controller support inside the walkable 3D Hideout bunker!
+  updateHideoutRoam(dt, hideoutBunker, { onOpenMenu, onInteractStation } = {}) {
+    const pad = this._getPad();
+    if (!pad || !hideoutBunker) return;
+
+    // Clear release latches once physically released
+    if (this._lockUntilRelease && this._lockUntilRelease.size > 0) {
+      for (const idx of Array.from(this._lockUntilRelease)) {
+        if (!this._isDown(pad, idx)) {
+          this._lockUntilRelease.delete(idx);
+        }
+      }
+    }
+
+    const ls = this._applyStickCurve(pad.axes[0] || 0, pad.axes[1] || 0);
+    const rs = this._applyStickCurve(pad.axes[2] || 0, pad.axes[3] || 0);
+    const gb = window.GAMEPAD_BINDS || {};
+    const bPause = gb.pause ?? 9;
+    const bSprint = gb.sprint ?? 10;
+    const bJump = gb.jump ?? 0;
+    const bCrouch = gb.crouch ?? 1;
+    const bInteract = gb.interactReload ?? 2;
+
+    // Start / Pause (9): Open the Hideout Menu!
+    if (this._justPressed(pad, bPause)) {
+      this._lockUntilRelease.add(bPause);
+      hideoutBunker.padMoveX = 0;
+      hideoutBunker.padMoveY = 0;
+      hideoutBunker.padSprint = false;
+      if (onOpenMenu) onOpenMenu();
+      this._snapshot(pad);
+      return;
+    }
+
+    // Left Stick: Analog movement
+    hideoutBunker.padMoveX = ls.x;
+    hideoutBunker.padMoveY = -ls.y;
+    if (hideoutBunker.padMoveY < 0.40) this.sprintToggled = false;
+
+    // Right Stick: Analog camera look
+    if (rs.mag > 0) {
+      const lookSpeed = 2.6 * (window.CONTROLLER_SENS || 1.0);
+      hideoutBunker.yaw -= rs.x * lookSpeed * dt;
+      hideoutBunker.pitch = THREE.MathUtils.clamp(hideoutBunker.pitch - rs.y * lookSpeed * dt, -1.15, 1.15);
+    }
+
+    // L3: Sprint toggle
+    if (this._justPressed(pad, bSprint) && hideoutBunker.padMoveY > 0.35) {
+      this.sprintToggled = !this.sprintToggled;
+    }
+    hideoutBunker.padSprint = this.sprintToggled && hideoutBunker.padMoveY > 0.35;
+
+    // A / Cross: Jump
+    if (!this._lockUntilRelease.has(bJump) && this._justPressed(pad, bJump)) {
+      hideoutBunker.padJump = true;
+    }
+
+    // B / Circle: Toggle Crouch
+    if (!this._lockUntilRelease.has(bCrouch) && this._justPressed(pad, bCrouch)) {
+      hideoutBunker.isCrouching = !hideoutBunker.isCrouching;
+    }
+
+    // X / Square: Interact with hovered Hideout station
+    if (!this._lockUntilRelease.has(bInteract) && this._justPressed(pad, bInteract)) {
+      if (hideoutBunker.hoveredStation && onInteractStation) {
+        this._lockUntilRelease.add(bInteract);
+        hideoutBunker.padMoveX = 0;
+        hideoutBunker.padMoveY = 0;
+        hideoutBunker.padSprint = false;
+        onInteractStation(hideoutBunker.hoveredStation);
       }
     }
 

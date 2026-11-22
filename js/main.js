@@ -108,6 +108,14 @@
     hideoutBunker.enterRoam(canvas);
   }
   window.enterHideoutRoam = enterHideoutRoam;
+  window.onCloseHideoutOverlayTo3D = () => {
+    if (!inRaid && hideoutBunker && !hideoutBunker.activeRoam && !(gunsmith && gunsmith.isOpen)) {
+      if (ui && ui.activeMenuTab !== 'home') ui.openMenuTab('home');
+      enterHideoutRoam();
+      return true;
+    }
+    return false;
+  };
 
   function exitHideoutRoam(openMenu = true) {
     if (!hideoutBunker) return;
@@ -3385,7 +3393,19 @@
         hideoutBunker.update(dt, renderer);
       }
       // Enable full controller navigation in Main Menu, Stash, Operator, Settings, Gunsmith & Summary screens!
-      if (!(hideoutBunker && hideoutBunker.activeRoam)) {
+      if (hideoutBunker && hideoutBunker.activeRoam) {
+        gamepad.updateHideoutRoam(dt, hideoutBunker, {
+          onOpenMenu: () => exitHideoutRoam(true),
+          onInteractStation: (st) => {
+            if (!st) return;
+            exitHideoutRoam(false);
+            if (window.soundEngine && window.soundEngine.playClick) {
+              try { window.soundEngine.playClick(); } catch (err) {}
+            }
+            ui.openMenuTab(st.tab);
+          }
+        });
+      } else {
         gamepad.updateMenu(dt, { ui, gunsmith });
       }
     }
