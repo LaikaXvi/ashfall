@@ -2002,6 +2002,7 @@ class WeaponSystem {
       group: g,
       weaponId: weaponDef.id,
       isPistol: weaponDef.slot === 'secondary',
+      muzzlePos: this.muzzleMesh.position.clone(),
       magMesh: this.magMesh,
       spareMagMesh: this.spareMagMesh,
       boltMesh: this.boltMesh,
@@ -2209,11 +2210,24 @@ class WeaponSystem {
       }
     }
 
-    // Hip-height mantle quick weapon dip
+    // Hip-height mantle quick weapon dip & supporting hand obstacle grab
+    let mantleGrabArc = 0;
     if (player.mantleState && this.viewmodelGroup) {
-      const mArc = Math.sin(player.mantleState.t * Math.PI);
-      this.viewmodelGroup.position.y = THREE.MathUtils.lerp(this.viewmodelGroup.position.y, -0.26 - mArc * 0.18, Math.min(1, dt * 18));
-      this.viewmodelGroup.rotation.x = THREE.MathUtils.lerp(this.viewmodelGroup.rotation.x, -0.35 * mArc, Math.min(1, dt * 18));
+      mantleGrabArc = Math.sin(player.mantleState.t * Math.PI);
+      this.viewmodelGroup.position.y = THREE.MathUtils.lerp(this.viewmodelGroup.position.y, -0.22 - mantleGrabArc * 0.14, Math.min(1, dt * 18));
+      this.viewmodelGroup.rotation.x = THREE.MathUtils.lerp(this.viewmodelGroup.rotation.x, -0.24 * mantleGrabArc, Math.min(1, dt * 18));
+      this.viewmodelGroup.rotation.z = THREE.MathUtils.lerp(this.viewmodelGroup.rotation.z, -0.26 * mantleGrabArc, Math.min(1, dt * 18));
+    }
+
+    // Stance transition 1P prone ground push-off / lay-down hand brace
+    let proneHandPushArc = 0;
+    if (player.stanceTrans && player.stanceTrans.timer > 0 && (player.stanceTrans.to === 'prone' || player.stanceTrans.from === 'prone')) {
+      const sp = 1 - (player.stanceTrans.timer / Math.max(0.01, player.stanceTrans.duration));
+      proneHandPushArc = Math.sin(sp * Math.PI);
+      if (this.viewmodelGroup) {
+        this.viewmodelGroup.rotation.z = THREE.MathUtils.lerp(this.viewmodelGroup.rotation.z, -0.22 * proneHandPushArc, Math.min(1, dt * 16));
+        this.viewmodelGroup.rotation.x = THREE.MathUtils.lerp(this.viewmodelGroup.rotation.x, 0.16 * proneHandPushArc, Math.min(1, dt * 16));
+      }
     }
 
     // Weapon Draw Animation (shoulder_down from top OR undersling_up from bottom)
@@ -2688,10 +2702,34 @@ class WeaponSystem {
           this.leftFist.visible = false;
           this.leftFist.position.copy(this.leftHand.position);
         }
-        this.leftHand.position.lerp(this.leftHandRestPos, Math.min(1, dt * 18));
-        this.leftHand.rotation.x = THREE.MathUtils.lerp(this.leftHand.rotation.x, this.leftHandRestRot.x, Math.min(1, dt * 18));
-        this.leftHand.rotation.y = THREE.MathUtils.lerp(this.leftHand.rotation.y, this.leftHandRestRot.y, Math.min(1, dt * 18));
-        this.leftHand.rotation.z = THREE.MathUtils.lerp(this.leftHand.rotation.z, this.leftHandRestRot.z, Math.min(1, dt * 18));
+        if (mantleGrabArc > 0.04) {
+          // Supporting left hand leaves gun to grab & push off the top edge of the hip-height obstacle!
+          const grabTarget = new THREE.Vector3(
+            this.leftHandRestPos.x - 0.18 * mantleGrabArc,
+            this.leftHandRestPos.y - 0.10 * mantleGrabArc,
+            this.leftHandRestPos.z - 0.24 * mantleGrabArc
+          );
+          this.leftHand.position.lerp(grabTarget, Math.min(1, dt * 22));
+          this.leftHand.rotation.x = THREE.MathUtils.lerp(this.leftHand.rotation.x, -0.85 * mantleGrabArc, Math.min(1, dt * 20));
+          this.leftHand.rotation.y = THREE.MathUtils.lerp(this.leftHand.rotation.y, 0.35 * mantleGrabArc, Math.min(1, dt * 20));
+          this.leftHand.rotation.z = THREE.MathUtils.lerp(this.leftHand.rotation.z, 0.45 * mantleGrabArc, Math.min(1, dt * 20));
+        } else if (proneHandPushArc > 0.04) {
+          // Supporting left hand leaves gun to plant on the ground / push off while entering or exiting prone!
+          const pushTarget = new THREE.Vector3(
+            this.leftHandRestPos.x - 0.24 * proneHandPushArc,
+            this.leftHandRestPos.y - 0.26 * proneHandPushArc,
+            this.leftHandRestPos.z - 0.16 * proneHandPushArc
+          );
+          this.leftHand.position.lerp(pushTarget, Math.min(1, dt * 20));
+          this.leftHand.rotation.x = THREE.MathUtils.lerp(this.leftHand.rotation.x, -1.05 * proneHandPushArc, Math.min(1, dt * 18));
+          this.leftHand.rotation.y = THREE.MathUtils.lerp(this.leftHand.rotation.y, 0.25 * proneHandPushArc, Math.min(1, dt * 18));
+          this.leftHand.rotation.z = THREE.MathUtils.lerp(this.leftHand.rotation.z, 0.55 * proneHandPushArc, Math.min(1, dt * 18));
+        } else {
+          this.leftHand.position.lerp(this.leftHandRestPos, Math.min(1, dt * 18));
+          this.leftHand.rotation.x = THREE.MathUtils.lerp(this.leftHand.rotation.x, this.leftHandRestRot.x, Math.min(1, dt * 18));
+          this.leftHand.rotation.y = THREE.MathUtils.lerp(this.leftHand.rotation.y, this.leftHandRestRot.y, Math.min(1, dt * 18));
+          this.leftHand.rotation.z = THREE.MathUtils.lerp(this.leftHand.rotation.z, this.leftHandRestRot.z, Math.min(1, dt * 18));
+        }
       }
     } else if (this.leftFist) {
       this.leftFist.visible = false;

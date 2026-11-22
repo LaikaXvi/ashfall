@@ -293,6 +293,9 @@ class Player {
     this.tempHealthSource = null;  // 'bandage' | 'painkillers' | null
     this.timeSinceDamaged = 10;    // Auto-regenerates HP after 2.5s without taking damage
     this.isDowned = false;
+    this.invisible = false;
+    this._prevStance = 'stand';
+    this.stanceTrans = { from: 'stand', to: 'stand', timer: 0, duration: 0.35 };
     this.dead = false;
     this.downedHp = 55;
     this.downedBleedMax = 25.0;
@@ -866,21 +869,51 @@ class Player {
       lShX = this.isADS ? 1.04 : 0.86; lElbX = this.isADS ? 1.02 : 0.90; lShZ = this.isADS ? 0.36 : 0.44;
       rShX = this.isADS ? 1.08 : 0.90; rElbX = this.isADS ? 0.92 : 0.74; rShZ = -0.14;
     } else {
-      // === FORWARD COMBAT-STANCE: IDLE / WALKING / SPRINTING / TACTICAL SPRINT ===
-      const amp = this.isTacSprinting ? 0.92 : (this.isSprinting ? 0.78 : 0.48);
-      lHipX = stride * amp;
-      rHipX = -stride * amp;
-      lKneeX = -Math.max(0, -strideCos) * (this.isSprinting ? 1.18 : 0.62) - 0.10;
-      rKneeX = -Math.max(0, strideCos) * (this.isSprinting ? 1.18 : 0.62) - 0.10;
-      lAnkX = -(lHipX + lKneeX) * 0.55;
-      rAnkX = -(rHipX + rKneeX) * 0.55;
+      // === FORWARD KINETIC & PROGRESSIVE WALK / SPRINT STANCE WITH UNEVEN TERRAIN FOOT IK ===
+      const speedRatio = THREE.MathUtils.clamp(horizSpeed / 5.2, 0, 1.38);
+      const amp = moving ? (0.18 + speedRatio * 0.56) : 0;
+      lHipX = moving ? (stride * amp) : 0.08;
+      rHipX = moving ? (-stride * amp) : -0.06;
+      const kneeLift = this.isSprinting ? 1.15 : (0.35 + speedRatio * 0.48);
+      lKneeX = moving ? (-Math.max(0, -strideCos) * kneeLift - 0.08) : -0.14;
+      rKneeX = moving ? (-Math.max(0, strideCos) * kneeLift - 0.08) : -0.10;
+      // Progressive heel-strike -> flat plant -> toe-off ankle articulation
+      lAnkX = moving ? (-(lHipX + lKneeX) * 0.65 + Math.max(0, stride) * 0.18) : 0.06;
+      rAnkX = moving ? (-(rHipX + rKneeX) * 0.65 + Math.max(0, -stride) * 0.18) : 0.06;
 
-      pelvisY = 0.88;
-      pelvisYaw = moving ? (stride * (this.isSprinting ? 0.16 : 0.08)) : 0.18;
+      // Kinetic double-support vertical bounce + weight shift
+      pelvisY = 0.88 - (moving ? Math.abs(stride) * 0.045 * Math.min(1, speedRatio) : 0);
+      pelvisYaw = moving ? (stride * (0.06 + speedRatio * 0.09)) : 0.16;
       torsoYaw = -pelvisYaw * 0.85;
-      // Forward combat-ready lean across idle, walk & sprint
-      torsoPitch = (this.isTacSprinting ? -0.30 : (this.isSprinting ? -0.22 : -0.09)) + breathe * 0.012;
+      torsoPitch = (this.isTacSprinting ? -0.30 : (this.isSprinting ? -0.22 : (-0.06 - speedRatio * 0.08))) + breathe * 0.012;
       rigRoll = -strafeInput * (this.isSprinting ? 0.08 : 0.04);
+
+      // 2-Foot Uneven Terrain IK: sample terrain height directly under each boot & flex uphill knee/hip/ankle!
+      if (this.world && this.world.getTerrainHeight) {
+        const sinY = Math.sin(this.yaw);
+        const cosY = Math.cos(this.yaw);
+        const footSpread = 0.22;
+        const stepFwd = moving ? stride * 0.28 : 0.08;
+        const lx = this.position.x - cosY * footSpread - sinY * stepFwd;
+        const lz = this.position.z + sinY * footSpread - cosY * stepFwd;
+        const rx = this.position.x + cosY * footSpread + sinY * stepFwd;
+        const rz = this.position.z - sinY * footSpread + cosY * stepFwd;
+        const lGround = this.world.getTerrainHeight(lx, lz);
+        const rGround = this.world.getTerrainHeight(rx, rz);
+        const dL = THREE.MathUtils.clamp(lGround - feetY, -0.35, 0.35);
+        const dR = THREE.MathUtils.clamp(rGround - feetY, -0.35, 0.35);
+        const minFootDrop = Math.min(0, dL, dR);
+        pelvisY += minFootDrop * 0.65;
+        // Flex uphill leg's hip & knee so the boot plants cleanly onto the higher slope without sinking or floating
+        const liftL = Math.max(0, dL - minFootDrop);
+        const liftR = Math.max(0, dR - minFootDrop);
+        lHipX += liftL * 1.45;
+        lKneeX -= liftL * 2.15;
+        lAnkX += liftL * 0.85;
+        rHipX += liftR * 1.45;
+        rKneeX -= liftR * 2.15;
+        rAnkX += liftR * 0.85;
+      }
 
       if (this.isTacSprinting) {
         // High-Port Tactical Sprint: athletic forward drive, weapon held high & ready across upper chest!
@@ -1218,6 +1251,29 @@ class Player {
       }
     }
 
+    // 3rd-Person Stance Transition Overlay (Kneeling bend & supporting-hand ground push-off for Prone <-> Crouch/Stand!)
+    if (this.stanceTrans && this.stanceTrans.timer > 0 && !this.isDowned && !this.dead && !this.isSliding) {
+      const tp = 1 - (this.stanceTrans.timer / Math.max(0.01, this.stanceTrans.duration));
+      const arc = Math.sin(tp * Math.PI);
+      const involvesProne = this.stanceTrans.to === 'prone' || this.stanceTrans.from === 'prone';
+      if (involvesProne) {
+        // Left supporting hand leaves rifle and plants down onto the ground to support body weight!
+        lShX = THREE.MathUtils.lerp(lShX, 1.52, arc * 0.92);
+        lElbX = THREE.MathUtils.lerp(lElbX, 0.24, arc * 0.92);
+        lShZ = THREE.MathUtils.lerp(lShZ, -0.36, arc * 0.92);
+        torsoPitch -= 0.22 * arc;
+        lKneeX -= 0.45 * arc;
+        rKneeX -= 0.35 * arc;
+      } else {
+        // Stand <-> Crouch knee bend & torso counterbalance dip
+        lHipX += 0.24 * arc;
+        rHipX += 0.20 * arc;
+        lKneeX -= 0.42 * arc;
+        rKneeX -= 0.36 * arc;
+        torsoPitch -= 0.14 * arc;
+      }
+    }
+
     // Smoothly interpolate all character joints
     p.rigPivot.rotation.x = THREE.MathUtils.lerp(p.rigPivot.rotation.x, rigPitch, rate);
     p.rigPivot.rotation.y = THREE.MathUtils.lerp(p.rigPivot.rotation.y, rigYaw, rate);
@@ -1233,11 +1289,13 @@ class Player {
     const headPitch = customHeadPitch !== null
       ? customHeadPitch
       : (this.isDowned
-        ? (-torsoPitch + this.pitch * 0.65)
+        ? THREE.MathUtils.clamp(-0.26 + this.pitch * 0.32, -0.48, 0.22)
         : (this.isProne
           ? (0.92 + this.pitch * 0.45)
           : (this.isSliding ? (-torsoPitch + this.pitch * 0.65) : (this.pitch * 0.65))));
     p.head.rotation.x = THREE.MathUtils.lerp(p.head.rotation.x, headPitch, rate);
+    p.head.rotation.y = THREE.MathUtils.lerp(p.head.rotation.y, 0, rate);
+    p.head.rotation.z = THREE.MathUtils.lerp(p.head.rotation.z, 0, rate);
     if (p.leftArm.wrist) {
       p.leftArm.wrist.rotation.x = THREE.MathUtils.lerp(p.leftArm.wrist.rotation.x, lWrX, rate);
       p.leftArm.wrist.rotation.z = THREE.MathUtils.lerp(p.leftArm.wrist.rotation.z, lWrZ, rate);
@@ -2563,6 +2621,20 @@ class Player {
           this.hp = Math.min(effMax, this.hp + 28 * dt);
         }
       }
+    }
+
+    // Track Stance Transitions (Stand <-> Crouch <-> Prone) for 1P & 3P transition animations!
+    if (this.stance !== this._prevStance && !this.isSliding && !this.isDowned) {
+      const involvesProne = this.stance === 'prone' || this._prevStance === 'prone';
+      this.stanceTrans = {
+        from: this._prevStance,
+        to: this.stance,
+        duration: involvesProne ? 0.48 : 0.28,
+        timer: involvesProne ? 0.48 : 0.28
+      };
+      this._prevStance = this.stance;
+    } else if (this.stanceTrans && this.stanceTrans.timer > 0) {
+      this.stanceTrans.timer = Math.max(0, this.stanceTrans.timer - dt);
     }
 
     // Update 3rd-person articulated character model

@@ -331,29 +331,56 @@ class Enemy {
 
       const wDef = GAME_DATA.ITEMS[this.weaponId];
       let weaponObj = null;
+      let muzzleLocalPos = new THREE.Vector3(0, 0.03, -0.44);
       if (this.weaponSystem && wDef && this.weaponSystem.buildThirdPersonWeapon) {
         const builtWpn = this.weaponSystem.buildThirdPersonWeapon(wDef, {});
         if (builtWpn && builtWpn.group) {
           weaponObj = builtWpn.group;
           weaponObj.scale.setScalar(builtWpn.isPistol ? 1.25 : 1.38);
           weaponObj.position.set(0, 0.04, builtWpn.isPistol ? -0.06 : -0.18);
+          if (builtWpn.muzzlePos) {
+            muzzleLocalPos.copy(builtWpn.muzzlePos);
+          } else {
+            muzzleLocalPos.set(0, 0.04, builtWpn.isPistol ? -0.24 : -0.52);
+          }
         }
       }
       if (!weaponObj) {
         weaponObj = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.09, 0.62), new THREE.MeshLambertMaterial({ color: 0x1a1c1e }));
         weaponObj.position.set(0, 0.04, -0.22);
+        muzzleLocalPos.set(0, 0, -0.34);
       }
       if (built.weaponMount) built.weaponMount.add(weaponObj);
       this.weaponMeshGroup = weaponObj;
 
+      // Visible 3D ceramic armor plate prop in operator's left hand during plating animation
+      this.plateProp = new THREE.Group();
+      const plateBody = new THREE.Mesh(
+        new THREE.BoxGeometry(0.18, 0.22, 0.024),
+        new THREE.MeshLambertMaterial({ color: 0x22384c })
+      );
+      const plateTrim = new THREE.Mesh(
+        new THREE.BoxGeometry(0.16, 0.03, 0.028),
+        new THREE.MeshLambertMaterial({ color: 0x4ea8de })
+      );
+      plateTrim.position.y = 0.07;
+      this.plateProp.add(plateBody, plateTrim);
+      this.plateProp.position.set(0, -0.11, -0.04);
+      this.plateProp.rotation.set(0.35, 0, 0.15);
+      this.plateProp.visible = false;
+      if (built.leftArm && built.leftArm.wrist) {
+        built.leftArm.wrist.add(this.plateProp);
+      }
+
+      // Attach muzzle flash directly to the physical gun barrel tip so bullets & tracers spawn from the muzzle!
       this.muzzleMesh = new THREE.Mesh(
-        new THREE.SphereGeometry(0.07, 6, 6),
+        new THREE.SphereGeometry(0.055, 6, 6),
         new THREE.MeshBasicMaterial({ color: 0xffcc55, transparent: true, opacity: 0 })
       );
-      this.muzzleMesh.position.set(0.20, 1.32, 0.72);
+      this.muzzleMesh.position.copy(muzzleLocalPos);
       this.muzzleLight = null;
       this.muzzleTimer = 0;
-      this.group.add(this.muzzleMesh);
+      weaponObj.add(this.muzzleMesh);
       return;
     }
 
@@ -401,6 +428,7 @@ class Enemy {
     // Actual 3D game weapon in hands (built from WeaponSystem)
     const wDef = GAME_DATA.ITEMS[this.weaponId];
     let weaponObj = null;
+    let npcMuzzleLocal = new THREE.Vector3(0, 0.02, 0.34);
     if (this.weaponSystem && wDef && this.weaponSystem.buildThirdPersonWeapon) {
       const built = this.weaponSystem.buildThirdPersonWeapon(wDef, {});
       if (built && built.group) {
@@ -408,6 +436,11 @@ class Enemy {
         weaponObj.scale.setScalar(1.22);
         weaponObj.position.set(0.24, 1.24, 0.36);
         weaponObj.rotation.set(0, Math.PI, 0); // barrel points along +Z (enemy forward)
+        if (built.muzzlePos) {
+          npcMuzzleLocal.copy(built.muzzlePos);
+        } else {
+          npcMuzzleLocal.set(0, 0.04, built.isPistol ? -0.24 : -0.52);
+        }
       }
     }
     if (!weaponObj) {
@@ -416,18 +449,19 @@ class Enemy {
     }
     this.weaponMeshGroup = weaponObj;
 
-    // Rifle muzzle flash
+    // Rifle muzzle flash attached directly to barrel tip
     this.muzzleMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(0.07, 6, 6),
+      new THREE.SphereGeometry(0.055, 6, 6),
       new THREE.MeshBasicMaterial({ color: 0xffcc55, transparent: true, opacity: 0 })
     );
-    this.muzzleMesh.position.set(0.25, 1.25, 0.78);
+    this.muzzleMesh.position.copy(npcMuzzleLocal);
     this.muzzleLight = null;
     this.muzzleTimer = 0;
+    weaponObj.add(this.muzzleMesh);
 
     this.group.add(
       this.leftHip, this.rightHip, torso, head,
-      this.leftArm, this.rightArm, weaponObj, this.muzzleMesh
+      this.leftArm, this.rightArm, weaponObj
     );
   }
 
@@ -783,41 +817,99 @@ class Enemy {
 
     // Articulated Arms & Elbows (Focusing ADS, Reloading, Plating, Sprinting)
     const nowS = (this._animTime = (this._animTime || 0) + dt);
+    if (this.plateProp) this.plateProp.visible = isPlating;
     if (this.leftArm && this.rightArm) {
-      let lX = -0.82, rX = -1.02, lZ = 0.14, rZ = -0.10;
-      let lElb = -0.75, rElb = -0.85;
-      if (isPlating) {
-        const cyc = (nowS * 2.2) % 1;
-        lX = -1.15 - Math.sin(cyc * Math.PI) * 0.45;
-        lZ = 0.48;
-        rX = -0.45;
-        lElb = -1.25;
-      } else if (isReloading) {
-        const cyc = (nowS * 2.6) % 1;
-        lX = -0.65 - Math.sin(cyc * Math.PI) * 0.65;
-        lZ = 0.35;
-        rX = -0.95;
-        rZ = 0.18;
-        lElb = -1.3;
-      } else if (isFocusing) {
-        lX = -1.28;
-        rX = -1.36;
-        lZ = 0.22;
-        rZ = -0.06;
-        lElb = -0.92;
-        rElb = -1.05;
-      } else if (isSprinting) {
-        lX = -1.15 + Math.sin(ph) * 0.22;
-        rX = -1.25 - Math.sin(ph) * 0.22;
-        lZ = 0.28;
-        rZ = -0.22;
+      if (this.opModel) {
+        // Articulated Tactical Operator rig (positive shoulder.x & elbow.x swing forward/up across chest)
+        let lX = 0.84, rX = 0.88, lZ = 0.44, rZ = -0.14;
+        let lElb = 0.92, rElb = 0.76;
+        if (isPlating) {
+          // 3-phase armor plate insertion: 1) reach hip pouch -> 2) lift plate to vest -> 3) slide into carrier
+          const pProg = THREE.MathUtils.clamp(1 - ((this.platingTimer || 0) / 1.9), 0, 1);
+          if (pProg < 0.28) {
+            const k = pProg / 0.28;
+            lX = THREE.MathUtils.lerp(0.65, 0.22, k);
+            lZ = THREE.MathUtils.lerp(0.35, -0.22, k);
+            lElb = THREE.MathUtils.lerp(0.75, 0.35, k);
+          } else if (pProg < 0.65) {
+            const k = (pProg - 0.28) / 0.37;
+            lX = THREE.MathUtils.lerp(0.22, 1.48, k);
+            lZ = THREE.MathUtils.lerp(-0.22, 0.68, k);
+            lElb = THREE.MathUtils.lerp(0.35, 1.55, k);
+          } else {
+            const k = (pProg - 0.65) / 0.35;
+            lX = THREE.MathUtils.lerp(1.48, 0.92, k);
+            lZ = THREE.MathUtils.lerp(0.68, 0.52, k);
+            lElb = THREE.MathUtils.lerp(1.55, 1.15, k);
+          }
+          // Right hand dips weapon down/out to clear the front plate carrier
+          rX = 0.36;
+          rZ = -0.26;
+          rElb = 0.55;
+        } else if (isReloading) {
+          const cyc = (nowS * 2.6) % 1;
+          lX = 0.62 + Math.sin(cyc * Math.PI) * 0.55;
+          lZ = 0.42;
+          rX = 0.82;
+          rZ = -0.12;
+          lElb = 1.25;
+        } else if (isFocusing) {
+          lX = 0.90;
+          rX = 0.94;
+          lZ = 0.46;
+          rZ = -0.14;
+          lElb = 0.94;
+          rElb = 0.80;
+        } else if (isSprinting) {
+          lX = 0.52 + Math.sin(ph) * 0.26;
+          rX = 1.05 - Math.sin(ph) * 0.18;
+          lZ = 0.24;
+          rZ = -0.20;
+          lElb = 0.85;
+          rElb = 0.90;
+        }
+        this.leftArm.rotation.x = THREE.MathUtils.lerp(this.leftArm.rotation.x, lX, Math.min(1, dt * 12));
+        this.rightArm.rotation.x = THREE.MathUtils.lerp(this.rightArm.rotation.x, rX, Math.min(1, dt * 12));
+        this.leftArm.rotation.z = THREE.MathUtils.lerp(this.leftArm.rotation.z, lZ, Math.min(1, dt * 12));
+        this.rightArm.rotation.z = THREE.MathUtils.lerp(this.rightArm.rotation.z, rZ, Math.min(1, dt * 12));
+        if (this.leftElbow) this.leftElbow.rotation.x = THREE.MathUtils.lerp(this.leftElbow.rotation.x, lElb, Math.min(1, dt * 12));
+        if (this.rightElbow) this.rightElbow.rotation.x = THREE.MathUtils.lerp(this.rightElbow.rotation.x, rElb, Math.min(1, dt * 12));
+      } else {
+        let lX = -0.82, rX = -1.02, lZ = 0.14, rZ = -0.10;
+        let lElb = -0.75, rElb = -0.85;
+        if (isPlating) {
+          const cyc = (nowS * 2.2) % 1;
+          lX = -1.15 - Math.sin(cyc * Math.PI) * 0.45;
+          lZ = 0.48;
+          rX = -0.45;
+          lElb = -1.25;
+        } else if (isReloading) {
+          const cyc = (nowS * 2.6) % 1;
+          lX = -0.65 - Math.sin(cyc * Math.PI) * 0.65;
+          lZ = 0.35;
+          rX = -0.95;
+          rZ = 0.18;
+          lElb = -1.3;
+        } else if (isFocusing) {
+          lX = -1.28;
+          rX = -1.36;
+          lZ = 0.22;
+          rZ = -0.06;
+          lElb = -0.92;
+          rElb = -1.05;
+        } else if (isSprinting) {
+          lX = -1.15 + Math.sin(ph) * 0.22;
+          rX = -1.25 - Math.sin(ph) * 0.22;
+          lZ = 0.28;
+          rZ = -0.22;
+        }
+        this.leftArm.rotation.x = THREE.MathUtils.lerp(this.leftArm.rotation.x, lX, Math.min(1, dt * 11));
+        this.rightArm.rotation.x = THREE.MathUtils.lerp(this.rightArm.rotation.x, rX, Math.min(1, dt * 11));
+        this.leftArm.rotation.z = THREE.MathUtils.lerp(this.leftArm.rotation.z, lZ, Math.min(1, dt * 11));
+        this.rightArm.rotation.z = THREE.MathUtils.lerp(this.rightArm.rotation.z, rZ, Math.min(1, dt * 11));
+        if (this.leftElbow) this.leftElbow.rotation.x = THREE.MathUtils.lerp(this.leftElbow.rotation.x, lElb, Math.min(1, dt * 11));
+        if (this.rightElbow) this.rightElbow.rotation.x = THREE.MathUtils.lerp(this.rightElbow.rotation.x, rElb, Math.min(1, dt * 11));
       }
-      this.leftArm.rotation.x = THREE.MathUtils.lerp(this.leftArm.rotation.x, lX, Math.min(1, dt * 11));
-      this.rightArm.rotation.x = THREE.MathUtils.lerp(this.rightArm.rotation.x, rX, Math.min(1, dt * 11));
-      this.leftArm.rotation.z = THREE.MathUtils.lerp(this.leftArm.rotation.z, lZ, Math.min(1, dt * 11));
-      this.rightArm.rotation.z = THREE.MathUtils.lerp(this.rightArm.rotation.z, rZ, Math.min(1, dt * 11));
-      if (this.leftElbow) this.leftElbow.rotation.x = THREE.MathUtils.lerp(this.leftElbow.rotation.x, lElb, Math.min(1, dt * 11));
-      if (this.rightElbow) this.rightElbow.rotation.x = THREE.MathUtils.lerp(this.rightElbow.rotation.x, rElb, Math.min(1, dt * 11));
     }
 
     // Cheek-weld head tilt when focusing weapon
@@ -962,8 +1054,8 @@ class Enemy {
     let best = null;
     let bestDist = 32;
 
-    // 1. Check Player (only if alive and standing — ignore downed players!)
-    if (player && !player.dead && !player.isDowned) {
+    // 1. Check Player (only if alive, standing, and not invisible — ignore downed or /invis players!)
+    if (player && !player.dead && !player.isDowned && !player.invisible) {
       const dist = this.position.distanceTo(player.position);
       const detectRange = player.isProne ? 13 : (player.isCrouching ? 20 : 30);
       if (dist < Math.min(bestDist, detectRange)) {
@@ -986,7 +1078,7 @@ class Enemy {
     if (this.isOperator && this.focusedTarget && this.targetLockTimer > 0) {
       const ft = this.focusedTarget;
       const alive = ft.type === 'player'
-        ? (player && !player.dead && !player.isDowned)
+        ? (player && !player.dead && !player.isDowned && !player.invisible)
         : (ft.ref && !ft.ref.dead && !ft.ref.isDowned && !ft.ref.extracted);
       if (alive) {
         const fPos = ft.type === 'player' ? player.position : ft.ref.position;
@@ -1144,12 +1236,14 @@ class Enemy {
         // 2. Smart Armor Plating after 1.5s without taking damage (or behind cover)
         if (this.platingTimer > 0) {
           this.platingTimer -= dt;
+          this.updateVisualAnim(dt, false, 0);
           if (this.platingTimer <= 0 && this.operatorEquipment && this.operatorEquipment.plates > 0) {
             this.operatorEquipment.plates -= 1;
             this.armor = Math.min(this.maxArmor || 100, (this.armor || 0) + 50);
+            if (this.plateProp) this.plateProp.visible = false;
           }
         } else if (this.armor < (this.maxArmor || 100) && this.operatorEquipment && this.operatorEquipment.plates > 0 && this.timeSinceDamaged >= 1.5) {
-          this.platingTimer = 1.85;
+          this.platingTimer = 1.9;
         }
         // 3. In-Depth POI Looting: approach & pick up loose ground items or loot nearby POI containers when not in combat!
         if (this.state === 'PATROL' && this.world) {
@@ -1329,7 +1423,7 @@ class Enemy {
         downedMate.beingRevivedBy = this.name;
         downedMate.reviveProgress = Math.min(1, (downedMate.reviveProgress || 0) + dt / 4.0);
 
-        const threatPos = this.lastKnownPlayerPos || (player && !player.dead && !player.isDowned ? player.position : null);
+        const threatPos = this.lastKnownPlayerPos || (player && !player.dead && !player.isDowned && !player.invisible ? player.position : null);
         if (threatPos && this._hasLineOfSightFrom(this.position, threatPos)) {
           const cover = this._findBestCoverSpot(threatPos, 15);
           let dragDest = cover ? cover.coverPos : null;
@@ -1351,6 +1445,17 @@ class Enemy {
           downedMate.revive(65);
         }
         return;
+      }
+    }
+
+    // If player turned on /invis, immediately drop aggro & clear memory of player
+    if (player && player.invisible) {
+      if (this.focusedTarget && this.focusedTarget.type === 'player') {
+        this.focusedTarget = null;
+        this.targetLockTimer = 0;
+      }
+      if (this.lastKnownPlayerPos && this.state !== 'PATROL') {
+        this.lastKnownPlayerPos = null;
       }
     }
 
@@ -1445,18 +1550,11 @@ class Enemy {
         (this.armor < Math.max(25, this.maxArmor - 38) || this.hp < this.maxHp * 0.65) && target.dist > 6.0;
 
       if (this.isOperator && this.platingTimer > 0) {
-        this.platingTimer -= dt;
         const gyPlate = this._getGroundY();
         this.position.y = gyPlate;
-        this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, gyPlate - 0.22, dt * 10);
+        this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, gyPlate - 0.18, dt * 10);
         this.group.rotation.z = THREE.MathUtils.lerp(this.group.rotation.z, 0, dt * 10);
-        if (this.leftArm) this.leftArm.rotation.x = -1.15;
-        if (this.rightArm) this.rightArm.rotation.x = -1.15;
-        if (this.platingTimer <= 0) {
-          this.operatorEquipment.plates = Math.max(0, (this.operatorEquipment.plates || 1) - 1);
-          this.armor = Math.min(this.maxArmor, (this.armor || 0) + 50);
-          this.group.position.y = gyPlate;
-        }
+        // Plating arm & 3D ceramic plate animation is driven by updateVisualAnim(dt) above!
         return;
       }
 
@@ -1545,25 +1643,39 @@ class Enemy {
         this.group.rotation.z = this.leanAngle;
         this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, gyStand, Math.min(1, dt * 12));
         this.group.rotation.x = THREE.MathUtils.lerp(this.group.rotation.x, 0, Math.min(1, dt * 12));
-        // Aim head, torso & both arms directly at target elevation (or tactical sprint pose)
+        // Aim head, torso, both arms & weaponMount directly at target elevation (or tactical sprint pose)
         if (this.opModel && tPos) {
           const m = this.opModel;
           const hDist = Math.max(1, Math.hypot(tPos.x - this.position.x, tPos.z - this.position.z));
-          const aimPitch = THREE.MathUtils.clamp(Math.atan2((tPos.y - (this.position.y + 1.35)), hDist), -0.75, 0.75);
-          m.head.rotation.x = THREE.MathUtils.lerp(m.head.rotation.x, aimPitch * 0.72, Math.min(1, dt * 12));
-          if (this.isTacSprinting) {
+          const aimTargetY = (target.type === 'player') ? (tPos.y - 0.15) : (tPos.y + 1.25);
+          const aimPitch = THREE.MathUtils.clamp(Math.atan2((aimTargetY - (this.position.y + 1.38)), hDist), -0.75, 0.75);
+          m.head.rotation.x = THREE.MathUtils.lerp(m.head.rotation.x, aimPitch * 0.72, Math.min(1, dt * 14));
+          if (this.isTacSprinting && this.fireTimer > 0.18) {
             m.torso.rotation.x = THREE.MathUtils.lerp(m.torso.rotation.x, -0.26, Math.min(1, dt * 12));
             m.rightArm.shoulder.rotation.set(1.12, 0, -0.18);
             m.leftArm.shoulder.rotation.set(0.36, 0, 0.18);
           } else {
-            m.torso.rotation.x = THREE.MathUtils.lerp(m.torso.rotation.x, -0.09 + aimPitch * 0.26, Math.min(1, dt * 12));
-            const armP = 0.88 + aimPitch * 0.74;
-            m.leftArm.shoulder.rotation.x = THREE.MathUtils.lerp(m.leftArm.shoulder.rotation.x, armP, Math.min(1, dt * 12));
-            m.leftArm.shoulder.rotation.z = THREE.MathUtils.lerp(m.leftArm.shoulder.rotation.z, 0.45, Math.min(1, dt * 12));
-            m.rightArm.shoulder.rotation.x = THREE.MathUtils.lerp(m.rightArm.shoulder.rotation.x, armP + 0.04, Math.min(1, dt * 12));
-            m.rightArm.shoulder.rotation.z = THREE.MathUtils.lerp(m.rightArm.shoulder.rotation.z, -0.15, Math.min(1, dt * 12));
+            // Aim rifle squarely downrange at the target
+            m.torso.rotation.x = THREE.MathUtils.lerp(m.torso.rotation.x, -0.06 + aimPitch * 0.25, Math.min(1, dt * 15));
+            const armP = 0.86 + aimPitch * 0.75;
+            m.leftArm.shoulder.rotation.x = THREE.MathUtils.lerp(m.leftArm.shoulder.rotation.x, armP, Math.min(1, dt * 15));
+            m.leftArm.shoulder.rotation.z = THREE.MathUtils.lerp(m.leftArm.shoulder.rotation.z, 0.44, Math.min(1, dt * 15));
+            m.rightArm.shoulder.rotation.x = THREE.MathUtils.lerp(m.rightArm.shoulder.rotation.x, armP + 0.02, Math.min(1, dt * 15));
+            m.rightArm.shoulder.rotation.z = THREE.MathUtils.lerp(m.rightArm.shoulder.rotation.z, -0.14, Math.min(1, dt * 15));
+            if (m.rightArm.elbow) m.rightArm.elbow.rotation.x = THREE.MathUtils.lerp(m.rightArm.elbow.rotation.x, 0.76, Math.min(1, dt * 15));
+            if (m.leftArm.elbow) m.leftArm.elbow.rotation.x = THREE.MathUtils.lerp(m.leftArm.elbow.rotation.x, 0.92, Math.min(1, dt * 15));
+            if (m.weaponMount) {
+              // Counter-rotate minor wrist yaw so barrel aligns dead-straight with target
+              m.weaponMount.rotation.set(-Math.PI / 2, 0.04, -0.03);
+            }
           }
         }
+      } else if (this.weaponMeshGroup && tPos) {
+        // Non-operator AI also pitch their weapon barrel directly at target elevation
+        const hDist = Math.max(1, Math.hypot(tPos.x - this.position.x, tPos.z - this.position.z));
+        const aimTargetY = (target.type === 'player') ? (tPos.y - 0.15) : (tPos.y + 1.25);
+        const aimPitch = THREE.MathUtils.clamp(Math.atan2((aimTargetY - (this.position.y + 1.24)), hDist), -0.7, 0.7);
+        this.weaponMeshGroup.rotation.x = aimPitch;
       }
 
       this.fireTimer -= dt;
@@ -1573,6 +1685,21 @@ class Enemy {
         if (distToPlayer < 75) {
           window.soundEngine.playGunshot(this.weaponId, distToPlayer);
         }
+        // Snap weapon straight onto target & flush world matrices so bullets & tracers spawn directly from the gun muzzle!
+        if (this.opModel && tPos) {
+          const m = this.opModel;
+          const hDist = Math.max(1, Math.hypot(tPos.x - this.position.x, tPos.z - this.position.z));
+          const aimTargetY = (target.type === 'player') ? (tPos.y - 0.15) : (tPos.y + 1.25);
+          const aimPitch = THREE.MathUtils.clamp(Math.atan2((aimTargetY - (this.position.y + 1.38)), hDist), -0.75, 0.75);
+          m.torso.rotation.x = -0.06 + aimPitch * 0.25;
+          const armP = 0.86 + aimPitch * 0.75;
+          m.rightArm.shoulder.rotation.set(armP + 0.02, 0, -0.14);
+          m.leftArm.shoulder.rotation.set(armP, 0, 0.44);
+          if (m.rightArm.elbow) m.rightArm.elbow.rotation.x = 0.76;
+          if (m.leftArm.elbow) m.leftArm.elbow.rotation.x = 0.92;
+          if (m.weaponMount) m.weaponMount.rotation.set(-Math.PI / 2, 0.04, -0.03);
+        }
+        this.group.updateMatrixWorld(true);
         this.muzzleMesh.material.opacity = 0.95;
         if (this.muzzleLight) this.muzzleLight.intensity = 3.0;
         this.muzzleTimer = 0.055;
@@ -1588,7 +1715,7 @@ class Enemy {
         } else {
           // AI vs AI Firefight (Operators vs Scavengers/Raiders/Bosses/Rival Operators!)
           const tgtEnemy = target.ref;
-          const aimPos = new THREE.Vector3(tgtEnemy.position.x, 1.3, tgtEnemy.position.z);
+          const aimPos = new THREE.Vector3(tgtEnemy.position.x, tgtEnemy.position.y + 1.3, tgtEnemy.position.z);
           if (onAiVsAiEvent) onAiVsAiEvent('shot', this, tgtEnemy, muzzleWorld, aimPos);
           if (hit) {
             const wDef = GAME_DATA.ITEMS[this.weaponId];

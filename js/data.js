@@ -1,7 +1,7 @@
 // Game Item Database, 5-Tier Loot Rarity, Logical POI Tables, Workbench & Attachments
 // IMPORTANT: Update GAME_DATA.VERSION (and ?v= cache-busters in index.html) with EVERY new commit!
 window.GAME_DATA = {
-  VERSION: 'v2.05',
+  VERSION: 'v2.06',
   SQUAD_COLORS: ['#69f0ae', '#42a5f5', '#ffeb3b', '#ff69b4'], // Green, Blue, Yellow, Pink
 
   RARITIES: {

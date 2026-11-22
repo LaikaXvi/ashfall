@@ -454,6 +454,21 @@ class DevConsole {
       }
     });
 
+    this.registerCommand('invis', {
+      aliases: ['invisible', 'ghost'],
+      usage: '/invis [on|off]',
+      desc: 'Toggle invisibility to all AI entities & operators on the map.',
+      handler: (args) => {
+        if (!this._requireRaid()) return;
+        const player = this.ctx.getPlayer();
+        const arg = (args[0] || '').toLowerCase();
+        if (arg === 'on' || arg === '1' || arg === 'true') player.invisible = true;
+        else if (arg === 'off' || arg === '0' || arg === 'false') player.invisible = false;
+        else player.invisible = !player.invisible;
+        this.log(`Invisibility: ${player.invisible ? 'ON (undetectable by all NPCs & operators)' : 'OFF'}`, player.invisible ? 'ok' : 'warn');
+      }
+    });
+
     this.registerCommand('heal', {
       usage: '/heal',
       desc: 'Restore full HP, Armor, and Stamina.',

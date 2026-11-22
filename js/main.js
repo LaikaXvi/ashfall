@@ -2491,7 +2491,9 @@
     }
     if (fired) {
       const wDef = player.getActiveWeaponDef();
-      enemyManager.alertNearby(player.position, (wDef && wDef.suppressed) ? 12 : 26);
+      if (!player.invisible) {
+        enemyManager.alertNearby(player.position, (wDef && wDef.suppressed) ? 12 : 26);
+      }
       if (mpSession && mpSession.active && camera) {
         const dir = new THREE.Vector3();
         camera.getWorldDirection(dir);
