@@ -185,7 +185,10 @@ class GameUI {
       : '.inv-slot:not(.empty-slot):not(.searching)';
     const selector = [
       'button:not(:disabled)',
+      'summary',
+      'select:not(:disabled)',
       'input[type="range"]',
+      'input[type="checkbox"]',
       slotSel,
       '.op-slot-card',
       '.map-node',
@@ -2955,6 +2958,8 @@ class GameUI {
       overlay.classList.remove('hidden');
       if (pauseOv) pauseOv.classList.add('hidden');
       this.isInGameSettingsOpen = true;
+      this.clearSelection();
+      requestAnimationFrame(() => this.ensureInitialSelection({ inputMode: this._isControllerConnected() ? 'gamepad' : 'auto' }));
     };
 
     this.closeInGameSettings = (returnToPause = true) => {
@@ -6633,15 +6638,26 @@ class GameUI {
     const isEnemyOpCard = !!sel.closest('#loot-enemy-op-slots');
     const isBagWpnSlot = sel.classList.contains('backpack-weapon-slot') && !!sel.closest('#loot-backpack-items');
     const isContainerSlot = !!sel.closest('#loot-container-items');
+    const isBackpackSlot = sel.classList.contains('inv-slot') && !isBagWpnSlot && !!sel.closest('#loot-backpack-items');
     const opKey = sel.dataset ? (sel.dataset.opKey || sel.dataset.key) : null;
+    const hasContainer = !!this.activeLootSource;
 
-    // 2. X (Xbox) / Square (PlayStation):
-    //    - On bag/container/enemy weapon -> equip straight into currently active (in-hands) weapon slot!
-    //    - On player Primary or Secondary -> stow into available Backpack Weapon Slot if present!
+    const pickWeaponEquipSlot = () => {
+      if (!player.slots.primary) return 'primary';
+      if (!player.slots.secondary) return 'secondary';
+      return (player.activeSlot === 'secondary') ? 'secondary' : 'primary';
+    };
+
+    const isGearType = (t) => (
+      t === 'armor' || t === 'backpack' || t === 'field_upgrade' ||
+      t === 'killstreak' || t === 'self_revive' || t === 'headgear' || t === 'melee'
+    );
+
+    // 2. X (Xbox) / Square (PlayStation): Quick-Equip / Swap into an available slot!
     if (actionType === 'x_square') {
-      const activeTargetSlot = (player.activeSlot === 'secondary') ? 'secondary' : 'primary';
+      const targetWpnSlot = pickWeaponEquipSlot();
 
-      // Player Primary or Secondary -> stow into Backpack Weapon Slot
+      // Player Primary or Secondary -> swap/stow into Backpack Weapon Slot if available
       if (isPlayerOpCard && (opKey === 'primary' || opKey === 'secondary')) {
         const wObj = player.slots && player.slots[opKey];
         if (!wObj) return true;
@@ -6660,10 +6676,10 @@ class GameUI {
         return true;
       }
 
-      // Player Backpack Weapon Slot -> equip into currently active (in-hands) slot!
+      // Player Backpack Weapon Slot -> quick-equip into empty Primary/Secondary or swap with active slot!
       if (isBagWpnSlot && player.backpackWeapon) {
         const bw = player.backpackWeapon;
-        const res = player.equipWeaponInRaid(bw.id, activeTargetSlot, { mods: bw.mods || {}, mag: bw.mag, rarityOverride: bw.rarityOverride || null });
+        const res = player.equipWeaponInRaid(bw.id, targetWpnSlot, { mods: bw.mods || {}, mag: bw.mag, rarityOverride: bw.rarityOverride || null });
         if (res && res.equipped) {
           player.backpackWeapon = res.prevId
             ? { id: res.prevId, mods: (res.prevSlotObj && res.prevSlotObj.mods) || {}, mag: res.prevSlotObj && res.prevSlotObj.mag, rarityOverride: (res.prevSlotObj && res.prevSlotObj.rarityOverride) || null }
@@ -6674,13 +6690,14 @@ class GameUI {
         return true;
       }
 
-      // Container / Enemy Bag weapon -> equip into currently active (in-hands) slot!
+      // Container / Enemy Bag item -> Quick-Equip / Swap into available weapon, gear, throwable, or plate slot!
       if (isContainerSlot && this.activeLootSource) {
         const idx = parseInt(sel.dataset.idx, 10);
         const item = this.activeLootSource.items[idx];
         const def = item && GAME_DATA.ITEMS[item.id];
-        if (item && item.revealed !== false && def && def.type === 'weapon') {
-          const res = player.equipWeaponInRaid(item.id, activeTargetSlot, { mods: item.mods || {}, mag: item.mag, rarityOverride: item.rarityOverride || null });
+        if (!item || item.revealed === false || !def) return true;
+        if (def.type === 'weapon') {
+          const res = player.equipWeaponInRaid(item.id, targetWpnSlot, { mods: item.mods || {}, mag: item.mag, rarityOverride: item.rarityOverride || null });
           if (res && res.equipped) {
             this.activeLootSource.items.splice(idx, 1);
             if (res.prevId) {
@@ -6697,41 +6714,120 @@ class GameUI {
           }
           return true;
         }
-      }
-
-      // Enemy Operator Primary / Secondary -> equip into currently active (in-hands) slot!
-      if (isEnemyOpCard && (opKey === 'primary' || opKey === 'secondary') && this.activeLootSource && this.activeLootSource.operatorEquipment) {
-        const eq = this.activeLootSource.operatorEquipment;
-        const itemId = eq[opKey];
-        if (itemId && eq.revealedSlots && eq.revealedSlots[opKey]) {
-          const res = player.equipWeaponInRaid(itemId, activeTargetSlot, { mods: eq[opKey + 'Mods'] || {}, rarityOverride: eq[opKey + 'Rarity'] || null });
-          if (res && res.equipped) {
-            eq[opKey] = res.prevId || null;
-            eq[opKey + 'Mods'] = (res.prevSlotObj && res.prevSlotObj.mods) || {};
-            eq[opKey + 'Rarity'] = (res.prevSlotObj && res.prevSlotObj.rarityOverride) || null;
-            if (window.soundEngine && window.soundEngine.playMagIn) { try { window.soundEngine.playMagIn(); } catch (e) {} }
+        if (def.type === 'lethal' || def.type === 'tactical') {
+          const res = this._swapThrowableWithPlayer(player, item);
+          if (res.consumed) {
+            this.activeLootSource.items.splice(idx, 1);
+            if (res.returned) this.activeLootSource.items.splice(idx, 0, res.returned);
+            if (res.extra) this.activeLootSource.items.push(res.extra);
+            if (window.soundEngine && window.soundEngine.playClick) { try { window.soundEngine.playClick(); } catch (e) {} }
             this.renderLootModal(player);
           }
           return true;
         }
+        if (isGearType(def.type)) {
+          const prev = this._swapGearWithPlayer(player, item.id);
+          this.activeLootSource.items.splice(idx, 1);
+          if (prev) this.activeLootSource.items.splice(idx, 0, { id: prev, qty: 1, revealed: true });
+          if (window.soundEngine && window.soundEngine.playClick) { try { window.soundEngine.playClick(); } catch (e) {} }
+          this.renderLootModal(player);
+          return true;
+        }
+        if (def.type === 'plate' && player.plates < 6) {
+          const move = Math.min(6 - player.plates, item.qty);
+          player.plates += move;
+          item.qty -= move;
+          if (item.qty <= 0) this.activeLootSource.items.splice(idx, 1);
+          this.renderLootModal(player);
+          return true;
+        }
+        return true;
+      }
+
+      // Backpack item -> Quick-Equip / Swap into available gear, throwable, plate, or med slot!
+      if (isBackpackSlot) {
+        const idx = parseInt(sel.dataset.idx, 10);
+        const item = player.backpack[idx];
+        const def = item && GAME_DATA.ITEMS[item.id];
+        if (!item || !def) return true;
+        if (def.type === 'lethal' || def.type === 'tactical') {
+          const res = this._swapThrowableWithPlayer(player, item);
+          if (res.consumed) {
+            player.backpack.splice(idx, 1);
+            if (res.returned) player.backpack.splice(idx, 0, res.returned);
+            if (res.extra) player.backpack.push(res.extra);
+            this.renderLootModal(player);
+          }
+          return true;
+        }
+        if (isGearType(def.type)) {
+          const prev = this._swapGearWithPlayer(player, item.id);
+          player.backpack.splice(idx, 1);
+          if (prev) player.backpack.splice(idx, 0, { id: prev, qty: 1 });
+          this.renderLootModal(player);
+          return true;
+        }
+        if (def.type === 'plate' && player.plates < 6) {
+          const move = Math.min(6 - player.plates, item.qty);
+          player.plates += move;
+          item.qty -= move;
+          if (item.qty <= 0) player.backpack.splice(idx, 1);
+          this.renderLootModal(player);
+          return true;
+        }
+        if (def.type === 'med' && item.id === 'medkit') {
+          if (player.startMedkit()) this.closeLootModal();
+          return true;
+        }
+        if (def.type === 'med' && (item.id === 'bandage' || item.id === 'painkillers')) {
+          if (player.useTemporaryMed && player.useTemporaryMed(item.id)) {
+            this.showCenterToast(
+              item.id === 'painkillers' ? 'PAINKILLERS ACTIVE (45s TEMP HP)' : 'BANDAGE APPLIED (25s TEMP HP)',
+              '#ffd54f'
+            );
+            this.renderLootModal(player);
+          }
+          return true;
+        }
+        return true;
+      }
+
+      // Enemy Operator Equipment -> Quick-Equip / Swap into available player slot!
+      if (isEnemyOpCard && opKey && this.activeLootSource && this.activeLootSource.operatorEquipment) {
+        const eq = this.activeLootSource.operatorEquipment;
+        if (eq.revealedSlots && !eq.revealedSlots[opKey]) return true;
+        if (opKey === 'primary' || opKey === 'secondary') {
+          const itemId = eq[opKey];
+          if (itemId) {
+            const res = player.equipWeaponInRaid(itemId, targetWpnSlot, { mods: eq[opKey + 'Mods'] || {}, rarityOverride: eq[opKey + 'Rarity'] || null });
+            if (res && res.equipped) {
+              eq[opKey] = res.prevId || null;
+              eq[opKey + 'Mods'] = (res.prevSlotObj && res.prevSlotObj.mods) || {};
+              eq[opKey + 'Rarity'] = (res.prevSlotObj && res.prevSlotObj.rarityOverride) || null;
+              if (window.soundEngine && window.soundEngine.playMagIn) { try { window.soundEngine.playMagIn(); } catch (e) {} }
+              this.renderLootModal(player);
+            }
+          }
+          return true;
+        }
+        // Trigger standard enemy slot click (equips/swaps gear, cash, plates, dogtag)
+        sel.click();
+        return true;
       }
       return false;
     }
 
-    // 3. A (Xbox) / Cross (PlayStation):
-    //    - On Player Primary, Secondary, or Backpack Weapon Slot -> drop weapon onto the ground!
-    if (actionType === 'a_cross') {
-      if (isPlayerOpCard && (opKey === 'primary' || opKey === 'secondary')) {
-        const wObj = player.slots && player.slots[opKey];
-        if (wObj) {
-          player.slots[opKey] = null;
-          if (player.activeSlot === opKey) player._equipCurrentWeapon();
-          if (typeof this.onDropItem === 'function') {
-            this.onDropItem({ id: wObj.id, qty: 1, mods: wObj.mods, mag: wObj.mag, rarityOverride: wObj.rarityOverride || null });
-          }
-          this.renderLootModal(player);
-          return true;
+    // 3. R3 (Right Stick Click): Drop entire stack (or equipped weapon/gear) to ground!
+    if (actionType === 'r3_drop_stack') {
+      if (isBackpackSlot) {
+        const idx = parseInt(sel.dataset.idx, 10);
+        const removed = player.backpack.splice(idx, 1)[0];
+        if (removed && typeof this.onDropItem === 'function') {
+          this.onDropItem(removed);
         }
+        this.hideItemPopout();
+        this.renderLootModal(player);
+        return true;
       }
       if (isBagWpnSlot && player.backpackWeapon) {
         const removed = player.backpackWeapon;
@@ -6739,8 +6835,151 @@ class GameUI {
         if (typeof this.onDropItem === 'function') {
           this.onDropItem({ id: removed.id, qty: 1, mods: removed.mods, mag: removed.mag, rarityOverride: removed.rarityOverride || null });
         }
+        this.hideItemPopout();
         this.renderLootModal(player);
         return true;
+      }
+      if (isPlayerOpCard && opKey) {
+        this._stowPlayerOperatorSlot(player, opKey, 'ground');
+        this.hideItemPopout();
+        this.renderLootModal(player);
+        return true;
+      }
+      return false;
+    }
+
+    // 4. A (Xbox) / Cross (PlayStation):
+    //    - When looting a container: Quick Stow (container -> backpack / weapon bag; backpack -> container; op slot -> backpack)
+    //    - When inside JUST the backpack inventory (no container): Drop item, or drop 1 out of a stack if stackable!
+    if (actionType === 'a_cross') {
+      if (hasContainer) {
+        // Container item -> Quick Stow into Backpack (or Backpack Weapon Slot for weapons)
+        if (isContainerSlot) {
+          const idx = parseInt(sel.dataset.idx, 10);
+          const item = this.activeLootSource.items[idx];
+          const def = item && GAME_DATA.ITEMS[item.id];
+          if (!item || item.revealed === false || !def) return true;
+          if (def.type === 'weapon') {
+            if (player.hasWeaponBackpack && player.hasWeaponBackpack()) {
+              const prevBagWpn = player.backpackWeapon
+                ? { id: player.backpackWeapon.id, qty: 1, mods: player.backpackWeapon.mods || {}, mag: player.backpackWeapon.mag, rarityOverride: player.backpackWeapon.rarityOverride || null, revealed: true }
+                : null;
+              player.backpackWeapon = { id: item.id, mods: item.mods || {}, mag: item.mag, rarityOverride: item.rarityOverride || null };
+              this.activeLootSource.items.splice(idx, 1);
+              if (prevBagWpn) this.activeLootSource.items.splice(idx, 0, prevBagWpn);
+              if (window.soundEngine && window.soundEngine.playMagIn) { try { window.soundEngine.playMagIn(); } catch (e) {} }
+              this.renderLootModal(player);
+            } else {
+              this._showSocialToast('No Weapon Backpack slot — press [X/Square] to equip weapon.');
+            }
+            return true;
+          }
+          if (player.addToBackpack(item.id, item.qty)) {
+            this.activeLootSource.items.splice(idx, 1);
+            if (window.soundEngine && window.soundEngine.playClick) { try { window.soundEngine.playClick(); } catch (e) {} }
+            this.renderLootModal(player);
+          } else {
+            this._showSocialToast('Backpack full!');
+          }
+          return true;
+        }
+
+        // Enemy Operator slot -> Quick Stow into Backpack / Weapon Backpack / Cash / Plates
+        if (isEnemyOpCard && opKey && this.activeLootSource.operatorEquipment) {
+          const eq = this.activeLootSource.operatorEquipment;
+          if (eq.revealedSlots && !eq.revealedSlots[opKey]) return true;
+          if ((opKey === 'primary' || opKey === 'secondary') && eq[opKey]) {
+            if (player.hasWeaponBackpack && player.hasWeaponBackpack()) {
+              const prevBagWpn = player.backpackWeapon ? player.backpackWeapon.id : null;
+              const prevBagMods = player.backpackWeapon ? (player.backpackWeapon.mods || {}) : {};
+              const prevBagRar = player.backpackWeapon ? (player.backpackWeapon.rarityOverride || null) : null;
+              player.backpackWeapon = { id: eq[opKey], mods: eq[opKey + 'Mods'] || {}, rarityOverride: eq[opKey + 'Rarity'] || null };
+              eq[opKey] = prevBagWpn;
+              eq[opKey + 'Mods'] = prevBagMods;
+              eq[opKey + 'Rarity'] = prevBagRar;
+              if (window.soundEngine && window.soundEngine.playMagIn) { try { window.soundEngine.playMagIn(); } catch (e) {} }
+              this.renderLootModal(player);
+            } else {
+              this._showSocialToast('No Weapon Backpack slot — press [X/Square] to equip weapon.');
+            }
+            return true;
+          }
+          sel.click();
+          return true;
+        }
+
+        // Player Backpack item -> Quick Stow / Transfer into Container
+        if (isBackpackSlot) {
+          const idx = parseInt(sel.dataset.idx, 10);
+          const item = player.backpack[idx];
+          if (item) {
+            this.activeLootSource.items.push({ id: item.id, qty: item.qty, revealed: true });
+            player.backpack.splice(idx, 1);
+            if (window.soundEngine && window.soundEngine.playClick) { try { window.soundEngine.playClick(); } catch (e) {} }
+            this.renderLootModal(player);
+          }
+          return true;
+        }
+
+        // Player Backpack Weapon -> Transfer to Container
+        if (isBagWpnSlot && player.backpackWeapon) {
+          this.activeLootSource.items.push({
+            id: player.backpackWeapon.id, qty: 1,
+            mods: player.backpackWeapon.mods || {},
+            mag: player.backpackWeapon.mag,
+            rarityOverride: player.backpackWeapon.rarityOverride || null,
+            revealed: true
+          });
+          player.backpackWeapon = null;
+          this.renderLootModal(player);
+          return true;
+        }
+
+        // Player Operator slot -> Quick Stow into Backpack (or Weapon Bag for Primary/Secondary)
+        if (isPlayerOpCard && opKey) {
+          this._stowPlayerOperatorSlot(player, opKey, 'backpack');
+          this.renderLootModal(player);
+          return true;
+        }
+      } else {
+        // JUST the Backpack Inventory (no container open): A/Cross drops item, or 1 from stack if stackable!
+        if (isBackpackSlot) {
+          const idx = parseInt(sel.dataset.idx, 10);
+          const item = player.backpack[idx];
+          const def = item && GAME_DATA.ITEMS[item.id];
+          if (item && def) {
+            if (def.stackable && item.qty > 1) {
+              item.qty -= 1;
+              if (typeof this.onDropItem === 'function') {
+                this.onDropItem({ id: item.id, qty: 1 });
+              }
+            } else {
+              const removed = player.backpack.splice(idx, 1)[0];
+              if (removed && typeof this.onDropItem === 'function') {
+                this.onDropItem(removed);
+              }
+            }
+            if (window.soundEngine && window.soundEngine.playClick) { try { window.soundEngine.playClick(); } catch (e) {} }
+            this.renderLootModal(player);
+          }
+          return true;
+        }
+
+        if (isBagWpnSlot && player.backpackWeapon) {
+          const removed = player.backpackWeapon;
+          player.backpackWeapon = null;
+          if (typeof this.onDropItem === 'function') {
+            this.onDropItem({ id: removed.id, qty: 1, mods: removed.mods, mag: removed.mag, rarityOverride: removed.rarityOverride || null });
+          }
+          this.renderLootModal(player);
+          return true;
+        }
+
+        if (isPlayerOpCard && opKey) {
+          this._stowPlayerOperatorSlot(player, opKey, 'ground');
+          this.renderLootModal(player);
+          return true;
+        }
       }
     }
 
@@ -6904,32 +7143,32 @@ class GameUI {
       }
       actionsHtml += `<button class="pop-act danger" data-act="drop_op">Drop to Ground</button>`;
     } else if (def.type === 'weapon') {
-      actionsHtml += `<button class="pop-act" data-act="stage_weapon">${badge('A')}Select Weapon Slot...</button>`;
+      actionsHtml += `<button class="pop-act" data-act="stage_weapon">${badge('X')}Quick-Equip / Swap</button>`;
       actionsHtml += `<button class="pop-act" data-act="equip_primary">Equip Primary</button>`;
       actionsHtml += `<button class="pop-act" data-act="equip_secondary">Equip Secondary</button>`;
       if (context !== 'backpack_weapon' && hasWpnBag) {
-        actionsHtml += `<button class="pop-act" data-act="equip_backpack_weapon">Stow in Weapon Slot</button>`;
+        actionsHtml += `<button class="pop-act" data-act="equip_backpack_weapon">${badge('A')}Stow in Weapon Slot</button>`;
       }
       if ((context === 'backpack' || context === 'backpack_weapon') && hasContainer) {
-        actionsHtml += `<button class="pop-act" data-act="quick">Transfer to Container</button>`;
+        actionsHtml += `<button class="pop-act" data-act="quick">${badge('A')}Quick Stow to Container</button>`;
       }
       if (context === 'backpack' || context === 'backpack_weapon') {
-        actionsHtml += `<button class="pop-act danger" data-act="drop">${badge('X')}Drop to Ground</button>`;
+        actionsHtml += `<button class="pop-act danger" data-act="drop">${badge(hasContainer ? 'R3' : 'A')}Drop to Ground</button>`;
       }
     } else {
       if (mode === 'all' || mode === 'details' || mode === 'context') {
         if (def.type === 'armor' || def.type === 'backpack' || def.type === 'field_upgrade' || def.type === 'killstreak' || def.type === 'self_revive' || def.type === 'headgear' || def.type === 'melee' || def.type === 'lethal' || def.type === 'tactical') {
-          actionsHtml += `<button class="pop-act" data-act="equip_gear">Equip / Swap</button>`;
+          actionsHtml += `<button class="pop-act" data-act="equip_gear">${badge('X')}Quick-Equip / Swap</button>`;
         }
 
         if (context === 'container') {
-          actionsHtml += `<button class="pop-act" data-act="quick">${badge('A')}Quick-Move to Pack</button>`;
+          actionsHtml += `<button class="pop-act" data-act="quick">${badge('A')}Quick Stow to Pack</button>`;
         } else if (context === 'backpack') {
           if (hasContainer) {
-            actionsHtml += `<button class="pop-act" data-act="quick">${badge('A')}Quick-Move to Container</button>`;
+            actionsHtml += `<button class="pop-act" data-act="quick">${badge('A')}Quick Stow to Container</button>`;
           }
           if (def.type === 'plate' || def.type === 'med') {
-            actionsHtml += `<button class="pop-act" data-act="use_item">Use / Apply</button>`;
+            actionsHtml += `<button class="pop-act" data-act="use_item">${badge('X')}Use / Apply</button>`;
           }
         }
       }
@@ -6937,7 +7176,11 @@ class GameUI {
         actionsHtml += `<button class="pop-act" data-act="split">${badge('Y')}Split Stack</button>`;
       }
       if (context === 'backpack') {
-        actionsHtml += `<button class="pop-act danger" data-act="drop">${badge('X')}Drop to Ground</button>`;
+        if (!hasContainer && canSplit) {
+          actionsHtml += `<button class="pop-act danger" data-act="drop">${badge('A')}Drop 1 · ${badge('R3')}Drop Stack</button>`;
+        } else {
+          actionsHtml += `<button class="pop-act danger" data-act="drop">${badge(hasContainer ? 'R3' : 'A')}Drop${canSplit ? ' Stack' : ' to Ground'}</button>`;
+        }
       }
     }
 
@@ -7493,15 +7736,27 @@ class GameUI {
     const cTitle = document.getElementById('loot-container-title');
     const opSlotsEl = document.getElementById('inv-op-slots');
 
-    // Snapshot currently selected slot identity BEFORE rebuilding DOM so D-Pad selector stays locked during item reveals!
+    // Snapshot currently selected slot identity BEFORE rebuilding DOM so D-Pad selector stays locked to the exact item during reveals!
     let prevSel = null;
     if (this._selectedEl) {
       const sel = this._selectedEl;
-      if (sel.classList && sel.classList.contains('inv-slot') && sel.dataset) {
-        prevSel = { kind: 'inv', context: sel.dataset.context || '', idx: sel.dataset.idx || '' };
+      if (sel.classList && sel.classList.contains('backpack-weapon-slot')) {
+        prevSel = { kind: 'bag_wpn' };
+      } else if (sel.classList && sel.classList.contains('inv-slot') && sel.dataset) {
+        const ctxName = sel.dataset.context || '';
+        const idxNum = parseInt(sel.dataset.idx, 10);
+        let itemRef = null;
+        if (ctxName === 'container' && this.activeLootSource && Array.isArray(this.activeLootSource.items)) {
+          itemRef = this.activeLootSource.items[idxNum] || null;
+        } else if (ctxName === 'backpack' && player && Array.isArray(player.backpack)) {
+          itemRef = player.backpack[idxNum] || null;
+        }
+        prevSel = { kind: 'inv', context: ctxName, idx: idxNum, itemRef };
       } else if (sel.classList && sel.classList.contains('op-slot-card') && sel.dataset) {
-        const parentId = sel.parentElement ? sel.parentElement.id : '';
-        prevSel = { kind: 'op', parentId, slotKey: sel.dataset.slotKey || '' };
+        const parentBox = sel.closest('#inv-op-slots, #loot-enemy-op-slots');
+        const parentId = parentBox ? parentBox.id : '';
+        const opKey = sel.dataset.opKey || sel.dataset.key || sel.dataset.slotKey || '';
+        prevSel = { kind: 'op', parentId, opKey };
       }
     }
 
@@ -7930,13 +8185,26 @@ class GameUI {
       }
     }
 
-    // Restore D-Pad / Spatial selection seamlessly across live reveal re-renders (defaulting to leftmost container slot!)
+    // Restore D-Pad / Spatial selection seamlessly across live reveal re-renders (keeping the exact selected item locked!)
     let restoredEl = null;
     if (prevSel) {
-      if (prevSel.kind === 'inv') {
-        restoredEl = document.querySelector(`#loot-modal .inv-slot[data-context="${prevSel.context}"][data-idx="${prevSel.idx}"]`);
-      } else if (prevSel.kind === 'op' && prevSel.parentId && prevSel.slotKey) {
-        restoredEl = document.querySelector(`#${prevSel.parentId} .op-slot-card[data-slot-key="${prevSel.slotKey}"]`);
+      if (prevSel.kind === 'bag_wpn') {
+        restoredEl = document.querySelector('#loot-backpack-items .backpack-weapon-slot');
+      } else if (prevSel.kind === 'inv') {
+        let targetIdx = prevSel.idx;
+        if (prevSel.itemRef) {
+          const list = prevSel.context === 'container'
+            ? (this.activeLootSource && this.activeLootSource.items)
+            : (player && player.backpack);
+          if (Array.isArray(list)) {
+            const foundIdx = list.indexOf(prevSel.itemRef);
+            if (foundIdx >= 0) targetIdx = foundIdx;
+            else if (list.length > 0) targetIdx = Math.min(prevSel.idx, list.length - 1);
+          }
+        }
+        restoredEl = document.querySelector(`#loot-modal .inv-slot[data-context="${prevSel.context}"][data-idx="${targetIdx}"]`);
+      } else if (prevSel.kind === 'op' && prevSel.parentId && prevSel.opKey) {
+        restoredEl = document.querySelector(`#${prevSel.parentId} .op-slot-card[data-op-key="${prevSel.opKey}"]`);
       }
     }
     if (!restoredEl) {

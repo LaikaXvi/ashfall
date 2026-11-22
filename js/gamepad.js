@@ -389,11 +389,18 @@ class GamepadController {
       if (this._justPressed(pad, 3) && ui && ui._hoveredSlot && !this._modalRtDragging) {
         ui.handleSlotAction('split');
       }
-      // X (2) / Square: Quick-equip weapon to active slot, stow Primary/Secondary to bag weapon slot, or drop backpack item
+      // X (2) / Square: Quick-equip / swap item or weapon into an available slot
       if (this._justPressed(pad, 2) && ui && !this._modalRtDragging) {
-        const handledWpn = ui.handleGamepadInventoryAction ? ui.handleGamepadInventoryAction('x_square') : false;
-        if (!handledWpn && ui._hoveredSlot && ui._hoveredSlot.context === 'backpack') {
-          ui.handleSlotAction('drop');
+        this._lockUntilRelease.add(2);
+        if (ui.handleGamepadInventoryAction) {
+          ui.handleGamepadInventoryAction('x_square');
+        }
+      }
+      // R3 (11 / Right Stick Click): Drop entire stack (or equipped item) to ground
+      if (this._justPressed(pad, 11) && ui && !this._modalRtDragging) {
+        this._lockUntilRelease.add(11);
+        if (ui.handleGamepadInventoryAction) {
+          ui.handleGamepadInventoryAction('r3_drop_stack');
         }
       }
       // B (1) / Circle: Close / Back (Cancel weapon-switch picker -> Cancel drag -> Close Backpack/Container menu)

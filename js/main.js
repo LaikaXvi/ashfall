@@ -3069,6 +3069,7 @@
         throwableSystem,
         enemyManager,
         squadManager,
+        gunsmith,
         ui,
         isPaused,
         isModalOpen,
@@ -3126,17 +3127,7 @@
         }
       });
 
-      if (isPaused) {
-        gamepad.updateMenu(dt, {
-          ui,
-          gunsmith,
-          onResume: () => {
-            padPaused = false;
-            document.getElementById('pointer-lock-overlay').classList.add('hidden');
-            gamepad.clearMenuFocus();
-          }
-        });
-      } else {
+      if (!isPaused) {
         gamepad.clearMenuFocus();
       }
 
