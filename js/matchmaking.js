@@ -90,17 +90,26 @@ class MatchmakingStage {
       built.leftLeg.knee.rotation.x = -0.18;
       built.rightLeg.hip.rotation.x = -0.08;
       built.rightLeg.knee.rotation.x = -0.12;
-      // Hold equipped 3D weapon across chest in ready-to-fire stance
+      // Hold equipped 3D weapon shouldered with both hands locked onto rear & forward grips via MW2 2-Bone IK!
       const wId = loadout.primary || loadout.secondary || 'mp5k';
       const wDef = GAME_DATA.ITEMS[wId];
+      let isPistol = false;
       if (wDef && this.wpnBuilder) {
         const mods = (weaponMods && weaponMods[wId]) || {};
         const wpn = this.wpnBuilder.buildThirdPersonWeapon(wDef, mods);
         if (wpn && wpn.group && built.weaponMount) {
-          wpn.group.scale.setScalar(wpn.isPistol ? 1.25 : 1.38);
-          wpn.group.position.set(0.0, 0.04, wpn.isPistol ? -0.06 : -0.18);
+          isPistol = !!wpn.isPistol;
+          wpn.group.scale.setScalar(isPistol ? 1.25 : 1.38);
+          wpn.group.position.set(0.0, 0.01, isPistol ? -0.02 : -0.12);
+          built.weaponMount.rotation.set(0, 0, 0);
           built.weaponMount.add(wpn.group);
         }
+      }
+      if (window.MW2Animator) {
+        const anim = new window.MW2Animator(built);
+        anim.update(0.016, { speed: 0, stance: 'stand', isPistol });
+        built.root.userData.mw2Anim = anim;
+        built.root.userData.isPistol = isPistol;
       }
       if (displayName) {
         built.root.add(this._makeOverheadNameSprite(displayName, squadColor));
@@ -321,8 +330,12 @@ class MatchmakingStage {
       }
     }
 
-    // Idle breathing & subtle heroic sway (relative to torso's local rest Y so it stays seamlessly joined to pelvis!)
+    // Idle breathing & MW2 shouldered 2-bone IK hold on all party operators
     this.operatorsGroup.children.forEach((op, i) => {
+      if (op.userData && op.userData.mw2Anim) {
+        op.userData.mw2Anim.update(dt, { speed: 0, stance: 'stand', isPistol: !!op.userData.isPistol });
+        return;
+      }
       const upper = op.userData.upper;
       if (upper) {
         const baseY = op.userData.upperBaseY !== undefined ? op.userData.upperBaseY : 0.90;

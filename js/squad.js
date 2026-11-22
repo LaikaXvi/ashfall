@@ -640,6 +640,54 @@ class SquadMate {
 
         const moveDist = Math.hypot(this.position.x - prevX, this.position.z - prevZ) / Math.max(0.001, dt);
         const moving = moveDist > 0.35;
+        const isProne = this._remoteStance === 'prone';
+        const isSlide = this._remoteStance === 'slide';
+        const isCrouch = this._remoteStance === 'crouch';
+
+        if (this.mw2Anim) {
+          this.group.position.y = this.position.y;
+          this.group.rotation.x = 0;
+          this.group.rotation.z = 0;
+          if (this.opModel && this.opModel.weaponMount) {
+            this.opModel.weaponMount.rotation.set(0, 0, 0);
+          }
+          const tLoop = (performance.now() * 0.001);
+          this.mw2Anim.update(dt, {
+            speed: moving ? moveDist : 0,
+            stance: isProne ? 'prone' : (isCrouch ? 'crouch' : 'stand'),
+            isSprinting: moving && moveDist >= 7.8,
+            isTacSprinting: !!this._remoteTacSprint && moving,
+            isSliding: isSlide,
+            slideProgress: 0.5,
+            isADS: !!this._remoteAds,
+            aimPitch: THREE.MathUtils.clamp(this._remotePitch || 0, -0.82, 0.82),
+            isDowned: !!this.isDowned,
+            dead: !!this.dead,
+            isPlating: !!this._remotePlate,
+            plateProgress: (tLoop * 0.42) % 1,
+            isReloading: !!this._remoteReload,
+            reloadProgress: (tLoop * 0.55) % 1,
+            isHealing: !!this._remoteHeal,
+            isPistol: !!this.isPistol,
+            world: this.world,
+            worldPos: this.position,
+            worldYaw: this.group ? (this.group.rotation.y + Math.PI) : 0,
+            feetY: this.position.y
+          });
+
+          if (this.dead) {
+            this._redrawTag('ELIMINATED', '#ff5252');
+            this._updateBleedSprite(dt);
+          } else if (this.isDowned) {
+            this._redrawTag(this.beingRevivedBy ? `REVIVING ${Math.round(this.reviveProgress * 100)}%` : `DOWNED ${Math.ceil(Math.max(0, this.downedBleedTimer))}s`, this.beingRevivedBy ? '#69f0ae' : '#ff5252');
+            this._updateBleedSprite(dt);
+          } else {
+            if (this.bleedSprite) this.bleedSprite.visible = false;
+            const stLbl = this._remotePlate ? 'PLATING' : (this._remoteHeal ? 'HEALING' : (this._remoteReload ? 'RELOADING' : (isSlide ? 'SLIDE' : (isCrouch ? 'CROUCH' : (isProne ? 'PRONE' : 'SQUAD')))));
+            this._redrawTag(stLbl, this.squadColor);
+          }
+          return;
+        }
 
         if (this.dead) {
           this.group.position.y = this.position.y + 0.16;
