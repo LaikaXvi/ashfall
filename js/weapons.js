@@ -18,6 +18,9 @@ class WeaponSystem {
     this.viewmodelGroup.add(this.muzzleMesh);
 
     this.currentMesh = null;
+    this.fpArms = null;
+    this._buildVisibleHands = false;
+    this._currentAimHand = null;
     this.sightHeight = 0.05; // Local Y of iron sights for exact ADS alignment
     this.adsZ = -0.30;
 
@@ -1009,6 +1012,17 @@ class WeaponSystem {
     wristJoint.visible = false;
     handGroup.add(wristJoint);
 
+    handGroup.userData.handStyle = style;
+    handGroup.userData.isRight = isRight;
+    if (window.RigAssets && window.RigAssets.ready && !this._buildVisibleHands) {
+      handGroup.traverse((m) => {
+        if (m.isMesh && m.material && m.material !== window.RigAssets.hiddenMaterial) {
+          m.userData._origMat = m.material;
+          m.material = window.RigAssets.hiddenMaterial;
+        }
+      });
+    }
+
     return handGroup;
   }
 
@@ -1029,6 +1043,14 @@ class WeaponSystem {
     cuff.position.set(0, 0, 0.982);
 
     armGroup.add(sleeve, cuff);
+    if (window.RigAssets && window.RigAssets.ready && !this._buildVisibleHands) {
+      armGroup.traverse((m) => {
+        if (m.isMesh && m.material && m.material !== window.RigAssets.hiddenMaterial) {
+          m.userData._origMat = m.material;
+          m.material = window.RigAssets.hiddenMaterial;
+        }
+      });
+    }
     return armGroup;
   }
 
@@ -1040,6 +1062,30 @@ class WeaponSystem {
     armGroup.scale.set(1, 1, len);
     dir.normalize();
     armGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), dir);
+    if (this.fpArms && armGroup.userData && armGroup.userData.fpSide) {
+      this.fpArms.recordArmPose(armGroup, shoulderPos, wristPos, this._currentAimHand || null);
+    }
+  }
+
+  ensureFPArms() {
+    if (!this.fpArms && window.RigAssets && window.RigAssets.ready && window.RiggedFPArms) {
+      try {
+        this.fpArms = new window.RiggedFPArms(this);
+      } catch (e) {
+        console.warn('[WeaponSystem] Failed to init RiggedFPArms, keeping legacy hands:', e);
+        this._restoreLegacyHands();
+      }
+    }
+  }
+
+  _restoreLegacyHands() {
+    if (!this.vmCamera) return;
+    this.vmCamera.traverse((m) => {
+      if (m && m.isMesh && m.userData && m.userData._origMat) {
+        m.material = m.userData._origMat;
+        delete m.userData._origMat;
+      }
+    });
   }
 
   startDraw(style = 'shoulder_down') {
@@ -1091,7 +1137,9 @@ class WeaponSystem {
     const forearm = new THREE.Mesh(new THREE.CylinderGeometry(0.034, 0.042, 0.34, 8), sleeveMat);
     forearm.rotation.x = Math.PI / 2 - 0.55;
     forearm.position.set(0, -0.08, -0.10);
+    this._buildVisibleHands = true;
     const palm = this._createHand(false, 'grip');
+    this._buildVisibleHands = false;
     palm.position.set(-0.02, -0.18, -0.22);
     palm.rotation.set(0.55, 0.25, -0.25);
     supportArm.add(forearm, palm);
@@ -1111,6 +1159,7 @@ class WeaponSystem {
     const makeArm = (isRight) => {
       const side = isRight ? 1 : -1;
       const g = new THREE.Group();
+      this._buildVisibleHands = true;
       const hand = this._createHand(isRight, 'grip');
       hand.scale.setScalar(1.18);
       hand.position.set(0, 0.025, -0.04);
@@ -1120,6 +1169,7 @@ class WeaponSystem {
 
       // Reuse exact cylindrical tactical forearm from _createForearm(), aimed from shoulder -> wrist!
       const forearm = this._createForearm();
+      this._buildVisibleHands = false;
       forearm.scale.set(1.15, 1.15, 1.0);
       root.add(g, forearm);
       return { group: g, hand, forearm, side };
@@ -2036,7 +2086,9 @@ class WeaponSystem {
     this._attachCosmetics(g, weaponDef, mods);
 
     this.rightArm = this._createForearm();
+    this.rightArm.userData.fpSide = 'right';
     this.leftArm = this._createForearm();
+    this.leftArm.userData.fpSide = 'left';
     this.leftFist = this._createHand(false, 'leftFist');
     this.leftFist.visible = false;
     g.add(this.rightArm, this.leftArm, this.leftFist);
@@ -2047,6 +2099,8 @@ class WeaponSystem {
       rig.visible = false;
 
       const plateHand = new THREE.Group();
+      plateHand.userData.handStyle = 'plate';
+      plateHand.userData.isRight = false;
       const gloveMat = new THREE.MeshLambertMaterial({ color: 0x454b3e });
       const knuckleMat = new THREE.MeshLambertMaterial({ color: 0x22251f });
       const skinMat = new THREE.MeshLambertMaterial({ color: 0xd1a483 });
@@ -2060,6 +2114,12 @@ class WeaponSystem {
       const thumbTip = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.014, 0.016), skinMat);
       thumbTip.position.set(0.002, -0.014, 0.019);
       plateHand.add(palm, knuckle, thumb, thumbTip);
+      if (window.RigAssets && window.RigAssets.ready && !this._buildVisibleHands) {
+        [palm, knuckle, thumb, thumbTip].forEach((m) => {
+          m.userData._origMat = m.material;
+          m.material = window.RigAssets.hiddenMaterial;
+        });
+      }
       plateHand.scale.setScalar(1.22);
 
       // Ceramic armor plate parented directly to plateHand so it moves 100% locked to the hand!
@@ -2086,6 +2146,7 @@ class WeaponSystem {
       this.plateMesh = plateGroup;
 
       const plateArm = this._createForearm();
+      plateArm.userData.fpSide = 'left';
       plateArm.scale.set(1.22, 1.22, 1.0);
       rig.add(plateHand, plateArm);
 
@@ -2201,11 +2262,13 @@ class WeaponSystem {
       const mLeftHand = this._createHand(false, 'supportRifle');
       mLeftHand.scale.setScalar(1.22);
       const mLeftArm = this._createForearm();
+      mLeftArm.userData.fpSide = 'left';
       mLeftArm.scale.set(1.20, 1.20, 1.0);
 
       const mRightHand = this._createHand(true, 'grip');
       mRightHand.scale.setScalar(1.22);
       const mRightArm = this._createForearm();
+      mRightArm.userData.fpSide = 'right';
       mRightArm.scale.set(1.20, 1.20, 1.0);
 
       mRig.add(mLeftHand, mLeftArm, mRightHand, mRightArm);
@@ -3024,6 +3087,7 @@ class WeaponSystem {
         ? new THREE.Vector3(0.34 + leanShX + swayShX, -0.34 - Math.abs(player.lean) * 0.02, 0.24)
         : new THREE.Vector3(0.16 + leanShX + swayShX, -0.20 - Math.abs(player.lean) * 0.02, 0.36);
       const rWrist = this.rightHand.position.clone().add(new THREE.Vector3(0.008, -0.010, 0.034));
+      this._currentAimHand = this.rightHand;
       this._aimArm(this.rightArm, rShoulder, rWrist);
     }
     if (this.leftArm && this.leftHand) {
@@ -3040,6 +3104,7 @@ class WeaponSystem {
           ? new THREE.Vector3(-0.62, -0.28, 0.26)
           : new THREE.Vector3(-0.22 + leanShX + swayShX, -0.20 - Math.abs(player.lean) * 0.02, 0.30));
       const lWrist = this.leftHand.position.clone().add(new THREE.Vector3(-0.010, -0.010, 0.034));
+      this._currentAimHand = (tacSprintingHip && this.leftFist && this.leftFist.visible) ? this.leftFist : this.leftHand;
       this._aimArm(this.leftArm, lShoulder, lWrist);
     }
 
@@ -4101,6 +4166,7 @@ class WeaponSystem {
       this.plateHand.rotation.z = THREE.MathUtils.lerp(this.plateHand.rotation.z, handRotTarget.z, handRate);
       const lShoulder = new THREE.Vector3(-0.28, -0.28, -0.02);
       const lWrist = this.plateHand.position.clone().add(new THREE.Vector3(-0.01, 0.005, 0.042));
+      this._currentAimHand = this.plateHand;
       this._aimArm(this.plateArm, lShoulder, lWrist);
     }
   }
@@ -4405,6 +4471,7 @@ class WeaponSystem {
       this.medLeftHand.rotation.z = THREE.MathUtils.lerp(this.medLeftHand.rotation.z, lHandRot.z, handRate);
       const lShoulder = new THREE.Vector3(-0.28, -0.28, -0.02);
       const lWrist = this.medLeftHand.position.clone().add(new THREE.Vector3(-0.015, -0.01, 0.04));
+      this._currentAimHand = this.medLeftHand;
       this._aimArm(this.medLeftArm, lShoulder, lWrist);
     }
 
@@ -4415,6 +4482,7 @@ class WeaponSystem {
       this.medRightHand.rotation.z = THREE.MathUtils.lerp(this.medRightHand.rotation.z, rHandRot.z, handRate);
       const rShoulder = new THREE.Vector3(0.28, -0.28, -0.02);
       const rWrist = this.medRightHand.position.clone().add(new THREE.Vector3(0.015, -0.01, 0.04));
+      this._currentAimHand = this.medRightHand;
       this._aimArm(this.medRightArm, rShoulder, rWrist);
     }
   }
@@ -4873,6 +4941,7 @@ class WeaponSystem {
     this.rightHandRestPos.copy(this.rightHand.position);
     this.rightHandRestRot.copy(this.rightHand.rotation);
     this.rightArm = this._createForearm();
+    this.rightArm.userData.fpSide = 'right';
     g.add(this.rightHand, this.rightArm);
 
     this.meleeMesh = g;
@@ -4911,6 +4980,7 @@ class WeaponSystem {
     this.leftHandRestPos.copy(this.leftHand.position);
     this.leftHandRestRot.copy(this.leftHand.rotation);
     this.leftArm = this._createForearm();
+    this.leftArm.userData.fpSide = 'left';
 
     this.rightHand = this._createHand(true, 'rightFist');
     this.rightHand.position.set(0.19, -0.062, 0.0);
@@ -4918,6 +4988,7 @@ class WeaponSystem {
     this.rightHandRestPos.copy(this.rightHand.position);
     this.rightHandRestRot.copy(this.rightHand.rotation);
     this.rightArm = this._createForearm();
+    this.rightArm.userData.fpSide = 'right';
 
     g.add(this.leftHand, this.leftArm, this.rightHand, this.rightArm);
     this.meleeMesh = g;

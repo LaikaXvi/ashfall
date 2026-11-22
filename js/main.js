@@ -433,6 +433,7 @@
     world = new WastelandWorld(scene, zone);
     if (window.applyGraphicsSettings) window.applyGraphicsSettings(window.GFX_SETTINGS);
     weaponSystem = new WeaponSystem(scene, camera, viewmodelCamera);
+    if (weaponSystem.ensureFPArms) weaponSystem.ensureFPArms();
     throwableSystem = new ThrowableSystem(scene, camera, viewmodelCamera, world, weaponSystem);
     player = new Player(camera, world, weaponSystem, {
       ...ui.profile.loadout,
@@ -3697,6 +3698,7 @@
       if (window.RigRegistry && window.RigRegistry.syncAll) {
         window.RigRegistry.syncAll(dt, camera);
       }
+      if (weaponSystem && weaponSystem.fpArms) weaponSystem.fpArms.update(dt);
 
       renderer.shadowMap.needsUpdate = ((window._shadowFrameCount = ((window._shadowFrameCount || 0) + 1) % 3) === 0);
       if (window.renderPipeline) {

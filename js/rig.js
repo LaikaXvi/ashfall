@@ -767,8 +767,265 @@
     }
   };
 
+  // ==================== FIRST-PERSON RIGGED ARMS (v2.41) ====================
+  const FP_HAND_STYLES = {
+    grip:          { f: new THREE.Vector3(0.0,  0.35, -1.0), i: new THREE.Vector3(0, 1, 0),  curl: [0.95, 1.05, 0.70], thumb: 0.5 },
+    rightFist:     { f: new THREE.Vector3(0.0,  0.00, -1.0), i: new THREE.Vector3(0, 1, 0),  curl: [1.40, 1.50, 1.10], thumb: 0.9 },
+    leftFist:      { f: new THREE.Vector3(0.0,  0.00, -1.0), i: new THREE.Vector3(0, 1, 0),  curl: [1.40, 1.50, 1.10], thumb: 0.9 },
+    supportPistol: { f: new THREE.Vector3(0.35, 0.10, -1.0), i: new THREE.Vector3(0, 1, 0),  curl: [0.80, 0.90, 0.60], thumb: 0.3 },
+    foregrip:      { f: new THREE.Vector3(0.25, 0.00, -1.0), i: new THREE.Vector3(0, 1, 0),  curl: [0.95, 1.05, 0.70], thumb: 0.5 },
+    supportRifle:  { f: new THREE.Vector3(0.55, 0.15, -0.8), i: new THREE.Vector3(0, 0, -1), curl: [0.60, 0.70, 0.45], thumb: 0.2 },
+    plate:         { f: new THREE.Vector3(0.0, -0.60, -0.8), i: new THREE.Vector3(1, 0, 0),  curl: [0.50, 0.60, 0.40], thumb: 0.6 }
+  };
+
+  function isEffectivelyVisible(obj, stopAt) {
+    let cur = obj;
+    while (cur && cur !== stopAt) {
+      if (cur.visible === false) return false;
+      cur = cur.parent;
+    }
+    return true;
+  }
+
+  class RiggedFPArms {
+    constructor(weaponSystem) {
+      this.weaponSystem = weaponSystem;
+      this.poses = [];
+      this._uShowL = { value: 0.0 };
+      this._uShowR = { value: 0.0 };
+      this.disabled = false;
+
+      const cloned = RigAssets.cloneSoldier();
+      if (!cloned || !cloned.body || !cloned.bones.leftarm || !cloned.bones.rightarm) {
+        throw new Error('Failed to clone Soldier for FP arms');
+      }
+      this.wrapper = cloned.wrapper;
+      this.model = cloned.model;
+      this.body = cloned.body;
+      this.bones = cloned.bones;
+      if (cloned.visor) cloned.visor.visible = false;
+
+      // Clone geometry so per-vertex armSide attribute never mutates shared Soldier geometry
+      const geom = this.body.geometry.clone();
+      this.body.geometry = geom;
+      const skinIdx = geom.attributes.skinIndex;
+      const skinWt = geom.attributes.skinWeight;
+      const skBones = (this.body.skeleton && this.body.skeleton.bones) || [];
+      const boneSide = skBones.map((b) => {
+        const bn = normName(b.name);
+        if (bn.includes('shoulder')) return 0;
+        const isArmPart = bn.includes('arm') || bn.includes('forearm') || bn.includes('hand');
+        if (!isArmPart) return 0;
+        if (bn.startsWith('mixamorigleft')) return 1;
+        if (bn.startsWith('mixamorigright')) return 2;
+        return 0;
+      });
+
+      const vCount = skinIdx.count;
+      const armSideArr = new Float32Array(vCount);
+      for (let i = 0; i < vCount; i++) {
+        let lSum = 0;
+        let rSum = 0;
+        for (let k = 0; k < 4; k++) {
+          const bi = skinIdx.getComponent(i, k) | 0;
+          const wt = skinWt.getComponent(i, k);
+          const bs = boneSide[bi] || 0;
+          if (bs === 1) lSum += wt;
+          else if (bs === 2) rSum += wt;
+        }
+        armSideArr[i] = lSum > 0.5 ? 1.0 : (rSum > 0.5 ? 2.0 : 0.0);
+      }
+      geom.setAttribute('armSide', new THREE.BufferAttribute(armSideArr, 1));
+
+      // Custom Lambert shader discarding torso/legs/head & toggled arms cleanly
+      const origMat = Array.isArray(this.body.material) ? this.body.material[0] : this.body.material;
+      const fpMat = new THREE.MeshLambertMaterial({
+        map: (origMat && origMat.map) || null,
+        color: 0xffffff,
+        skinning: true
+      });
+      fpMat.onBeforeCompile = (shader) => {
+        shader.uniforms.uShowL = this._uShowL;
+        shader.uniforms.uShowR = this._uShowR;
+        shader.vertexShader =
+          'attribute float armSide;\nvarying float vArmSide;\n' +
+          shader.vertexShader.replace(
+            '#include <begin_vertex>',
+            '#include <begin_vertex>\nvArmSide = armSide;'
+          );
+        shader.fragmentShader =
+          'uniform float uShowL;\nuniform float uShowR;\nvarying float vArmSide;\n' +
+          shader.fragmentShader.replace(
+            /void\s+main\s*\(\s*\)\s*\{/,
+            'void main() {\n  if (vArmSide < 0.5 || (vArmSide < 1.5 && uShowL < 0.5) || (vArmSide > 1.5 && uShowR < 0.5)) discard;\n'
+          );
+        fpMat.userData.shader = shader;
+      };
+      this.body.material = fpMat;
+      this.body.castShadow = false;
+      this.body.receiveShadow = false;
+      this.body.frustumCulled = false;
+
+      // Pose with TPose clip at t=0 before calibration
+      const anims = RigAssets.soldier.animations || [];
+      const tPoseClip = anims.find((c) => normName(c.name) === 'tpose');
+      if (tPoseClip) {
+        const tmpMixer = new THREE.AnimationMixer(this.model);
+        const tAct = tmpMixer.clipAction(tPoseClip);
+        tAct.play();
+        tmpMixer.update(0);
+        tAct.stop();
+        tmpMixer.uncacheClip(tPoseClip);
+        tmpMixer.uncacheRoot(this.model);
+      }
+
+      const B = this.bones;
+      this.wrapper.updateMatrixWorld(true);
+
+      // Scale so total arm length |arm->forearm| + |forearm->hand| = 0.46
+      const pArm = B.rightarm.getWorldPosition(new THREE.Vector3());
+      const pFore = B.rightforearm.getWorldPosition(new THREE.Vector3());
+      const pHand = B.righthand.getWorldPosition(new THREE.Vector3());
+      const rawReach = pArm.distanceTo(pFore) + pFore.distanceTo(pHand);
+      const scaleF = 0.46 / Math.max(0.1, rawReach);
+      this.wrapper.scale.setScalar(scaleF);
+      this.wrapper.updateMatrixWorld(true);
+
+      // Orient wrapper so character forward faces camera -Z
+      const lfP = B.leftfoot ? B.leftfoot.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(-0.1, 0, 0);
+      const ltbP = B.lefttoebase ? B.lefttoebase.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(-0.1, 0, 0.1);
+      const rfP = B.rightfoot ? B.rightfoot.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(0.1, 0, 0);
+      const rtbP = B.righttoebase ? B.righttoebase.getWorldPosition(new THREE.Vector3()) : new THREE.Vector3(0.1, 0, 0.1);
+      const fwdXZ = new THREE.Vector3((ltbP.x - lfP.x) + (rtbP.x - rfP.x), 0, (ltbP.z - lfP.z) + (rtbP.z - rfP.z));
+      if (fwdXZ.lengthSq() > 1e-6) {
+        fwdXZ.normalize();
+        this.wrapper.rotation.y = Math.atan2(-fwdXZ.x, -fwdXZ.z);
+      }
+
+      this.handBasis = {
+        left: RigIK.computeHandBasis(B.lefthand, B, 'left'),
+        right: RigIK.computeHandBasis(B.righthand, B, 'right')
+      };
+      this.fingerCurls = {
+        left: RigIK.buildFingerCurl(B, 'left'),
+        right: RigIK.buildFingerCurl(B, 'right')
+      };
+
+      const pArm2 = B.rightarm.getWorldPosition(new THREE.Vector3());
+      const pFore2 = B.rightforearm.getWorldPosition(new THREE.Vector3());
+      const pHand2 = B.righthand.getWorldPosition(new THREE.Vector3());
+      this.reach = pArm2.distanceTo(pFore2) + pFore2.distanceTo(pHand2);
+
+      // Mount inside vmCamera with head placed at camera-local (0, -0.05, 0.12)
+      const cam = weaponSystem.vmCamera;
+      cam.add(this.wrapper);
+      cam.updateMatrixWorld(true);
+      if (B.head) {
+        const headCam = cam.worldToLocal(B.head.getWorldPosition(new THREE.Vector3()));
+        this.wrapper.position.add(new THREE.Vector3(0, -0.05, 0.12).sub(headCam));
+        this.wrapper.updateMatrixWorld(true);
+      }
+    }
+
+    recordArmPose(armGroup, shoulderLocal, wristLocal, handObj) {
+      if (this.disabled || !armGroup || !armGroup.parent) return;
+      const side = armGroup.userData && armGroup.userData.fpSide;
+      if (!side) return;
+      armGroup.parent.updateWorldMatrix(true, false);
+      const shoulderW = armGroup.parent.localToWorld(shoulderLocal.clone());
+      const wristW = armGroup.parent.localToWorld(wristLocal.clone());
+      this.poses.push({ side, armGroup, shoulderW, wristW, handObj });
+    }
+
+    update(dt) {
+      if (this.disabled) return;
+      try {
+        const ws = this.weaponSystem;
+        const cam = ws && ws.vmCamera;
+        if (!cam) return;
+
+        let poseL = null;
+        let poseR = null;
+        for (let i = 0; i < this.poses.length; i++) {
+          const p = this.poses[i];
+          if (!p || !p.armGroup) continue;
+          if (!isEffectivelyVisible(p.armGroup, cam)) continue;
+          if (p.side === 'left') poseL = p;
+          else if (p.side === 'right') poseR = p;
+        }
+
+        cam.updateMatrixWorld(true);
+        const camQ = cam.getWorldQuaternion(new THREE.Quaternion());
+        const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camQ);
+        const camDown = new THREE.Vector3(0, -1, 0).applyQuaternion(camQ);
+        const camBack = new THREE.Vector3(0, 0, 1).applyQuaternion(camQ);
+
+        const applySide = (side, pose) => {
+          const B = this.bones;
+          const bArm = B[side + 'arm'];
+          const bFore = B[side + 'forearm'];
+          const bHand = B[side + 'hand'];
+          if (!pose || !bArm || !bFore || !bHand) return false;
+
+          const sideSign = side === 'left' ? -1 : 1;
+          const shOff = new THREE.Vector3(sideSign * 0.03, -0.03, 0.10).applyQuaternion(camQ);
+          const anchor = pose.shoulderW.clone().add(shOff);
+
+          const dist = anchor.distanceTo(pose.wristW);
+          const maxReach = this.reach * 0.995;
+          if (dist > maxReach && dist > 1e-5) {
+            anchor.addScaledVector(pose.wristW.clone().sub(anchor).normalize(), dist - maxReach);
+          }
+
+          if (bArm.parent) {
+            bArm.parent.updateWorldMatrix(true, false);
+            bArm.position.copy(bArm.parent.worldToLocal(anchor.clone()));
+            bArm.updateMatrixWorld(true);
+          }
+
+          const pole = anchor.clone()
+            .addScaledVector(camRight, sideSign * 0.35)
+            .addScaledVector(camDown, 0.5)
+            .addScaledVector(camBack, 0.05);
+
+          RigIK.solveTwoBone(bArm, bFore, bHand, pose.wristW, pole);
+
+          const handObj = pose.handObj;
+          const styleKey = (handObj && handObj.userData && handObj.userData.handStyle) || 'grip';
+          const style = FP_HAND_STYLES[styleKey] || FP_HAND_STYLES.grip;
+          let handWQ = camQ;
+          if (handObj) {
+            handObj.updateMatrixWorld(true);
+            handWQ = handObj.getWorldQuaternion(new THREE.Quaternion());
+          }
+          const fW = style.f.clone().applyQuaternion(handWQ);
+          const iW = style.i.clone().applyQuaternion(handWQ);
+          const hb = this.handBasis[side];
+          const qHand = RigIK.basisQuat(hb.fLocal, hb.iLocal, fW, iW, new THREE.Quaternion());
+          RigIK.setWorldQuat(bHand, qHand);
+          RigIK.applyFingerCurl(this.fingerCurls[side], style.curl, style.thumb);
+          return true;
+        };
+
+        this._uShowL.value = applySide('left', poseL) ? 1.0 : 0.0;
+        this._uShowR.value = applySide('right', poseR) ? 1.0 : 0.0;
+        this.poses.length = 0;
+        this.model.updateMatrixWorld(true);
+      } catch (err) {
+        console.warn('[RiggedFPArms] update error; restoring legacy FP hands:', err);
+        this.disabled = true;
+        if (this.wrapper && this.wrapper.parent) this.wrapper.parent.remove(this.wrapper);
+        if (this.weaponSystem && this.weaponSystem._restoreLegacyHands) {
+          this.weaponSystem._restoreLegacyHands();
+        }
+        if (this.weaponSystem) this.weaponSystem.fpArms = null;
+      }
+    }
+  }
+
   window.RigAssets = RigAssets;
   window.RigIK = RigIK;
   window.RiggedCharacter = RiggedCharacter;
   window.RigRegistry = RigRegistry;
+  window.RiggedFPArms = RiggedFPArms;
 })();
