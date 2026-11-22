@@ -1,7 +1,19 @@
 // Game Item Database, 5-Tier Loot Rarity, Logical POI Tables, Workbench & Attachments
 // IMPORTANT: Update GAME_DATA.VERSION (and ?v= cache-busters in index.html) with EVERY new commit!
 window.GAME_DATA = {
-  VERSION: 'v2.13',
+  VERSION: 'v2.14',
+  OPERATOR_STATS: {
+    maxHp: 100,
+    walkSpeed: 6.8,
+    sprintSpeed: 9.6,
+    tacSprintSpeed: 12.4,
+    crouchSpeed: 3.9,
+    adsSpeed: 4.3,
+    proneSpeed: 2.0,
+    downedSpeed: 1.9,
+    slideStartSpeed: 13.6,
+    slideEndSpeed: 4.6
+  },
   SQUAD_COLORS: ['#69f0ae', '#42a5f5', '#ffeb3b', '#ff69b4'], // Green, Blue, Yellow, Pink
 
   RARITIES: {

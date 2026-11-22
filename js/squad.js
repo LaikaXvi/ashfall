@@ -17,9 +17,14 @@ class SquadMate {
     this.lastPlayerDist = 0;
     this.position = spawnPos.clone();
 
-    // Live survival & gear state
-    this.maxHp = 120;
-    this.hp = 120;
+    // Live survival & gear state (100% parity with player-controlled operators!)
+    const opStats = (window.GAME_DATA && window.GAME_DATA.OPERATOR_STATS) || { maxHp: 100, walkSpeed: 6.8, sprintSpeed: 9.6, tacSprintSpeed: 12.4 };
+    this.maxHp = opStats.maxHp;
+    this.hp = opStats.maxHp;
+    this.walkSpeed = opStats.walkSpeed;
+    this.sprintSpeed = opStats.sprintSpeed;
+    this.tacSprintSpeed = opStats.tacSprintSpeed;
+    this.healingTimer = 0;
     this.maxArmor = 100;
     this.armor = 100;
     this.medkits = 2;
@@ -1133,7 +1138,8 @@ class SquadMate {
               if (needsMed) {
                 this.medkits = Math.max(0, (this.medkits || 1) - 1);
                 this.world.spawnGroundItem('medkit', 1, dropPos);
-                if (!tm.isPlayer) ref.hp = Math.min(ref.maxHp || 100, ref.hp + 55);
+                // Non-player squadmate picks up & uses dropped medkit with MW2 healing animation!
+                if (!tm.isPlayer) ref.healingTimer = 3.4;
                 this._say(onComms, 'Dropping a medkit for you — patch up!', '#69f0ae');
               } else {
                 this.plates = Math.max(0, (this.plates || 2) - 1);
@@ -1155,20 +1161,33 @@ class SquadMate {
           const goalZ = player.position.z + cosY * 2.8 - sinY * (this.flankSide * 2.4);
           const distToGoal = Math.hypot(goalX - this.position.x, goalZ - this.position.z);
           if (distToGoal > 1.5) {
-            const moveSpeed = distToGoal > 7.5 ? 8.4 : (distToGoal > 3.5 ? 5.6 : 3.8);
+            const moveSpeed = distToGoal > 9.5 ? (this.tacSprintSpeed || 12.4) : (distToGoal > 4.2 ? (this.sprintSpeed || 9.6) : (this.walkSpeed || 6.8));
             moving = this._moveToward(goalX, goalZ, moveSpeed, dt);
+            this._lastMoveSpeed = moveSpeed;
             this.group.rotation.y = Math.atan2(goalX - this.position.x, goalZ - this.position.z);
           }
         }
       }
     }
 
+    if (this.healingTimer > 0) {
+      this.healingTimer -= dt;
+      this._redrawTag('HEALING...', '#69f0ae');
+      if (this.healingTimer <= 0) {
+        this.healingTimer = 0;
+        this.hp = this.maxHp;
+      }
+    }
+
     if (this.mw2Anim) {
+      const mSpd = moving ? (this._lastMoveSpeed || 6.8) : 0;
       this.mw2Anim.update(dt, {
-        speed: moving ? 4.4 : 0,
+        speed: mSpd,
         stance: 'stand',
-        isSprinting: moving && this.state === 'FOLLOW',
-        isADS: this.state === 'COMBAT',
+        isSprinting: moving && mSpd >= 8.2,
+        isTacSprinting: moving && mSpd >= 11.2,
+        isADS: this.state === 'COMBAT' && this.healingTimer <= 0,
+        isHealing: this.healingTimer > 0,
         isDowned: !!this.isDowned,
         dead: !!this.dead,
         isPistol: !!this.isPistol,

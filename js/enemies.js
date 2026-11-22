@@ -109,21 +109,25 @@ class Enemy {
     this.looted = false;
     this.stunTimer = 0;
 
-    // Tier & Operator Playstyle stats (boosted speeds + player-like tactical mechanics)
+    // Tier & Operator Playstyle stats (100% parity with player-controlled operators: identical HP, speeds & mechanics!)
     if (this.isOperator) {
       this.name = opMeta.callsign;
+      const opStats = GAME_DATA.OPERATOR_STATS || { maxHp: 100, walkSpeed: 6.8, sprintSpeed: 9.6, tacSprintSpeed: 12.4, crouchSpeed: 3.9, adsSpeed: 4.3, proneSpeed: 2.0, downedSpeed: 1.9, slideStartSpeed: 13.6, slideEndSpeed: 4.6 };
       const styles = {
-        rusher:   { hp: 105, dmg: 11, fire: 0.20, acc: 0.11, spd: 5.9, wpn: 'mp5k',  col: 0x3b4852 },
-        flanker:  { hp: 115, dmg: 13, fire: 0.24, acc: 0.08, spd: 5.3, wpn: 'ak74m', col: 0x424d3b },
-        tactical: { hp: 130, dmg: 14, fire: 0.26, acc: 0.06, spd: 4.6, wpn: 'ak74m', col: 0x383d42 },
-        marksman: { hp: 120, dmg: 22, fire: 0.72, acc: 0.03, spd: 3.6, wpn: 'm24',   col: 0x4a4536 }
+        rusher:   { dmg: 11, fire: 0.20, acc: 0.11, wpn: 'mp5k',  col: 0x3b4852 },
+        flanker:  { dmg: 13, fire: 0.24, acc: 0.08, wpn: 'ak74m', col: 0x424d3b },
+        tactical: { dmg: 14, fire: 0.26, acc: 0.06, wpn: 'ak74m', col: 0x383d42 },
+        marksman: { dmg: 22, fire: 0.72, acc: 0.03, wpn: 'm24',   col: 0x4a4536 }
       };
       const st = styles[this.playstyle] || styles.tactical;
-      this.maxHp = st.hp;
+      this.maxHp = opStats.maxHp; // Identical 100 HP to player operators!
       this.damage = st.dmg;
       this.fireInterval = st.fire;
       this.accuracy = st.acc;
-      this.speed = st.spd;
+      this.speed = opStats.walkSpeed;         // 6.8 m/s walk (identical to player!)
+      this.sprintSpeed = opStats.sprintSpeed; // 9.6 m/s sprint (identical to player!)
+      this.tacSprintSpeed = opStats.tacSprintSpeed; // 12.4 m/s tac-sprint (identical to player!)
+      this.downedSpeed = opStats.downedSpeed; // 1.9 m/s downed crawl (identical to player!)
       this.armorColor = st.col;
       this.headColor = 0x26292d;
       const opPrimaries = this.playstyle === 'marksman' ? ['m24', 'ak74m']
@@ -164,10 +168,19 @@ class Enemy {
         selfRevive: Math.random() < 0.35 ? 'self_revive' : null,
         revealedSlots: {}
       };
-      // Real vest armor + player-like tactical combat state
+      // Real vest armor + player-identical health/tourniquet/self-revive/backpack capacity state!
       const vestDef = GAME_DATA.ITEMS[this.operatorEquipment.armor];
+      const bagDef = GAME_DATA.ITEMS[this.operatorEquipment.backpack];
+      this.bagCapacity = (bagDef && bagDef.slots) || 8;
       this.maxArmor = vestDef ? (vestDef.maxArmor || ((vestDef.plateSlots || 2) * 50)) : 100;
       this.armor = this.maxArmor;
+      this.disabledHp = 0;         // Red disabled max HP from Tourniquet self-revives (identical to player!)
+      this.tempHealthRestored = 0; // Yellow temporary HP from Bandage / Painkillers
+      this.tempHealthTimer = 0;
+      this.healingTimer = 0;
+      this.healingKind = null;
+      this.selfReviveTimer = 0;
+      this.tourniquetTimer = 0;
       this.platingTimer = 0;
       this.tacStamina = 100;
       this.isTacSprinting = false;
@@ -929,15 +942,16 @@ class Enemy {
       const plateProg = isPlating ? THREE.MathUtils.clamp(1 - (this.platingTimer / 2.6), 0, 1) : 0;
       const isReloading = (this.reloadTimer || 0) > 0;
       const reloadProg = isReloading ? THREE.MathUtils.clamp(1 - (this.reloadTimer / 2.0), 0, 1) : 0;
+      const isHealing = (this.healingTimer || 0) > 0 || (this.selfReviveTimer || 0) > 0 || (this.tourniquetTimer || 0) > 0;
 
       this.mw2Anim.update(dt, {
         speed: isMoving ? spd : 0,
         stance: this.isProne ? 'prone' : (isCrouching ? 'crouch' : 'stand'),
-        isSprinting: isMoving && spd >= 4.4,
+        isSprinting: isMoving && spd >= (this.isOperator ? 8.2 : 4.4),
         isTacSprinting: !!this.isTacSprinting && isMoving,
         isSliding: (this.slideTimer || 0) > 0,
         slideProgress: (this.slideTimer || 0) > 0 ? (1 - this.slideTimer / 0.55) : 0,
-        isADS: this.state === 'COMBAT' && !this.isTacSprinting && !isPlating && !!this._hasCombatLOS,
+        isADS: this.state === 'COMBAT' && !this.isTacSprinting && !isPlating && !isHealing && !!this._hasCombatLOS,
         aimPitch: this._combatAimPitch || 0,
         lean: this.leanAngle || 0,
         isDowned: !!this.isDowned,
@@ -946,6 +960,7 @@ class Enemy {
         plateProgress: plateProg,
         isReloading,
         reloadProgress: reloadProg,
+        isHealing,
         isPistol: !!this.isPistol,
         world: this.world,
         worldPos: this.position,
@@ -1469,6 +1484,68 @@ class Enemy {
     }
   }
 
+  getEffectiveMaxHp() {
+    const dis = Math.max(0, (this.disabledHp || 0) - (this.tempHealthRestored || 0));
+    return Math.max(25, this.maxHp - dis);
+  }
+
+  startHeal(kind = 'medkit') {
+    if (this.dead || this.isDowned || (this.healingTimer || 0) > 0) return false;
+    this.healingKind = kind;
+    this.healingTimer = kind === 'medkit' ? 3.4 : 2.2;
+    this.isTacSprinting = false;
+    return true;
+  }
+
+  _needsSupply(itemId) {
+    if (itemId === 'armor_plate') {
+      return this.operatorEquipment && (this.operatorEquipment.plates || 0) < 3;
+    }
+    if (itemId === 'medkit' || itemId === 'bandage' || itemId === 'painkillers') {
+      const hasMed = Array.isArray(this.lootItems) && this.lootItems.some(it => it && (it.id === 'medkit' || it.id === 'bandage'));
+      return !hasMed || this.hp < this.maxHp * 0.80 || (this.disabledHp || 0) > 0;
+    }
+    return false;
+  }
+
+  _addOrTradeLoot(itemId, qty = 1) {
+    if (itemId === 'armor_plate' && this.operatorEquipment) {
+      if ((this.operatorEquipment.plates || 0) >= 6) return false;
+      this.operatorEquipment.plates = Math.min(6, (this.operatorEquipment.plates || 0) + qty);
+      return true;
+    }
+    if (!Array.isArray(this.lootItems)) return false;
+    const cap = this.bagCapacity || 8;
+    if (this.lootItems.length < cap) {
+      this.lootItems.push({ id: itemId, qty, revealed: false });
+      return true;
+    }
+    // Bag is FULL: only trade lowest-value non-medical item if we need medical supplies!
+    if (this._needsSupply(itemId)) {
+      let worstIdx = -1;
+      let worstVal = Infinity;
+      for (let i = 0; i < this.lootItems.length; i++) {
+        const it = this.lootItems[i];
+        if (!it || it.id === 'medkit' || it.id === 'bandage' || it.id === 'painkillers') continue;
+        const def = GAME_DATA.ITEMS[it.id];
+        const val = (def && def.value) || 50;
+        if (val < worstVal) {
+          worstVal = val;
+          worstIdx = i;
+        }
+      }
+      if (worstIdx !== -1) {
+        const dropped = this.lootItems.splice(worstIdx, 1)[0];
+        if (dropped && this.world && this.world.spawnGroundItem) {
+          this.world.spawnGroundItem(dropped.id, dropped.qty || 1, this.position.clone());
+        }
+        this.lootItems.push({ id: itemId, qty, revealed: false });
+        return true;
+      }
+    }
+    return false;
+  }
+
   update(dt, player, onEnemyFire, onEnemyBleedout, allEnemies = [], squadGoal = null, onAiVsAiEvent = null) {
     if (this.isOperator) {
       this._updateOperatorGrenades(dt, player, allEnemies);
@@ -1480,10 +1557,56 @@ class Enemy {
         if (this.proneTimer <= 0 || this.state !== 'COMBAT') this.isProne = false;
       }
       if (!this.dead && !this.isDowned) {
+        // Temporary Bandage/Painkiller health duration tick (identical to player!)
+        if (this.tempHealthTimer > 0) {
+          this.tempHealthTimer -= dt;
+          if (this.tempHealthTimer <= 0) {
+            this.tempHealthTimer = 0;
+            this.tempHealthRestored = 0;
+            const effMax = this.getEffectiveMaxHp();
+            if (this.hp > effMax) this.hp = effMax;
+          }
+        }
         this.timeSinceDamaged = (this.timeSinceDamaged || 10) + dt;
-        // 1. Automatic Health Regeneration after 2.5s without taking damage!
-        if (this.timeSinceDamaged >= 2.5 && this.hp < this.maxHp) {
-          this.hp = Math.min(this.maxHp, this.hp + 24 * dt);
+        // 1. Automatic Health Regeneration after 2.5s up to effectiveMaxHp (respecting Tourniquet disabledHp!)
+        const effMaxHp = this.getEffectiveMaxHp();
+        if (this.timeSinceDamaged >= 2.5 && this.hp < effMaxHp) {
+          this.hp = Math.min(effMaxHp, this.hp + 28 * dt);
+        }
+        // 1b. Active Medical Item Usage Animation (own or squadmate-dropped Medkit / Bandage / Painkillers!)
+        if ((this.healingTimer || 0) > 0) {
+          this.healingTimer -= dt;
+          this._animMoving = false;
+          this.updateVisualAnim(dt, false, 0);
+          if (this.healingTimer <= 0) {
+            this.healingTimer = 0;
+            if (this.healingKind === 'medkit') {
+              // Medkit permanently restores Tourniquet disabled health & heals to full!
+              this.disabledHp = 0;
+              this.tempHealthRestored = 0;
+              this.tempHealthTimer = 0;
+              this.hp = this.maxHp;
+            } else {
+              // Bandage / Painkillers temporarily restore disabled health for 30s
+              if (this.disabledHp > 0) {
+                this.tempHealthRestored = this.disabledHp;
+                this.tempHealthTimer = 30.0;
+              }
+              this.hp = Math.min(this.getEffectiveMaxHp(), this.hp + 45);
+            }
+            this.healingKind = null;
+          }
+          return;
+        } else if (this.timeSinceDamaged >= 2.0 && (this.hp < effMaxHp * 0.65 || (this.disabledHp || 0) > 0) && Array.isArray(this.lootItems)) {
+          const medIdx = this.lootItems.findIndex(it => it && (it.id === 'medkit' || it.id === 'bandage' || it.id === 'painkillers'));
+          if (medIdx !== -1) {
+            const mIt = this.lootItems[medIdx];
+            const kind = mIt.id;
+            if (mIt.qty > 1) mIt.qty -= 1;
+            else this.lootItems.splice(medIdx, 1);
+            this.startHeal(kind);
+            return;
+          }
         }
         // 2. Smart Armor Plating after 1.5s without taking damage (or behind cover)
         if (this.platingTimer > 0) {
@@ -1497,8 +1620,10 @@ class Enemy {
         } else if (this.armor < (this.maxArmor || 100) && this.operatorEquipment && this.operatorEquipment.plates > 0 && this.timeSinceDamaged >= 1.5) {
           this.platingTimer = 2.6;
         }
-        // 3. In-Depth POI Looting: approach & pick up loose ground items or loot nearby POI containers when not in combat!
-        if (this.state === 'PATROL' && this.world) {
+        // 3. Smart POI Looting: if bag is FULL & no plates/meds needed, DISREGARD loot; otherwise trade for needed plates/meds!
+        const bagFull = Array.isArray(this.lootItems) && this.lootItems.length >= (this.bagCapacity || 8);
+        const wantsPlatesOrMeds = this._needsSupply('armor_plate') || this._needsSupply('medkit');
+        if (this.state === 'PATROL' && this.world && (!bagFull || wantsPlatesOrMeds)) {
           this._lootScanCd = (this._lootScanCd || 0) - dt;
           if (this._lootScanCd <= 0) {
             this._lootScanCd = 2.0;
@@ -1507,14 +1632,18 @@ class Enemy {
               for (let giIdx = this.world.groundItems.length - 1; giIdx >= 0; giIdx--) {
                 const gi = this.world.groundItems[giIdx];
                 if (!gi || !gi.position) continue;
+                if (bagFull && !this._needsSupply(gi.id)) continue;
                 const gd = Math.hypot(this.position.x - gi.position.x, this.position.z - gi.position.z);
                 if (gd < 2.8) {
-                  if (gi.id === 'armor_plate' && this.operatorEquipment) {
-                    this.operatorEquipment.plates = Math.min(6, (this.operatorEquipment.plates || 0) + (gi.qty || 1));
-                  } else if (this.lootItems && this.lootItems.length < 10) {
-                    this.lootItems.push({ id: gi.id, qty: gi.qty || 1, revealed: false });
+                  if (this._addOrTradeLoot(gi.id, gi.qty || 1)) {
+                    if (this.world.removeGroundItem) this.world.removeGroundItem(gi);
+                    // Immediately use picked-up medical item if injured!
+                    if ((gi.id === 'medkit' || gi.id === 'bandage') && (this.hp < this.maxHp * 0.78 || (this.disabledHp || 0) > 0)) {
+                      const idx = this.lootItems.findIndex(it => it && it.id === gi.id);
+                      if (idx !== -1) this.lootItems.splice(idx, 1);
+                      this.startHeal(gi.id);
+                    }
                   }
-                  if (this.world.removeGroundItem) this.world.removeGroundItem(gi);
                   break;
                 } else if (gd < 11.0 && !this._activeLootGoal) {
                   this._activeLootGoal = gi.position.clone();
@@ -1530,6 +1659,7 @@ class Enemy {
               for (let cIdx = 0; cIdx < this.world.lootContainers.length; cIdx++) {
                 const ct = this.world.lootContainers[cIdx];
                 if (!ct || ct.requiresKey || this._checkedContainers.has(ct) || !Array.isArray(ct.items) || ct.items.length === 0) continue;
+                if (bagFull && !ct.items.some(it => it && this._needsSupply(it.id))) continue;
                 const cd = Math.hypot(this.position.x - ct.position.x, this.position.z - ct.position.z);
                 const cdy = Math.abs(this.position.y - ct.position.y);
                 const score = cd + cdy * 1.6;
@@ -1550,20 +1680,20 @@ class Enemy {
             const ld = Math.hypot(this.position.x - this._activeLootGoal.x, this.position.z - this._activeLootGoal.z);
             const ldy = Math.abs(this.position.y - (this._activeLootGoal.y || this.position.y));
             if (ld < 2.6 && ldy < 1.8) {
-              // Reached loot container: check it ONCE, grab 1-2 items, mark checked & move on!
+              // Reached loot container: check it ONCE, grab 1-2 items (or trade for needed plates/meds), mark checked & move on!
               const ct = this._activeLootContainer;
               if (ct) {
                 if (!this._checkedContainers) this._checkedContainers = new Set();
                 this._checkedContainers.add(ct);
                 if (Array.isArray(ct.items)) {
-                  const takeCount = Math.min(2, ct.items.length);
-                  for (let t = 0; t < takeCount; t++) {
-                    const taken = ct.items.shift();
-                    if (!taken) break;
-                    if (taken.id === 'armor_plate' && this.operatorEquipment) {
-                      this.operatorEquipment.plates = Math.min(6, (this.operatorEquipment.plates || 0) + (taken.qty || 1));
-                    } else if (this.lootItems && this.lootItems.length < 10) {
-                      this.lootItems.push({ id: taken.id, qty: taken.qty || 1, revealed: false });
+                  let takenCount = 0;
+                  for (let i = 0; i < ct.items.length && takenCount < 2; ) {
+                    const candidate = ct.items[i];
+                    if (candidate && this._addOrTradeLoot(candidate.id, candidate.qty || 1)) {
+                      ct.items.splice(i, 1);
+                      takenCount++;
+                    } else {
+                      i++;
                     }
                   }
                 }
@@ -1571,9 +1701,8 @@ class Enemy {
               this._activeLootGoal = null;
               this._activeLootContainer = null;
               this._lootGoalTimer = 0;
-              this._lootScanCd = 0.6; // Quickly pick next unchecked room container or exit building!
+              this._lootScanCd = 0.6;
             } else if (this._lootGoalTimer > 8.5) {
-              // Unreachable within 8.5s -> mark checked so operator NEVER circles back to it!
               if (this._activeLootContainer) {
                 if (!this._checkedContainers) this._checkedContainers = new Set();
                 this._checkedContainers.add(this._activeLootContainer);
@@ -1628,13 +1757,46 @@ class Enemy {
     if (this.isDowned) {
       if (this.bleedSprite) this.bleedSprite.visible = false;
       if (!this.beingRevivedBy) {
+        // Player-identical Self-Revive & Tourniquet self-recovery for downed AI Operators!
+        if (this.isOperator && this.selfReviveTimer > 0) {
+          this.selfReviveTimer -= dt;
+          this.updateVisualAnim(dt, false, 0);
+          if (this.selfReviveTimer <= 0) {
+            this.selfReviveTimer = 0;
+            if (this.operatorEquipment) this.operatorEquipment.selfRevive = null;
+            this.revive(55);
+          }
+          return;
+        }
+        if (this.isOperator && this.tourniquetTimer > 0) {
+          this.tourniquetTimer -= dt;
+          this.updateVisualAnim(dt, false, 0);
+          if (this.tourniquetTimer <= 0) {
+            this.tourniquetTimer = 0;
+            // Tourniquet sacrifices 35 max HP into disabledHp (identical to player!)
+            this.disabledHp = Math.min(60, (this.disabledHp || 0) + 35);
+            this.revive(this.getEffectiveMaxHp());
+          }
+          return;
+        }
+
         this.downedBleedTimer -= dt;
-        const threat = this.lastKnownPlayerPos || (player && player.position);
+        const timeDown = this.downedBleedMax - this.downedBleedTimer;
+        if (this.isOperator && this.operatorEquipment && this.operatorEquipment.selfRevive === 'self_revive' && timeDown >= 1.2) {
+          this.selfReviveTimer = 4.0;
+          return;
+        }
+        if (this.isOperator && timeDown >= 5.2 && (this.disabledHp || 0) < 60) {
+          this.tourniquetTimer = 3.2;
+          return;
+        }
+
+        const threat = this.lastKnownPlayerPos || (player && !player.invisible && player.position);
         if (threat) {
           const awayX = this.position.x - threat.x;
           const awayZ = this.position.z - threat.z;
           const dist = Math.hypot(awayX, awayZ) || 1;
-          const crawlSpd = 0.95;
+          const crawlSpd = this.downedSpeed || 1.9;
           const vx = (awayX / dist) * crawlSpd * dt;
           const vz = (awayZ / dist) * crawlSpd * dt;
           if (!this._collides(this.position.x + vx, this.position.z, 0.42)) {
@@ -1794,12 +1956,14 @@ class Enemy {
             const medItem = this.lootItems[medIdx];
             if (medItem.qty > 1) medItem.qty -= 1;
             else this.lootItems.splice(medIdx, 1);
-            // Physically drop medkit at ally's feet (or apply directly so ally heals up!)
+            // Physically drop medkit at ally's feet & have ally immediately play healing animation to use it!
             if (this.world && this.world.spawnGroundItem) {
               const dropPos = injuredMate.position.clone().lerp(this.position, 0.35);
-              this.world.spawnGroundItem('medkit', 1, dropPos);
+              this.world.spawnGroundItem(medItem.id, 1, dropPos);
             }
-            injuredMate.hp = Math.min(injuredMate.maxHp, injuredMate.hp + 55);
+            if (injuredMate.startHeal) {
+              injuredMate.startHeal(medItem.id === 'medkit' ? 'medkit' : 'bandage');
+            }
             this._supportCooldown = 8.0;
           }
         }
@@ -1869,7 +2033,7 @@ class Enemy {
       if (this.isOperator && this.slideTimer > 0) {
         this.slideTimer = Math.max(0, this.slideTimer - dt);
         const sp = 1 - (this.slideTimer / 0.55);
-        const slideSpd = THREE.MathUtils.lerp(this.speed * 1.95, this.speed * 0.72, sp * sp);
+        const slideSpd = THREE.MathUtils.lerp(13.6, 4.6, sp * sp);
         const vx = this.slideDir.x * slideSpd * dt;
         const vz = this.slideDir.z * slideSpd * dt;
         if (!this._collides(this.position.x + vx, this.position.z, 0.42)) {
@@ -1929,7 +2093,7 @@ class Enemy {
           const distCov = Math.hypot(this.coverSpot.coverPos.x - this.position.x, this.coverSpot.coverPos.z - this.position.z);
           if (distCov > 1.0) {
             this.isTacSprinting = this.tacStamina > 12;
-            const moveSpd = this.isTacSprinting ? this.speed * 1.62 : this.speed * 1.2;
+            const moveSpd = this.isTacSprinting ? (this.tacSprintSpeed || 12.4) : (this.sprintSpeed || 9.6);
             if (this.isTacSprinting) this.tacStamina = Math.max(0, this.tacStamina - 28 * dt);
             this._moveToward(this.coverSpot.coverPos, moveSpd, dt);
             if (this.isTacSprinting && distCov < 4.2 && this.slideCooldown <= 0) {
@@ -1967,7 +2131,7 @@ class Enemy {
           if (useTac) this.tacStamina = Math.max(0, this.tacStamina - 24 * dt);
           else this.tacStamina = Math.min(100, (this.tacStamina || 0) + 18 * dt);
           // Only face target while moving if actively peeking WITH unobstructed LOS; otherwise look where walking!
-          this._moveToward(goal, this.speed * (useTac ? 1.58 : (this.isPeeking ? 0.90 : 1.15)), dt, (hasClearLOS && this.isPeeking && !useTac) ? tPos : null);
+          this._moveToward(goal, useTac ? (this.tacSprintSpeed || 12.4) : (this.isPeeking ? 4.3 : (this.sprintSpeed || 9.6)), dt, (hasClearLOS && this.isPeeking && !useTac) ? tPos : null);
           if (this.isOperator && this.isPeeking && distGoal < 3.0 && this.slideCooldown <= 0 && Math.random() < 0.08) {
             this._startOperatorSlide(goal.clone().sub(this.position));
           }
@@ -1981,7 +2145,7 @@ class Enemy {
         this.isTacSprinting = this.isOperator && this.tacStamina > 15;
         if (this.isTacSprinting) this.tacStamina = Math.max(0, this.tacStamina - 24 * dt);
         else this.tacStamina = Math.min(100, (this.tacStamina || 0) + 18 * dt);
-        this._moveToward(tPos, this.speed * (this.isTacSprinting ? 1.60 : 1.05), dt, (hasClearLOS && !this.isTacSprinting) ? tPos : null);
+        this._moveToward(tPos, this.isTacSprinting ? (this.tacSprintSpeed || 12.4) : (this.sprintSpeed || 9.6), dt, (hasClearLOS && !this.isTacSprinting) ? tPos : null);
         if (this.isTacSprinting && target.dist < 22 && this.slideCooldown <= 0 && Math.random() < 0.04) {
           this._startOperatorSlide(tPos.clone().sub(this.position));
         }

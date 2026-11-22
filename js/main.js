@@ -1073,6 +1073,14 @@
 
   function openNearbyInteractable() {
     if (!nearbyInteractable) return false;
+    if (nearbyInteractable.type === 'munition_box' && nearbyInteractable.box && player && player.resupplyFromMunitionBox) {
+      const msg = player.resupplyFromMunitionBox(nearbyInteractable.box);
+      if (msg) ui.showNotice(msg, '#69f0ae');
+      ui.updateHUD(player, raidTimeLeft, getActiveExtractProgress());
+      window._lastInteractCheckMs = 0;
+      checkInteractions();
+      return true;
+    }
     if (nearbyInteractable.type === 'door' && nearbyInteractable.door && world && world.interactDoor) {
       world.interactDoor(nearbyInteractable.door, player.position, !!player.isADS);
       window._lastInteractCheckMs = 0;
@@ -2783,6 +2791,19 @@
     }
 
     let bestDist = 3.2;
+    if (world && world.munitionBoxes && world.munitionBoxes.length > 0) {
+      const feetY = player.position.y - player.currentEyeHeight;
+      for (let i = 0; i < world.munitionBoxes.length; i++) {
+        const mb = world.munitionBoxes[i];
+        if (!mb || (mb.usedBy && mb.usedBy.has('player'))) continue;
+        if (Math.abs(feetY - mb.position.y) > 2.2) continue;
+        const d = Math.hypot(player.position.x - mb.position.x, player.position.z - mb.position.z);
+        if (d < 2.8 && d < bestDist) {
+          bestDist = d;
+          nearbyInteractable = { type: 'munition_box', box: mb, label: 'RESUPPLY — MUNITION BOX' };
+        }
+      }
+    }
     if (world && world.doors) {
       const feetY = player.position.y - player.currentEyeHeight;
       for (let i = 0; i < world.doors.length; i++) {
@@ -2839,7 +2860,9 @@
     }
 
     if (nearbyInteractable) {
-      if (nearbyInteractable.type === 'door') {
+      if (nearbyInteractable.type === 'munition_box') {
+        textEl.textContent = `[E] ${nearbyInteractable.label}`;
+      } else if (nearbyInteractable.type === 'door') {
         textEl.textContent = `[E] ${nearbyInteractable.label}`;
       } else if (nearbyInteractable.type === 'ground') {
         const gw = _getLookedAtGroundWeapon();

@@ -10,6 +10,7 @@ class WastelandWorld {
     this.groundItems = [];    // { id, qty, mesh, position, ringMesh } physical loose & dropped loot
     this.doors = [];          // Interactive bidirectional hinged doors (open / peek / sprint bash / close)
     this.staircases = [];     // Registered multi-floor staircases { bottomEntry, topExit, bottomY, topY } for AI pathfinding
+    this.munitionBoxes = [];  // Deployable physical 3D Munition Boxes { mesh, position, ownerName, usedBy: Set, ttl }
     this.extractZones = [];   // { name, position, radius, beaconMesh, ringMesh }
     this.pois = [];           // { name, x, z, color } for minimap & logical looting
     this.activeSmokes = [];
@@ -2297,6 +2298,82 @@ class WastelandWorld {
         gi.ringMesh.material.opacity = 0.48 + Math.sin(time * 3.2 + gi.position.x) * 0.20;
       }
     }
+    // Update deployed Munition Boxes (gentle toss settle + pulsing green resupply ring + TTL despawn)
+    if (this.munitionBoxes && this.munitionBoxes.length > 0) {
+      for (let i = this.munitionBoxes.length - 1; i >= 0; i--) {
+        const mb = this.munitionBoxes[i];
+        mb.ttl -= dt;
+        if (mb.throwT < 1) {
+          mb.throwT = Math.min(1, mb.throwT + dt * 3.2);
+          const p = mb.throwT;
+          mb.mesh.position.x = THREE.MathUtils.lerp(mb.startPos.x, mb.position.x, p);
+          mb.mesh.position.z = THREE.MathUtils.lerp(mb.startPos.z, mb.position.z, p);
+          mb.mesh.position.y = THREE.MathUtils.lerp(mb.startPos.y, mb.position.y, p) + Math.sin(p * Math.PI) * 0.65;
+        }
+        if (mb.ringMesh && mb.ringMesh.material) {
+          mb.ringMesh.material.opacity = 0.42 + Math.sin(time * 3.6 + i) * 0.22;
+        }
+        if (mb.ttl <= 0) {
+          if (this.scene && mb.mesh) this.scene.remove(mb.mesh);
+          this.munitionBoxes.splice(i, 1);
+        }
+      }
+    }
+  }
+
+  deployMunitionBox(originPos, forwardDir, ownerName = 'Operator') {
+    const dir = (forwardDir && forwardDir.lengthSq() > 0.001) ? forwardDir.clone().normalize() : new THREE.Vector3(0, 0, -1);
+    let tx = originPos.x + dir.x * 2.1;
+    let tz = originPos.z + dir.z * 2.1;
+    const baseY = Number.isFinite(originPos.y) ? originPos.y : this.getTerrainHeight(originPos.x, originPos.z);
+    if (this.isWalkableForAI && !this.isWalkableForAI(tx, tz, baseY, 0.35)) {
+      tx = originPos.x + dir.x * 0.95;
+      tz = originPos.z + dir.z * 0.95;
+    }
+    const gy = this.getWalkHeightAt ? this.getWalkHeightAt(tx, tz, baseY) : this.getTerrainHeight(tx, tz);
+    const landPos = new THREE.Vector3(tx, gy, tz);
+    const startPos = new THREE.Vector3(originPos.x, baseY + 1.05, originPos.z);
+
+    const group = new THREE.Group();
+    const bodyMat = new THREE.MeshLambertMaterial({ color: 0x3b4932 });
+    const lidMat = new THREE.MeshLambertMaterial({ color: 0x2c3626 });
+    const latchMat = new THREE.MeshLambertMaterial({ color: 0x1b1e1c });
+    const stripeMat = new THREE.MeshBasicMaterial({ color: 0xd9a838 });
+
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.34, 0.42), bodyMat);
+    body.position.y = 0.17;
+    const lid = new THREE.Mesh(new THREE.BoxGeometry(0.71, 0.06, 0.45), lidMat);
+    lid.position.y = 0.35;
+    const latchL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.11, 0.04), latchMat);
+    latchL.position.set(-0.20, 0.28, 0.22);
+    const latchR = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.11, 0.04), latchMat);
+    latchR.position.set(0.20, 0.28, 0.22);
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.055, 0.43), stripeMat);
+    stripe.position.y = 0.20;
+    const ringMesh = new THREE.Mesh(
+      new THREE.RingGeometry(0.44, 0.56, 20),
+      new THREE.MeshBasicMaterial({ color: 0x69f0ae, transparent: true, opacity: 0.55, side: THREE.DoubleSide })
+    );
+    ringMesh.rotation.x = -Math.PI / 2;
+    ringMesh.position.y = 0.03;
+
+    group.add(body, lid, latchL, latchR, stripe, ringMesh);
+    group.position.copy(startPos);
+    group.rotation.y = Math.atan2(dir.x, dir.z);
+    if (this.scene) this.scene.add(group);
+
+    const boxObj = {
+      mesh: group,
+      ringMesh,
+      startPos,
+      position: landPos,
+      throwT: 0,
+      ownerName,
+      usedBy: new Set(),
+      ttl: 90.0
+    };
+    this.munitionBoxes.push(boxObj);
+    return boxObj;
   }
 
   // ============================================================================

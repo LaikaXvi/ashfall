@@ -318,8 +318,10 @@ class Player {
     this.stamina = 100;
     this.lethal = loadoutState.lethal !== undefined ? loadoutState.lethal : 'frag_grenade';
     this.lethalQty = loadoutState.lethalQty !== undefined ? loadoutState.lethalQty : (this.lethal ? 2 : 0);
+    this.lastEquippedLethal = this.lethal || 'frag_grenade';
     this.tactical = loadoutState.tactical !== undefined ? loadoutState.tactical : 'smoke_grenade';
     this.tacticalQty = loadoutState.tacticalQty !== undefined ? loadoutState.tacticalQty : (this.tactical ? 2 : 0);
+    this.lastEquippedTactical = this.tactical || 'smoke_grenade';
     this.backpackId = loadoutState.backpack || 'bag_small';
     const bagDef = GAME_DATA.ITEMS[this.backpackId];
     this.backpackMaxSlots = (bagDef && bagDef.slots) || 8;
@@ -2058,18 +2060,58 @@ class Player {
     return true;
   }
 
+  resupplyFromMunitionBox(box) {
+    if (!box) return null;
+    if (box.usedBy && box.usedBy.has('player')) {
+      return 'Already resupplied from this Munition Box';
+    }
+    if (box.usedBy) box.usedBy.add('player');
+
+    // Remember last equipped throwables so empty slots always replenish the last equipped lethal & tactical!
+    if (this.lethal) this.lastEquippedLethal = this.lethal;
+    if (this.tactical) this.lastEquippedTactical = this.tactical;
+
+    // 1. Replenish Lethals (restoring last equipped if empty)
+    const refLethal = this.lethal || this.lastEquippedLethal || 'frag_grenade';
+    this.lethal = refLethal;
+    this.lethalQty = Math.min(4, Math.max(2, (this.lethalQty || 0) + 2));
+
+    // 2. Replenish Tacticals (restoring last equipped if empty)
+    const refTactical = this.tactical || this.lastEquippedTactical || 'smoke_grenade';
+    this.tactical = refTactical;
+    this.tacticalQty = Math.min(4, Math.max(2, (this.tacticalQty || 0) + 2));
+
+    // 3. Replenish Ammo for both equipped weapons (Primary & Secondary)
+    const ammoAdded = new Set();
+    ['primary', 'secondary'].forEach((slKey) => {
+      const sl = this.slots && this.slots[slKey];
+      if (!sl || !sl.id) return;
+      const wDef = GAME_DATA.ITEMS[sl.id];
+      if (wDef && wDef.ammoType && !ammoAdded.has(wDef.ammoType)) {
+        ammoAdded.add(wDef.ammoType);
+        const cap = wDef.ammoType === 'ammo_12g' ? 24 : (wDef.ammoType === 'ammo_762' ? 40 : 60);
+        this.addToBackpack(wDef.ammoType, cap);
+      }
+    });
+    if (window.soundEngine && window.soundEngine.playMagIn) window.soundEngine.playMagIn();
+    return 'Resupplied Ammo, Lethals & Tacticals!';
+  }
+
   activateFieldUpgrade() {
     if (!this.fieldUpgrade || (!window.DEV_MODE && this.fieldUpgradeCharge < 100)) return null;
     this.fieldUpgradeCharge = 0;
     const def = GAME_DATA.ITEMS[this.fieldUpgrade];
     if (this.fieldUpgrade === 'fu_ammo_box') {
-      this.plates = Math.min(6, this.plates + 3);
-      this.lethalQty = Math.min(4, this.lethalQty + 1);
-      this.tacticalQty = Math.min(4, this.tacticalQty + 1);
-      const pDef = this.getActiveWeaponDef();
-      if (pDef && pDef.ammoType) this.addToBackpack(pDef.ammoType, 60);
-      window.soundEngine.playMagIn();
-      return 'Munitions Box deployed (+Ammo, +3 Plates, +Throwables)';
+      if (this.world && this.world.deployMunitionBox) {
+        const feetY = this.position.y - this.currentEyeHeight;
+        const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+        this.world.deployMunitionBox(new THREE.Vector3(this.position.x, feetY, this.position.z), fwd, 'YOU');
+      }
+      if (window.soundEngine && window.soundEngine.playThrowWhoosh) {
+        try { window.soundEngine.playThrowWhoosh(false); } catch (e) {}
+      }
+      if (window.soundEngine && window.soundEngine.playMagIn) window.soundEngine.playMagIn();
+      return 'Munition Box deployed — press [E] to resupply!';
     } else if (this.fieldUpgrade === 'fu_dead_silence') {
       this.deadSilenceTimer = 12.0;
       this.stamina = 100;
