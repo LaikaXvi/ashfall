@@ -213,14 +213,13 @@ window.buildTacticalOperatorModel = function buildTacticalOperatorModel(opts = {
   const leftArm = makeArm(-0.26, false);
   const rightArm = makeArm(0.26, true);
 
-  // Default tactical two-handed ready-to-fire pose!
-  // Positive Z on leftArm swings it INWARD (+X) across chest onto handguard/foregrip; negative Z on rightArm tucks into shoulder!
-  leftArm.shoulder.rotation.set(0.84, 0, 0.44);
-  leftArm.elbow.rotation.set(0.92, 0, 0);
-  rightArm.shoulder.rotation.set(0.88, 0, -0.14);
-  rightArm.elbow.rotation.set(0.76, 0, 0);
+  // Default tactical shouldered two-handed pose: buttstock tucked into right shoulder, right hand on rear grip, left hand on foregrip!
+  leftArm.shoulder.rotation.set(0.98, 0, 0.50);
+  leftArm.elbow.rotation.set(1.16, 0, 0);
+  rightArm.shoulder.rotation.set(0.94, 0, -0.12);
+  rightArm.elbow.rotation.set(1.06, 0, 0);
   if (weaponMount) {
-    weaponMount.rotation.set(-Math.PI / 2, 0.14, -0.06);
+    weaponMount.rotation.set(-Math.PI / 2 - 0.14, 0.10, -0.04);
   }
 
   return {
@@ -383,11 +382,11 @@ class Player {
     if (this.tpWeapon && this.tpWeapon.group) {
       const s = this.tpWeapon.isPistol ? 1.25 : 1.38;
       this.tpWeapon.group.scale.setScalar(s);
-      // Align pistol grip / rifle grip cleanly to right hand glove
+      // Align rear pistol grip to right glove & tuck buttstock solidly into right shoulder pocket
       if (this.tpWeapon.isPistol) {
-        this.tpWeapon.group.position.set(0.0, 0.04, -0.06);
+        this.tpWeapon.group.position.set(0.0, 0.04, -0.05);
       } else {
-        this.tpWeapon.group.position.set(0.0, 0.04, -0.18);
+        this.tpWeapon.group.position.set(-0.02, 0.035, -0.10);
       }
       this.avatarParts.weaponMount.add(this.tpWeapon.group);
     }
@@ -822,20 +821,20 @@ class Player {
       wpnRotY = 0.10 * entry;
       wpnRotZ = -0.12 * entry;
     } else if (this.isProne) {
-      // === ARTICULATED PRONE & CRAWL: SPLAYED BOOT PUSH-OFF, PLANTED ELBOWS, CHEEK-WELD SIGHT ALIGNMENT ===
+      // === ARTICULATED PRONE & CRAWL: CHEST PROPPED ON ELBOWS, HEAD UP LOOKING FORWARD, GUN SHOULDERED ABOVE GROUND ===
       autoClampFeet = false;
-      rigPitch = -1.36;
-      rigY = 0.28;
-      pelvisY = 0.90;
+      rigPitch = -1.38;
+      rigY = 0.22;
+      pelvisY = 0.24;
       const crawlPhase = moving ? stride : 0;
-      torsoPitch = 0.22 + breathe * 0.012 + (this.isADS ? 0.06 : 0);
-      torsoYaw = moving ? crawlPhase * 0.10 : (this.isADS ? 0.12 : 0);
-      lHipX = -0.06 - Math.max(0, crawlPhase) * 0.22;  lHipZ = -0.14 - Math.max(0, crawlPhase) * 0.12; lKneeX = -0.14 - Math.max(0, -crawlPhase) * 0.28; lAnkX = 0.68;
-      rHipX = -0.06 - Math.max(0, -crawlPhase) * 0.22; rHipZ = 0.14 + Math.max(0, -crawlPhase) * 0.12; rKneeX = -0.14 - Math.max(0, crawlPhase) * 0.28;  rAnkX = 0.68;
-      // Elbows planted under chest supporting weapon upright; tighter tuck when focusing ADS
-      lShX = (this.isADS ? 1.24 : 1.14) + (moving ? crawlPhase * 0.22 : 0); lElbX = this.isADS ? 1.44 : 1.36; lShZ = 0.36;
-      rShX = (this.isADS ? 1.26 : 1.18) - (moving ? crawlPhase * 0.22 : 0); rElbX = this.isADS ? 1.38 : 1.32; rShZ = -0.18;
-      wpnRotX = -Math.PI / 2 + (this.isADS ? 0.48 : 0.44);
+      torsoPitch = 0.48 + breathe * 0.018 + (this.isADS ? 0.06 : 0);
+      torsoYaw = moving ? crawlPhase * 0.08 : (this.isADS ? 0.08 : 0);
+      lHipX = -0.06 - Math.max(0, crawlPhase) * 0.22;  lHipZ = -0.14 - Math.max(0, crawlPhase) * 0.10; lKneeX = -0.12 - Math.max(0, -crawlPhase) * 0.24; lAnkX = 0.65;
+      rHipX = -0.06 - Math.max(0, -crawlPhase) * 0.22; rHipZ = 0.14 + Math.max(0, -crawlPhase) * 0.10; rKneeX = -0.12 - Math.max(0, crawlPhase) * 0.24;  rAnkX = 0.65;
+      // Elbows planted on ground supporting forearms & shouldered rifle cleanly above terrain (zero clipping!)
+      lShX = (this.isADS ? 1.56 : 1.48) + (moving ? crawlPhase * 0.18 : 0) + breathe * 0.015; lElbX = this.isADS ? 1.12 : 1.06; lShZ = 0.44;
+      rShX = (this.isADS ? 1.58 : 1.50) - (moving ? crawlPhase * 0.18 : 0) + breathe * 0.015; rElbX = this.isADS ? 1.04 : 0.98; rShZ = -0.12;
+      wpnRotX = -Math.PI / 2 - 0.18;
       wpnRotY = this.isADS ? 0.04 : 0.08;
       wpnRotZ = 0.0;
     } else if (!this.onGround) {
@@ -929,21 +928,23 @@ class Player {
         wpnRotY = 0.34;
         wpnRotZ = -0.12;
       } else {
-        // Two-handed ready-to-fire forward combat stance (ADS cheek-weld vs hip-fire ready)
+        // Two-handed shouldered combat stance: buttstock tucked in right shoulder, rear grip + foregrip hold, rhythmic idle breathing
         if (this.isADS) {
           pelvisYaw = 0.22;
           torsoYaw = -0.20;
-          torsoPitch = -0.10 + breathe * 0.008;
-          lShX = 0.98 + breathe * 0.008; lElbX = 0.94; lShZ = 0.46;
-          rShX = 1.04 + breathe * 0.008; rElbX = 0.80; rShZ = -0.16;
-          wpnRotX = -Math.PI / 2 + 0.04;
-          wpnRotY = 0.12;
+          torsoPitch = -0.10 + breathe * 0.016;
+          lShX = 1.04 + breathe * 0.016; lElbX = 1.18; lShZ = 0.50;
+          rShX = 1.02 + breathe * 0.016; rElbX = 1.10; rShZ = -0.12;
+          wpnRotX = -Math.PI / 2 - 0.14;
+          wpnRotY = 0.08;
         } else {
           pelvisYaw = moving ? stride * 0.08 : 0.18;
-          torsoYaw = moving ? -stride * 0.07 : -0.15;
-          lShX = 0.86 + breathe * 0.012; lElbX = 0.92; lShZ = 0.45;
-          rShX = 0.90 + breathe * 0.012; rElbX = 0.76; rShZ = -0.15;
-          wpnRotY = 0.14;
+          torsoYaw = moving ? -stride * 0.07 : -0.16;
+          torsoPitch += breathe * 0.018;
+          lShX = 0.98 + breathe * 0.022; lElbX = 1.16; lShZ = 0.50;
+          rShX = 0.94 + breathe * 0.022; rElbX = 1.06; rShZ = -0.12;
+          wpnRotX = -Math.PI / 2 - 0.14;
+          wpnRotY = 0.10;
         }
       }
     }
@@ -1006,29 +1007,40 @@ class Player {
       }
 
       if (ws.isPlating) {
-        // Articulated 3-phase mocap Armor Plate Insertion: reach pouch -> lift plate to carrier -> seat firmly down!
+        // 4-phase mocap Armor Plate Insertion matching 1st-person: 1) Unzip vest -> 2) Pull plate -> 3) Insert into carrier -> 4) Zip closed!
         const pp = ws.plateDuration > 0 ? THREE.MathUtils.clamp(1 - (ws.plateTimer / ws.plateDuration), 0, 1) : ((this.idleTime * 0.7) % 1);
         torsoPitch -= 0.12;
-        torsoYaw += 0.18;
-        rShX = 0.32; rElbX = 0.56; rShZ = 0.16;
+        torsoYaw += 0.16;
+        rShX = 0.34; rElbX = 0.62; rShZ = -0.22;
         wpnRotX = -Math.PI / 2 - 0.55;
-        if (pp < 0.28) {
-          const t = smooth(pp / 0.28);
-          lShX = THREE.MathUtils.lerp(0.55, 0.25, t);
-          lElbX = THREE.MathUtils.lerp(0.85, 1.38, t);
-          lShZ = THREE.MathUtils.lerp(-0.18, -0.58, t);
-        } else if (pp < 0.68) {
-          const t = smooth((pp - 0.28) / 0.40);
-          lShX = THREE.MathUtils.lerp(0.25, 1.38, t);
-          lElbX = THREE.MathUtils.lerp(1.38, 1.48, t);
-          lShZ = THREE.MathUtils.lerp(-0.58, -0.44, t);
-          customHeadPitch = -0.32 * t;
-        } else {
-          const t = smooth((pp - 0.68) / 0.32);
-          lShX = THREE.MathUtils.lerp(1.38, 0.88, t);
-          lElbX = THREE.MathUtils.lerp(1.48, 1.18, t);
-          lShZ = -0.46;
+        if (pp < 0.22) {
+          // Stage 1: Unzip front plate carrier flap across chest
+          const t = smooth(pp / 0.22);
+          lShX = THREE.MathUtils.lerp(0.92, 0.98, t);
+          lElbX = THREE.MathUtils.lerp(1.30, 1.56, t);
+          lShZ = THREE.MathUtils.lerp(0.32, 0.72, t);
+          customHeadPitch = -0.28 * t;
+        } else if (pp < 0.48) {
+          // Stage 2: Reach pouch & lift ceramic armor plate up to open carrier
+          const t = smooth((pp - 0.22) / 0.26);
+          lShX = THREE.MathUtils.lerp(0.30, 1.44, t);
+          lElbX = THREE.MathUtils.lerp(0.65, 1.52, t);
+          lShZ = THREE.MathUtils.lerp(-0.18, 0.62, t);
+          customHeadPitch = -0.32;
+        } else if (pp < 0.78) {
+          // Stage 3: Slide ceramic plate straight down into vest carrier slot
+          const t = smooth((pp - 0.48) / 0.30);
+          lShX = THREE.MathUtils.lerp(1.44, 0.86, t);
+          lElbX = THREE.MathUtils.lerp(1.52, 1.24, t);
+          lShZ = THREE.MathUtils.lerp(0.62, 0.54, t);
           torsoPitch -= Math.sin(t * Math.PI) * 0.08;
+          customHeadPitch = -0.34;
+        } else {
+          // Stage 4: Zip/velcro plate carrier closed across chest
+          const t = smooth((pp - 0.78) / 0.22);
+          lShX = THREE.MathUtils.lerp(0.96, 0.92, t);
+          lElbX = THREE.MathUtils.lerp(1.54, 1.22, t);
+          lShZ = THREE.MathUtils.lerp(0.72, 0.38, t);
           customHeadPitch = -0.32 * (1 - t);
         }
       } else if (ws.isHealing) {
@@ -1296,6 +1308,11 @@ class Player {
     p.head.rotation.x = THREE.MathUtils.lerp(p.head.rotation.x, headPitch, rate);
     p.head.rotation.y = THREE.MathUtils.lerp(p.head.rotation.y, 0, rate);
     p.head.rotation.z = THREE.MathUtils.lerp(p.head.rotation.z, 0, rate);
+    // Visible chest breathing expansion while holding weapon shouldered
+    if (p.torso && !this.dead) {
+      const chestBreath = Math.sin(this.idleTime * 2.1);
+      p.torso.scale.set(1 + chestBreath * 0.012, 1 + chestBreath * 0.010, 1 + chestBreath * 0.026);
+    }
     if (p.leftArm.wrist) {
       p.leftArm.wrist.rotation.x = THREE.MathUtils.lerp(p.leftArm.wrist.rotation.x, lWrX, rate);
       p.leftArm.wrist.rotation.z = THREE.MathUtils.lerp(p.leftArm.wrist.rotation.z, lWrZ, rate);

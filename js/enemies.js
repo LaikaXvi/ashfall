@@ -337,7 +337,8 @@ class Enemy {
         if (builtWpn && builtWpn.group) {
           weaponObj = builtWpn.group;
           weaponObj.scale.setScalar(builtWpn.isPistol ? 1.25 : 1.38);
-          weaponObj.position.set(0, 0.04, builtWpn.isPistol ? -0.06 : -0.18);
+          // Seat buttstock firmly into right shoulder & align rear grip to right glove
+          weaponObj.position.set(builtWpn.isPistol ? 0 : -0.02, 0.035, builtWpn.isPistol ? -0.05 : -0.10);
           if (builtWpn.muzzlePos) {
             muzzleLocalPos.copy(builtWpn.muzzlePos);
           } else {
@@ -696,15 +697,16 @@ class Enemy {
     this._showAlertIndicator('?', duration);
   }
 
-  _hasLineOfSight(playerPos, maxDist = 32) {
-    const eye = new THREE.Vector3(this.position.x, this.position.y + 1.55, this.position.z);
-    const target = playerPos.clone();
+  _hasLineOfSight(targetPos, maxDist = 32) {
+    const eyeY = this.position.y + (this.isProne ? 0.45 : 1.50);
+    const eye = new THREE.Vector3(this.position.x, eyeY, this.position.z);
+    const target = targetPos.clone();
     const dir = target.sub(eye);
     const dist = dir.length();
-    if (dist > maxDist) return false;
+    if (dist > maxDist || dist < 0.05) return dist <= maxDist;
     dir.normalize();
 
-    // Check if an active smoke cloud blocks line-of-sight
+    // 1. Check if an active smoke cloud blocks line-of-sight
     if (this.world && this.world.activeSmokes && this.world.activeSmokes.length > 0) {
       for (const sm of this.world.activeSmokes) {
         if (!sm.active) continue;
@@ -717,9 +719,55 @@ class Enemy {
       }
     }
 
-    const ray = new THREE.Raycaster(eye, dir, 0.2, dist);
+    // 2. Check terrain hill occlusion (never see or shoot through hills/ridges!)
+    if (this.world && this.world.getTerrainHeight && dist > 3.0) {
+      const steps = 5;
+      for (let s = 1; s < steps; s++) {
+        const f = s / steps;
+        const sx = eye.x + dir.x * dist * f;
+        const sy = eye.y + dir.y * dist * f;
+        const sz = eye.z + dir.z * dist * f;
+        if (sy < this.world.getTerrainHeight(sx, sz) + 0.12) return false;
+      }
+    }
+
+    // 3. Check closed solid doors along ray (never see or shoot through closed doors!)
+    if (this.world && this.world.doors && this.world.doors.length > 0) {
+      for (let i = 0; i < this.world.doors.length; i++) {
+        const d = this.world.doors[i];
+        if (!d || d.passable) continue;
+        const toDoorX = d.center.x - eye.x;
+        const toDoorZ = d.center.z - eye.z;
+        const proj = toDoorX * dir.x + toDoorZ * dir.z;
+        if (proj > 0.25 && proj < dist - 0.25) {
+          const cx = eye.x + dir.x * proj;
+          const cy = eye.y + dir.y * proj;
+          const cz = eye.z + dir.z * proj;
+          if (Math.hypot(cx - d.center.x, cz - d.center.z) < 0.72 && cy >= d.hingePos.y && cy <= d.hingePos.y + 2.3) {
+            return false;
+          }
+        }
+      }
+    }
+
+    // 4. Raycast solid building walls & structures
+    const ray = new THREE.Raycaster(eye, dir, 0.22, dist - 0.15);
     const hits = ray.intersectObjects((this.world.wallMeshes && this.world.wallMeshes.length > 0) ? this.world.wallMeshes : this.world.shootableMeshes, false);
     return hits.length === 0;
+  }
+
+  _lerpYaw(targetYaw, rate) {
+    let diff = targetYaw - this.group.rotation.y;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    this.group.rotation.y += diff * Math.min(1, rate);
+  }
+
+  _isPathSegmentClear(dirX, dirZ, checkDist = 2.0, r = 0.44) {
+    for (let d = 0.65; d <= checkDist; d += 0.65) {
+      if (this._collides(this.position.x + dirX * d, this.position.z + dirZ * d, r)) return false;
+    }
+    return true;
   }
 
   _moveToward(target, speed, dt, faceTarget = null) {
@@ -729,17 +777,106 @@ class Enemy {
     const dx = target.x - this.position.x;
     const dz = target.z - this.position.z;
     const dist = Math.hypot(dx, dz);
-    if (dist < 0.4) {
-      this.leftHip.rotation.x = THREE.MathUtils.lerp(this.leftHip.rotation.x, 0, dt * 10);
-      this.rightHip.rotation.x = THREE.MathUtils.lerp(this.rightHip.rotation.x, 0, dt * 10);
+    if (dist < 0.42) {
+      this._animMoving = false;
+      this.updateVisualAnim(dt, false, 0);
       return false;
     }
 
-    const vx = (dx / dist) * speed * dt;
-    const vz = (dz / dist) * speed * dt;
+    const r = 0.44;
+    let dirX = dx / dist;
+    let dirZ = dz / dist;
 
-    // Simple X/Z slide against world colliders
-    const r = 0.45;
+    // 1. Proactively open any closed door directly ahead of our travel path!
+    if (this.world && this.world.doors && this.world.interactDoor) {
+      for (let i = 0; i < this.world.doors.length; i++) {
+        const door = this.world.doors[i];
+        if (!door || door.state !== 'closed' || door.locked) continue;
+        if (Math.abs(this.position.y - door.hingePos.y) > 2.0) continue;
+        const ddx = door.center.x - this.position.x;
+        const ddz = door.center.z - this.position.z;
+        const dDist = Math.hypot(ddx, ddz);
+        if (dDist < 2.55) {
+          const dot = (ddx * dirX + ddz * dirZ) / (dDist || 1);
+          if (dot > 0.25) {
+            this.world.interactDoor(door, this.position, false);
+          }
+        }
+      }
+    }
+
+    // 2. Obstacle-Aware Pathfinding: Multi-angle steering + Doorway-Seeking + Persistent Wall-Following!
+    const lookDist = Math.min(dist, 2.05);
+    if (!this._isPathSegmentClear(dirX, dirZ, lookDist, r)) {
+      if (!this._navWallSide) this._navWallSide = Math.random() < 0.5 ? 1 : -1;
+      let steered = false;
+
+      // 2a. First check if a nearby doorway bridges around the blocking wall toward our destination
+      if (this.world && this.world.doors && this.world.doors.length > 0) {
+        let bestDoor = null;
+        let bestScore = Infinity;
+        for (let i = 0; i < this.world.doors.length; i++) {
+          const door = this.world.doors[i];
+          if (!door || door.locked) continue;
+          if (Math.abs(this.position.y - door.hingePos.y) > 2.0) continue;
+          const dSelf = Math.hypot(door.center.x - this.position.x, door.center.z - this.position.z);
+          if (dSelf < 0.75 || dSelf > 10.5) continue;
+          const dGoal = Math.hypot(door.center.x - target.x, door.center.z - target.z);
+          if (dGoal < dist + 2.5) {
+            const toDoorX = (door.center.x - this.position.x) / dSelf;
+            const toDoorZ = (door.center.z - this.position.z) / dSelf;
+            if (this._isPathSegmentClear(toDoorX, toDoorZ, Math.min(dSelf, 2.0), r)) {
+              const score = dSelf + dGoal * 0.7;
+              if (score < bestScore) {
+                bestScore = score;
+                bestDoor = { x: toDoorX, z: toDoorZ };
+              }
+            }
+          }
+        }
+        if (bestDoor) {
+          dirX = bestDoor.x;
+          dirZ = bestDoor.z;
+          steered = true;
+        }
+      }
+
+      // 2b. Otherwise sweep candidate whisker rays biased by persistent wall-follow side to walk cleanly around walls/corners!
+      if (!steered) {
+        const baseAng = Math.atan2(dirX, dirZ);
+        const s = this._navWallSide;
+        const offsets = [0.45 * s, 0.90 * s, 1.35 * s, 1.80 * s, -0.45 * s, -0.90 * s, -1.35 * s, -1.80 * s, 2.35 * s, -2.35 * s];
+        for (let i = 0; i < offsets.length; i++) {
+          const ang = baseAng + offsets[i];
+          const cx = Math.sin(ang);
+          const cz = Math.cos(ang);
+          if (this._isPathSegmentClear(cx, cz, 1.85, r)) {
+            dirX = cx;
+            dirZ = cz;
+            if (offsets[i] * s < 0) this._navWallSide = -s;
+            steered = true;
+            break;
+          }
+        }
+      }
+    }
+
+    // Smooth steering direction slightly to avoid jittery snapping around corners
+    if (this._moveDirX !== undefined && Number.isFinite(this._moveDirX)) {
+      dirX = THREE.MathUtils.lerp(this._moveDirX, dirX, Math.min(1, dt * 9));
+      dirZ = THREE.MathUtils.lerp(this._moveDirZ, dirZ, Math.min(1, dt * 9));
+      const dLen = Math.hypot(dirX, dirZ) || 1;
+      dirX /= dLen;
+      dirZ /= dLen;
+    }
+    this._moveDirX = dirX;
+    this._moveDirZ = dirZ;
+
+    const prevX = this.position.x;
+    const prevZ = this.position.z;
+    const vx = dirX * speed * dt;
+    const vz = dirZ * speed * dt;
+
     if (!this._collides(this.position.x + vx, this.position.z, r)) {
       this.position.x += vx;
     }
@@ -747,23 +884,39 @@ class Enemy {
       this.position.z += vz;
     }
 
-    const gy = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(this.position.x, this.position.z) : 0;
+    const movedDist = Math.hypot(this.position.x - prevX, this.position.z - prevZ);
+    // Anti-stuck detector: if blocked against a tight corner, flip wall-follow side!
+    if (movedDist < speed * dt * 0.18) {
+      this._stuckTimer = (this._stuckTimer || 0) + dt;
+      if (this._stuckTimer > 0.42) {
+        this._navWallSide = -(this._navWallSide || 1);
+        this._stuckTimer = 0;
+        this._moveDirX = undefined;
+      }
+    } else {
+      this._stuckTimer = 0;
+    }
+
+    const gy = this._getGroundY(this.position.x, this.position.z);
     this.position.y = gy;
     this.group.position.x = this.position.x;
-    this.group.position.y = gy;
+    this.group.position.y = this.isProne ? (gy + 0.22) : gy;
     this.group.position.z = this.position.z;
 
+    // 3. ALWAYS look in the actual walking direction unless explicitly facing a visible LOS combat target!
     if (faceTarget) {
-      this.group.rotation.y = Math.atan2(faceTarget.x - this.position.x, faceTarget.z - this.position.z);
+      this._lerpYaw(Math.atan2(faceTarget.x - this.position.x, faceTarget.z - this.position.z), dt * 11);
+    } else if (movedDist > 0.002) {
+      this._lerpYaw(Math.atan2(this.position.x - prevX, this.position.z - prevZ), dt * 9);
     } else {
-      this.group.rotation.y = Math.atan2(dx, dz);
+      this._lerpYaw(Math.atan2(dirX, dirZ), dt * 7);
     }
 
     // Leg walk animation around hip pivots + articulated knee/arm/torso motion
-    this._animMoving = true;
+    this._animMoving = movedDist > 0.002;
     this._animSpeed = speed;
-    this.updateVisualAnim(dt, true, speed);
-    return true;
+    this.updateVisualAnim(dt, this._animMoving, speed);
+    return this._animMoving;
   }
 
   // Articulated motion-capture-adjacent 3rd-person animation (also runs smoothly at long sniper scope distances!)
@@ -772,7 +925,7 @@ class Enemy {
     const isMoving = movingOverride !== null ? movingOverride : !!this._animMoving;
     const spd = speedOverride !== null ? speedOverride : (this._animSpeed || this.speed || 3.4);
     const isSprinting = isMoving && (this.isTacSprinting || spd >= 4.6);
-    const isCrouching = !isMoving && (this.state === 'COMBAT' && this.coverTarget != null);
+    const isCrouching = !this.isProne && !isMoving && (this.state === 'COMBAT' && this.coverSpot != null && !this.isPeeking);
     const isFocusing = this.state === 'COMBAT' && !isSprinting;
     const isPlating = (this.platingTimer || 0) > 0;
     const isReloading = (this.reloadTimer || 0) > 0;
@@ -781,92 +934,149 @@ class Enemy {
       this._walkPhase = (this._walkPhase || 0) + dt * (isSprinting ? 10.5 : 7.2);
     }
     const ph = this._walkPhase || 0;
-    const strideAmp = isMoving ? (isSprinting ? 0.72 : 0.46) : 0;
-    const lSwing = Math.sin(ph) * strideAmp;
-    const rSwing = -Math.sin(ph) * strideAmp;
+    const strideSin = Math.sin(ph);
+    const strideCos = Math.cos(ph);
+    const strideAmp = isMoving ? (isSprinting ? 0.68 : 0.44) : 0;
+    const lSwing = strideSin * strideAmp;
+    const rSwing = -strideSin * strideAmp;
 
-    // Articulated Hip & Knee kinematics
+    const nowS = (this._animTime = (this._animTime || 0) + dt);
+    if (this._breathSeed === undefined) this._breathSeed = Math.random() * Math.PI * 2;
+    const breath = Math.sin(nowS * 2.1 + this._breathSeed);
+
+    // Articulated Hip & Anatomical Knee kinematics
+    // NOTE: On buildTacticalOperatorModel (this.opModel), hip.x > 0 swings thigh FORWARD, and knee.x < 0 bends shin BACKWARD!
     if (this.leftHip && this.rightHip) {
-      const targetLHip = isCrouching ? -0.78 : lSwing;
-      const targetRHip = isCrouching ? -0.58 : rSwing;
-      this.leftHip.rotation.x = THREE.MathUtils.lerp(this.leftHip.rotation.x, targetLHip, Math.min(1, dt * 12));
-      this.rightHip.rotation.x = THREE.MathUtils.lerp(this.rightHip.rotation.x, targetRHip, Math.min(1, dt * 12));
+      if (this.opModel) {
+        const targetLHip = this.isProne ? -0.06 : (isCrouching ? 0.88 : (isMoving ? lSwing : 0.06));
+        const targetRHip = this.isProne ? -0.06 : (isCrouching ? 0.74 : (isMoving ? rSwing : -0.05));
+        this.leftHip.rotation.x = THREE.MathUtils.lerp(this.leftHip.rotation.x, targetLHip, Math.min(1, dt * 12));
+        this.rightHip.rotation.x = THREE.MathUtils.lerp(this.rightHip.rotation.x, targetRHip, Math.min(1, dt * 12));
+        if (this.opModel.pelvis) {
+          const targetPelvisY = this.isProne ? 0.24 : (isCrouching ? 0.66 : 0.90);
+          this.opModel.pelvis.position.y = THREE.MathUtils.lerp(this.opModel.pelvis.position.y, targetPelvisY, Math.min(1, dt * 11));
+        }
+      } else {
+        const targetLHip = isCrouching ? -0.78 : lSwing;
+        const targetRHip = isCrouching ? -0.58 : rSwing;
+        this.leftHip.rotation.x = THREE.MathUtils.lerp(this.leftHip.rotation.x, targetLHip, Math.min(1, dt * 12));
+        this.rightHip.rotation.x = THREE.MathUtils.lerp(this.rightHip.rotation.x, targetRHip, Math.min(1, dt * 12));
+      }
     }
     if (this.leftKnee && this.rightKnee) {
-      const targetLKnee = isCrouching ? 1.38 : (isMoving ? Math.max(0.08, -lSwing * 0.95 + 0.22) : 0.08);
-      const targetRKnee = isCrouching ? 1.15 : (isMoving ? Math.max(0.08, -rSwing * 0.95 + 0.22) : 0.08);
-      this.leftKnee.rotation.x = THREE.MathUtils.lerp(this.leftKnee.rotation.x, targetLKnee, Math.min(1, dt * 12));
-      this.rightKnee.rotation.x = THREE.MathUtils.lerp(this.rightKnee.rotation.x, targetRKnee, Math.min(1, dt * 12));
+      if (this.opModel) {
+        const kneeLift = isSprinting ? 1.05 : 0.68;
+        const targetLKnee = this.isProne ? -0.14 : (isCrouching ? -1.34 : (isMoving ? (-Math.max(0, -strideCos) * kneeLift - 0.10) : -0.12));
+        const targetRKnee = this.isProne ? -0.14 : (isCrouching ? -1.22 : (isMoving ? (-Math.max(0, strideCos) * kneeLift - 0.10) : -0.10));
+        this.leftKnee.rotation.x = THREE.MathUtils.lerp(this.leftKnee.rotation.x, targetLKnee, Math.min(1, dt * 12));
+        this.rightKnee.rotation.x = THREE.MathUtils.lerp(this.rightKnee.rotation.x, targetRKnee, Math.min(1, dt * 12));
+      } else {
+        const targetLKnee = isCrouching ? -1.2 : (isMoving ? -Math.max(0.08, -lSwing * 0.9 + 0.18) : -0.08);
+        const targetRKnee = isCrouching ? -1.1 : (isMoving ? -Math.max(0.08, -rSwing * 0.9 + 0.18) : -0.08);
+        this.leftKnee.rotation.x = THREE.MathUtils.lerp(this.leftKnee.rotation.x, targetLKnee, Math.min(1, dt * 12));
+        this.rightKnee.rotation.x = THREE.MathUtils.lerp(this.rightKnee.rotation.x, targetRKnee, Math.min(1, dt * 12));
+      }
     }
 
-    // Articulated Torso lean, crouch drop & PRONE combat fighting posture when no cover is available!
+    // Articulated Torso lean, crouch drop & PROPPED-UP PRONE posture (looking forward, zero ground clipping!)
     if (this.group) {
       this.group.visible = !this.extracted && !this.removed;
       this.group.position.x = this.position.x;
       this.group.position.z = this.position.z;
       const baseGy = this._getGroundY();
-      const targetRotX = this.isProne ? 1.28 : 0;
-      const targetY = this.isProne ? (baseGy + 0.26) : baseGy;
+      const targetRotX = this.isProne ? 1.38 : 0;
+      const targetY = this.isProne ? (baseGy + 0.22) : baseGy;
       this.group.rotation.x = THREE.MathUtils.lerp(this.group.rotation.x, targetRotX, Math.min(1, dt * 9));
       this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, targetY, Math.min(1, dt * 9));
     }
     if (this.torsoGroup) {
-      const targetTorsoX = this.isProne ? -0.35 : (isCrouching ? 0.24 : (isSprinting ? 0.16 : (isFocusing ? 0.08 : 0.02)));
+      // On opModel (root rotated Y=PI), positive torso.x arches chest UP off the ground while prone!
+      const targetTorsoX = this.opModel
+        ? (this.isProne ? (0.48 + breath * 0.016) : (isCrouching ? (-0.22 + breath * 0.014) : (isSprinting ? -0.20 : (-0.06 + breath * 0.018))))
+        : (this.isProne ? -0.35 : (isCrouching ? 0.24 : (isSprinting ? 0.16 : (isFocusing ? 0.08 : 0.02))));
       this.torsoGroup.rotation.x = THREE.MathUtils.lerp(this.torsoGroup.rotation.x, targetTorsoX, Math.min(1, dt * 10));
+      // Visible idle chest breathing expansion
+      this.torsoGroup.scale.set(1 + breath * 0.012, 1 + breath * 0.010, 1 + breath * 0.026);
     }
 
-    // Articulated Arms & Elbows (Focusing ADS, Reloading, Plating, Sprinting)
-    const nowS = (this._animTime = (this._animTime || 0) + dt);
-    if (this.plateProp) this.plateProp.visible = isPlating;
+    // Articulated Arms & Elbows (Shouldered Two-Handed Hold, Idle Breathing, 4-Phase Unzip/Insert/Zip Plating, Prone, Sprinting)
+    let showPlateProp = false;
+    let platingHeadPitch = null;
     if (this.leftArm && this.rightArm) {
       if (this.opModel) {
-        // Articulated Tactical Operator rig (positive shoulder.x & elbow.x swing forward/up across chest)
-        let lX = 0.84, rX = 0.88, lZ = 0.44, rZ = -0.14;
-        let lElb = 0.92, rElb = 0.76;
+        // Default: weapon tightly shouldered, right hand on rear grip, left hand on foregrip/handguard, breathing gently
+        let lX = 0.98 + breath * 0.022, rX = 0.94 + breath * 0.022, lZ = 0.50, rZ = -0.12;
+        let lElb = 1.16, rElb = 1.06;
+        let wpnX = -Math.PI / 2 - 0.14;
         if (isPlating) {
-          // 3-phase armor plate insertion: 1) reach hip pouch -> 2) lift plate to vest -> 3) slide into carrier
-          const pProg = THREE.MathUtils.clamp(1 - ((this.platingTimer || 0) / 1.9), 0, 1);
-          if (pProg < 0.28) {
-            const k = pProg / 0.28;
-            lX = THREE.MathUtils.lerp(0.65, 0.22, k);
-            lZ = THREE.MathUtils.lerp(0.35, -0.22, k);
-            lElb = THREE.MathUtils.lerp(0.75, 0.35, k);
-          } else if (pProg < 0.65) {
-            const k = (pProg - 0.28) / 0.37;
-            lX = THREE.MathUtils.lerp(0.22, 1.48, k);
-            lZ = THREE.MathUtils.lerp(-0.22, 0.68, k);
-            lElb = THREE.MathUtils.lerp(0.35, 1.55, k);
+          // 4-phase plating animation matching 1st-person: 1) Unzip vest -> 2) Pull plate -> 3) Insert plate -> 4) Zip carrier closed!
+          const pProg = THREE.MathUtils.clamp(1 - ((this.platingTimer || 0) / 2.6), 0, 1);
+          if (pProg < 0.22) {
+            // Stage 1: Unzip plate carrier flap across front of vest
+            const k = pProg / 0.22;
+            lX = THREE.MathUtils.lerp(0.92, 0.98, k);
+            lZ = THREE.MathUtils.lerp(0.32, 0.72, k);
+            lElb = THREE.MathUtils.lerp(1.28, 1.56, k);
+            platingHeadPitch = -0.28 * k;
+          } else if (pProg < 0.48) {
+            // Stage 2: Grab 3D ceramic armor plate from pouch & lift to open carrier
+            const k = (pProg - 0.22) / 0.26;
+            showPlateProp = k > 0.15;
+            lX = THREE.MathUtils.lerp(0.28, 1.46, k);
+            lZ = THREE.MathUtils.lerp(-0.18, 0.64, k);
+            lElb = THREE.MathUtils.lerp(0.60, 1.52, k);
+            platingHeadPitch = -0.32;
+          } else if (pProg < 0.78) {
+            // Stage 3: Slide ceramic plate straight down into front vest slot
+            const k = (pProg - 0.48) / 0.30;
+            showPlateProp = k < 0.82;
+            lX = THREE.MathUtils.lerp(1.46, 0.86, k);
+            lZ = THREE.MathUtils.lerp(0.64, 0.54, k);
+            lElb = THREE.MathUtils.lerp(1.52, 1.24, k);
+            platingHeadPitch = -0.34;
           } else {
-            const k = (pProg - 0.65) / 0.35;
-            lX = THREE.MathUtils.lerp(1.48, 0.92, k);
-            lZ = THREE.MathUtils.lerp(0.68, 0.52, k);
-            lElb = THREE.MathUtils.lerp(1.55, 1.15, k);
+            // Stage 4: Zip/velcro plate carrier closed across chest
+            const k = (pProg - 0.78) / 0.22;
+            lX = THREE.MathUtils.lerp(0.96, 0.92, k);
+            lZ = THREE.MathUtils.lerp(0.72, 0.40, k);
+            lElb = THREE.MathUtils.lerp(1.54, 1.18, k);
+            platingHeadPitch = -0.32 * (1 - k);
           }
           // Right hand dips weapon down/out to clear the front plate carrier
-          rX = 0.36;
-          rZ = -0.26;
-          rElb = 0.55;
+          rX = 0.34;
+          rZ = -0.24;
+          rElb = 0.62;
+          wpnX = -Math.PI / 2 - 0.52;
+        } else if (this.isProne) {
+          // Prone: elbows propped cleanly on ground, forearms & shouldered rifle elevated above terrain!
+          lX = 1.50 + breath * 0.015;
+          rX = 1.52 + breath * 0.015;
+          lZ = 0.44;
+          rZ = -0.12;
+          lElb = 1.08;
+          rElb = 1.00;
+          wpnX = -Math.PI / 2 - 0.18;
         } else if (isReloading) {
           const cyc = (nowS * 2.6) % 1;
           lX = 0.62 + Math.sin(cyc * Math.PI) * 0.55;
           lZ = 0.42;
-          rX = 0.82;
+          rX = 0.88;
           rZ = -0.12;
-          lElb = 1.25;
+          lElb = 1.28;
         } else if (isFocusing) {
-          lX = 0.90;
-          rX = 0.94;
-          lZ = 0.46;
-          rZ = -0.14;
-          lElb = 0.94;
-          rElb = 0.80;
+          lX = 1.02 + breath * 0.014;
+          rX = 1.00 + breath * 0.014;
+          lZ = 0.50;
+          rZ = -0.12;
+          lElb = 1.18;
+          rElb = 1.10;
         } else if (isSprinting) {
-          lX = 0.52 + Math.sin(ph) * 0.26;
-          rX = 1.05 - Math.sin(ph) * 0.18;
-          lZ = 0.24;
-          rZ = -0.20;
-          lElb = 0.85;
-          rElb = 0.90;
+          lX = 0.54 + strideSin * 0.24;
+          rX = 1.06 - strideSin * 0.16;
+          lZ = 0.26;
+          rZ = -0.18;
+          lElb = 0.92;
+          rElb = 0.98;
         }
         this.leftArm.rotation.x = THREE.MathUtils.lerp(this.leftArm.rotation.x, lX, Math.min(1, dt * 12));
         this.rightArm.rotation.x = THREE.MathUtils.lerp(this.rightArm.rotation.x, rX, Math.min(1, dt * 12));
@@ -874,8 +1084,11 @@ class Enemy {
         this.rightArm.rotation.z = THREE.MathUtils.lerp(this.rightArm.rotation.z, rZ, Math.min(1, dt * 12));
         if (this.leftElbow) this.leftElbow.rotation.x = THREE.MathUtils.lerp(this.leftElbow.rotation.x, lElb, Math.min(1, dt * 12));
         if (this.rightElbow) this.rightElbow.rotation.x = THREE.MathUtils.lerp(this.rightElbow.rotation.x, rElb, Math.min(1, dt * 12));
+        if (this.opModel.weaponMount) {
+          this.opModel.weaponMount.rotation.x = THREE.MathUtils.lerp(this.opModel.weaponMount.rotation.x, wpnX, Math.min(1, dt * 12));
+        }
       } else {
-        let lX = -0.82, rX = -1.02, lZ = 0.14, rZ = -0.10;
+        let lX = -0.82 + breath * 0.02, rX = -1.02 + breath * 0.02, lZ = 0.14, rZ = -0.10;
         let lElb = -0.75, rElb = -0.85;
         if (isPlating) {
           const cyc = (nowS * 2.2) % 1;
@@ -898,8 +1111,8 @@ class Enemy {
           lElb = -0.92;
           rElb = -1.05;
         } else if (isSprinting) {
-          lX = -1.15 + Math.sin(ph) * 0.22;
-          rX = -1.25 - Math.sin(ph) * 0.22;
+          lX = -1.15 + strideSin * 0.22;
+          rX = -1.25 - strideSin * 0.22;
           lZ = 0.28;
           rZ = -0.22;
         }
@@ -911,11 +1124,16 @@ class Enemy {
         if (this.rightElbow) this.rightElbow.rotation.x = THREE.MathUtils.lerp(this.rightElbow.rotation.x, rElb, Math.min(1, dt * 11));
       }
     }
+    if (this.plateProp) this.plateProp.visible = showPlateProp;
 
-    // Cheek-weld head tilt when focusing weapon
+    // Head orientation: look straight forward when prone, look down at chest while plating, cheek-weld when focusing
     if (this.headGroup) {
-      const targetHeadZ = isFocusing ? -0.10 : 0;
+      const targetHeadZ = isFocusing && !isPlating ? -0.10 : 0;
+      const targetHeadX = platingHeadPitch !== null
+        ? platingHeadPitch
+        : (this.isProne ? 0.86 : (breath * 0.015));
       this.headGroup.rotation.z = THREE.MathUtils.lerp(this.headGroup.rotation.z, targetHeadZ, Math.min(1, dt * 10));
+      this.headGroup.rotation.x = THREE.MathUtils.lerp(this.headGroup.rotation.x, targetHeadX, Math.min(1, dt * 10));
     }
   }
 
@@ -1084,7 +1302,7 @@ class Enemy {
         const fPos = ft.type === 'player' ? player.position : ft.ref.position;
         const fDist = this.position.distanceTo(fPos);
         if (fDist < 58) {
-          const eyeCheck = ft.type === 'player' ? fPos : new THREE.Vector3(fPos.x, 1.4, fPos.z);
+          const eyeCheck = ft.type === 'player' ? fPos : new THREE.Vector3(fPos.x, fPos.y + 1.35, fPos.z);
           if (this._hasLineOfSight(eyeCheck, 62)) {
             best = { type: ft.type, ref: ft.ref, pos: fPos, dist: fDist };
             bestDist = Math.min(fDist, 5.5); // only interrupt focus for a point-blank threat < 5.5m!
@@ -1108,7 +1326,7 @@ class Enemy {
 
       const dist = this.position.distanceTo(other.position);
       if (dist >= bestDist || dist > 28) continue;
-      const tgtEye = new THREE.Vector3(other.position.x, 1.4, other.position.z);
+      const tgtEye = new THREE.Vector3(other.position.x, other.position.y + 1.35, other.position.z);
       if (this._hasLineOfSight(tgtEye, 30)) {
         bestDist = dist;
         best = { type: 'ai', ref: other, pos: other.position, dist };
@@ -1243,7 +1461,7 @@ class Enemy {
             if (this.plateProp) this.plateProp.visible = false;
           }
         } else if (this.armor < (this.maxArmor || 100) && this.operatorEquipment && this.operatorEquipment.plates > 0 && this.timeSinceDamaged >= 1.5) {
-          this.platingTimer = 1.9;
+          this.platingTimer = 2.6;
         }
         // 3. In-Depth POI Looting: approach & pick up loose ground items or loot nearby POI containers when not in combat!
         if (this.state === 'PATROL' && this.world) {
@@ -1371,10 +1589,20 @@ class Enemy {
           this.group.position.y = gyScoot - 0.50 + heave * 0.035;
           this.group.rotation.x = -0.22 - heave * 0.04;
           this.group.rotation.z = phase * 0.045;
-          if (this.leftArm) { this.leftArm.rotation.x = 0.55 + phase * 0.28; this.leftArm.rotation.z = 0.24; }
-          if (this.rightArm) { this.rightArm.rotation.x = -0.75; this.rightArm.rotation.z = -0.45; }
-          if (this.leftHip) this.leftHip.rotation.x = -1.38 - heave * 0.14;
-          if (this.rightHip) this.rightHip.rotation.x = -1.38 - Math.max(0, -phase) * 0.10;
+          if (this.opModel) {
+            if (this.leftArm) { this.leftArm.rotation.x = 0.48 + phase * 0.24; this.leftArm.rotation.z = 0.24; }
+            if (this.rightArm) { this.rightArm.rotation.x = -0.58; this.rightArm.rotation.z = -0.40; }
+            // Anatomical seated scoot: positive hip swings legs forward, NEGATIVE knee bends knees naturally downward!
+            if (this.leftHip) this.leftHip.rotation.x = 1.32 + heave * 0.14;
+            if (this.rightHip) this.rightHip.rotation.x = 1.28 + Math.max(0, -phase) * 0.10;
+            if (this.leftKnee) this.leftKnee.rotation.x = -0.68 - heave * 0.16;
+            if (this.rightKnee) this.rightKnee.rotation.x = -0.64 - Math.max(0, -phase) * 0.14;
+          } else {
+            if (this.leftArm) { this.leftArm.rotation.x = 0.55 + phase * 0.28; this.leftArm.rotation.z = 0.24; }
+            if (this.rightArm) { this.rightArm.rotation.x = -0.75; this.rightArm.rotation.z = -0.45; }
+            if (this.leftHip) this.leftHip.rotation.x = -1.38 - heave * 0.14;
+            if (this.rightHip) this.rightHip.rotation.x = -1.38 - Math.max(0, -phase) * 0.10;
+          }
         }
       } else {
         const gyIdleDown = this._getGroundY();
@@ -1382,8 +1610,15 @@ class Enemy {
         this.group.position.y = gyIdleDown - 0.50;
         this.group.rotation.x = -0.26;
         this.group.rotation.z = 0;
-        if (this.leftHip) this.leftHip.rotation.x = -1.34;
-        if (this.rightHip) this.rightHip.rotation.x = -1.34;
+        if (this.opModel) {
+          if (this.leftHip) this.leftHip.rotation.x = 1.28;
+          if (this.rightHip) this.rightHip.rotation.x = 1.28;
+          if (this.leftKnee) this.leftKnee.rotation.x = -0.65;
+          if (this.rightKnee) this.rightKnee.rotation.x = -0.65;
+        } else {
+          if (this.leftHip) this.leftHip.rotation.x = -1.34;
+          if (this.rightHip) this.rightHip.rotation.x = -1.34;
+        }
       }
       if (!this.beingRevivedBy && this.downedBleedTimer <= 0) {
         this.die();
@@ -1501,9 +1736,12 @@ class Enemy {
       }
 
       const tPos = target.pos;
-      const dx = tPos.x - this.position.x;
-      const dz = tPos.z - this.position.z;
-      this.group.rotation.y = Math.atan2(dx, dz);
+      const aimCheckPos = target.type === 'player' ? tPos : new THREE.Vector3(tPos.x, tPos.y + 1.35, tPos.z);
+      const hasClearLOS = this._hasLineOfSight(aimCheckPos, 62);
+      // Only stare toward target when we actually have unobstructed line-of-sight (never stare through walls!)
+      if (hasClearLOS && !this.isTacSprinting) {
+        this._lerpYaw(Math.atan2(tPos.x - this.position.x, tPos.z - this.position.z), dt * 14);
+      }
 
       // 1. Active Tactical Slide update (Operator slides into cover or around corners!)
       if (this.isOperator && this.slideTimer > 0) {
@@ -1587,7 +1825,7 @@ class Enemy {
           }
         }
         this.isTacSprinting = false;
-        this.platingTimer = 2.0;
+        this.platingTimer = 2.6;
         return;
       }
 
@@ -1614,64 +1852,79 @@ class Enemy {
           this.isTacSprinting = useTac;
           if (useTac) this.tacStamina = Math.max(0, this.tacStamina - 24 * dt);
           else this.tacStamina = Math.min(100, (this.tacStamina || 0) + 18 * dt);
-          this._moveToward(goal, this.speed * (useTac ? 1.58 : (this.isPeeking ? 0.90 : 1.15)), dt, tPos);
+          // Only face target while moving if actively peeking WITH unobstructed LOS; otherwise look where walking!
+          this._moveToward(goal, this.speed * (useTac ? 1.58 : (this.isPeeking ? 0.90 : 1.15)), dt, (hasClearLOS && this.isPeeking && !useTac) ? tPos : null);
           if (this.isOperator && this.isPeeking && distGoal < 3.0 && this.slideCooldown <= 0 && Math.random() < 0.08) {
             this._startOperatorSlide(goal.clone().sub(this.position));
           }
         } else {
           this.isTacSprinting = false;
-          if (this.isOperator && this.isPeeking) targetLean = this.leanDir * 0.24;
+          this._animMoving = false;
+          this.updateVisualAnim(dt, false, 0);
+          if (this.isOperator && this.isPeeking && hasClearLOS) targetLean = this.leanDir * 0.24;
         }
       } else if (target.dist > 18) {
         this.isTacSprinting = this.isOperator && this.tacStamina > 15;
         if (this.isTacSprinting) this.tacStamina = Math.max(0, this.tacStamina - 24 * dt);
         else this.tacStamina = Math.min(100, (this.tacStamina || 0) + 18 * dt);
-        this._moveToward(tPos, this.speed * (this.isTacSprinting ? 1.60 : 1.05), dt, tPos);
+        this._moveToward(tPos, this.speed * (this.isTacSprinting ? 1.60 : 1.05), dt, (hasClearLOS && !this.isTacSprinting) ? tPos : null);
         if (this.isTacSprinting && target.dist < 22 && this.slideCooldown <= 0 && Math.random() < 0.04) {
           this._startOperatorSlide(tPos.clone().sub(this.position));
         }
       } else if (this.isOperator) {
         this.isTacSprinting = false;
+        this._animMoving = false;
+        this.updateVisualAnim(dt, false, 0);
         this.tacStamina = Math.min(100, (this.tacStamina || 0) + 20 * dt);
-        targetLean = this.leanDir * 0.18;
+        if (hasClearLOS) targetLean = this.leanDir * 0.18;
       }
 
       if (this.isOperator) {
         const gyStand = this._getGroundY();
         this.position.y = gyStand;
-        this.leanAngle = THREE.MathUtils.lerp(this.leanAngle || 0, targetLean, Math.min(1, dt * 10));
+        this.leanAngle = THREE.MathUtils.lerp(this.leanAngle || 0, this.isProne ? 0 : targetLean, Math.min(1, dt * 10));
         this.group.rotation.z = this.leanAngle;
-        this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, gyStand, Math.min(1, dt * 12));
-        this.group.rotation.x = THREE.MathUtils.lerp(this.group.rotation.x, 0, Math.min(1, dt * 12));
-        // Aim head, torso, both arms & weaponMount directly at target elevation (or tactical sprint pose)
-        if (this.opModel && tPos) {
+        if (!this.isProne) {
+          this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, gyStand, Math.min(1, dt * 12));
+          this.group.rotation.x = THREE.MathUtils.lerp(this.group.rotation.x, 0, Math.min(1, dt * 12));
+        }
+        // Aim head, torso, both arms & weaponMount directly at target elevation ONLY when we have clear LOS!
+        if (this.opModel && tPos && hasClearLOS) {
           const m = this.opModel;
           const hDist = Math.max(1, Math.hypot(tPos.x - this.position.x, tPos.z - this.position.z));
           const aimTargetY = (target.type === 'player') ? (tPos.y - 0.15) : (tPos.y + 1.25);
-          const aimPitch = THREE.MathUtils.clamp(Math.atan2((aimTargetY - (this.position.y + 1.38)), hDist), -0.75, 0.75);
-          m.head.rotation.x = THREE.MathUtils.lerp(m.head.rotation.x, aimPitch * 0.72, Math.min(1, dt * 14));
-          if (this.isTacSprinting && this.fireTimer > 0.18) {
+          const eyeH = this.position.y + (this.isProne ? 0.45 : 1.38);
+          const aimPitch = THREE.MathUtils.clamp(Math.atan2((aimTargetY - eyeH), hDist), -0.75, 0.75);
+          if (this.isProne) {
+            // Propped-up prone aiming: head looks forward/up at target, rifle elevated cleanly above ground
+            m.head.rotation.x = THREE.MathUtils.lerp(m.head.rotation.x, 0.86 + aimPitch * 0.45, Math.min(1, dt * 14));
+            m.torso.rotation.x = THREE.MathUtils.lerp(m.torso.rotation.x, 0.48 + aimPitch * 0.18, Math.min(1, dt * 14));
+            m.leftArm.shoulder.rotation.x = THREE.MathUtils.lerp(m.leftArm.shoulder.rotation.x, 1.50 + aimPitch * 0.55, Math.min(1, dt * 14));
+            m.rightArm.shoulder.rotation.x = THREE.MathUtils.lerp(m.rightArm.shoulder.rotation.x, 1.52 + aimPitch * 0.55, Math.min(1, dt * 14));
+            if (m.weaponMount) m.weaponMount.rotation.set(-Math.PI / 2 - 0.18, 0.04, -0.02);
+          } else if (this.isTacSprinting && this.fireTimer > 0.18) {
+            m.head.rotation.x = THREE.MathUtils.lerp(m.head.rotation.x, aimPitch * 0.6, Math.min(1, dt * 12));
             m.torso.rotation.x = THREE.MathUtils.lerp(m.torso.rotation.x, -0.26, Math.min(1, dt * 12));
             m.rightArm.shoulder.rotation.set(1.12, 0, -0.18);
             m.leftArm.shoulder.rotation.set(0.36, 0, 0.18);
           } else {
-            // Aim rifle squarely downrange at the target
+            // Shouldered two-handed firing pose aimed squarely at target
+            m.head.rotation.x = THREE.MathUtils.lerp(m.head.rotation.x, aimPitch * 0.72, Math.min(1, dt * 14));
             m.torso.rotation.x = THREE.MathUtils.lerp(m.torso.rotation.x, -0.06 + aimPitch * 0.25, Math.min(1, dt * 15));
-            const armP = 0.86 + aimPitch * 0.75;
-            m.leftArm.shoulder.rotation.x = THREE.MathUtils.lerp(m.leftArm.shoulder.rotation.x, armP, Math.min(1, dt * 15));
-            m.leftArm.shoulder.rotation.z = THREE.MathUtils.lerp(m.leftArm.shoulder.rotation.z, 0.44, Math.min(1, dt * 15));
-            m.rightArm.shoulder.rotation.x = THREE.MathUtils.lerp(m.rightArm.shoulder.rotation.x, armP + 0.02, Math.min(1, dt * 15));
-            m.rightArm.shoulder.rotation.z = THREE.MathUtils.lerp(m.rightArm.shoulder.rotation.z, -0.14, Math.min(1, dt * 15));
-            if (m.rightArm.elbow) m.rightArm.elbow.rotation.x = THREE.MathUtils.lerp(m.rightArm.elbow.rotation.x, 0.76, Math.min(1, dt * 15));
-            if (m.leftArm.elbow) m.leftArm.elbow.rotation.x = THREE.MathUtils.lerp(m.leftArm.elbow.rotation.x, 0.92, Math.min(1, dt * 15));
+            const armP = 0.98 + aimPitch * 0.75;
+            m.leftArm.shoulder.rotation.x = THREE.MathUtils.lerp(m.leftArm.shoulder.rotation.x, armP + 0.02, Math.min(1, dt * 15));
+            m.leftArm.shoulder.rotation.z = THREE.MathUtils.lerp(m.leftArm.shoulder.rotation.z, 0.50, Math.min(1, dt * 15));
+            m.rightArm.shoulder.rotation.x = THREE.MathUtils.lerp(m.rightArm.shoulder.rotation.x, armP, Math.min(1, dt * 15));
+            m.rightArm.shoulder.rotation.z = THREE.MathUtils.lerp(m.rightArm.shoulder.rotation.z, -0.12, Math.min(1, dt * 15));
+            if (m.rightArm.elbow) m.rightArm.elbow.rotation.x = THREE.MathUtils.lerp(m.rightArm.elbow.rotation.x, 1.08, Math.min(1, dt * 15));
+            if (m.leftArm.elbow) m.leftArm.elbow.rotation.x = THREE.MathUtils.lerp(m.leftArm.elbow.rotation.x, 1.18, Math.min(1, dt * 15));
             if (m.weaponMount) {
-              // Counter-rotate minor wrist yaw so barrel aligns dead-straight with target
-              m.weaponMount.rotation.set(-Math.PI / 2, 0.04, -0.03);
+              m.weaponMount.rotation.set(-Math.PI / 2 - 0.14, 0.04, -0.03);
             }
           }
         }
-      } else if (this.weaponMeshGroup && tPos) {
-        // Non-operator AI also pitch their weapon barrel directly at target elevation
+      } else if (this.weaponMeshGroup && tPos && hasClearLOS) {
+        // Non-operator AI also pitch their weapon barrel directly at target elevation when LOS is clear
         const hDist = Math.max(1, Math.hypot(tPos.x - this.position.x, tPos.z - this.position.z));
         const aimTargetY = (target.type === 'player') ? (tPos.y - 0.15) : (tPos.y + 1.25);
         const aimPitch = THREE.MathUtils.clamp(Math.atan2((aimTargetY - (this.position.y + 1.24)), hDist), -0.7, 0.7);
@@ -1679,7 +1932,8 @@ class Enemy {
       }
 
       this.fireTimer -= dt;
-      if (this.fireTimer <= 0) {
+      // STRICT LOS GATE: Never fire a single bullet through walls, closed doors, or hills!
+      if (this.fireTimer <= 0 && hasClearLOS && (!this.coverSpot || this.isPeeking)) {
         this.fireTimer = this.fireInterval + Math.random() * 0.22;
         const distToPlayer = player ? this.position.distanceTo(player.position) : 40;
         if (distToPlayer < 75) {
@@ -1690,14 +1944,22 @@ class Enemy {
           const m = this.opModel;
           const hDist = Math.max(1, Math.hypot(tPos.x - this.position.x, tPos.z - this.position.z));
           const aimTargetY = (target.type === 'player') ? (tPos.y - 0.15) : (tPos.y + 1.25);
-          const aimPitch = THREE.MathUtils.clamp(Math.atan2((aimTargetY - (this.position.y + 1.38)), hDist), -0.75, 0.75);
-          m.torso.rotation.x = -0.06 + aimPitch * 0.25;
-          const armP = 0.86 + aimPitch * 0.75;
-          m.rightArm.shoulder.rotation.set(armP + 0.02, 0, -0.14);
-          m.leftArm.shoulder.rotation.set(armP, 0, 0.44);
-          if (m.rightArm.elbow) m.rightArm.elbow.rotation.x = 0.76;
-          if (m.leftArm.elbow) m.leftArm.elbow.rotation.x = 0.92;
-          if (m.weaponMount) m.weaponMount.rotation.set(-Math.PI / 2, 0.04, -0.03);
+          const eyeH = this.position.y + (this.isProne ? 0.45 : 1.38);
+          const aimPitch = THREE.MathUtils.clamp(Math.atan2((aimTargetY - eyeH), hDist), -0.75, 0.75);
+          if (this.isProne) {
+            m.torso.rotation.x = 0.48 + aimPitch * 0.18;
+            m.rightArm.shoulder.rotation.set(1.52 + aimPitch * 0.55, 0, -0.12);
+            m.leftArm.shoulder.rotation.set(1.50 + aimPitch * 0.55, 0, 0.44);
+            if (m.weaponMount) m.weaponMount.rotation.set(-Math.PI / 2 - 0.18, 0.04, -0.02);
+          } else {
+            m.torso.rotation.x = -0.06 + aimPitch * 0.25;
+            const armP = 0.98 + aimPitch * 0.75;
+            m.rightArm.shoulder.rotation.set(armP, 0, -0.12);
+            m.leftArm.shoulder.rotation.set(armP + 0.02, 0, 0.50);
+            if (m.rightArm.elbow) m.rightArm.elbow.rotation.x = 1.08;
+            if (m.leftArm.elbow) m.leftArm.elbow.rotation.x = 1.18;
+            if (m.weaponMount) m.weaponMount.rotation.set(-Math.PI / 2 - 0.14, 0.04, -0.03);
+          }
         }
         this.group.updateMatrixWorld(true);
         this.muzzleMesh.material.opacity = 0.95;
@@ -1745,6 +2007,9 @@ class Enemy {
       const distGoal = Math.hypot(squadGoal.x - this.position.x, squadGoal.z - this.position.z);
       if (distGoal > 2.2) {
         this._moveToward(squadGoal, this.speed * 0.85, dt);
+      } else {
+        this._animMoving = false;
+        this.updateVisualAnim(dt, false, 0);
       }
       return;
     }
