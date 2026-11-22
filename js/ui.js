@@ -1,8 +1,17 @@
 // Hideout Persistence, Trader, Stash, Loadout, In-Raid HUD & Loot Modals
-window.DEV_MODE = true;
-window.SQUAD_PVP = false;
-window.MOUSE_SENS = 1.0;
+const _savedUserSettings = (() => {
+  try {
+    const raw = localStorage.getItem('ashfall_user_settings');
+    return raw ? JSON.parse(raw) : {};
+  } catch (e) { return {}; }
+})();
+
+window.DEV_MODE = _savedUserSettings.devMode !== undefined ? !!_savedUserSettings.devMode : true;
+window.SQUAD_PVP = _savedUserSettings.squadPvp !== undefined ? !!_savedUserSettings.squadPvp : false;
+if (window.SQUAD_PVP) window.DEV_MODE = false;
+window.MOUSE_SENS = (typeof _savedUserSettings.mouseSens === 'number' && Number.isFinite(_savedUserSettings.mouseSens)) ? _savedUserSettings.mouseSens : 1.0;
 window.CONTROLLER_SENS = (() => {
+  if (typeof _savedUserSettings.ctrlSens === 'number' && Number.isFinite(_savedUserSettings.ctrlSens)) return _savedUserSettings.ctrlSens;
   try {
     const v = parseFloat(localStorage.getItem('ashfall_ctrl_sens'));
     return Number.isFinite(v) ? v : 1.0;
@@ -10,9 +19,8 @@ window.CONTROLLER_SENS = (() => {
 })();
 window.GFX_SETTINGS = (() => {
   try {
-    const raw = localStorage.getItem('ashfall_gfx_settings');
-    if (raw) {
-      const parsed = JSON.parse(raw);
+    const parsed = _savedUserSettings.gfx || JSON.parse(localStorage.getItem('ashfall_gfx_settings') || 'null');
+    if (parsed) {
       return {
         lod: parsed.lod ?? 3,
         lighting: parsed.lighting ?? 3,
@@ -23,7 +31,41 @@ window.GFX_SETTINGS = (() => {
   } catch (e) {}
   return { lod: 3, lighting: 3, shadows: 3, textures: 3 };
 })();
-window.BASE_FOV = 75;
+window.BASE_FOV = (typeof _savedUserSettings.baseFov === 'number' && Number.isFinite(_savedUserSettings.baseFov)) ? _savedUserSettings.baseFov : 75;
+window._SAVED_AUDIO_SETTINGS = _savedUserSettings.audio || null;
+
+window.saveAllUserSettings = function saveAllUserSettings() {
+  try {
+    const audio = window.soundEngine ? {
+      muted: !!window.soundEngine.muted,
+      levels: window.soundEngine.levels ? { ...window.soundEngine.levels } : null
+    } : window._SAVED_AUDIO_SETTINGS;
+    const payload = {
+      baseFov: window.BASE_FOV || 75,
+      mouseSens: window.MOUSE_SENS || 1.0,
+      ctrlSens: window.CONTROLLER_SENS || 1.0,
+      gfx: window.GFX_SETTINGS || { lod: 3, lighting: 3, shadows: 3, textures: 3 },
+      devMode: !!window.DEV_MODE,
+      squadPvp: !!window.SQUAD_PVP,
+      audio
+    };
+    localStorage.setItem('ashfall_user_settings', JSON.stringify(payload));
+    localStorage.setItem('ashfall_ctrl_sens', String(payload.ctrlSens));
+    localStorage.setItem('ashfall_gfx_settings', JSON.stringify(payload.gfx));
+  } catch (e) {}
+};
+
+// Apply persisted audio mute & channel volume levels as soon as soundEngine is available
+if (window._SAVED_AUDIO_SETTINGS && window.soundEngine) {
+  const aud = window._SAVED_AUDIO_SETTINGS;
+  if (aud.levels && typeof window.soundEngine.setLevel === 'function') {
+    Object.keys(aud.levels).forEach((k) => window.soundEngine.setLevel(k, aud.levels[k]));
+  }
+  if (typeof aud.muted === 'boolean') {
+    if (typeof window.soundEngine.setMuted === 'function') window.soundEngine.setMuted(aud.muted);
+    else window.soundEngine.muted = aud.muted;
+  }
+}
 window.DEFAULT_KEYBINDS = {
   moveForward: 'KeyW',
   moveBack: 'KeyS',
@@ -2637,6 +2679,7 @@ class GameUI {
       if (el) {
         el.addEventListener('input', () => {
           window.BASE_FOV = parseInt(el.value, 10) || 75;
+          if (window.saveAllUserSettings) window.saveAllUserSettings();
           syncSettingsUI();
         });
       }
@@ -2646,6 +2689,7 @@ class GameUI {
       if (el) {
         el.addEventListener('input', () => {
           window.MOUSE_SENS = parseFloat(el.value) || 1.0;
+          if (window.saveAllUserSettings) window.saveAllUserSettings();
           syncSettingsUI();
         });
       }
@@ -2654,7 +2698,7 @@ class GameUI {
     if (ctrlSensInp) {
       ctrlSensInp.addEventListener('input', () => {
         window.CONTROLLER_SENS = parseFloat(ctrlSensInp.value) || 1.0;
-        try { localStorage.setItem('ashfall_ctrl_sens', String(window.CONTROLLER_SENS)); } catch (e) {}
+        if (window.saveAllUserSettings) window.saveAllUserSettings();
         syncSettingsUI();
       });
     }
@@ -2669,7 +2713,7 @@ class GameUI {
         el.addEventListener('input', () => {
           if (!window.GFX_SETTINGS) window.GFX_SETTINGS = { lod: 3, lighting: 3, shadows: 3, textures: 3 };
           window.GFX_SETTINGS[key] = parseInt(el.value, 10);
-          try { localStorage.setItem('ashfall_gfx_settings', JSON.stringify(window.GFX_SETTINGS)); } catch (e) {}
+          if (window.saveAllUserSettings) window.saveAllUserSettings();
           if (typeof window.applyGraphicsSettings === 'function') {
             window.applyGraphicsSettings(window.GFX_SETTINGS);
           }
@@ -2684,6 +2728,7 @@ class GameUI {
           if (window.soundEngine) {
             if (typeof window.soundEngine.setMuted === 'function') window.soundEngine.setMuted(!window.soundEngine.muted);
             else { window.soundEngine.muted = !window.soundEngine.muted; if (typeof window.soundEngine._applyLevels === 'function') window.soundEngine._applyLevels(); }
+            if (window.saveAllUserSettings) window.saveAllUserSettings();
             syncSettingsUI();
           }
         });
@@ -2703,6 +2748,7 @@ class GameUI {
           el.addEventListener('input', () => {
             const f = Math.min(1, Math.max(0, (parseFloat(el.value) || 0) / 100));
             if (window.soundEngine && typeof window.soundEngine.setLevel === 'function') window.soundEngine.setLevel(cat, f);
+            if (window.saveAllUserSettings) window.saveAllUserSettings();
             syncSettingsUI();
           });
         }
@@ -2728,6 +2774,7 @@ class GameUI {
           }
           this._showSocialToast('Dev Mode: ON — Squad PvP disabled for squad');
         }
+        if (window.saveAllUserSettings) window.saveAllUserSettings();
         this.renderHideout();
         syncSettingsUI();
       });
@@ -2741,6 +2788,7 @@ class GameUI {
             window.DEV_MODE = false;
             if (typeof window.onSquadPvpForceFair === 'function') window.onSquadPvpForceFair();
           }
+          if (window.saveAllUserSettings) window.saveAllUserSettings();
           this.renderHideout();
           syncSettingsUI();
           if (this._sendSocialPacket) {

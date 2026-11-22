@@ -2991,8 +2991,23 @@ class WeaponSystem {
         window.soundEngine.playRechamber(this.reloadWeaponId || (weaponDef && weaponDef.id) || 'ak74m');
       }
 
+      // Helper: lock left glove directly onto the curved AK-74M banana magazine body through its exact rotation arc!
+      const gripSpareAkMag = (mag) => {
+        if (!mag) return;
+        const mr = mag.rotation.x;
+        const localY = -0.048;
+        const localZ = 0.012;
+        const gx = mag.position.x - 0.014;
+        const gy = mag.position.y + (localY * Math.cos(mr) - localZ * Math.sin(mr));
+        const gz = mag.position.z + (localY * Math.sin(mr) + localZ * Math.cos(mr));
+        moveLeftHand(gx, gy, gz);
+        if (this.leftHand) {
+          this.leftHand.rotation.set(mr * 0.88 + 0.14, 0.22, -0.44);
+        }
+      };
+
       if (p < 0.22) {
-        // 1. Bring fresh mag up behind old mag's paddle release
+        // 1. Bring fresh mag up behind old mag's paddle release (hand firmly gripping lower-mid mag body)
         const t = smooth(p / 0.22);
         restRightHand();
         pos.x = -0.12 * t; pos.y = 0.13 * t; pos.z = -0.02 * t;
@@ -3011,9 +3026,7 @@ class WeaponSystem {
             THREE.MathUtils.lerp(this.magRestPos.z + 0.12, this.magRestPos.z + 0.08, t)
           );
           this.spareMagMesh.rotation.x = THREE.MathUtils.lerp(-0.35, -0.45, t);
-          // Grip exterior lower-left side of banana mag without clipping through the mag body
-          moveLeftHand(this.spareMagMesh.position.x - 0.042, this.spareMagMesh.position.y - 0.088, this.spareMagMesh.position.z - 0.012);
-          if (this.leftHand) this.leftHand.rotation.set(this.spareMagMesh.rotation.x * 0.45, 0.25, -0.85);
+          gripSpareAkMag(this.spareMagMesh);
         }
       } else if (p < 0.38) {
         // 2. Strike paddle & flick old mag forward and out of its seat!
@@ -3025,19 +3038,16 @@ class WeaponSystem {
 
         if (this.spareMagMesh) {
           this.spareMagMesh.visible = true;
-          // Strike forward slightly, then pause below magwell
           const strike = Math.sin(Math.min(1, t * 1.4) * Math.PI);
           this.spareMagMesh.position.set(
             -0.01,
             this.magRestPos.y - 0.05 - t * 0.04,
             this.magRestPos.z + 0.08 - strike * 0.055
           );
-          this.spareMagMesh.rotation.x = THREE.MathUtils.lerp(-0.45, -0.78, t);
-          moveLeftHand(this.spareMagMesh.position.x - 0.042, this.spareMagMesh.position.y - 0.088, this.spareMagMesh.position.z - 0.012);
-          if (this.leftHand) this.leftHand.rotation.set(this.spareMagMesh.rotation.x * 0.45, 0.25, -0.85);
+          this.spareMagMesh.rotation.x = THREE.MathUtils.lerp(-0.45, -0.74, t);
+          gripSpareAkMag(this.spareMagMesh);
         }
         if (this.magMesh) {
-          // Old mag rotates forward (-1.25 rad) and tumbles forward/down out of frame
           this.magMesh.visible = t < 0.88;
           this.magMesh.rotation.x = THREE.MathUtils.lerp(this.magRestRot.x, -1.35, t);
           this.magMesh.position.set(
@@ -3046,30 +3056,34 @@ class WeaponSystem {
             this.magRestPos.z - t * 0.16
           );
         }
-      } else if (p < 0.60) {
-        // 3. Hook front lug of new mag (spareMagMesh) and rock backward into lock!
-        const rawT = (p - 0.38) / 0.22;
-        const jolt = rawT > 0.82 ? Math.sin(((rawT - 0.82) / 0.18) * Math.PI) : 0;
+      } else if (p < 0.62) {
+        // 3. Hook front lug of new mag (spareMagMesh) & rock backward tightly into lock with left hand gripping mag body!
+        const rawT = (p - 0.38) / 0.24;
+        const jolt = rawT > 0.78 ? Math.sin(((rawT - 0.78) / 0.22) * Math.PI) : 0;
         restRightHand();
-        pos.x = -0.12; pos.y = 0.13 + jolt * 0.025; pos.z = -0.02;
-        rot.x = 0.28 + jolt * 0.10; rot.y = 0.34; rot.z = -0.40;
+        pos.x = -0.12; pos.y = 0.13 + jolt * 0.024; pos.z = -0.02;
+        rot.x = 0.28 + jolt * 0.09; rot.y = 0.34; rot.z = -0.40;
         if (this.magMesh) this.magMesh.visible = false;
 
         if (this.spareMagMesh) {
           this.spareMagMesh.visible = true;
-          const upT = smooth(THREE.MathUtils.clamp(rawT / 0.45, 0, 1));
-          const rockInT = smooth(THREE.MathUtils.clamp((rawT - 0.40) / 0.50, 0, 1));
+          const upT = smooth(THREE.MathUtils.clamp(rawT / 0.42, 0, 1));
+          const rockInT = smooth(THREE.MathUtils.clamp((rawT - 0.36) / 0.48, 0, 1));
           this.spareMagMesh.position.set(
             THREE.MathUtils.lerp(-0.01, this.magRestPos.x, upT),
             THREE.MathUtils.lerp(this.magRestPos.y - 0.09, this.magRestPos.y, upT),
             THREE.MathUtils.lerp(this.magRestPos.z + 0.02, this.magRestPos.z, rockInT)
           );
-          this.spareMagMesh.rotation.x = THREE.MathUtils.lerp(-0.78, this.magRestRot.x, rockInT);
-          moveLeftHand(this.spareMagMesh.position.x - 0.042, this.spareMagMesh.position.y - 0.088, this.spareMagMesh.position.z - 0.012);
-          if (this.leftHand) this.leftHand.rotation.set(this.spareMagMesh.rotation.x * 0.45, 0.25, -0.85);
+          this.spareMagMesh.rotation.x = THREE.MathUtils.lerp(-0.74, this.magRestRot.x, rockInT);
+          gripSpareAkMag(this.spareMagMesh);
+          // Brief firm seating press upward as the rear locking lug clicks into place
+          if (rawT > 0.84 && this.leftHand) {
+            const releaseT = smooth((rawT - 0.84) / 0.16);
+            this.leftHand.position.lerp(this.leftHandRestPos, releaseT * 0.35);
+          }
         }
       } else if (this.wasEmptyReload && p < 0.90) {
-        const rawT = (p - 0.60) / 0.30;
+        const rawT = (p - 0.62) / 0.28;
         const t = smooth(rawT);
         if (this.spareMagMesh) this.spareMagMesh.visible = false;
         if (this.magMesh) { this.magMesh.visible = true; this.magMesh.position.copy(this.magRestPos); this.magMesh.rotation.copy(this.magRestRot); }
