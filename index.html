@@ -7,6 +7,8 @@
   <link rel="stylesheet" href="css/style.css?v=238" />
   <!-- Three.js r128 UMD for zero-build compatibility (works on both http:// and file://) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="js/vendor/GLTFLoader.js?v=240"></script>
+  <script src="js/vendor/SkeletonUtils.js?v=240"></script>
 </head>
 <body>
   <!-- 3D Viewport -->
@@ -50,7 +52,7 @@
     <!-- IMPORTANT: Update version in GAME_DATA.VERSION (js/data.js) and here with EVERY new commit -->
     <div class="menu-version-stack">
       <button id="menu-update-badge" class="menu-update-badge hidden" title="Click to reload into the latest version">NEW VERSION AVAILABLE</button>
-      <div id="menu-version-badge" class="menu-version-badge">v2.39</div>
+      <div id="menu-version-badge" class="menu-version-badge">v2.40</div>
     </div>
     <!-- Minimal Sub-Menu Top Bar (Top-Left Back Button only — no redundant nav band) -->
     <header id="menu-topbar" class="hideout-header hidden">
@@ -1258,8 +1260,9 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION with every new commit) -->
-  <script src="js/data.js?v=239"></script>
-  <script src="js/animation.js?v=211"></script>
+  <script src="js/data.js?v=240"></script>
+  <script src="js/rig.js?v=240"></script>
+  <script src="js/animation.js?v=240"></script>
   <script src="js/net.js?v=123"></script>
   <script src="js/sfx_samples.js?v=21"></script>
   <script src="js/audio.js?v=236"></script>
@@ -1273,10 +1276,10 @@
   <script src="js/player.js?v=233"></script>
   <script src="js/gamepad.js?v=228"></script>
   <script src="js/gunsmith.js?v=195"></script>
-  <script src="js/matchmaking.js?v=215"></script>
-  <script src="js/hideout.js?v=239"></script>
+  <script src="js/matchmaking.js?v=240"></script>
+  <script src="js/hideout.js?v=240"></script>
   <script src="js/ui.js?v=239"></script>
   <script src="js/console.js?v=226"></script>
-  <script src="js/main.js?v=239"></script>
+  <script src="js/main.js?v=240"></script>
 </body>
 </html>

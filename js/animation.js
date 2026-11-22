@@ -366,7 +366,7 @@
     const leftArm = makeArm(isHeavy ? -0.28 : -0.25, false);
     const rightArm = makeArm(isHeavy ? 0.28 : 0.25, true);
 
-    return {
+    const rigObj = {
       root, rigPivot, pelvis, spine, torso, chest, neck, head, skull,
       leftLeg, rightLeg, leftArm, rightArm,
       weaponPivot, weaponMount, rearGripTarget, foregripTarget,
@@ -374,6 +374,14 @@
       carrierFlap, plateProp, handMag, handShell, inventoryTablet,
       isMW2Rig: true
     };
+    if (window.RigAssets && window.RigAssets.ready && window.RiggedCharacter) {
+      try {
+        rigObj.skin = new window.RiggedCharacter(rigObj, opts);
+      } catch (e) {
+        console.warn('[rig] Failed to attach RiggedCharacter, keeping procedural rig:', e);
+      }
+    }
+    return rigObj;
   }
 
   // ==========================================================================
@@ -429,6 +437,15 @@
       const isHealing = !!st.isHealing;
       const isPistol = !!st.isPistol;
       const aimPitch = THREE.MathUtils.clamp(st.aimPitch || 0, -0.82, 0.82);
+      r._animState = {
+        speed,
+        stance,
+        isSliding: isSlide,
+        isDowned,
+        dead: isDead,
+        isProne,
+        stanceTrans: st.stanceTrans || null
+      };
 
       // Update grip anchors for pistol vs rifle so both hands always seat accurately
       if (r.rearGripTarget && r.foregripTarget) {

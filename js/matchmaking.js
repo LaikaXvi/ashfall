@@ -345,6 +345,10 @@ class MatchmakingStage {
       }
     });
 
+    if (window.RigRegistry && window.RigRegistry.syncAll) {
+      window.RigRegistry.syncAll(dt, this.camera);
+    }
+
     if (this.renderer && this.scene && this.camera) {
       this.renderer.render(this.scene, this.camera);
     }

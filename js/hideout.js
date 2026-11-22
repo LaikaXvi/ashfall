@@ -393,6 +393,12 @@ class HideoutBunker {
   }
 
   syncPartyRoster(partyMembers = [], hostName = null, isHost = true, selfClientId = null) {
+    this._lastPartySync = {
+      partyMembers: Array.isArray(partyMembers) ? partyMembers.slice() : [],
+      hostName,
+      isHost,
+      selfClientId
+    };
     this.fobHostName = hostName || null;
     this.isHostFob = !!isHost;
     const members = Array.isArray(partyMembers) ? partyMembers.slice(0, 3) : [];
@@ -500,50 +506,72 @@ class HideoutBunker {
     let av = this.remoteAvatars.get(clientId);
     if (!av) {
       const grp = new THREE.Group();
-      const bodyMat = new THREE.MeshLambertMaterial({ color: 0x3b4836 });
-      const vestMat = new THREE.MeshLambertMaterial({ color: 0x222624 });
-      const pantsMat = new THREE.MeshLambertMaterial({ color: 0x2a2f2b });
-      const skinMat = new THREE.MeshLambertMaterial({ color: 0xc99c7a });
-      const helmMat = new THREE.MeshLambertMaterial({ color: 0x2d332c });
-      const visorMat = new THREE.MeshLambertMaterial({ color: 0x162229 });
-      const patchMat = new THREE.MeshBasicMaterial({ color: squadColor });
-      const gunMat = new THREE.MeshLambertMaterial({ color: 0x1b1e22 });
+      let rig = null;
+      let anim = null;
+      if (window.MW2Rig && window.MW2Rig.buildCharacterRig) {
+        rig = window.MW2Rig.buildCharacterRig({ archetype: 'operator', faceForwardZ: false });
+        if (rig && rig.weaponMount) {
+          const rifle = new THREE.Mesh(
+            new THREE.BoxGeometry(0.07, 0.09, 0.62),
+            new THREE.MeshLambertMaterial({ color: 0x1a1c1e })
+          );
+          rifle.position.set(0, 0.01, -0.16);
+          rig.weaponMount.add(rifle);
+        }
+        grp.add(rig.root);
+        if (window.MW2Animator) {
+          anim = new window.MW2Animator(rig);
+          anim.update(0.016, { speed: 0, stance: 'stand', aimPitch: 0 });
+        }
+      } else {
+        const bodyMat = new THREE.MeshLambertMaterial({ color: 0x3b4836 });
+        const vestMat = new THREE.MeshLambertMaterial({ color: 0x222624 });
+        const pantsMat = new THREE.MeshLambertMaterial({ color: 0x2a2f2b });
+        const skinMat = new THREE.MeshLambertMaterial({ color: 0xc99c7a });
+        const helmMat = new THREE.MeshLambertMaterial({ color: 0x2d332c });
+        const visorMat = new THREE.MeshLambertMaterial({ color: 0x162229 });
+        const patchMat = new THREE.MeshBasicMaterial({ color: squadColor });
+        const gunMat = new THREE.MeshLambertMaterial({ color: 0x1b1e22 });
 
-      const legL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.82, 0.22), pantsMat);
-      legL.position.set(-0.12, 0.41, 0);
-      const legR = legL.clone();
-      legR.position.x = 0.12;
-      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.62, 0.28), bodyMat);
-      torso.position.y = 1.12;
-      const vest = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.46, 0.32), vestMat);
-      vest.position.y = 1.14;
-      const armL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.56, 0.16), bodyMat);
-      armL.position.set(-0.32, 1.08, 0.04);
-      const armR = armL.clone();
-      armR.position.x = 0.32;
-      const patchL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.08, 0.18), patchMat);
-      patchL.position.set(-0.32, 1.32, 0.02);
-      const patchR = patchL.clone();
-      patchR.position.x = 0.32;
-      // Slung tactical carbine across chest
-      const rifle = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.09, 0.06), gunMat);
-      rifle.position.set(0.02, 1.05, -0.20);
-      rifle.rotation.z = -0.35;
-      const head = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.25, 0.24), skinMat);
-      head.position.y = 1.56;
-      const helm = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.15, 0.28), helmMat);
-      helm.position.y = 1.66;
-      const goggles = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.07, 0.06), visorMat);
-      goggles.position.set(0, 1.59, -0.12);
+        const legL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.82, 0.22), pantsMat);
+        legL.position.set(-0.12, 0.41, 0);
+        const legR = legL.clone();
+        legR.position.x = 0.12;
+        const torso = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.62, 0.28), bodyMat);
+        torso.position.y = 1.12;
+        const vest = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.46, 0.32), vestMat);
+        vest.position.y = 1.14;
+        const armL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.56, 0.16), bodyMat);
+        armL.position.set(-0.32, 1.08, 0.04);
+        const armR = armL.clone();
+        armR.position.x = 0.32;
+        const patchL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.08, 0.18), patchMat);
+        patchL.position.set(-0.32, 1.32, 0.02);
+        const patchR = patchL.clone();
+        patchR.position.x = 0.32;
+        const rifle = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.09, 0.06), gunMat);
+        rifle.position.set(0.02, 1.05, -0.20);
+        rifle.rotation.z = -0.35;
+        const head = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.25, 0.24), skinMat);
+        head.position.y = 1.56;
+        const helm = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.15, 0.28), helmMat);
+        helm.position.y = 1.66;
+        const goggles = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.07, 0.06), visorMat);
+        goggles.position.set(0, 1.59, -0.12);
+        grp.add(legL, legR, torso, vest, armL, armR, patchL, patchR, rifle, head, helm, goggles);
+      }
+
       const tag = this._makeNameTagSprite(labelText, squadColor);
       tag.position.set(0, 2.12, 0);
-
-      grp.add(legL, legR, torso, vest, armL, armR, patchL, patchR, rifle, head, helm, goggles, tag);
+      grp.add(tag);
       grp.position.set(x || 0, 0, z || 0);
       grp.rotation.y = yaw || 0;
       this.scene.add(grp);
       av = {
         group: grp,
+        rig,
+        anim,
+        speed: 0,
         tagSprite: tag,
         callsign: callsign || 'SQUAD',
         squadColor,
@@ -581,6 +609,20 @@ class HideoutBunker {
         if (av.group) this.scene.remove(av.group);
         this.remoteAvatars.delete(id);
       }
+    }
+  }
+
+  rebuildAvatars() {
+    for (const av of this.remoteAvatars.values()) {
+      if (av && av.rig && av.rig.skin && av.rig.skin.disable) {
+        try { av.rig.skin.disable(); } catch (e) {}
+      }
+      if (av && av.group) this.scene.remove(av.group);
+    }
+    this.remoteAvatars.clear();
+    if (this._lastPartySync) {
+      const s = this._lastPartySync;
+      this.syncPartyRoster(s.partyMembers, s.hostName, s.isHost, s.selfClientId);
     }
   }
 
@@ -640,10 +682,18 @@ class HideoutBunker {
     if (this.heloMainRotor) this.heloMainRotor.rotation.y += dt * 4.2;
     if (this.heloTailRotor) this.heloTailRotor.rotation.x += dt * 11.0;
 
-    // Interpolate live party avatars inside FOB
+    // Interpolate live party avatars inside FOB & drive Soldier locomotion/IK
+    const safeDt = Math.max(dt, 0.001);
     for (const av of this.remoteAvatars.values()) {
+      const prevX = av.group.position.x;
+      const prevZ = av.group.position.z;
       av.group.position.lerp(av.targetPos, Math.min(1, dt * 10));
       av.group.rotation.y = av.targetYaw;
+      if (av.anim) {
+        const instSpd = Math.hypot(av.group.position.x - prevX, av.group.position.z - prevZ) / safeDt;
+        av.speed = THREE.MathUtils.lerp(av.speed || 0, instSpd, Math.min(1, dt * 10));
+        av.anim.update(dt, { speed: av.speed, stance: 'stand', aimPitch: 0 });
+      }
     }
     this.pruneRemoteAvatars(4500);
 
@@ -732,6 +782,10 @@ class HideoutBunker {
       this.camera.position.set(this.pos.x + swayX, 2.85, Math.min(10.5, this.pos.z + 3.4 + swayZ));
       this.camera.lookAt(0, 1.65, -10.5);
       this.hoveredStation = null;
+    }
+
+    if (window.RigRegistry && window.RigRegistry.syncAll) {
+      window.RigRegistry.syncAll(dt, this.camera);
     }
 
     if (window.renderPipeline) {

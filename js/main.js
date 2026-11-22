@@ -240,9 +240,29 @@
     const hs = document.getElementById('hideout-screen');
     if (hs) hs.classList.add('hideout-roam-mode');
     const btnEnterFob = document.getElementById('btn-enter-fob');
-    if (btnEnterFob) btnEnterFob.addEventListener('click', () => dismissFobOverlay(true));
     const btnFobMenu = document.getElementById('btn-fob-menu');
+    if (btnEnterFob) btnEnterFob.addEventListener('click', () => dismissFobOverlay(true));
     if (btnFobMenu) btnFobMenu.addEventListener('click', () => dismissFobOverlay(false));
+    if (window.RigAssets && typeof window.RigAssets.load === 'function') {
+      if (btnEnterFob) {
+        btnEnterFob.disabled = true;
+        btnEnterFob.textContent = 'LOADING OPERATOR ASSETS…';
+      }
+      if (btnFobMenu) btnFobMenu.disabled = true;
+      window.RigAssets.load().then(() => {
+        if (btnEnterFob) {
+          btnEnterFob.disabled = false;
+          btnEnterFob.textContent = 'ENTER FOB [CLICK / SPACE]';
+        }
+        if (btnFobMenu) {
+          btnFobMenu.disabled = false;
+          btnFobMenu.textContent = 'OPEN TAC-MENU [M]';
+        }
+        if (hideoutBunker && hideoutBunker.rebuildAvatars) {
+          hideoutBunker.rebuildAvatars();
+        }
+      });
+    }
   }
 
   function enterHideoutRoam() {
@@ -1082,6 +1102,8 @@
       const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
       const fobOv = document.getElementById('fob-enter-overlay');
       if (fobOv && !fobOv.classList.contains('hidden')) {
+        const btnEnter = document.getElementById('btn-enter-fob');
+        if (btnEnter && btnEnter.disabled) return;
         if (e.code === 'Space' || e.code === 'Enter') {
           e.preventDefault();
           dismissFobOverlay(true);
@@ -3671,6 +3693,9 @@
           viewmodelCamera.updateProjectionMatrix();
         }
         viewmodelCamera.updateMatrixWorld();
+      }
+      if (window.RigRegistry && window.RigRegistry.syncAll) {
+        window.RigRegistry.syncAll(dt, camera);
       }
 
       renderer.shadowMap.needsUpdate = ((window._shadowFrameCount = ((window._shadowFrameCount || 0) + 1) % 3) === 0);
