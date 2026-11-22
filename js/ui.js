@@ -267,7 +267,12 @@ class GameUI {
     const items = this._getSpatialFocusables(scope);
     if (items.length === 0) return null;
     if (this._selectedEl && items.includes(this._selectedEl)) return this._selectedEl;
-    const first = items[0];
+    // On the Main Menu Home tab, default initial focus to the primary DEPLOY TO OPERATION hero button
+    let first = items[0];
+    if (scope.id === 'hideout-screen' && this.activeMenuTab === 'home') {
+      const deployHero = scope.querySelector('.home-deploy-hero');
+      if (deployHero && items.includes(deployHero)) first = deployHero;
+    }
     this.setSelectedElement(first, opts);
     return first;
   }
@@ -315,14 +320,41 @@ class GameUI {
       const dx = tx - cx;
       const dy = ty - cy;
 
+      // Bounding-box edge-distance + span-overlap spatial scoring so wide/tall hero buttons (e.g. DEPLOY TO OPERATION) are never skipped!
       let primary = 0;
       let perp = 0;
-      if (dir === 'right') { if (dx <= 6) continue; primary = dx; perp = Math.abs(dy); }
-      else if (dir === 'left') { if (dx >= -6) continue; primary = -dx; perp = Math.abs(dy); }
-      else if (dir === 'down') { if (dy <= 6) continue; primary = dy; perp = Math.abs(dx); }
-      else if (dir === 'up') { if (dy >= -6) continue; primary = -dy; perp = Math.abs(dx); }
+      let centerTie = 0;
+      if (dir === 'right') {
+        if (dx <= 6 && r.left < curRect.right - 2) continue;
+        if (r.right <= curRect.left + 2) continue;
+        primary = r.left >= curRect.right - 4 ? Math.max(0, r.left - curRect.right) : Math.max(4, dx);
+        const overlapY = Math.min(curRect.bottom, r.bottom) - Math.max(curRect.top, r.top);
+        perp = overlapY > 0 ? 0 : (r.top > curRect.bottom ? r.top - curRect.bottom : curRect.top - r.bottom);
+        centerTie = Math.abs(dy) * 0.08;
+      } else if (dir === 'left') {
+        if (dx >= -6 && r.right > curRect.left + 2) continue;
+        if (r.left >= curRect.right - 2) continue;
+        primary = r.right <= curRect.left + 4 ? Math.max(0, curRect.left - r.right) : Math.max(4, -dx);
+        const overlapY = Math.min(curRect.bottom, r.bottom) - Math.max(curRect.top, r.top);
+        perp = overlapY > 0 ? 0 : (r.top > curRect.bottom ? r.top - curRect.bottom : curRect.top - r.bottom);
+        centerTie = Math.abs(dy) * 0.08;
+      } else if (dir === 'down') {
+        if (dy <= 6 && r.top < curRect.bottom - 2) continue;
+        if (r.bottom <= curRect.top + 2) continue;
+        primary = r.top >= curRect.bottom - 4 ? Math.max(0, r.top - curRect.bottom) : Math.max(4, dy);
+        const overlapX = Math.min(curRect.right, r.right) - Math.max(curRect.left, r.left);
+        perp = overlapX > 0 ? 0 : (r.left > curRect.right ? r.left - curRect.right : curRect.left - r.right);
+        centerTie = Math.abs(dx) * 0.08;
+      } else if (dir === 'up') {
+        if (dy >= -6 && r.bottom > curRect.top + 2) continue;
+        if (r.top >= curRect.bottom - 2) continue;
+        primary = r.bottom <= curRect.top + 4 ? Math.max(0, curRect.top - r.bottom) : Math.max(4, -dy);
+        const overlapX = Math.min(curRect.right, r.right) - Math.max(curRect.left, r.left);
+        perp = overlapX > 0 ? 0 : (r.left > curRect.right ? r.left - curRect.right : curRect.left - r.right);
+        centerTie = Math.abs(dx) * 0.08;
+      }
 
-      const score = primary + perp * 2.4;
+      const score = primary + perp * 2.4 + centerTie;
       if (score < bestScore) {
         bestScore = score;
         bestEl = cand;
