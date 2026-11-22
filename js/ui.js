@@ -216,6 +216,11 @@ class GameUI {
     if (!scope) return false;
     const items = this._getSpatialFocusables(scope);
     if (items.length === 0) return false;
+    // If previous selection was detached by a live re-render (e.g. during container loot reveal), re-anchor cleanly!
+    if (this._selectedEl && !document.body.contains(this._selectedEl)) {
+      this._selectedEl = null;
+    }
+    if (items.length === 0) return false;
 
     if (!this._selectedEl || !items.includes(this._selectedEl)) {
       this.setSelectedElement(items[0], opts);
@@ -7315,6 +7320,18 @@ class GameUI {
     const cTitle = document.getElementById('loot-container-title');
     const opSlotsEl = document.getElementById('inv-op-slots');
 
+    // Snapshot currently selected slot identity BEFORE rebuilding DOM so D-Pad selector stays locked during item reveals!
+    let prevSel = null;
+    if (this._selectedEl) {
+      const sel = this._selectedEl;
+      if (sel.classList && sel.classList.contains('inv-slot') && sel.dataset) {
+        prevSel = { kind: 'inv', context: sel.dataset.context || '', idx: sel.dataset.idx || '' };
+      } else if (sel.classList && sel.classList.contains('op-slot-card') && sel.dataset) {
+        const parentId = sel.parentElement ? sel.parentElement.id : '';
+        prevSel = { kind: 'op', parentId, slotKey: sel.dataset.slotKey || '' };
+      }
+    }
+
     // 1. Player Operator Equipment — Exact 5-Column Tactical Grid
     if (opSlotsEl) {
       const pSlot = (player.slots && player.slots.primary) || (player.weapons && player.weapons.primary);
@@ -7738,6 +7755,24 @@ class GameUI {
         }
         bList.appendChild(slot);
       }
+    }
+
+    // Restore D-Pad / Spatial selection seamlessly across live reveal re-renders (defaulting to leftmost container slot!)
+    let restoredEl = null;
+    if (prevSel) {
+      if (prevSel.kind === 'inv') {
+        restoredEl = document.querySelector(`#loot-modal .inv-slot[data-context="${prevSel.context}"][data-idx="${prevSel.idx}"]`);
+      } else if (prevSel.kind === 'op' && prevSel.parentId && prevSel.slotKey) {
+        restoredEl = document.querySelector(`#${prevSel.parentId} .op-slot-card[data-slot-key="${prevSel.slotKey}"]`);
+      }
+    }
+    if (!restoredEl) {
+      restoredEl = this.activeLootSource
+        ? (document.querySelector('#loot-container-items .inv-slot') || document.querySelector('#loot-backpack-items .inv-slot'))
+        : document.querySelector('#loot-backpack-items .inv-slot');
+    }
+    if (restoredEl && this.setSelectedElement) {
+      this.setSelectedElement(restoredEl, { inputMode: 'gamepad', silent: true });
     }
   }
 

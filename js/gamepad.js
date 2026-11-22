@@ -328,8 +328,14 @@ class GamepadController {
         } else if (ui && ui._hoveredSlot) {
           ui.hideItemPopout();
         }
-      } else if (ui && !ui._selectedEl) {
-        ui.ensureInitialSelection({ inputMode: 'gamepad' });
+      } else if (ui && (!ui._selectedEl || !document.body.contains(ui._selectedEl))) {
+        const firstSlot = (ui.activeLootSource && document.querySelector('#loot-container-items .inv-slot')) ||
+          document.querySelector('#loot-backpack-items .inv-slot');
+        if (firstSlot && ui.setSelectedElement) {
+          ui.setSelectedElement(firstSlot, { inputMode: 'gamepad' });
+        } else {
+          ui.ensureInitialSelection({ inputMode: 'gamepad' });
+        }
       }
 
       // Right Trigger (RT / bFire): Hold to Drag & Drop selected item to any slot (swapping if occupied!)
@@ -380,13 +386,8 @@ class GamepadController {
     }
 
     if (ctx.isPaused || !player) {
-      if (this._justPressed(pad, 1) && !(ui && ui.isInGameSettingsOpen) && actions.resume) {
-        actions.resume();
-        this._snapshot(pad);
-        return;
-      }
-      if (this._justPressed(pad, 0) && !(ui && ui.isInGameSettingsOpen) && actions.resume) actions.resume();
-      this._snapshot(pad);
+      // Delegate Pause / In-Game Settings menu navigation to unified updateMenu (A/Cross = Confirm, B/Circle = Close/Resume)
+      this.updateMenu(dt, { ui, gunsmith: ctx.gunsmith, onResume: actions.resume });
       return;
     }
 
@@ -654,7 +655,7 @@ class GamepadController {
       if (dir && this._menuNavCooldown <= 0) {
         ui.moveSpatialSelection(dir, { inputMode: 'gamepad' });
         this._menuNavCooldown = (dUp || dDown || dLeft || dRight) ? 0.16 : 0.20;
-      } else if ((this._justPressed(pad, 0) || this._justPressed(pad, 1)) && !ui._selectedEl) {
+      } else if (!ui._selectedEl || !document.body.contains(ui._selectedEl)) {
         ui.ensureInitialSelection({ inputMode: 'gamepad' });
       }
 
@@ -665,8 +666,11 @@ class GamepadController {
         }
       }
 
-      // A (0) / Cross: Confirm highlighted weapon-switch slot, drop weapon (on Primary/Secondary/BagWeapon), or activate element
+      // A (0) / Cross: Universal Accept / Confirm on the currently highlighted menu button, card, or inventory slot!
       if (this._justPressed(pad, 0) && !this._menuRtDragging) {
+        if (!ui._selectedEl || !document.body.contains(ui._selectedEl)) {
+          ui.ensureInitialSelection({ inputMode: 'gamepad' });
+        }
         const handledInv = ui.handleGamepadInventoryAction ? ui.handleGamepadInventoryAction('a_cross') : false;
         if (!handledInv) {
           ui.activateSelectedElement({ inputMode: 'gamepad' });
@@ -694,12 +698,29 @@ class GamepadController {
       }
     }
 
-    // B (1) / Circle: Cancel weapon-switch picker -> Close In-Game Settings -> Back / Close
+    // B (1) / Circle: Universal Escape-equivalent — pops the topmost open UI layer one step at a time!
     if (this._justPressed(pad, 1)) {
-      if (ui && ui._raidWeaponPick && ui.closeRaidWeaponPickMode) {
+      const opCtx = document.getElementById('op-context-menu');
+      const opSkin = document.getElementById('op-skin-modal');
+      const opTraits = document.getElementById('op-traits-modal');
+      const opRecruit = document.getElementById('op-recruit-modal');
+      const popout = document.getElementById('item-popout');
+      const sumScreen = document.getElementById('summary-screen');
+
+      if (opCtx && !opCtx.classList.contains('hidden')) {
+        opCtx.classList.add('hidden');
+      } else if (opSkin && !opSkin.classList.contains('hidden')) {
+        opSkin.classList.add('hidden');
+      } else if (opTraits && !opTraits.classList.contains('hidden')) {
+        opTraits.classList.add('hidden');
+      } else if (opRecruit && !opRecruit.classList.contains('hidden')) {
+        opRecruit.classList.add('hidden');
+      } else if (ui && ui._raidWeaponPick && ui.closeRaidWeaponPickMode) {
         ui.closeRaidWeaponPickMode();
       } else if (ui && ui._deployWeaponPick && ui.closeDeployWeaponPickMode) {
         ui.closeDeployWeaponPickMode();
+      } else if (popout && !popout.classList.contains('hidden') && ui && ui.hideItemPopout) {
+        ui.hideItemPopout();
       } else if (ui && ui.isInGameSettingsOpen && ui.closeInGameSettings) {
         ui.closeInGameSettings(true);
       } else if (gunsmith && gunsmith.isOpen) {
@@ -707,10 +728,17 @@ class GamepadController {
         if (gunsmith.mode === 'customize') gunsmith.setMode('attachments');
         else if (drawer && !drawer.classList.contains('hidden')) gunsmith.closeDrawer();
         else gunsmith.close();
+      } else if (sumScreen && sumScreen.classList.contains('active')) {
+        const retBtn = document.getElementById('btn-return-hideout') || sumScreen.querySelector('button');
+        if (retBtn) retBtn.click();
       } else if (onResume) {
         onResume();
       } else if (ui && ui.activeMenuTab && ui.activeMenuTab !== 'home') {
-        ui.openMenuTab('home');
+        if (typeof window.onCloseHideoutOverlayTo3D === 'function' && window.onCloseHideoutOverlayTo3D()) {
+          // Returned cleanly to 1st-person 3D Hideout bunker!
+        } else {
+          ui.openMenuTab('home');
+        }
       }
     }
 
