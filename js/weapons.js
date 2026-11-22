@@ -2878,7 +2878,15 @@ class WeaponSystem {
       if (this.rightHand) this.rightHand.position.lerp(new THREE.Vector3(x, y, z), handRate);
     };
     const restLeftHand = () => {
-      if (this.leftHand) this.leftHand.position.lerp(this.leftHandRestPos, handRate);
+      if (this.leftHand) {
+        this.leftHand.position.lerp(this.leftHandRestPos, handRate);
+        this.leftHand.rotation.x = THREE.MathUtils.lerp(this.leftHand.rotation.x, this.leftHandRestRot.x, handRate);
+        this.leftHand.rotation.y = THREE.MathUtils.lerp(this.leftHand.rotation.y, this.leftHandRestRot.y, handRate);
+        this.leftHand.rotation.z = THREE.MathUtils.lerp(this.leftHand.rotation.z, this.leftHandRestRot.z, handRate);
+        if (this.leftHand.userData && this.leftHand.userData.thumbGroup) {
+          this.leftHand.userData.thumbGroup.rotation.set(0, 0, 0);
+        }
+      }
     };
     const restRightHand = () => {
       if (this.rightHand) this.rightHand.position.lerp(this.rightHandRestPos, handRate);
@@ -2994,22 +3002,21 @@ class WeaponSystem {
         window.soundEngine.playRechamber(this.reloadWeaponId || (weaponDef && weaponDef.id) || 'ak74m');
       }
 
-      // Helper: lock left palm flush against left side of AK banana mag with all 4 fingers wrapped around the far side & thumb tucked along rear spine!
+      // Helper: lock left palm OUTSIDE the left face of the AK banana mag (zero clipping!) with fingers wrapping cleanly around the far/front side & thumb tucked along rear spine!
       const gripSpareAkMag = (mag) => {
         if (!mag) return;
         const mr = mag.rotation.x;
-        const localY = -0.044;
-        const localZ = 0.004;
-        const gx = mag.position.x - 0.006;
+        const localY = -0.056;
+        const localZ = 0.016;
+        // X clearance (-0.032) places palm flush against exterior left wall of mag so mag never clips through palm!
+        const gx = mag.position.x - 0.032;
         const gy = mag.position.y + (localY * Math.cos(mr) - localZ * Math.sin(mr));
         const gz = mag.position.z + (localY * Math.sin(mr) + localZ * Math.cos(mr));
         moveLeftHand(gx, gy, gz);
         if (this.leftHand) {
-          // Z = -1.48 rotates bottom palm flush onto left side of mag & wraps 4 fingers tightly around the far/front side!
-          this.leftHand.rotation.set(mr * 0.90 + 0.08, 0.14, -1.48);
+          this.leftHand.rotation.set(mr * 0.90 + 0.06, 0.10, -1.42);
           if (this.leftHand.userData && this.leftHand.userData.thumbGroup) {
-            // Tuck thumb cleanly against rear spine of magazine (never sticking out!)
-            this.leftHand.userData.thumbGroup.rotation.set(0.18, -0.42, 0.25);
+            this.leftHand.userData.thumbGroup.rotation.set(0.14, -0.35, 0.20);
           }
         }
       };
@@ -3517,6 +3524,9 @@ class WeaponSystem {
     if (this.leftHand) {
       this.leftHand.position.copy(this.leftHandRestPos);
       this.leftHand.rotation.copy(this.leftHandRestRot);
+      if (this.leftHand.userData && this.leftHand.userData.thumbGroup) {
+        this.leftHand.userData.thumbGroup.rotation.set(0, 0, 0);
+      }
     }
     if (this.rightHand) {
       this.rightHand.position.copy(this.rightHandRestPos);
