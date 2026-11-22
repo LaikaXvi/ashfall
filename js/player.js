@@ -415,7 +415,10 @@ class Player {
         bagId: this.backpackId || 'bag_small',
         faceForwardZ: false
       });
-      rig.root.visible = false;
+      rig.root.visible = true;
+      if (rig.skin && typeof rig.skin.setFirstPersonBodyMode === 'function') {
+        rig.skin.setFirstPersonBodyMode(!this.isThirdPerson);
+      }
       if (this.world && this.world.scene) {
         this.world.scene.add(rig.root);
       }
@@ -707,7 +710,10 @@ class Player {
 
   toggleThirdPerson() {
     this.isThirdPerson = !this.isThirdPerson;
-    if (this.avatarGroup) this.avatarGroup.visible = this.isThirdPerson;
+    if (this.avatarGroup) this.avatarGroup.visible = !this.dead && !(this.isDowned && !this.isThirdPerson);
+    if (this.avatarParts && this.avatarParts.skin && typeof this.avatarParts.skin.setFirstPersonBodyMode === 'function') {
+      this.avatarParts.skin.setFirstPersonBodyMode(!this.isThirdPerson);
+    }
     if (this.weaponSystem && this.weaponSystem.setThirdPerson) {
       this.weaponSystem.setThirdPerson(this.isThirdPerson);
     }
@@ -715,18 +721,44 @@ class Player {
   }
 
   _updateThirdPersonModel(dt) {
-    if (!this.isThirdPerson || !this.avatarGroup || !this.avatarParts) return;
+    if (!this.avatarGroup || !this.avatarParts) return;
+    const isFP = !this.isThirdPerson;
+    const showBody = !this.dead && !(this.isDowned && isFP);
+    this.avatarGroup.visible = showBody;
+    if (!showBody) return;
+
     const p = this.avatarParts;
+    if (p.skin && typeof p.skin.setFirstPersonBodyMode === 'function') {
+      p.skin.setFirstPersonBodyMode(isFP);
+    } else {
+      // Procedural fallback FP masking: hide head/arms/backpack so camera never clips
+      if (p.head) p.head.visible = !isFP;
+      if (p.leftArm && p.leftArm.shoulder) p.leftArm.shoulder.visible = !isFP;
+      if (p.rightArm && p.rightArm.shoulder) p.rightArm.shoulder.visible = !isFP;
+    }
+
     const smooth = (t) => t * t * (3 - 2 * t);
     const rate = Math.min(1, dt * 13);
     this.idleTime += dt;
 
     this._syncThirdPersonGear();
+    if (isFP && p.packGroup) p.packGroup.visible = false;
 
     // Place character at player's feet position and orient to player's yaw
+    // In First Person, shift body slightly rearward so looking down shows torso/vest/legs cleanly,
+    // and shift forward slightly during a slide so the real 3P extended lead leg & boot kick cleanly into view!
     const groundBase = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(this.position.x, this.position.z) : 0;
     const feetY = Math.max(groundBase, this.position.y - this.currentEyeHeight);
-    this.avatarGroup.position.set(this.position.x, feetY, this.position.z);
+    let bodyX = this.position.x;
+    let bodyY = feetY;
+    let bodyZ = this.position.z;
+    if (isFP) {
+      const backDist = this.isSliding ? -0.02 : (this.isProne ? 0.22 : 0.16);
+      bodyX += Math.sin(this.yaw) * backDist;
+      bodyZ += Math.cos(this.yaw) * backDist;
+      if (this.isSliding) bodyY += 0.04;
+    }
+    this.avatarGroup.position.set(bodyX, bodyY, bodyZ);
     this.avatarGroup.rotation.y = this.yaw;
 
     // Unified MW2 Layered Rig & Analytical 2-Bone IK Driver
@@ -736,8 +768,8 @@ class Player {
       const ws = this.weaponSystem;
       if (p.handMag) p.handMag.visible = false;
       if (p.handShell) p.handShell.visible = false;
-      if (p.inventoryTablet) p.inventoryTablet.visible = !!this.isInventoryOpen && !this.isDowned && !this.dead;
-      if (p.weaponMount) p.weaponMount.visible = !this.isDowned && !this.dead && !this.mantleState && !this.ledgeState && !this.isInventoryOpen;
+      if (p.inventoryTablet) p.inventoryTablet.visible = !isFP && !!this.isInventoryOpen && !this.isDowned && !this.dead;
+      if (p.weaponMount) p.weaponMount.visible = !isFP && !this.isDowned && !this.dead && !this.mantleState && !this.ledgeState && !this.isInventoryOpen;
 
       // Sync 3rd-person weapon bolt blowback
       if (ws && this.tpWeapon && this.tpWeapon.boltMesh && !ws.isReloading) {

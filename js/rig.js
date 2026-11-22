@@ -355,7 +355,11 @@
             boneDir = lastDir.clone();
           }
           if (!boneDir) continue;
-          const axisWorld = new THREE.Vector3().crossVectors(boneDir, palm);
+          let targetFold = palm;
+          if (fName === 'thumb') {
+            targetFold = palm.clone().multiplyScalar(0.55).addScaledVector(iW, -0.85).normalize();
+          }
+          const axisWorld = new THREE.Vector3().crossVectors(boneDir, targetFold);
           if (axisWorld.lengthSq() < 1e-6) continue;
           axisWorld.normalize();
           const bqInv = bone.getWorldQuaternion(new THREE.Quaternion()).invert();
@@ -374,7 +378,7 @@
 
     applyFingerCurl(curlData, angles = [0.9, 1.0, 0.6], thumb = 0.5) {
       if (!curlData || curlData.length === 0) return;
-      const tAngles = [thumb * 0.6, thumb * 0.5, thumb * 0.4];
+      const tAngles = [thumb * 0.72, thumb * 0.65, thumb * 0.55];
       for (let i = 0; i < curlData.length; i++) {
         const e = curlData[i];
         const arr = e.finger === 'thumb' ? tAngles : angles;
@@ -786,8 +790,65 @@
       this._slerpQ = new THREE.Quaternion();
       this._rootUp = new THREE.Vector3();
       this._proxyFwd = new THREE.Vector3();
+      this.fpBodyMode = false;
+      this._fpMaskReady = false;
+      this._uFpBodyMode = { value: 0.0 };
 
       RigRegistry.add(this);
+    }
+
+    setFirstPersonBodyMode(enabled) {
+      const want = !!enabled;
+      if (want === this.fpBodyMode && (!want || this._fpMaskReady)) return;
+      this.fpBodyMode = want;
+      this._uFpBodyMode.value = want ? 1.0 : 0.0;
+      if (this.visor) this.visor.visible = !want;
+      if (this.backpackMount) this.backpackMount.visible = !want;
+
+      if (want && !this._fpMaskReady && this.body && this.body.geometry && this.body.skeleton) {
+        this._fpMaskReady = true;
+        const geom = this.body.geometry.clone();
+        geom.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 95), 250);
+        this.body.geometry = geom;
+        const skinIdx = geom.attributes.skinIndex;
+        const skinWt = geom.attributes.skinWeight;
+        const skBones = this.body.skeleton.bones || [];
+        const isHiddenBone = skBones.map((b) => {
+          const bn = normName(b.name);
+          return bn.includes('head') || bn.includes('neck') || bn.includes('shoulder') ||
+            bn.includes('arm') || bn.includes('forearm') || bn.includes('hand');
+        });
+        const vCount = skinIdx.count;
+        const idxArr = skinIdx.array;
+        const wtArr = skinWt.array;
+        const idxStride = skinIdx.itemSize || 4;
+        const wtStride = skinWt.itemSize || 4;
+        const fpMaskArr = new Float32Array(vCount);
+        for (let i = 0; i < vCount; i++) {
+          let hSum = 0;
+          const iBase = i * idxStride;
+          const wBase = i * wtStride;
+          for (let k = 0; k < 4; k++) {
+            const bi = idxArr[iBase + k] | 0;
+            if (isHiddenBone[bi]) hSum += wtArr[wBase + k];
+          }
+          fpMaskArr[i] = hSum > 0.35 ? 1.0 : 0.0;
+        }
+        geom.setAttribute('fpMask', new THREE.BufferAttribute(fpMaskArr, 1));
+
+        const origMat = Array.isArray(this.body.material) ? this.body.material[0] : this.body.material;
+        const fpBodyMat = origMat ? origMat.clone() : new THREE.MeshLambertMaterial({ color: 0xffffff, skinning: true });
+        fpBodyMat.onBeforeCompile = (shader) => {
+          shader.uniforms.uFpBodyMode = this._uFpBodyMode;
+          shader.vertexShader = 'attribute float fpMask;\nvarying float vFpMask;\n' +
+            shader.vertexShader.replace('#include <begin_vertex>', 'vFpMask = fpMask;\n#include <begin_vertex>');
+          shader.fragmentShader = 'uniform float uFpBodyMode;\nvarying float vFpMask;\n' +
+            shader.fragmentShader.replace('#include <clipping_planes_fragment>', 'if (uFpBodyMode > 0.5 && vFpMask > 0.5) discard;\n#include <clipping_planes_fragment>');
+        };
+        fpBodyMat.customProgramCacheKey = () => 'ashfall_fp_body_mask_v1';
+        fpBodyMat.needsUpdate = true;
+        this.body.material = fpBodyMat;
+      }
     }
 
     setBackpack(bagId) {
@@ -804,6 +865,7 @@
         this.backpackMount.add(mesh);
         this.backpackMesh = mesh;
       }
+      this.backpackMount.visible = !this.fpBodyMode;
     }
 
     disable() {
@@ -836,6 +898,58 @@
       // 1. Update Mixamo locomotion blend weights (freeze & disable mocap immediately when dead so ragdoll drives every bone)
       if (s.dead) {
         this.mocapW = 0;
+        if (r._ragdollPose) {
+          const rp = r._ragdollPose;
+          r.root.updateMatrixWorld(true);
+          this.wrapper.updateMatrixWorld(true);
+
+          RigIK.setWorldQuat(B.hips, rp.pelvisQ.clone().multiply(this.corr.hips));
+          if (B.hips.parent) {
+            B.hips.parent.updateWorldMatrix(true, false);
+            B.hips.position.copy(B.hips.parent.worldToLocal(rp.pelvis.clone()));
+          }
+          B.hips.updateMatrixWorld(true);
+
+          const qSpW = rp.pelvisQ.clone().slerp(rp.chestQ, 0.45).multiply(this.corr.spine);
+          const qTorW = rp.chestQ.clone().multiply(this.corr.spine2);
+          if (B.spine) { RigIK.setWorldQuat(B.spine, qSpW); B.spine.updateMatrixWorld(true); }
+          if (B.spine1) { RigIK.setWorldQuat(B.spine1, this._slerpQ.copy(qSpW).slerp(qTorW, 0.5)); B.spine1.updateMatrixWorld(true); }
+          if (B.spine2) { RigIK.setWorldQuat(B.spine2, qTorW); B.spine2.updateMatrixWorld(true); }
+          if (B.neck) { RigIK.setWorldQuat(B.neck, rp.chestQ.clone().slerp(rp.headQ, 0.4).multiply(this.corr.neck)); B.neck.updateMatrixWorld(true); }
+          if (B.head) { RigIK.setWorldQuat(B.head, rp.headQ.clone().multiply(this.corr.head)); B.head.updateMatrixWorld(true); }
+
+          const solveRagLeg = (side, kneeW, footW) => {
+            const bUp = B[side + 'upleg'];
+            const bLeg = B[side + 'leg'];
+            const bFoot = B[side + 'foot'];
+            if (!bUp || !bLeg || !bFoot || !kneeW || !footW) return;
+            RigIK.solveTwoBone(
+              bUp, bLeg, bFoot, footW, kneeW,
+              this.bindLocal && this.bindLocal[side + 'upleg'],
+              this.bindLocal && this.bindLocal[side + 'leg']
+            );
+          };
+          solveRagLeg('left', rp.lKnee, rp.lFoot);
+          solveRagLeg('right', rp.rKnee, rp.rFoot);
+
+          const solveRagArm = (side, elbowW, handW) => {
+            const bUp = B[side + 'arm'];
+            const bLow = B[side + 'forearm'];
+            const bHand = B[side + 'hand'];
+            if (!bUp || !bLow || !bHand || !elbowW || !handW) return;
+            RigIK.solveTwoBone(
+              bUp, bLow, bHand, handW, elbowW,
+              this.bindLocal && this.bindLocal[side + 'arm'],
+              this.bindLocal && this.bindLocal[side + 'forearm']
+            );
+            RigIK.applyFingerCurl(this.fingerCurls[side], [0.35, 0.40, 0.28], 0.25);
+          };
+          solveRagArm('left', rp.lElbow, rp.lHand);
+          solveRagArm('right', rp.rElbow, rp.rHand);
+
+          this.model.updateMatrixWorld(true);
+          return;
+        }
       } else {
         const wRun = smoothstepRange(2.6, 4.0, speed);
         const wWalk = smoothstepRange(0.3, 1.0, speed) * (1 - wRun);
@@ -1061,15 +1175,23 @@
     }
   };
 
-  // ==================== FIRST-PERSON RIGGED ARMS (v2.44) ====================
+  // ==================== FIRST-PERSON RIGGED ARMS (v2.45) ====================
   const FP_HAND_STYLES = {
     grip:          { f: new THREE.Vector3(-0.22, -0.08, -0.97), back: new THREE.Vector3( 0.97,  0.08, -0.22), palmOffset: new THREE.Vector3( 0.018,  0.000, 0.004), curl: [1.05, 1.15, 0.75], thumb: 0.65 },
-    rightFist:     { f: new THREE.Vector3(-0.18,  0.00, -0.98), back: new THREE.Vector3( 0.98,  0.00, -0.18), palmOffset: new THREE.Vector3( 0.006,  0.000, 0.002), curl: [1.45, 1.55, 1.15], thumb: 0.95 },
-    leftFist:      { f: new THREE.Vector3( 0.18,  0.00, -0.98), back: new THREE.Vector3(-0.98,  0.00, -0.18), palmOffset: new THREE.Vector3(-0.006,  0.000, 0.002), curl: [1.45, 1.55, 1.15], thumb: 0.95 },
+    rightFist:     { f: new THREE.Vector3(-0.14,  0.04, -0.99), back: new THREE.Vector3( 0.99,  0.04, -0.14), palmOffset: new THREE.Vector3( 0.005,  0.000, 0.002), curl: [1.62, 1.78, 1.38], thumb: 1.42 },
+    leftFist:      { f: new THREE.Vector3( 0.14,  0.04, -0.99), back: new THREE.Vector3(-0.99,  0.04, -0.14), palmOffset: new THREE.Vector3(-0.005,  0.000, 0.002), curl: [1.62, 1.78, 1.38], thumb: 1.42 },
     supportPistol: { f: new THREE.Vector3( 0.40,  0.05, -0.91), back: new THREE.Vector3(-0.88, -0.22, -0.42), palmOffset: new THREE.Vector3(-0.014, -0.008, 0.004), curl: [0.88, 0.96, 0.65], thumb: 0.40 },
     foregrip:      { f: new THREE.Vector3( 0.24,  0.00, -0.97), back: new THREE.Vector3(-0.97,  0.00, -0.24), palmOffset: new THREE.Vector3(-0.018,  0.000, 0.004), curl: [1.05, 1.15, 0.75], thumb: 0.65 },
     supportRifle:  { f: new THREE.Vector3( 0.38,  0.18, -0.91), back: new THREE.Vector3(-0.32, -0.93, -0.18), palmOffset: new THREE.Vector3(-0.008, -0.020, 0.004), curl: [0.72, 0.82, 0.55], thumb: 0.35 },
-    plate:         { f: new THREE.Vector3( 0.00, -0.25, -0.97), back: new THREE.Vector3( 0.00,  0.97, -0.25), palmOffset: new THREE.Vector3( 0.000,  0.012, 0.006), curl: [0.55, 0.65, 0.45], thumb: 0.55 }
+    plate:         { f: new THREE.Vector3( 0.00, -0.25, -0.97), back: new THREE.Vector3( 0.00,  0.97, -0.25), palmOffset: new THREE.Vector3( 0.000,  0.012, 0.006), curl: [0.55, 0.65, 0.45], thumb: 0.55 },
+    // Dedicated reload IK grip styles
+    magGrip:       { f: new THREE.Vector3( 0.42, -0.16, -0.89), back: new THREE.Vector3(-0.90,  0.06, -0.43), palmOffset: new THREE.Vector3(-0.016,  0.000, 0.004), curl: [1.18, 1.28, 0.92], thumb: 0.88 },
+    akMagGrip:     { f: new THREE.Vector3( 0.48, -0.10, -0.87), back: new THREE.Vector3(-0.87,  0.08, -0.48), palmOffset: new THREE.Vector3(-0.018,  0.000, 0.004), curl: [1.22, 1.32, 0.96], thumb: 0.92 },
+    boltPinch:     { f: new THREE.Vector3(-0.28,  0.08, -0.96), back: new THREE.Vector3( 0.78,  0.58, -0.22), palmOffset: new THREE.Vector3( 0.010,  0.006, 0.004), curl: [1.32, 1.42, 1.05], thumb: 1.15 },
+    leftBoltPinch: { f: new THREE.Vector3( 0.36,  0.08, -0.93), back: new THREE.Vector3(-0.82,  0.48, -0.32), palmOffset: new THREE.Vector3(-0.012,  0.006, 0.004), curl: [1.28, 1.38, 1.00], thumb: 1.10 },
+    slapOpen:      { f: new THREE.Vector3( 0.32, -0.15, -0.94), back: new THREE.Vector3(-0.25,  0.96, -0.12), palmOffset: new THREE.Vector3(-0.006,  0.014, 0.004), curl: [0.16, 0.18, 0.12], thumb: 0.28 },
+    shellFeed:     { f: new THREE.Vector3( 0.28,  0.35, -0.89), back: new THREE.Vector3(-0.30, -0.88, -0.36), palmOffset: new THREE.Vector3(-0.008, -0.016, 0.004), curl: [0.92, 1.02, 0.72], thumb: 0.85 },
+    slideGrab:     { f: new THREE.Vector3( 0.45, -0.18, -0.87), back: new THREE.Vector3(-0.35,  0.91, -0.22), palmOffset: new THREE.Vector3(-0.010,  0.012, 0.004), curl: [1.10, 1.20, 0.85], thumb: 0.90 }
   };
 
   function isEffectivelyVisible(obj, stopAt) {
@@ -1295,7 +1417,7 @@
           const wristW = pose.armGroup.parent.localToWorld(pose.wristLocal.clone());
 
           const handObj = pose.handObj;
-          const styleKey = (handObj && handObj.userData && handObj.userData.handStyle) || 'grip';
+          const styleKey = (handObj && handObj.userData && (handObj.userData.activeStyle || handObj.userData.handStyle)) || 'grip';
           const style = FP_HAND_STYLES[styleKey] || FP_HAND_STYLES.grip;
           let handWQ = camQ;
           let handWPos = null;

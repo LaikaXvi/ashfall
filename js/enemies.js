@@ -573,6 +573,8 @@ class Enemy {
       const hl = Math.hypot(hdx, hdz);
       if (hl > 1e-4) this._lastHitDir = { x: hdx / hl, z: hdz / hl };
     }
+    this._lastHitForce = Math.min(8.5, Math.max(2.6, (amount || 35) * 0.085));
+    this._lastHitZone = (attackerInfo && attackerInfo.hitZone) || 'chest';
 
     if (this.isDowned) {
       if (attackerInfo) this.downedBy = attackerInfo;
@@ -672,44 +674,98 @@ class Enemy {
     this.position.y = gyDead;
 
     if (this.opModel) {
+      const r = this.opModel;
+      if (this.group) this.group.updateMatrixWorld(true);
+      r.root.updateMatrixWorld(true);
+
       const yaw = (this.group && this.group.rotation.y) || 0;
       const hd = this._lastHitDir || { x: -Math.sin(yaw), z: -Math.cos(yaw) };
-      const fwdDot = hd.x * Math.sin(yaw) + hd.z * Math.cos(yaw);
-      const fallBack = fwdDot <= 0;
-      const tgtPitch = fallBack ? (Math.PI * 0.5) : (-Math.PI * 0.5);
-      const sgn = fallBack ? 1 : -1;
+      const force = this._lastHitForce || 4.2;
+      const zone = this._lastHitZone || 'chest';
+
+      // Sample live world-space joint positions from the rig so ragdoll starts seamlessly from the exact death pose
+      const wp = (obj, fallback) => {
+        if (obj) return obj.getWorldPosition(new THREE.Vector3());
+        return new THREE.Vector3(this.position.x + fallback[0], gyDead + fallback[1], this.position.z + fallback[2]);
+      };
+      const mkNode = (pos, rad, velScale, upKick) => {
+        const vx = hd.x * force * velScale + (Math.random() - 0.5) * 1.1;
+        const vy = upKick + Math.random() * 0.45;
+        const vz = hd.z * force * velScale + (Math.random() - 0.5) * 1.1;
+        const initDt = 0.016;
+        return {
+          x: pos.x, y: Math.max(gyDead + rad, pos.y), z: pos.z,
+          px: pos.x - vx * initDt, py: Math.max(gyDead + rad, pos.y) - vy * initDt, pz: pos.z - vz * initDt,
+          rad
+        };
+      };
+
+      const pPelvis = wp(r.pelvis, [0, 0.92, 0]);
+      const pChest  = wp(r.torso,  [0, 1.36, 0]);
+      const pHead   = wp(r.head,   [0, 1.66, 0]);
+      const pLSh    = wp(r.leftArm && r.leftArm.shoulder,   [-0.20, 1.40, 0]);
+      const pRSh    = wp(r.rightArm && r.rightArm.shoulder, [ 0.20, 1.40, 0]);
+      const pLElb   = wp(r.leftArm && r.leftArm.elbow,      [-0.34, 1.14, -0.05]);
+      const pRElb   = wp(r.rightArm && r.rightArm.elbow,    [ 0.34, 1.14, -0.05]);
+      const pLHand  = wp(r.leftArm && r.leftArm.wrist,      [-0.38, 0.90, -0.14]);
+      const pRHand  = wp(r.rightArm && r.rightArm.wrist,    [ 0.38, 0.90, -0.14]);
+      const pLKnee  = wp(r.leftLeg && r.leftLeg.knee,       [-0.12, 0.50, -0.04]);
+      const pRKnee  = wp(r.rightLeg && r.rightLeg.knee,     [ 0.12, 0.50, -0.04]);
+      const pLFoot  = wp(r.leftLeg && r.leftLeg.ankle,      [-0.12, 0.10, 0]);
+      const pRFoot  = wp(r.rightLeg && r.rightLeg.ankle,    [ 0.12, 0.10, 0]);
+
+      const headMult = zone === 'head' ? 1.55 : 0.95;
+      const chestMult = zone === 'head' ? 1.15 : 1.20;
+      const pelvMult = zone === 'limb' ? 0.65 : 0.85;
+      const nodes = {
+        pelvis: mkNode(pPelvis, 0.13, pelvMult,  0.55),
+        chest:  mkNode(pChest,  0.14, chestMult, 0.95),
+        head:   mkNode(pHead,   0.12, headMult,  1.25),
+        lSh:    mkNode(pLSh,    0.11, chestMult * 0.95, 0.85),
+        rSh:    mkNode(pRSh,    0.11, chestMult * 0.95, 0.85),
+        lElb:   mkNode(pLElb,   0.09, 0.75, 0.60),
+        rElb:   mkNode(pRElb,   0.09, 0.75, 0.60),
+        lHand:  mkNode(pLHand,  0.07, 0.65, 0.45),
+        rHand:  mkNode(pRHand,  0.07, 0.65, 0.45),
+        lKnee:  mkNode(pLKnee,  0.09, 0.45, 0.25),
+        rKnee:  mkNode(pRKnee,  0.09, 0.45, 0.25),
+        lFoot:  mkNode(pLFoot,  0.07, 0.15, 0.05),
+        rFoot:  mkNode(pRFoot,  0.07, 0.15, 0.05)
+      };
+
+      const dist3 = (a, b, fallback) => {
+        const d = Math.hypot(b.x - a.x, b.y - a.y, b.z - a.z);
+        return (d > 0.05 && d < 1.2) ? d : fallback;
+      };
+      const constraints = [
+        { a: 'pelvis', b: 'chest', len: dist3(nodes.pelvis, nodes.chest, 0.44), stiff: 1.0 },
+        { a: 'chest',  b: 'head',  len: dist3(nodes.chest,  nodes.head,  0.30), stiff: 1.0 },
+        { a: 'chest',  b: 'lSh',   len: dist3(nodes.chest,  nodes.lSh,   0.20), stiff: 1.0 },
+        { a: 'chest',  b: 'rSh',   len: dist3(nodes.chest,  nodes.rSh,   0.20), stiff: 1.0 },
+        { a: 'lSh',    b: 'rSh',   len: dist3(nodes.lSh,    nodes.rSh,   0.38), stiff: 1.0 },
+        { a: 'pelvis', b: 'lSh',   len: dist3(nodes.pelvis, nodes.lSh,   0.48), stiff: 0.9 },
+        { a: 'pelvis', b: 'rSh',   len: dist3(nodes.pelvis, nodes.rSh,   0.48), stiff: 0.9 },
+        { a: 'lSh',    b: 'lElb',  len: dist3(nodes.lSh,    nodes.lElb,  0.29), stiff: 1.0 },
+        { a: 'lElb',   b: 'lHand', len: dist3(nodes.lElb,   nodes.lHand, 0.26), stiff: 1.0 },
+        { a: 'rSh',    b: 'rElb',  len: dist3(nodes.rSh,    nodes.rElb,  0.29), stiff: 1.0 },
+        { a: 'rElb',   b: 'rHand', len: dist3(nodes.rElb,   nodes.rHand, 0.26), stiff: 1.0 },
+        { a: 'pelvis', b: 'lKnee', len: dist3(nodes.pelvis, nodes.lKnee, 0.43), stiff: 1.0 },
+        { a: 'lKnee',  b: 'lFoot', len: dist3(nodes.lKnee,  nodes.lFoot, 0.42), stiff: 1.0 },
+        { a: 'pelvis', b: 'rKnee', len: dist3(nodes.pelvis, nodes.rKnee, 0.43), stiff: 1.0 },
+        { a: 'rKnee',  b: 'rFoot', len: dist3(nodes.rKnee,  nodes.rFoot, 0.42), stiff: 1.0 },
+        // Structural min-distance anti-collapse constraints
+        { a: 'pelvis', b: 'head',  len: 0.62, minOnly: true, stiff: 0.85 },
+        { a: 'lKnee',  b: 'rKnee', len: 0.16, minOnly: true, stiff: 0.65 },
+        { a: 'lFoot',  b: 'rFoot', len: 0.14, minOnly: true, stiff: 0.50 }
+      ];
 
       this.ragdoll = {
         elapsed: 0,
         settled: false,
-        bounced: false,
         groundY: gyDead,
-        vx: hd.x * 3.4,
-        vy: 1.35,
-        vz: hd.z * 3.4,
-        targetPitch: tgtPitch,
-        pitch: 0,
-        vPitch: sgn * 5.2,
-        roll: 0,
-        vRoll: (Math.random() - 0.5) * 4.2,
-        yawSpin: 0,
-        vYawSpin: (Math.random() - 0.5) * 3.4,
-        j: {
-          spine:  { a: 0,     v: -sgn * 3.5,                  t: sgn * 0.08,                      min: -0.60, max: 0.60, k: 22, d: 7.0 },
-          head:   { a: 0,     v: -sgn * 6.5,                  t: -sgn * 0.16,                     min: -0.85, max: 0.75, k: 28, d: 8.0 },
-          lHipX:  { a: 0.10,  v: (Math.random() - 0.5) * 5.0, t: fallBack ? 0.24 : -0.06,         min: -1.10, max: 0.90, k: 18, d: 6.5 },
-          rHipX:  { a: -0.10, v: (Math.random() - 0.5) * 5.0, t: fallBack ? 0.18 : -0.10,         min: -1.10, max: 0.90, k: 18, d: 6.5 },
-          lHipZ:  { a: -0.06, v: -1.2 - Math.random() * 1.4,  t: -0.18 - Math.random() * 0.18,    min: -0.55, max: 0.05, k: 16, d: 6.0 },
-          rHipZ:  { a: 0.06,  v: 1.2 + Math.random() * 1.4,   t: 0.18 + Math.random() * 0.18,     min: -0.05, max: 0.55, k: 16, d: 6.0 },
-          lKneeX: { a: -0.22, v: -3.2 - Math.random() * 2.8,  t: -0.18 - Math.random() * 0.42,    min: -1.65, max: -0.04, k: 20, d: 7.0 },
-          rKneeX: { a: -0.22, v: -3.2 - Math.random() * 2.8,  t: -0.18 - Math.random() * 0.42,    min: -1.65, max: -0.04, k: 20, d: 7.0 },
-          lShX:   { a: 0.15,  v: (Math.random() - 0.3) * 5.0, t: (Math.random() - 0.3) * 0.65,    min: -1.20, max: 1.40, k: 16, d: 6.0 },
-          rShX:   { a: 0.15,  v: (Math.random() - 0.3) * 5.0, t: (Math.random() - 0.3) * 0.65,    min: -1.20, max: 1.40, k: 16, d: 6.0 },
-          lShZ:   { a: 0.40,  v: 2.0 + Math.random() * 2.4,   t: 0.55 + Math.random() * 0.45,     min: 0.15,  max: 1.35, k: 18, d: 6.5 },
-          rShZ:   { a: -0.40, v: -2.0 - Math.random() * 2.4,  t: -0.55 - Math.random() * 0.45,    min: -1.35, max: -0.15, k: 18, d: 6.5 },
-          lElbX:  { a: 0.45,  v: 2.8 + Math.random() * 2.8,   t: 0.35 + Math.random() * 0.65,     min: 0.08,  max: 1.75, k: 18, d: 6.5 },
-          rElbX:  { a: 0.45,  v: 2.8 + Math.random() * 2.8,   t: 0.35 + Math.random() * 0.65,     min: 0.08,  max: 1.75, k: 18, d: 6.5 }
-        }
+        nodes,
+        nodeKeys: Object.keys(nodes),
+        constraints
       };
       this.opModel._animState = { speed: 0, stance: 'dead', dead: true, isDowned: false };
       this._stepRagdoll(0.016);
@@ -769,115 +825,169 @@ class Enemy {
   _stepRagdoll(dt) {
     const rd = this.ragdoll;
     const r = this.opModel;
-    if (!rd || rd.settled || !r) return;
+    if (!rd || rd.settled || !r || !rd.nodes) return;
     const cDt = Math.min(Math.max(dt || 0.016, 0.001), 0.04);
     rd.elapsed += cDt;
 
-    // 1. Horizontal knockback slide & vertical terrain settle
-    const nx = this.position.x + rd.vx * cDt;
-    const nz = this.position.z + rd.vz * cDt;
-    if (!this._collides(nx, this.position.z, 0.42)) {
-      this.position.x = nx;
-    } else {
-      rd.vx *= -0.35;
-    }
-    if (!this._collides(this.position.x, nz, 0.42)) {
-      this.position.z = nz;
-    } else {
-      rd.vz *= -0.35;
-    }
-    const gy = this._getGroundY(this.position.x, this.position.z);
-    rd.groundY = gy;
-    rd.vy -= 18.0 * cDt;
-    this.position.y += rd.vy * cDt;
-    if (this.position.y <= gy) {
-      this.position.y = gy;
-      if (rd.vy < -1.2) rd.vy = -rd.vy * 0.18;
-      else rd.vy = 0;
-    }
-    const linFriction = Math.exp(-8.5 * cDt);
-    rd.vx *= linFriction;
-    rd.vz *= linFriction;
+    const nodes = rd.nodes;
+    const keys = rd.nodeKeys;
+    const constraints = rd.constraints;
+    const subSteps = 2;
+    const subDt = cDt / subSteps;
+    const gravStep = -18.5 * subDt * subDt;
+    const airDamp = Math.pow(0.985, subDt * 60);
 
+    let maxSpeedSq = 0;
+
+    for (let s = 0; s < subSteps; s++) {
+      // 1. Verlet integration with gravity
+      for (let i = 0; i < keys.length; i++) {
+        const p = nodes[keys[i]];
+        const vx = (p.x - p.px) * airDamp;
+        const vy = (p.y - p.py) * airDamp;
+        const vz = (p.z - p.pz) * airDamp;
+        p.px = p.x;
+        p.py = p.y;
+        p.pz = p.z;
+        p.x += vx;
+        p.y += vy + gravStep;
+        p.z += vz;
+      }
+
+      // 2. Distance & anatomical bone-length constraint relaxation
+      for (let iter = 0; iter < 5; iter++) {
+        for (let c = 0; c < constraints.length; c++) {
+          const ct = constraints[c];
+          const a = nodes[ct.a];
+          const b = nodes[ct.b];
+          const dx = b.x - a.x;
+          const dy = b.y - a.y;
+          const dz = b.z - a.z;
+          const d = Math.hypot(dx, dy, dz);
+          if (d < 1e-5) continue;
+          if (ct.minOnly && d >= ct.len) continue;
+          const diff = ((d - ct.len) / d) * 0.5 * ct.stiff;
+          a.x += dx * diff;
+          a.y += dy * diff;
+          a.z += dz * diff;
+          b.x -= dx * diff;
+          b.y -= dy * diff;
+          b.z -= dz * diff;
+        }
+      }
+
+      // 3. Per-particle terrain ground collision, bounce, friction & wall/obstacle collision
+      for (let i = 0; i < keys.length; i++) {
+        const p = nodes[keys[i]];
+        const gy = this._getGroundY(p.x, p.z) + p.rad;
+        if (p.y < gy) {
+          const vy = p.y - p.py;
+          p.y = gy;
+          if (vy < -0.025) {
+            p.py = p.y + vy * 0.16; // soft damped bounce
+          } else {
+            p.py = p.y;
+          }
+          // Strong ground sliding friction
+          const vx = p.x - p.px;
+          const vz = p.z - p.pz;
+          p.px = p.x - vx * 0.72;
+          p.pz = p.z - vz * 0.72;
+        }
+        if (this._collides(p.x, p.z, p.rad * 1.25)) {
+          const vx = p.x - p.px;
+          const vz = p.z - p.pz;
+          p.x = p.px - vx * 0.25;
+          p.z = p.pz - vz * 0.25;
+          p.px = p.x;
+          p.pz = p.z;
+        }
+        if (s === subSteps - 1) {
+          const sx = (p.x - p.px) / subDt;
+          const sy = (p.y - p.py) / subDt;
+          const sz = (p.z - p.pz) / subDt;
+          const spSq = sx * sx + sy * sy + sz * sz;
+          if (spSq > maxSpeedSq) maxSpeedSq = spSq;
+        }
+      }
+    }
+
+    // 4. Sync entity world anchor to ragdoll pelvis so loot prompts follow the body
+    const nPel = nodes.pelvis;
+    const pelGy = this._getGroundY(nPel.x, nPel.z);
+    rd.groundY = pelGy;
+    this.position.set(nPel.x, pelGy, nPel.z);
     if (this.group) {
-      this.group.position.set(this.position.x, this.position.y, this.position.z);
+      this.group.position.set(nPel.x, pelGy, nPel.z);
       this.group.rotation.x = 0;
       this.group.rotation.z = 0;
     }
 
-    // 2. Angular gravity torque collapsing body toward flat ground rest pose
-    const sgn = rd.targetPitch >= 0 ? 1 : -1;
-    const gravTorque = Math.sin(rd.pitch) * 26.0 + sgn * 12.0 * (1.0 - Math.min(1, Math.abs(rd.pitch) / (Math.PI * 0.5)));
-    rd.vPitch = (rd.vPitch + gravTorque * cDt) * Math.exp(-2.6 * cDt);
-    rd.pitch += rd.vPitch * cDt;
+    // 5. Build orthonormal world quaternions (+X right, +Y up, +Z back / -Z forward) for pelvis, chest & head
+    const vPel = new THREE.Vector3(nPel.x, nPel.y, nPel.z);
+    const vChest = new THREE.Vector3(nodes.chest.x, nodes.chest.y, nodes.chest.z);
+    const vHead = new THREE.Vector3(nodes.head.x, nodes.head.y, nodes.head.z);
+    const vLSh = new THREE.Vector3(nodes.lSh.x, nodes.lSh.y, nodes.lSh.z);
+    const vRSh = new THREE.Vector3(nodes.rSh.x, nodes.rSh.y, nodes.rSh.z);
 
-    // Ground impact bounce when chest/back slaps the dirt
-    if (Math.abs(rd.pitch) >= Math.PI * 0.5) {
-      rd.pitch = sgn * Math.PI * 0.5;
-      if (!rd.bounced && Math.abs(rd.vPitch) > 1.0) {
-        rd.bounced = true;
-        rd.vPitch = -rd.vPitch * 0.22;
-        rd.j.head.v += -sgn * 4.0;
-        rd.j.lElbX.v += 4.5;
-        rd.j.rElbX.v += 4.5;
-        rd.j.lKneeX.v -= 3.5;
-        rd.j.rKneeX.v -= 3.5;
+    const makeBasisQ = (upRaw, rightRaw) => {
+      const up = upRaw.clone();
+      if (up.lengthSq() < 1e-6) up.set(0, 1, 0);
+      else up.normalize();
+      const right = rightRaw.clone().addScaledVector(up, -rightRaw.dot(up));
+      if (right.lengthSq() < 1e-6) {
+        right.set(Math.abs(up.x) < 0.8 ? 1 : 0, 0, Math.abs(up.x) < 0.8 ? 0 : 1)
+          .addScaledVector(up, 0).cross(up).normalize();
       } else {
-        rd.vPitch = 0;
+        right.normalize();
       }
+      const back = new THREE.Vector3().crossVectors(right, up).normalize();
+      const m = new THREE.Matrix4().makeBasis(right, up, back);
+      return new THREE.Quaternion().setFromRotationMatrix(m);
+    };
+
+    const spineUp = vChest.clone().sub(vPel);
+    const shRight = vRSh.clone().sub(vLSh);
+    const chestQ = makeBasisQ(spineUp, shRight);
+    const headUp = vHead.clone().sub(vChest);
+    const headQ = makeBasisQ(headUp, shRight);
+    // Slight hip twist from knee vector
+    const kneeRight = new THREE.Vector3(
+      nodes.rKnee.x - nodes.lKnee.x,
+      nodes.rKnee.y - nodes.lKnee.y,
+      nodes.rKnee.z - nodes.lKnee.z
+    );
+    const pelvisQ = makeBasisQ(spineUp, kneeRight.lengthSq() > 0.01 ? shRight.clone().lerp(kneeRight.normalize(), 0.35) : shRight);
+
+    r._ragdollPose = {
+      pelvis: vPel,
+      pelvisQ,
+      chestQ,
+      headQ,
+      lKnee: new THREE.Vector3(nodes.lKnee.x, nodes.lKnee.y, nodes.lKnee.z),
+      lFoot: new THREE.Vector3(nodes.lFoot.x, nodes.lFoot.y, nodes.lFoot.z),
+      rKnee: new THREE.Vector3(nodes.rKnee.x, nodes.rKnee.y, nodes.rKnee.z),
+      rFoot: new THREE.Vector3(nodes.rFoot.x, nodes.rFoot.y, nodes.rFoot.z),
+      lElbow: new THREE.Vector3(nodes.lElb.x, nodes.lElb.y, nodes.lElb.z),
+      lHand: new THREE.Vector3(nodes.lHand.x, nodes.lHand.y, nodes.lHand.z),
+      rElbow: new THREE.Vector3(nodes.rElb.x, nodes.rElb.y, nodes.rElb.z),
+      rHand: new THREE.Vector3(nodes.rHand.x, nodes.rHand.y, nodes.rHand.z)
+    };
+
+    // Fallback proxy rig collapse (for non-GLB legacy boxes)
+    if (r.rigPivot && (!r.skin || r.skin.disabled)) {
+      const fallFrac = Math.min(1, rd.elapsed / 0.55);
+      r.rigPivot.position.y = THREE.MathUtils.lerp(0, 0.14, fallFrac);
+      r.rigPivot.rotation.x = Math.PI * 0.5 * fallFrac;
+      if (r.pelvis) r.pelvis.position.y = THREE.MathUtils.lerp(0.90, 0.20, fallFrac);
     }
-
-    rd.vRoll *= Math.exp(-5.0 * cDt);
-    rd.roll = THREE.MathUtils.clamp(rd.roll + rd.vRoll * cDt, -0.45, 0.45);
-    rd.vYawSpin *= Math.exp(-5.5 * cDt);
-    rd.yawSpin = THREE.MathUtils.clamp(rd.yawSpin + rd.vYawSpin * cDt, -0.55, 0.55);
-
-    // 3. Per-joint damped spring-pendulum physics with anatomical limits
-    let maxVel = Math.abs(rd.vPitch) + Math.abs(rd.vRoll);
-    const jKeys = Object.keys(rd.j);
-    for (let i = 0; i < jKeys.length; i++) {
-      const jt = rd.j[jKeys[i]];
-      const acc = (jt.t - jt.a) * jt.k;
-      jt.v = (jt.v + acc * cDt) * Math.exp(-jt.d * cDt);
-      jt.a += jt.v * cDt;
-      if (jt.a < jt.min) {
-        jt.a = jt.min;
-        if (jt.v < 0) jt.v = -jt.v * 0.2;
-      } else if (jt.a > jt.max) {
-        jt.a = jt.max;
-        if (jt.v > 0) jt.v = -jt.v * 0.2;
-      }
-      maxVel += Math.abs(jt.v);
-    }
-
-    // 4. Write articulated ragdoll pose to proxy rig for RiggedCharacter & fallback boxes
-    const fallFrac = Math.min(1, Math.abs(rd.pitch) / (Math.PI * 0.5));
-    r.rigPivot.position.y = THREE.MathUtils.lerp(0.0, 0.14, fallFrac);
-    r.rigPivot.rotation.x = rd.pitch;
-    r.rigPivot.rotation.z = rd.roll;
-    r.rigPivot.rotation.y = rd.yawSpin;
-    r.pelvis.position.y = THREE.MathUtils.lerp(0.90, 0.20, fallFrac);
-    r.pelvis.rotation.set(0, 0, 0);
-    r.spine.rotation.set(rd.j.spine.a * 0.5, 0, 0);
-    r.torso.rotation.set(rd.j.spine.a * 0.5, 0, 0);
-    r.neck.rotation.set(rd.j.head.a * 0.35, 0, 0);
-    r.head.rotation.set(rd.j.head.a * 0.65, 0, 0);
-
-    r.leftLeg.hip.rotation.set(rd.j.lHipX.a, 0, rd.j.lHipZ.a);
-    r.leftLeg.knee.rotation.x = rd.j.lKneeX.a;
-    r.leftLeg.ankle.rotation.x = 0.22;
-    r.rightLeg.hip.rotation.set(rd.j.rHipX.a, 0, rd.j.rHipZ.a);
-    r.rightLeg.knee.rotation.x = rd.j.rKneeX.a;
-    r.rightLeg.ankle.rotation.x = 0.22;
-
-    r.leftArm.shoulder.rotation.set(rd.j.lShX.a, 0, rd.j.lShZ.a);
-    r.leftArm.elbow.rotation.x = rd.j.lElbX.a;
-    r.rightArm.shoulder.rotation.set(rd.j.rShX.a, 0, rd.j.rShZ.a);
-    r.rightArm.elbow.rotation.x = rd.j.rElbX.a;
 
     r._animState = { speed: 0, stance: 'dead', dead: true, isDowned: false };
+    if (r.skin && !r.skin.disabled && typeof r.skin.sync === 'function') {
+      r.skin.sync(cDt);
+    }
 
-    if (rd.elapsed >= 1.8 && Math.hypot(rd.vx, rd.vz) < 0.04 && maxVel < 0.08 && Math.abs(rd.pitch - rd.targetPitch) < 0.03) {
+    if ((rd.elapsed >= 1.8 && maxSpeedSq < 0.008) || rd.elapsed >= 5.0) {
       rd.settled = true;
     }
   }
@@ -1416,6 +1526,7 @@ class Enemy {
     this.group.rotation.x = 0;
     this.group.rotation.z = 0;
     if (this.opModel && this.opModel.rigPivot) {
+      this.opModel._ragdollPose = null;
       this.opModel.rigPivot.position.set(0, 0, 0);
       this.opModel.rigPivot.rotation.set(0, 0, 0);
       this.opModel._animState = { speed: 0, stance: 'stand', dead: false, isDowned: false };
