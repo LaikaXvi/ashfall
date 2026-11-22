@@ -9,6 +9,7 @@ class WastelandWorld {
     this.lootContainers = []; // { id, name, mesh, position, items, searched, requiresKey }
     this.groundItems = [];    // { id, qty, mesh, position, ringMesh } physical loose & dropped loot
     this.doors = [];          // Interactive bidirectional hinged doors (open / peek / sprint bash / close)
+    this.staircases = [];     // Registered multi-floor staircases { bottomEntry, topExit, bottomY, topY } for AI pathfinding
     this.extractZones = [];   // { name, position, radius, beaconMesh, ringMesh }
     this.pois = [];           // { name, x, z, color } for minimap & logical looting
     this.activeSmokes = [];
@@ -1305,6 +1306,15 @@ class WastelandWorld {
         else if (dir === 'west') { sx = startX - offset; sw = stepD + 0.08; sd = stepW; }
         this._addBox(sx, baseY + curH * 0.5, sz, sw, curH, sd, this._materials.metal, true);
       }
+      // Register staircase portal for 2.5D multi-floor AI pathfinding!
+      const dxDir = dir === 'east' ? 1 : (dir === 'west' ? -1 : 0);
+      const dzDir = dir === 'south' ? 1 : (dir === 'north' ? -1 : 0);
+      this.staircases.push({
+        bottomEntry: new THREE.Vector3(startX - dxDir * 1.1, baseY, startZ - dzDir * 1.1),
+        topExit: new THREE.Vector3(startX + dxDir * (totalRun + 1.1), baseY + totalH, startZ + dzDir * (totalRun + 1.1)),
+        bottomY: baseY,
+        topY: baseY + totalH
+      });
     };
 
     // Helper: Hospital Bed prop (steel frame + white mattress + pillow)
@@ -2287,5 +2297,222 @@ class WastelandWorld {
         gi.ringMesh.material.opacity = 0.48 + Math.sin(time * 3.2 + gi.position.x) * 0.20;
       }
     }
+  }
+
+  // ============================================================================
+  // 2.5D MULTI-FLOOR AI NAVIGATION & A* PATHFINDING (Buildings, Doors, Stairs!)
+  // ============================================================================
+  getWalkHeightAt(x, z, feetY = 0) {
+    let support = this.getTerrainHeight(x, z);
+    const list = this.getNearbyColliders ? this.getNearbyColliders(x, z, 0.75) : this.colliders;
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i];
+      if (c.doorRef) continue;
+      if (x + 0.16 >= c.minX && x - 0.16 <= c.maxX && z + 0.16 >= c.minZ && z - 0.16 <= c.maxZ) {
+        // Walkable floor slab or stair step within step-up (+0.52m) of current feet
+        if (c.maxY <= feetY + 0.52 && c.maxY > support) {
+          support = c.maxY;
+        }
+      }
+    }
+    return support;
+  }
+
+  isWalkableForAI(x, z, feetY = 0, r = 0.40) {
+    if (Math.abs(x) > this.mapHalfSize - 4 || Math.abs(z) > this.mapHalfSize - 4) return false;
+    const list = this.getNearbyColliders ? this.getNearbyColliders(x, z, r + 0.45) : this.colliders;
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i];
+      // Unlocked doors are ALWAYS walkable for A* (AI automatically opens them on approach!)
+      if (c.doorRef) {
+        if (!c.doorRef.locked) continue;
+      }
+      // Allow smooth step-up onto stair steps & curbs (<= 0.48m above feet) and walking under 2nd-floor ceilings (>= 1.65m above feet)
+      if (c.maxY <= feetY + 0.48) continue;
+      if (c.minY >= feetY + 1.65) continue;
+      if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  _isSegmentWalkableForAI(ax, az, bx, bz, startY, r = 0.38) {
+    const dist = Math.hypot(bx - ax, bz - az);
+    if (dist < 0.2) return true;
+    const steps = Math.max(2, Math.ceil(dist / 0.85));
+    let curY = startY;
+    for (let i = 1; i <= steps; i++) {
+      const t = i / steps;
+      const sx = ax + (bx - ax) * t;
+      const sz = az + (bz - az) * t;
+      if (!this.isWalkableForAI(sx, sz, curY, r)) return false;
+      curY = this.getWalkHeightAt(sx, sz, curY);
+    }
+    return true;
+  }
+
+  _findAStarSegment(startX, startY, startZ, goalX, goalY, goalZ, maxIter = 340) {
+    // Fast-path: if straight line is already completely clear, return goal immediately!
+    if (this._isSegmentWalkableForAI(startX, startZ, goalX, goalZ, startY, 0.42)) {
+      return [{ x: goalX, y: goalY, z: goalZ }];
+    }
+
+    const cell = 1.5;
+    const sx = Math.round(startX / cell);
+    const sz = Math.round(startZ / cell);
+    const gx = Math.round(goalX / cell);
+    const gz = Math.round(goalZ / cell);
+
+    // Bounded 8-directional A* over spatial-hash walkability (navigates around walls, through doorways & inside rooms!)
+    const keyOf = (x, z) => (x + 2048) * 4096 + (z + 2048);
+    const startKey = keyOf(sx, sz);
+    const open = [{ x: sx, z: sz, y: startY, g: 0, f: Math.hypot(gx - sx, gz - sz), key: startKey }];
+    const gScore = new Map();
+    const cameFrom = new Map();
+    const closed = new Set();
+    gScore.set(startKey, 0);
+
+    let bestNode = open[0];
+    let bestH = open[0].f;
+    let reached = null;
+
+    const dirs = [
+      [1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1],
+      [1, 1, 1.414], [1, -1, 1.414], [-1, 1, 1.414], [-1, -1, 1.414]
+    ];
+
+    let iter = 0;
+    while (open.length > 0 && iter < maxIter) {
+      iter++;
+      // Pop lowest f-score node
+      let bestIdx = 0;
+      for (let i = 1; i < open.length; i++) {
+        if (open[i].f < open[bestIdx].f) bestIdx = i;
+      }
+      const cur = open[bestIdx];
+      open[bestIdx] = open[open.length - 1];
+      open.pop();
+
+      if (closed.has(cur.key)) continue;
+      closed.add(cur.key);
+
+      const wx = cur.x * cell;
+      const wz = cur.z * cell;
+      const dGoal = Math.hypot(wx - goalX, wz - goalZ);
+      if (dGoal <= 1.95) {
+        reached = cur;
+        break;
+      }
+      if (dGoal < bestH) {
+        bestH = dGoal;
+        bestNode = cur;
+      }
+
+      for (let d = 0; d < 8; d++) {
+        const nx = cur.x + dirs[d][0];
+        const nz = cur.z + dirs[d][1];
+        const nKey = keyOf(nx, nz);
+        if (closed.has(nKey)) continue;
+
+        const nwx = nx * cell;
+        const nwz = nz * cell;
+        if (!this.isWalkableForAI(nwx, nwz, cur.y, 0.36)) continue;
+
+        // Prevent diagonal corner-cutting through wall corners
+        if (d >= 4) {
+          if (!this.isWalkableForAI((cur.x + dirs[d][0]) * cell, wz, cur.y, 0.34)) continue;
+          if (!this.isWalkableForAI(wx, (cur.z + dirs[d][1]) * cell, cur.y, 0.34)) continue;
+        }
+
+        const nextY = this.getWalkHeightAt(nwx, nwz, cur.y);
+        if (Math.abs(nextY - cur.y) > 0.72) continue;
+
+        const tentG = cur.g + dirs[d][2];
+        const prevG = gScore.get(nKey);
+        if (prevG === undefined || tentG < prevG) {
+          gScore.set(nKey, tentG);
+          cameFrom.set(nKey, cur);
+          const h = Math.hypot(gx - nx, gz - nz) * 1.15;
+          open.push({ x: nx, z: nz, y: nextY, g: tentG, f: tentG + h, key: nKey });
+        }
+      }
+    }
+
+    const endNode = reached || bestNode;
+    if (!endNode || endNode.key === startKey) {
+      return [{ x: goalX, y: goalY, z: goalZ }];
+    }
+
+    // Reconstruct raw grid path
+    const raw = [];
+    let p = endNode;
+    while (p && p.key !== startKey) {
+      raw.push({ x: p.x * cell, y: p.y, z: p.z * cell });
+      p = cameFrom.get(p.key);
+    }
+    raw.reverse();
+    if (reached && Math.hypot(raw[raw.length - 1].x - goalX, raw[raw.length - 1].z - goalZ) > 0.4) {
+      raw.push({ x: goalX, y: goalY, z: goalZ });
+    }
+
+    // String-pulling path smoothing so AI walk in crisp straight lines through doorways & corridors
+    if (raw.length <= 2) return raw;
+    const smooth = [];
+    let anchorX = startX, anchorY = startY, anchorZ = startZ;
+    let idx = 0;
+    while (idx < raw.length) {
+      let furthest = idx;
+      for (let j = Math.min(raw.length - 1, idx + 8); j > idx; j--) {
+        if (this._isSegmentWalkableForAI(anchorX, anchorZ, raw[j].x, raw[j].z, anchorY, 0.40)) {
+          furthest = j;
+          break;
+        }
+      }
+      const wp = raw[furthest];
+      smooth.push(wp);
+      anchorX = wp.x; anchorY = wp.y; anchorZ = wp.z;
+      idx = furthest + 1;
+    }
+    return smooth;
+  }
+
+  findPath(startPos, goalPos, maxIter = 340) {
+    if (!startPos || !goalPos) return [];
+    const sy = Number.isFinite(startPos.y) ? startPos.y : this.getTerrainHeight(startPos.x, startPos.z);
+    const gy = Number.isFinite(goalPos.y) ? goalPos.y : this.getTerrainHeight(goalPos.x, goalPos.z);
+
+    // Multi-Floor Staircase Routing: if goal is on a different floor (deltaY > 1.8m), route via nearest connecting staircase!
+    if (Math.abs(gy - sy) > 1.8 && this.staircases && this.staircases.length > 0) {
+      const goingUp = gy > sy;
+      let bestStair = null;
+      let bestScore = Infinity;
+      for (let i = 0; i < this.staircases.length; i++) {
+        const st = this.staircases[i];
+        const entry = goingUp ? st.bottomEntry : st.topExit;
+        const exit = goingUp ? st.topExit : st.bottomEntry;
+        // Must start near our current floor level
+        if (Math.abs(entry.y - sy) > 2.2) continue;
+        const dEntry = Math.hypot(entry.x - startPos.x, entry.z - startPos.z);
+        const dExit = Math.hypot(exit.x - goalPos.x, exit.z - goalPos.z);
+        if (dEntry < 38 && (dEntry + dExit) < bestScore) {
+          bestScore = dEntry + dExit;
+          bestStair = { entry, exit };
+        }
+      }
+      if (bestStair) {
+        const leg1 = this._findAStarSegment(startPos.x, sy, startPos.z, bestStair.entry.x, bestStair.entry.y, bestStair.entry.z, 220);
+        const midX = (bestStair.entry.x + bestStair.exit.x) * 0.5;
+        const midY = (bestStair.entry.y + bestStair.exit.y) * 0.5;
+        const midZ = (bestStair.entry.z + bestStair.exit.z) * 0.5;
+        leg1.push({ x: bestStair.entry.x, y: bestStair.entry.y, z: bestStair.entry.z });
+        leg1.push({ x: midX, y: midY, z: midZ });
+        leg1.push({ x: bestStair.exit.x, y: bestStair.exit.y, z: bestStair.exit.z });
+        const leg2 = this._findAStarSegment(bestStair.exit.x, bestStair.exit.y, bestStair.exit.z, goalPos.x, gy, goalPos.z, 180);
+        return leg1.concat(leg2);
+      }
+    }
+
+    return this._findAStarSegment(startPos.x, sy, startPos.z, goalPos.x, gy, goalPos.z, maxIter);
   }
 }

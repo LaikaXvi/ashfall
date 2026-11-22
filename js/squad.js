@@ -218,13 +218,15 @@ class SquadMate {
   }
 
   _collides(x, z, r = 0.42) {
+    const feetY = (this.position && Number.isFinite(this.position.y)) ? this.position.y : 0;
     const list = this.world.getNearbyColliders ? this.world.getNearbyColliders(x, z, r + 0.5) : this.world.colliders;
     for (let i = 0; i < list.length; i++) {
       const c = list[i];
       if (c.doorRef && c.doorRef.passable) continue;
-      if (c.maxY < 0.2) continue;
+      if (c.maxY <= feetY + 0.48) continue;
+      if (c.minY >= feetY + 1.65) continue;
       if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) {
-        if (c.doorRef && !c.doorRef.passable && this.world && this.world.interactDoor && c.doorRef.state === 'closed') {
+        if (c.doorRef && !c.doorRef.passable && !c.doorRef.locked && this.world && this.world.interactDoor && c.doorRef.state === 'closed') {
           this.world.interactDoor(c.doorRef, this.position, false);
         }
         return true;
@@ -233,13 +235,51 @@ class SquadMate {
     return false;
   }
 
-  _moveToward(tx, tz, speed, dt) {
-    const dx = tx - this.position.x;
-    const dz = tz - this.position.z;
-    const dist = Math.hypot(dx, dz);
-    if (dist < 0.35) return false;
-    const vx = (dx / dist) * speed * dt;
-    const vz = (dz / dist) * speed * dt;
+  _moveToward(tx, tz, speed, dt, ty = null) {
+    const goalY = ty !== null ? ty : ((this.world && this.world.getWalkHeightAt) ? this.world.getWalkHeightAt(tx, tz, this.position.y) : 0);
+    const dxFinal = tx - this.position.x;
+    const dzFinal = tz - this.position.z;
+    if (Math.hypot(dxFinal, dzFinal) < 0.40 && Math.abs(goalY - this.position.y) < 1.5) return false;
+
+    this._navRepathTimer = Math.max(0, (this._navRepathTimer || 0) - dt);
+    const goalMoved = !this._navGoal || Math.hypot(this._navGoal.x - tx, this._navGoal.z - tz) > 2.4;
+    if (this.world && this.world.findPath && (goalMoved || !this._navPath || this._navIdx >= this._navPath.length || this._navRepathTimer <= 0)) {
+      this._navPath = this.world.findPath(this.position, { x: tx, y: goalY, z: tz }, 260);
+      this._navIdx = 0;
+      this._navGoal = { x: tx, y: goalY, z: tz };
+      this._navRepathTimer = 1.1;
+    }
+
+    let wpX = tx, wpZ = tz;
+    if (this._navPath && this._navIdx < this._navPath.length) {
+      while (this._navIdx < this._navPath.length - 1) {
+        const w = this._navPath[this._navIdx];
+        if (Math.hypot(w.x - this.position.x, w.z - this.position.z) < 0.95) this._navIdx++;
+        else break;
+      }
+      wpX = this._navPath[this._navIdx].x;
+      wpZ = this._navPath[this._navIdx].z;
+    }
+
+    const dx = wpX - this.position.x;
+    const dz = wpZ - this.position.z;
+    const dist = Math.hypot(dx, dz) || 1;
+    const dirX = dx / dist;
+    const dirZ = dz / dist;
+
+    // Proactively open closed doors ahead
+    if (this.world && this.world.doors && this.world.interactDoor) {
+      for (let i = 0; i < this.world.doors.length; i++) {
+        const d = this.world.doors[i];
+        if (!d || d.state !== 'closed' || d.locked) continue;
+        if (Math.abs(this.position.y - d.hingePos.y) < 2.0 && Math.hypot(d.center.x - this.position.x, d.center.z - this.position.z) < 2.4) {
+          this.world.interactDoor(d, this.position, false);
+        }
+      }
+    }
+
+    const vx = dirX * speed * dt;
+    const vz = dirZ * speed * dt;
     let moved = false;
     if (!this._collides(this.position.x + vx, this.position.z)) {
       this.position.x += vx;
@@ -249,7 +289,9 @@ class SquadMate {
       this.position.z += vz;
       moved = true;
     }
-    const gy = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(this.position.x, this.position.z) : 0;
+    const gy = (this.world && this.world.getWalkHeightAt)
+      ? this.world.getWalkHeightAt(this.position.x, this.position.z, this.position.y)
+      : ((this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(this.position.x, this.position.z) : 0);
     this.position.y = gy;
     this.group.position.x = this.position.x;
     this.group.position.y = gy;

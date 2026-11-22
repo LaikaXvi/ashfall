@@ -503,22 +503,23 @@
 
       // === LAYER 2: STANCE & LOCOMOTION ===
       if (isDowned) {
-        // Seated backward crawl / scoot — anatomical forward thighs, knees bent downward, head looking forward!
+        // Seated backward crawl / scoot: reclined comfortably back on supporting hand, thighs lifted & heels cleanly above ground!
         const heave = Math.max(0, stride);
         rigY = 0.0;
-        rigPitch = 0.24 + heave * 0.04;
-        pelvisY = 0.36 + heave * 0.03;
+        rigPitch = 0.34 + heave * 0.03; // Reclined backward ~20 deg (NEVER pitched forward!)
+        pelvisY = 0.22 + heave * 0.025; // Hips resting right on the ground
         pelvisYaw = 0;
-        spinePitch = -0.14;
-        torsoPitch = -0.16;
+        spinePitch = 0.06;
+        torsoPitch = 0.04;
         torsoYaw = 0;
-        headPitch = THREE.MathUtils.clamp(-0.20 + aimPitch * 0.30, -0.42, 0.22);
-        lHipX = 1.32 + heave * 0.14;
-        rHipX = 1.28 + Math.max(0, -stride) * 0.10;
-        lKneeX = -0.68 - heave * 0.18;
-        rKneeX = -0.64 - Math.max(0, -stride) * 0.16;
-        lAnkX = 0.32;
-        rAnkX = 0.32;
+        headPitch = THREE.MathUtils.clamp(-0.24 + aimPitch * 0.25, -0.42, 0.18);
+        // Thighs lifted forward & knees gently flexed so boots/heels stay cleanly ON TOP of terrain (y >= +0.10m!)
+        lHipX = 1.62 + heave * 0.10;
+        rHipX = 1.56 + Math.max(0, -stride) * 0.08;
+        lKneeX = -0.44 - heave * 0.12;
+        rKneeX = -0.40 - Math.max(0, -stride) * 0.10;
+        lAnkX = 0.28;
+        rAnkX = 0.28;
         rightIKWeight = 0;
         leftIKWeight = 0;
         wpnPosX = 0.18; wpnPosY = 0.10; wpnPosZ = -0.18; wpnRotX = -0.55;

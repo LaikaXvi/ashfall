@@ -296,6 +296,14 @@ class Enemy {
   }
 
   _getGroundY(x = this.position.x, z = this.position.z) {
+    if (this.world && this.world.getWalkHeightAt) {
+      const curY = (this.position && Number.isFinite(this.position.y)) ? this.position.y : 0;
+      const wh = this.world.getWalkHeightAt(x, z, curY);
+      if (this._elevatedFloorY != null && Math.hypot(x - this.homePos.x, z - this.homePos.z) < 9.5 && curY >= this._elevatedFloorY - 0.8) {
+        return Math.max(wh, this._elevatedFloorY);
+      }
+      return wh;
+    }
     const ty = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(x, z) : 0;
     if (this._elevatedFloorY != null && Math.hypot(x - this.homePos.x, z - this.homePos.z) < 9.5) {
       return Math.max(ty, this._elevatedFloorY);
@@ -768,20 +776,54 @@ class Enemy {
     if (!target || typeof target.x !== 'number' || typeof target.z !== 'number' || !Number.isFinite(target.x) || !Number.isFinite(target.z)) {
       return false;
     }
-    const dx = target.x - this.position.x;
-    const dz = target.z - this.position.z;
-    const dist = Math.hypot(dx, dz);
-    if (dist < 0.42) {
+    const goalY = Number.isFinite(target.y) ? target.y : this._getGroundY(target.x, target.z);
+    const dxFinal = target.x - this.position.x;
+    const dzFinal = target.z - this.position.z;
+    const dyFinal = Math.abs(goalY - this.position.y);
+    const distFinal = Math.hypot(dxFinal, dzFinal);
+    if (distFinal < 0.48 && dyFinal < 1.5) {
+      this._navPath = null;
       this._animMoving = false;
       this.updateVisualAnim(dt, false, 0);
       return false;
     }
 
-    const r = 0.44;
+    // === 1. REAL 2.5D A* PATHFINDING (Enters buildings through doors, navigates interior rooms & climbs stairs!) ===
+    this._navRepathTimer = Math.max(0, (this._navRepathTimer || 0) - dt);
+    const goalMoved = !this._navGoal ||
+      Math.hypot(this._navGoal.x - target.x, this._navGoal.z - target.z) > 2.4 ||
+      Math.abs((this._navGoal.y || 0) - goalY) > 1.6;
+
+    if (this.world && this.world.findPath && (goalMoved || !this._navPath || this._navIdx >= this._navPath.length || this._navRepathTimer <= 0)) {
+      this._navPath = this.world.findPath(this.position, { x: target.x, y: goalY, z: target.z }, 320);
+      this._navIdx = 0;
+      this._navGoal = { x: target.x, y: goalY, z: target.z };
+      this._navRepathTimer = 1.15 + Math.random() * 0.35;
+    }
+
+    // Advance along active A* waypoints
+    let wp = target;
+    if (this._navPath && this._navIdx < this._navPath.length) {
+      wp = this._navPath[this._navIdx];
+      while (this._navIdx < this._navPath.length - 1) {
+        const w = this._navPath[this._navIdx];
+        if (Math.hypot(w.x - this.position.x, w.z - this.position.z) < 0.95 && Math.abs((w.y || this.position.y) - this.position.y) < 1.6) {
+          this._navIdx++;
+          wp = this._navPath[this._navIdx];
+        } else {
+          break;
+        }
+      }
+    }
+
+    const dx = wp.x - this.position.x;
+    const dz = wp.z - this.position.z;
+    const dist = Math.hypot(dx, dz) || 1;
     let dirX = dx / dist;
     let dirZ = dz / dist;
+    const r = 0.40;
 
-    // 1. Proactively open any closed door directly ahead of our travel path!
+    // === 2. PROACTIVELY OPEN CLOSED DOORS ALONG OUR PATH (Exterior & Interior Room Doors!) ===
     if (this.world && this.world.doors && this.world.interactDoor) {
       for (let i = 0; i < this.world.doors.length; i++) {
         const door = this.world.doors[i];
@@ -790,82 +832,16 @@ class Enemy {
         const ddx = door.center.x - this.position.x;
         const ddz = door.center.z - this.position.z;
         const dDist = Math.hypot(ddx, ddz);
-        if (dDist < 2.55) {
+        if (dDist < 2.65) {
           const dot = (ddx * dirX + ddz * dirZ) / (dDist || 1);
-          if (dot > 0.25) {
+          if (dot > 0.15 || dDist < 1.45) {
             this.world.interactDoor(door, this.position, false);
           }
         }
       }
     }
 
-    // 2. Obstacle-Aware Pathfinding: Multi-angle steering + Doorway-Seeking + Persistent Wall-Following!
-    const lookDist = Math.min(dist, 2.05);
-    if (!this._isPathSegmentClear(dirX, dirZ, lookDist, r)) {
-      if (!this._navWallSide) this._navWallSide = Math.random() < 0.5 ? 1 : -1;
-      let steered = false;
-
-      // 2a. First check if a nearby doorway bridges around the blocking wall toward our destination
-      if (this.world && this.world.doors && this.world.doors.length > 0) {
-        let bestDoor = null;
-        let bestScore = Infinity;
-        for (let i = 0; i < this.world.doors.length; i++) {
-          const door = this.world.doors[i];
-          if (!door || door.locked) continue;
-          if (Math.abs(this.position.y - door.hingePos.y) > 2.0) continue;
-          const dSelf = Math.hypot(door.center.x - this.position.x, door.center.z - this.position.z);
-          if (dSelf < 0.75 || dSelf > 10.5) continue;
-          const dGoal = Math.hypot(door.center.x - target.x, door.center.z - target.z);
-          if (dGoal < dist + 2.5) {
-            const toDoorX = (door.center.x - this.position.x) / dSelf;
-            const toDoorZ = (door.center.z - this.position.z) / dSelf;
-            if (this._isPathSegmentClear(toDoorX, toDoorZ, Math.min(dSelf, 2.0), r)) {
-              const score = dSelf + dGoal * 0.7;
-              if (score < bestScore) {
-                bestScore = score;
-                bestDoor = { x: toDoorX, z: toDoorZ };
-              }
-            }
-          }
-        }
-        if (bestDoor) {
-          dirX = bestDoor.x;
-          dirZ = bestDoor.z;
-          steered = true;
-        }
-      }
-
-      // 2b. Otherwise sweep candidate whisker rays biased by persistent wall-follow side to walk cleanly around walls/corners!
-      if (!steered) {
-        const baseAng = Math.atan2(dirX, dirZ);
-        const s = this._navWallSide;
-        const offsets = [0.45 * s, 0.90 * s, 1.35 * s, 1.80 * s, -0.45 * s, -0.90 * s, -1.35 * s, -1.80 * s, 2.35 * s, -2.35 * s];
-        for (let i = 0; i < offsets.length; i++) {
-          const ang = baseAng + offsets[i];
-          const cx = Math.sin(ang);
-          const cz = Math.cos(ang);
-          if (this._isPathSegmentClear(cx, cz, 1.85, r)) {
-            dirX = cx;
-            dirZ = cz;
-            if (offsets[i] * s < 0) this._navWallSide = -s;
-            steered = true;
-            break;
-          }
-        }
-      }
-    }
-
-    // Smooth steering direction slightly to avoid jittery snapping around corners
-    if (this._moveDirX !== undefined && Number.isFinite(this._moveDirX)) {
-      dirX = THREE.MathUtils.lerp(this._moveDirX, dirX, Math.min(1, dt * 9));
-      dirZ = THREE.MathUtils.lerp(this._moveDirZ, dirZ, Math.min(1, dt * 9));
-      const dLen = Math.hypot(dirX, dirZ) || 1;
-      dirX /= dLen;
-      dirZ /= dLen;
-    }
-    this._moveDirX = dirX;
-    this._moveDirZ = dirZ;
-
+    // === 3. MOVE WITH ELEVATION-AWARE COLLISION & SMOOTH STAIR CLIMBING ===
     const prevX = this.position.x;
     const prevZ = this.position.z;
     const vx = dirX * speed * dt;
@@ -879,13 +855,13 @@ class Enemy {
     }
 
     const movedDist = Math.hypot(this.position.x - prevX, this.position.z - prevZ);
-    // Anti-stuck detector: if blocked against a tight corner, flip wall-follow side!
-    if (movedDist < speed * dt * 0.18) {
+    // If unexpectedly snagged on a dynamic prop/door edge, immediately trigger fresh A* repath!
+    if (movedDist < speed * dt * 0.16) {
       this._stuckTimer = (this._stuckTimer || 0) + dt;
-      if (this._stuckTimer > 0.42) {
-        this._navWallSide = -(this._navWallSide || 1);
+      if (this._stuckTimer > 0.45) {
+        this._navPath = null;
+        this._navRepathTimer = 0;
         this._stuckTimer = 0;
-        this._moveDirX = undefined;
       }
     } else {
       this._stuckTimer = 0;
@@ -894,10 +870,10 @@ class Enemy {
     const gy = this._getGroundY(this.position.x, this.position.z);
     this.position.y = gy;
     this.group.position.x = this.position.x;
-    this.group.position.y = this.isProne ? (gy + 0.22) : gy;
+    this.group.position.y = gy;
     this.group.position.z = this.position.z;
 
-    // 3. ALWAYS look in the actual walking direction unless explicitly facing a visible LOS combat target!
+    // === 4. ALWAYS LOOK IN ACTUAL WALKING DIRECTION (Unless facing visible LOS combat target) ===
     if (faceTarget) {
       this._lerpYaw(Math.atan2(faceTarget.x - this.position.x, faceTarget.z - this.position.z), dt * 11);
     } else if (movedDist > 0.002) {
@@ -906,7 +882,6 @@ class Enemy {
       this._lerpYaw(Math.atan2(dirX, dirZ), dt * 7);
     }
 
-    // Leg walk animation around hip pivots + articulated knee/arm/torso motion
     this._animMoving = movedDist > 0.002;
     this._animSpeed = speed;
     this.updateVisualAnim(dt, this._animMoving, speed);
@@ -1175,14 +1150,17 @@ class Enemy {
   }
 
   _collides(x, z, r) {
+    const feetY = (this.position && Number.isFinite(this.position.y)) ? this.position.y : 0;
     const list = this.world.getNearbyColliders ? this.world.getNearbyColliders(x, z, r + 0.5) : this.world.colliders;
     for (let i = 0; i < list.length; i++) {
       const c = list[i];
       if (c.doorRef && c.doorRef.passable) continue;
-      if (c.maxY < 0.2) continue;
+      // Elevation-aware collision: allow smooth step-up onto staircases (<= 0.48m) & walking beneath 2nd-floor ceilings (>= 1.65m)!
+      if (c.maxY <= feetY + 0.48) continue;
+      if (c.minY >= feetY + 1.65) continue;
       if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) {
-        // AI operator walking up to a closed door automatically pushes it open instead of phasing through!
-        if (c.doorRef && !c.doorRef.passable && this.world && this.world.interactDoor && c.doorRef.state === 'closed') {
+        // AI operator walking up to a closed unlocked door automatically swings it open!
+        if (c.doorRef && !c.doorRef.passable && !c.doorRef.locked && this.world && this.world.interactDoor && c.doorRef.state === 'closed') {
           this.world.interactDoor(c.doorRef, this.position, false);
         }
         return true;
@@ -1525,13 +1503,14 @@ class Enemy {
                 }
               }
             }
-            // Loot nearby unsearched POI containers
+            // Loot nearby unsearched POI containers (including inside buildings & upstairs via 2.5D A* staircases!)
             if (!this._activeLootGoal && Array.isArray(this.world.lootContainers)) {
               for (let cIdx = 0; cIdx < this.world.lootContainers.length; cIdx++) {
                 const ct = this.world.lootContainers[cIdx];
                 if (!ct || ct.requiresKey || !Array.isArray(ct.items) || ct.items.length === 0) continue;
                 const cd = Math.hypot(this.position.x - ct.position.x, this.position.z - ct.position.z);
-                if (cd < 3.0) {
+                const cdy = Math.abs(this.position.y - ct.position.y);
+                if (cd < 2.8 && cdy < 1.8) {
                   const taken = ct.items.shift();
                   if (taken) {
                     if (taken.id === 'armor_plate' && this.operatorEquipment) {
@@ -1541,7 +1520,7 @@ class Enemy {
                     }
                   }
                   break;
-                } else if (cd < 14.0) {
+                } else if (cd < 28.0) {
                   this._activeLootGoal = ct.position.clone();
                   break;
                 }
@@ -1550,7 +1529,8 @@ class Enemy {
           }
           if (this._activeLootGoal) {
             const ld = Math.hypot(this.position.x - this._activeLootGoal.x, this.position.z - this._activeLootGoal.z);
-            if (ld < 2.2) {
+            const ldy = Math.abs(this.position.y - (this._activeLootGoal.y || this.position.y));
+            if (ld < 2.1 && ldy < 1.8) {
               this._activeLootGoal = null;
             } else {
               this._moveToward(this._activeLootGoal, this.speed * 0.85, dt);
