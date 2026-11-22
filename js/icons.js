@@ -34,6 +34,7 @@ class ItemIconRenderer {
     this.stage = new THREE.Group();
     this.scene.add(this.stage);
     this.wpnBuilder = null;
+    this.canvas2d = document.createElement('canvas');
   }
 
   _ensureWeaponBuilder() {
@@ -45,11 +46,23 @@ class ItemIconRenderer {
   }
 
   getIcon(itemId, opts = {}) {
-    if (!this.renderer) return '';
+    const def = (window.GAME_DATA && GAME_DATA.ITEMS && GAME_DATA.ITEMS[itemId]) || null;
     const wide = !!opts.wide;
+    const mods = opts.mods || {};
     const modsKey = opts.mods ? JSON.stringify(opts.mods) : '';
     const cacheKey = `${itemId}|${wide ? 'W' : 'S'}|${modsKey}`;
     if (this.cache[cacheKey]) return this.cache[cacheKey];
+
+    // 2D Warzone-style vector silhouette icons with highlighted attachments for all weapons
+    if (def && def.type === 'weapon') {
+      const url2d = this._render2DWeaponIcon(itemId, mods, wide);
+      if (url2d) {
+        this.cache[cacheKey] = url2d;
+        return url2d;
+      }
+    }
+
+    if (!this.renderer) return '';
 
     const w = wide ? 384 : 192;
     const h = 192;
@@ -93,6 +106,435 @@ class ItemIconRenderer {
 
   _mat(color, emissive = 0x000000, shininess = 42, specular = 0x5a6570) {
     return new THREE.MeshPhongMaterial({ color, emissive, shininess, specular });
+  }
+
+  _get2DWeaponSpecs() {
+    if (this._weapon2DSpecs) return this._weapon2DSpecs;
+    this._weapon2DSpecs = {
+      pm9: {
+        parts: [
+          { pts: [[56, 22], [138, 22], [142, 26], [142, 33], [54, 33], [56, 26]], kind: 'body' },
+          { pts: [[88, 33], [136, 33], [134, 39], [86, 39]], kind: 'body' },
+          { pts: [[142, 27], [148, 27], [148, 31], [142, 31]], kind: 'body' },
+          { pts: [[56, 33], [82, 33], [70, 66], [44, 64]], kind: 'wood' },
+          { pts: [[82, 39], [107, 39], [104, 49], [80, 49]], kind: 'detail' }
+        ],
+        iron: [
+          [[133, 19], [137, 19], [137, 22], [133, 22]],
+          [[59, 19], [64, 19], [64, 22], [59, 22]]
+        ],
+        factoryStock: null,
+        mag: [[51, 64], [69, 66], [67, 70], [49, 68]],
+        lines: [[[66, 25], [126, 25]], [[56, 29], [66, 29]]],
+        anchors: { optic: { x: 74, y: 22, len: 28 }, muzzle: { x: 148, y: 29 }, under: { x: 118, y: 39 }, stock: null }
+      },
+      g17: {
+        parts: [
+          { pts: [[48, 20], [146, 20], [146, 34], [48, 34]], kind: 'body' },
+          { pts: [[54, 34], [144, 34], [144, 41], [80, 41], [54, 39]], kind: 'body' },
+          { pts: [[56, 39], [82, 39], [72, 68], [46, 66]], kind: 'body' },
+          { pts: [[82, 41], [106, 41], [106, 50], [82, 50]], kind: 'detail' }
+        ],
+        iron: [
+          [[138, 17], [143, 17], [143, 20], [138, 20]],
+          [[54, 17], [60, 17], [60, 20], [54, 20]]
+        ],
+        factoryStock: null,
+        mag: [[50, 66], [71, 68], [70, 73], [48, 71]],
+        lines: [[[52, 23], [65, 23]], [[52, 27], [65, 27]], [[114, 37], [140, 37]]],
+        anchors: { optic: { x: 64, y: 20, len: 30 }, muzzle: { x: 146, y: 27 }, under: { x: 126, y: 41 }, stock: null }
+      },
+      mp5k: {
+        parts: [
+          { pts: [[52, 25], [60, 25], [60, 40], [52, 40]], kind: 'detail' },
+          { pts: [[60, 24], [118, 24], [118, 40], [60, 40]], kind: 'body' },
+          { pts: [[118, 24], [144, 24], [144, 30], [118, 30]], kind: 'body' },
+          { pts: [[118, 30], [142, 30], [142, 41], [136, 41], [136, 48], [131, 48], [131, 41], [118, 41]], kind: 'body' },
+          { pts: [[68, 40], [78, 40], [72, 62], [61, 60]], kind: 'body' },
+          { pts: [[78, 40], [92, 40], [92, 47], [78, 47]], kind: 'detail' },
+          { pts: [[142, 31], [156, 31], [156, 35], [142, 35]], kind: 'body' }
+        ],
+        iron: [
+          [[140, 19], [145, 19], [145, 24], [140, 24]],
+          [[64, 19], [72, 19], [72, 24], [64, 24]]
+        ],
+        factoryStock: null,
+        mag: [[96, 40], [106, 40], [117, 65], [105, 67]],
+        lines: [[[66, 28], [112, 28]], [[66, 35], [110, 35]]],
+        anchors: { optic: { x: 68, y: 24, len: 42 }, muzzle: { x: 156, y: 33 }, under: { x: 125, y: 41 }, stock: { x: 52, y: 32 } }
+      },
+      ak74m: {
+        parts: [
+          { pts: [[50, 26], [112, 26], [112, 40], [50, 40]], kind: 'body' },
+          { pts: [[54, 22], [108, 22], [112, 26], [50, 26]], kind: 'body' },
+          { pts: [[66, 40], [76, 40], [72, 60], [62, 60]], kind: 'body' },
+          { pts: [[76, 40], [91, 40], [91, 47], [76, 47]], kind: 'detail' },
+          { pts: [[112, 30], [146, 30], [146, 40], [112, 40]], kind: 'wood' },
+          { pts: [[112, 24], [150, 24], [150, 29], [112, 29]], kind: 'body' },
+          { pts: [[146, 32], [182, 32], [182, 36], [146, 36]], kind: 'body' }
+        ],
+        iron: [
+          [[170, 24], [174, 24], [174, 32], [170, 32]],
+          [[108, 19], [114, 19], [114, 22], [108, 22]]
+        ],
+        factoryStock: [[8, 30], [50, 28], [52, 38], [30, 44], [10, 52], [6, 48]],
+        mag: [[92, 40], [106, 40], [116, 64], [101, 68]],
+        lines: [[[56, 30], [106, 30]], [[56, 35], [104, 35]]],
+        anchors: { optic: { x: 62, y: 22, len: 44 }, muzzle: { x: 182, y: 34 }, under: { x: 128, y: 40 }, stock: { x: 50, y: 33 } }
+      },
+      m870: {
+        parts: [
+          { pts: [[54, 27], [106, 27], [106, 41], [54, 41]], kind: 'body' },
+          { pts: [[106, 27], [184, 27], [184, 32], [106, 32]], kind: 'body' },
+          { pts: [[106, 34], [170, 34], [170, 39], [106, 39]], kind: 'body' },
+          { pts: [[116, 33], [148, 33], [148, 43], [116, 43]], kind: 'wood' },
+          { pts: [[50, 39], [74, 41], [74, 47], [63, 47], [56, 41]], kind: 'detail' }
+        ],
+        iron: [
+          [[179, 24], [183, 24], [183, 27], [179, 27]]
+        ],
+        factoryStock: [[8, 35], [54, 29], [56, 41], [40, 46], [10, 55], [6, 51]],
+        mag: [[148, 34], [176, 34], [176, 40], [148, 40]],
+        lines: [[[64, 31], [98, 31]], [[122, 36], [142, 36]]],
+        anchors: { optic: { x: 64, y: 27, len: 38 }, muzzle: { x: 184, y: 29.5 }, under: { x: 132, y: 43 }, stock: { x: 54, y: 34 } }
+      },
+      m24: {
+        parts: [
+          { pts: [[50, 33], [134, 33], [130, 41], [50, 43]], kind: 'body' },
+          { pts: [[54, 25], [104, 25], [104, 33], [54, 33]], kind: 'body' },
+          { pts: [[88, 28], [96, 28], [100, 36], [94, 37]], kind: 'detail' },
+          { pts: [[104, 26], [186, 26], [186, 31], [104, 31]], kind: 'body' },
+          { pts: [[64, 41], [78, 41], [78, 48], [64, 48]], kind: 'detail' }
+        ],
+        iron: [
+          [[179, 23], [183, 23], [183, 26], [179, 26]],
+          [[100, 22], [105, 22], [105, 25], [100, 25]]
+        ],
+        factoryStock: [[8, 33], [54, 30], [54, 43], [44, 44], [36, 52], [10, 54], [7, 49]],
+        mag: [[82, 41], [98, 41], [97, 50], [82, 50]],
+        lines: [[[60, 29], [96, 29]], [[58, 37], [122, 37]]],
+        anchors: { optic: { x: 62, y: 25, len: 42 }, muzzle: { x: 186, y: 28.5 }, under: { x: 120, y: 41 }, stock: { x: 52, y: 35 } }
+      },
+      mosin9130: {
+        parts: [
+          { pts: [[52, 31], [162, 31], [160, 38], [52, 41]], kind: 'wood' },
+          { pts: [[116, 30], [120, 30], [120, 38], [116, 38]], kind: 'detail' },
+          { pts: [[152, 30], [156, 30], [156, 38], [152, 38]], kind: 'detail' },
+          { pts: [[54, 26], [96, 26], [96, 32], [54, 32]], kind: 'body' },
+          { pts: [[80, 27], [86, 27], [86, 35], [80, 35]], kind: 'detail' },
+          { pts: [[96, 26], [190, 26], [190, 30], [96, 30]], kind: 'body' },
+          { pts: [[66, 40], [80, 40], [80, 47], [66, 47]], kind: 'detail' }
+        ],
+        iron: [
+          [[182, 22], [186, 22], [186, 26], [182, 26]],
+          [[100, 23], [108, 23], [108, 26], [100, 26]]
+        ],
+        factoryStock: [[6, 35], [54, 30], [54, 41], [40, 44], [8, 52], [5, 48]],
+        factoryStockKind: 'wood',
+        mag: [[78, 39], [96, 39], [95, 46], [80, 46]],
+        lines: [[[60, 35], [148, 34]]],
+        anchors: { optic: { x: 60, y: 26, len: 38 }, muzzle: { x: 190, y: 28 }, under: { x: 132, y: 38 }, stock: { x: 54, y: 34 } }
+      },
+      awm338: {
+        parts: [
+          { pts: [[50, 31], [136, 31], [134, 42], [50, 42]], kind: 'body' },
+          { pts: [[54, 24], [110, 24], [110, 31], [54, 31]], kind: 'body' },
+          { pts: [[92, 26], [99, 26], [103, 33], [97, 34]], kind: 'detail' },
+          { pts: [[110, 25], [180, 25], [180, 30], [110, 30]], kind: 'body' },
+          { pts: [[180, 24], [189, 24], [189, 31], [180, 31]], kind: 'detail' },
+          { pts: [[68, 42], [82, 42], [82, 49], [68, 49]], kind: 'detail' }
+        ],
+        iron: [
+          [[104, 22], [108, 22], [108, 24], [104, 24]]
+        ],
+        factoryStock: [[6, 31], [52, 29], [52, 42], [44, 44], [38, 57], [28, 57], [31, 45], [16, 49], [8, 54], [5, 50]],
+        mag: [[84, 42], [103, 42], [104, 58], [85, 58]],
+        lines: [[[58, 28], [106, 28]], [[58, 36], [128, 36]]],
+        anchors: { optic: { x: 60, y: 24, len: 46 }, muzzle: { x: 189, y: 27.5 }, under: { x: 122, y: 42 }, stock: { x: 52, y: 34 } }
+      }
+    };
+    return this._weapon2DSpecs;
+  }
+
+  _rectPoly(x, y, w, h) {
+    return [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+  }
+
+  _render2DWeaponIcon(itemId, mods = {}, wide = false) {
+    const specs = this._get2DWeaponSpecs();
+    const spec = specs[itemId] || specs.ak74m;
+    const W = wide ? 384 : 192;
+    const H = 192;
+    this.canvas2d.width = W;
+    this.canvas2d.height = H;
+    const ctx = this.canvas2d.getContext('2d');
+    if (!ctx) return '';
+    ctx.clearRect(0, 0, W, H);
+
+    // Build draw list: base parts, iron vs optic, stock vs stock mod, mag vs ext_mag, muzzle, underbarrel
+    const drawList = [];
+    for (const p of spec.parts) {
+      drawList.push({ pts: p.pts, style: p.kind });
+    }
+
+    // 1. Stock (factory or attachment)
+    const stkMod = mods.stock && mods.stock !== 'none' ? mods.stock : null;
+    if (stkMod && spec.anchors.stock) {
+      const { x: sx, y: sy } = spec.anchors.stock;
+      if (stkMod === 'collapsed') {
+        drawList.push({ pts: this._rectPoly(sx - 30, sy - 4, 30, 2.5), style: 'highlight' });
+        drawList.push({ pts: this._rectPoly(sx - 30, sy + 4, 30, 2.5), style: 'highlight' });
+        drawList.push({ pts: this._rectPoly(sx - 33, sy - 7, 4, 17), style: 'highlight' });
+      } else if (stkMod === 'tactical') {
+        drawList.push({
+          pts: [[sx - 38, sy - 5], [sx, sy - 4], [sx, sy + 5], [sx - 20, sy + 7], [sx - 36, sy + 14], [sx - 40, sy + 11]],
+          style: 'highlight'
+        });
+      } else if (stkMod === 'heavy_marksman') {
+        drawList.push({
+          pts: [[sx - 40, sy - 8], [sx - 12, sy - 8], [sx - 8, sy - 4], [sx, sy - 4], [sx, sy + 8], [sx - 22, sy + 10], [sx - 38, sy + 17], [sx - 42, sy + 13]],
+          style: 'highlight'
+        });
+      }
+    } else if (spec.factoryStock) {
+      drawList.push({ pts: spec.factoryStock, style: spec.factoryStockKind || 'body' });
+    }
+
+    // 2. Magazine (factory or ext_mag scaled 1.35 from top edge in highlight)
+    if (spec.mag) {
+      const magMod = mods.magazine === 'ext_mag';
+      if (magMod) {
+        let minY = Infinity;
+        for (const pt of spec.mag) if (pt[1] < minY) minY = pt[1];
+        const extPts = spec.mag.map(([mx, my]) => [mx, minY + (my - minY) * 1.35]);
+        drawList.push({ pts: extPts, style: 'highlight' });
+      } else {
+        drawList.push({ pts: spec.mag, style: 'body' });
+      }
+    }
+
+    // 3. Optic (replaces iron sights when equipped)
+    const optMod = mods.optic && mods.optic !== 'none' ? mods.optic : null;
+    if (optMod && spec.anchors.optic) {
+      const { x: ox, y: oy, len } = spec.anchors.optic;
+      const mountW = Math.min(len, 22);
+      const cx = ox + len * 0.45;
+      drawList.push({ pts: this._rectPoly(cx - mountW * 0.45, oy - 3, mountW * 0.9, 3), style: 'highlight' });
+      if (optMod === 'red_dot') {
+        drawList.push({
+          pts: [[cx - 9, oy - 11], [cx + 9, oy - 11], [cx + 7, oy - 3], [cx - 8, oy - 3]],
+          style: 'highlight',
+          cutout: this._rectPoly(cx - 5, oy - 9.5, 9, 4.5)
+        });
+      } else if (optMod === 'holo') {
+        drawList.push({
+          pts: this._rectPoly(cx - 10, oy - 14, 20, 11),
+          style: 'highlight',
+          cutout: this._rectPoly(cx - 6, oy - 12, 11, 6.5)
+        });
+      } else if (optMod === 'acog_2x') {
+        const tw = Math.max(24, len * 0.72);
+        drawList.push({
+          pts: [[cx - tw * 0.48, oy - 12], [cx + tw * 0.34, oy - 13], [cx + tw * 0.52, oy - 11], [cx + tw * 0.52, oy - 4], [cx - tw * 0.48, oy - 4]],
+          style: 'highlight'
+        });
+      } else if (optMod === 'lpvo_4x') {
+        const tw = Math.max(30, len * 0.95);
+        drawList.push({ pts: this._rectPoly(cx - tw * 0.48, oy - 12, 9, 8.5), style: 'highlight' });
+        drawList.push({ pts: this._rectPoly(cx - tw * 0.48 + 9, oy - 10.5, tw - 20, 5.5), style: 'highlight' });
+        drawList.push({ pts: this._rectPoly(cx + tw * 0.52 - 11, oy - 12.5, 11, 9.5), style: 'highlight' });
+      } else if (optMod === 'sniper_8x') {
+        const tw = Math.max(38, len * 1.24);
+        const sx0 = cx - tw * 0.46;
+        drawList.push({ pts: this._rectPoly(sx0, oy - 12.5, 10, 9), style: 'highlight' });
+        drawList.push({ pts: this._rectPoly(sx0 + 10, oy - 10.5, tw - 25, 5.5), style: 'highlight' });
+        drawList.push({ pts: this._rectPoly(sx0 + tw - 15, oy - 14, 15, 12), style: 'highlight' });
+        drawList.push({ pts: this._rectPoly(sx0 + tw * 0.45, oy - 13.5, 6, 3), style: 'highlight' });
+      }
+    } else if (spec.iron) {
+      for (const ip of spec.iron) {
+        drawList.push({ pts: ip, style: 'detail' });
+      }
+    }
+
+    // 4. Muzzle (compensator or suppressor)
+    const muzMod = mods.muzzle && mods.muzzle !== 'none' ? mods.muzzle : null;
+    if (muzMod && spec.anchors.muzzle) {
+      const { x: mx, y: my } = spec.anchors.muzzle;
+      if (muzMod === 'compensator') {
+        drawList.push({
+          pts: this._rectPoly(mx, my - 3.5, 12, 7),
+          style: 'highlight',
+          notches: [[mx + 3.5, my - 3.5, 2.2, 2.5], [mx + 7.5, my - 3.5, 2.2, 2.5]]
+        });
+      } else if (muzMod === 'suppressor') {
+        drawList.push({
+          pts: this._rectPoly(mx, my - 4, 34, 8),
+          style: 'highlight',
+          rounded: true
+        });
+      }
+    }
+
+    // 5. Underbarrel (vert_grip or laser)
+    const undMod = mods.underbarrel && mods.underbarrel !== 'none' ? mods.underbarrel : null;
+    if (undMod && spec.anchors.under) {
+      const { x: ux, y: uy } = spec.anchors.under;
+      if (undMod === 'vert_grip') {
+        drawList.push({
+          pts: this._rectPoly(ux - 3.5, uy, 7, 18),
+          style: 'highlight',
+          rounded: true
+        });
+      } else if (undMod === 'laser') {
+        drawList.push({
+          pts: this._rectPoly(ux - 8, uy, 16, 7),
+          style: 'highlight',
+          laserBeam: [ux + 8, uy + 3.5, ux + 18, uy + 3.5]
+        });
+      }
+    }
+
+    // Compute exact bounding box over every polygon (and laser beam endpoint)
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const item of drawList) {
+      for (const [x, y] of item.pts) {
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+      if (item.laserBeam) {
+        maxX = Math.max(maxX, item.laserBeam[2]);
+      }
+    }
+    const bw = Math.max(10, maxX - minX);
+    const bh = Math.max(10, maxY - minY);
+    const scale = Math.min((W * 0.84) / bw, (H * 0.84) / bh);
+    const ox = (W - bw * scale) * 0.5 - minX * scale;
+    const oy = (H - bh * scale) * 0.5 - minY * scale;
+
+    const tx = (x) => ox + x * scale;
+    const ty = (y) => oy + y * scale;
+
+    const fillPath = (pts, rounded = false) => {
+      ctx.beginPath();
+      if (rounded && pts.length === 4) {
+        const x0 = tx(pts[0][0]);
+        const y0 = ty(pts[0][1]);
+        const rw = (pts[1][0] - pts[0][0]) * scale;
+        const rh = (pts[2][1] - pts[0][1]) * scale;
+        const r = Math.min(rw, rh) * 0.35;
+        ctx.moveTo(x0 + r, y0);
+        ctx.lineTo(x0 + rw - r, y0);
+        ctx.quadraticCurveTo(x0 + rw, y0, x0 + rw, y0 + r);
+        ctx.lineTo(x0 + rw, y0 + rh - r);
+        ctx.quadraticCurveTo(x0 + rw, y0 + rh, x0 + rw - r, y0 + rh);
+        ctx.lineTo(x0 + r, y0 + rh);
+        ctx.quadraticCurveTo(x0, y0 + rh, x0, y0 + rh - r);
+        ctx.lineTo(x0, y0 + r);
+        ctx.quadraticCurveTo(x0, y0, x0 + r, y0);
+        ctx.closePath();
+      } else {
+        ctx.moveTo(tx(pts[0][0]), ty(pts[0][1]));
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(tx(pts[i][0]), ty(pts[i][1]));
+        ctx.closePath();
+      }
+    };
+
+    const gMinY = ty(minY);
+    const gMaxY = ty(maxY);
+    const bodyGrad = ctx.createLinearGradient(0, gMinY, 0, gMaxY);
+    bodyGrad.addColorStop(0, '#e3e7ea');
+    bodyGrad.addColorStop(1, '#9ba4ac');
+
+    const woodGrad = ctx.createLinearGradient(0, gMinY, 0, gMaxY);
+    woodGrad.addColorStop(0, '#cdb79a');
+    woodGrad.addColorStop(1, '#8f7a60');
+
+    const detailGrad = ctx.createLinearGradient(0, gMinY, 0, gMaxY);
+    detailGrad.addColorStop(0, '#b5bec6');
+    detailGrad.addColorStop(1, '#7a848d');
+
+    const hlGrad = ctx.createLinearGradient(0, gMinY, 0, gMaxY);
+    hlGrad.addColorStop(0, '#ffd27a');
+    hlGrad.addColorStop(1, '#f5a623');
+
+    // First draw base parts, then highlighted attachments on top for crisp readability
+    const ordered = [
+      ...drawList.filter(it => it.style !== 'highlight'),
+      ...drawList.filter(it => it.style === 'highlight')
+    ];
+
+    for (const item of ordered) {
+      const isHL = item.style === 'highlight';
+      ctx.save();
+      if (isHL) {
+        ctx.shadowColor = 'rgba(255, 181, 71, 0.75)';
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = hlGrad;
+        ctx.strokeStyle = '#5a3a00';
+      } else {
+        ctx.fillStyle = item.style === 'wood' ? woodGrad : (item.style === 'detail' ? detailGrad : bodyGrad);
+        ctx.strokeStyle = '#15191d';
+      }
+      ctx.lineWidth = 1.5;
+      ctx.lineJoin = 'round';
+      fillPath(item.pts, !!item.rounded);
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+      ctx.shadowBlur = 0;
+      ctx.stroke();
+
+      // Optic window cutout
+      if (item.cutout) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'destination-out';
+        fillPath(item.cutout);
+        ctx.fill();
+        ctx.restore();
+        ctx.strokeStyle = '#5a3a00';
+        ctx.lineWidth = 1.1;
+        fillPath(item.cutout);
+        ctx.stroke();
+      }
+
+      // Compensator port notches
+      if (item.notches) {
+        ctx.fillStyle = '#5a3a00';
+        for (const [nx, ny, nw, nh] of item.notches) {
+          ctx.fillRect(tx(nx), ty(ny), nw * scale, nh * scale);
+        }
+      }
+
+      // Red tactical laser beam stub
+      if (item.laserBeam) {
+        const [lx1, ly1, lx2, ly2] = item.laserBeam;
+        ctx.strokeStyle = '#ff4040';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.moveTo(tx(lx1), ty(ly1));
+        ctx.lineTo(tx(lx2), ty(ly2));
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // Crisp darker receiver detail lines
+    if (spec.lines && spec.lines.length) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(21, 25, 29, 0.42)';
+      ctx.lineWidth = 1.25;
+      for (const [[x1, y1], [x2, y2]] of spec.lines) {
+        ctx.beginPath();
+        ctx.moveTo(tx(x1), ty(y1));
+        ctx.lineTo(tx(x2), ty(y2));
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    return this.canvas2d.toDataURL('image/png');
   }
 
   _buildItemMesh(id, mods = {}) {
