@@ -560,10 +560,10 @@
         this._rPole.set(0.85, -0.10, 0.55); // Elbows rest down/out on ground!
         this._lPole.set(-0.85, -0.10, 0.55);
       } else if (isCrouch) {
-        // === MW2 TACTICAL CROUCH & CROUCH-WALK ===
+        // === MW2 TACTICAL CROUCH & CROUCH-WALK (Forward-swinging leg bends knee, stance leg pulls body forward!) ===
         const cAmp = moving ? 0.42 : 0;
-        lHipX = 0.90 + stride * cAmp; lHipZ = -0.07; lKneeX = -1.36 - (moving ? Math.max(0, -strideCos) * 0.28 : 0); lAnkX = -(lHipX + lKneeX) * 0.72;
-        rHipX = 0.76 - stride * cAmp; rHipZ = 0.09; rKneeX = -1.24 - (moving ? Math.max(0, strideCos) * 0.28 : 0); rAnkX = -(rHipX + rKneeX) * 0.72;
+        lHipX = 0.90 + stride * cAmp; lHipZ = -0.07; lKneeX = -1.36 - (moving ? Math.max(0, strideCos) * 0.32 : 0); lAnkX = -(lHipX + lKneeX) * 0.72;
+        rHipX = 0.76 - stride * cAmp; rHipZ = 0.09; rKneeX = -1.24 - (moving ? Math.max(0, -strideCos) * 0.32 : 0); rAnkX = -(rHipX + rKneeX) * 0.72;
         pelvisY = 0.64;
         pelvisYaw = moving ? stride * 0.10 : 0.20;
         spineYaw = -pelvisYaw * 0.65;
@@ -573,17 +573,26 @@
         this._rPole.set(0.75, -0.55, 0.35);
         this._lPole.set(-0.75, -0.55, 0.30);
       } else {
-        // === MW2 STANDING: IDLE BREATHING / KINETIC WALK / JOG / HIGH-PORT TACTICAL SPRINT ===
+        // === MW2 STANDING: IDLE BREATHING / FORWARD KINETIC WALK / JOG / HIGH-PORT TACTICAL SPRINT ===
+        // Forward biomechanics:
+        //   stride = sin(ph) sweeps -1 -> +1 (SWING FORWARD) when strideCos = cos(ph) > 0: trailing knee bends high & swings forward!
+        //   stride = sin(ph) sweeps +1 -> -1 (STANCE PULL) when strideCos = cos(ph) < 0: lead foot plants & pulls body forward!
         const spdNorm = THREE.MathUtils.clamp(speed / 5.2, 0, 1.35);
-        const amp = moving ? (0.18 + spdNorm * 0.52) : 0;
+        const amp = moving ? (0.20 + spdNorm * 0.56) : 0;
         lHipX = moving ? (stride * amp) : 0.06;
         rHipX = moving ? (-stride * amp) : -0.05;
-        const kneeLift = isTacSprint ? 1.15 : (isSprint ? 0.95 : (0.34 + spdNorm * 0.46));
-        // STRICTLY NEGATIVE knee.x = anatomical backward knee bend!
-        lKneeX = moving ? (-Math.max(0, -strideCos) * kneeLift - 0.10) : -0.12;
-        rKneeX = moving ? (-Math.max(0, strideCos) * kneeLift - 0.10) : -0.10;
-        lAnkX = moving ? (-(lHipX + lKneeX) * 0.62 + Math.max(0, stride) * 0.18) : 0.06;
-        rAnkX = moving ? (-(rHipX + rKneeX) * 0.62 + Math.max(0, -stride) * 0.18) : 0.05;
+        const kneeLift = isTacSprint ? 1.28 : (isSprint ? 1.08 : (0.42 + spdNorm * 0.54));
+        // Trailing leg bends cleanly backward at the knee while swinging FORWARD (strideCos > 0 for left, -strideCos > 0 for right)!
+        // Stance leg stays planted with subtle weight-absorption bend (~-0.16) as it pulls the body forward!
+        const lSwing = Math.max(0, strideCos);
+        const rSwing = Math.max(0, -strideCos);
+        const lStanceCushion = Math.max(0, -strideCos) * 0.14;
+        const rStanceCushion = Math.max(0, strideCos) * 0.14;
+        lKneeX = moving ? (-lSwing * kneeLift - 0.10 - lStanceCushion) : -0.12;
+        rKneeX = moving ? (-rSwing * kneeLift - 0.10 - rStanceCushion) : -0.10;
+        // Heel-strike dorsiflexion at front contact -> flat stance -> toe-off push behind
+        lAnkX = moving ? (-(lHipX + lKneeX) * 0.55 + Math.max(0, stride) * 0.22 - Math.max(0, -stride) * 0.16) : 0.06;
+        rAnkX = moving ? (-(rHipX + rKneeX) * 0.55 + Math.max(0, -stride) * 0.22 - Math.max(0, stride) * 0.16) : 0.05;
 
         pelvisY = 0.89 - (moving ? Math.abs(stride) * 0.042 * Math.min(1, spdNorm) : 0);
         pelvisYaw = moving ? (stride * (0.07 + spdNorm * 0.09)) : 0.16;

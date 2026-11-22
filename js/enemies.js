@@ -841,11 +841,12 @@ class Enemy {
       }
     }
 
-    // === 3. MOVE WITH ELEVATION-AWARE COLLISION & SMOOTH STAIR CLIMBING ===
+    // === 3. MOVE WITH ELEVATION-AWARE COLLISION, STAIR CLIMBING & INSTANT OBSTACLE-ESCAPE FALLBACK ===
     const prevX = this.position.x;
     const prevZ = this.position.z;
-    const vx = dirX * speed * dt;
-    const vz = dirZ * speed * dt;
+    const step = speed * dt;
+    const vx = dirX * step;
+    const vz = dirZ * step;
 
     if (!this._collides(this.position.x + vx, this.position.z, r)) {
       this.position.x += vx;
@@ -854,11 +855,27 @@ class Enemy {
       this.position.z += vz;
     }
 
-    const movedDist = Math.hypot(this.position.x - prevX, this.position.z - prevZ);
-    // If unexpectedly snagged on a dynamic prop/door edge, immediately trigger fresh A* repath!
-    if (movedDist < speed * dt * 0.16) {
+    let movedDist = Math.hypot(this.position.x - prevX, this.position.z - prevZ);
+
+    // Instant local escape slide if snagged on a rock, tree trunk, wall corner, or doorjamb!
+    if (movedDist < step * 0.28) {
+      const baseAng = Math.atan2(dirX, dirZ);
+      const s = this._navWallSide || (this._navWallSide = Math.random() < 0.5 ? 1 : -1);
+      const escapeAngles = [0.75 * s, 1.35 * s, -0.75 * s, -1.35 * s, 2.05 * s, -2.05 * s];
+      for (let i = 0; i < escapeAngles.length; i++) {
+        const ang = baseAng + escapeAngles[i];
+        const ex = Math.sin(ang) * step;
+        const ez = Math.cos(ang) * step;
+        if (!this._collides(this.position.x + ex, this.position.z + ez, r * 0.9)) {
+          this.position.x += ex;
+          this.position.z += ez;
+          movedDist = Math.hypot(this.position.x - prevX, this.position.z - prevZ);
+          if (escapeAngles[i] * s < 0) this._navWallSide = -s;
+          break;
+        }
+      }
       this._stuckTimer = (this._stuckTimer || 0) + dt;
-      if (this._stuckTimer > 0.45) {
+      if (this._stuckTimer > 0.35) {
         this._navPath = null;
         this._navRepathTimer = 0;
         this._stuckTimer = 0;
@@ -873,19 +890,23 @@ class Enemy {
     this.group.position.y = gy;
     this.group.position.z = this.position.z;
 
+    const actualSpeed = movedDist / Math.max(0.001, dt);
+    const isActuallyMoving = actualSpeed > 0.35;
+
     // === 4. ALWAYS LOOK IN ACTUAL WALKING DIRECTION (Unless facing visible LOS combat target) ===
     if (faceTarget) {
       this._lerpYaw(Math.atan2(faceTarget.x - this.position.x, faceTarget.z - this.position.z), dt * 11);
-    } else if (movedDist > 0.002) {
+    } else if (isActuallyMoving) {
       this._lerpYaw(Math.atan2(this.position.x - prevX, this.position.z - prevZ), dt * 9);
     } else {
-      this._lerpYaw(Math.atan2(dirX, dirZ), dt * 7);
+      this._lerpYaw(Math.atan2(dirX, dirZ), dt * 6);
     }
 
-    this._animMoving = movedDist > 0.002;
-    this._animSpeed = speed;
-    this.updateVisualAnim(dt, this._animMoving, speed);
-    return this._animMoving;
+    // Drive walk/run animation strictly from ACTUAL world movement speed (NEVER run in place!)
+    this._animMoving = isActuallyMoving;
+    this._animSpeed = isActuallyMoving ? Math.min(speed, actualSpeed) : 0;
+    this.updateVisualAnim(dt, this._animMoving, this._animSpeed);
+    return isActuallyMoving;
   }
 
   // Unified MW2 Layered Animation Driver (runs smoothly for ALL NPCs & Operators, even at long sniper scope distances!)

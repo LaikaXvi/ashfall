@@ -2353,8 +2353,35 @@ class WastelandWorld {
   }
 
   _findAStarSegment(startX, startY, startZ, goalX, goalY, goalZ, maxIter = 340) {
+    // Cap long-distance segments (> 26m) to a 24m local horizon so A* ALWAYS completes cleanly around nearby buildings/trees!
+    const rawDist = Math.hypot(goalX - startX, goalZ - startZ);
+    if (rawDist > 26.0) {
+      const f = 24.0 / rawDist;
+      goalX = startX + (goalX - startX) * f;
+      goalZ = startZ + (goalZ - startZ) * f;
+      goalY = this.getWalkHeightAt(goalX, goalZ, startY);
+      // If intermediate horizon point landed inside a solid wall/rock, nudge to nearest walkable point
+      if (!this.isWalkableForAI(goalX, goalZ, goalY, 0.36)) {
+        for (let rad = 2.0; rad <= 8.0; rad += 2.0) {
+          let found = false;
+          for (let a = 0; a < 8; a++) {
+            const ang = (a / 8) * Math.PI * 2;
+            const tx = goalX + Math.cos(ang) * rad;
+            const tz = goalZ + Math.sin(ang) * rad;
+            const ty = this.getWalkHeightAt(tx, tz, startY);
+            if (this.isWalkableForAI(tx, tz, ty, 0.36)) {
+              goalX = tx; goalY = ty; goalZ = tz;
+              found = true;
+              break;
+            }
+          }
+          if (found) break;
+        }
+      }
+    }
+
     // Fast-path: if straight line is already completely clear, return goal immediately!
-    if (this._isSegmentWalkableForAI(startX, startZ, goalX, goalZ, startY, 0.42)) {
+    if (this._isSegmentWalkableForAI(startX, startZ, goalX, goalZ, startY, 0.38)) {
       return [{ x: goalX, y: goalY, z: goalZ }];
     }
 
