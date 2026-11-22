@@ -1600,7 +1600,8 @@ class Player {
     if (this.isDowned || this.dead) return false;
     if (this.maxArmor <= 0) return false;
     if (!window.DEV_MODE && (this.armor >= this.maxArmor || this.plates <= 0)) return false;
-    const needed = Math.max(window.DEV_MODE ? 1 : 0, Math.ceil((this.maxArmor - this.armor) / 50));
+    const perPlate = (GAME_DATA.OPERATOR_STATS && GAME_DATA.OPERATOR_STATS.plateArmor) || 35;
+    const needed = Math.max(window.DEV_MODE ? 1 : 0, Math.ceil((this.maxArmor - this.armor) / perPlate));
     const avail = window.DEV_MODE ? needed : Math.min(needed, this.plates);
     if (avail <= 0) return false;
     return this.weaponSystem.startPlating(avail);
@@ -1612,7 +1613,8 @@ class Player {
       if (this.plates <= 0) return;
       this.plates -= 1;
     }
-    this.armor = Math.min(this.maxArmor, this.armor + 50);
+    const perPlate = (GAME_DATA.OPERATOR_STATS && GAME_DATA.OPERATOR_STATS.plateArmor) || 35;
+    this.armor = Math.min(this.maxArmor, this.armor + perPlate);
   }
 
   getMedkitCount() {
@@ -1826,6 +1828,28 @@ class Player {
         const room = Math.min(qty, 6 - this.plates);
         this.plates += room;
         qty -= room;
+        if (qty <= 0) return true;
+      }
+    }
+
+    // Auto-fill active Lethal / Tactical grenade slot when empty or matching type with space (< 2)
+    if (!extra.forceBag && (def.type === 'lethal' || def.type === 'tactical')) {
+      const slotKey = def.type;
+      const qtyKey = def.type === 'lethal' ? 'lethalQty' : 'tacticalQty';
+      const lastKey = def.type === 'lethal' ? 'lastEquippedLethal' : 'lastEquippedTactical';
+      const curId = this[slotKey];
+      const curQty = this[qtyKey] || 0;
+      if (!curId || curQty <= 0) {
+        const take = Math.min(qty, 2);
+        this[slotKey] = id;
+        this[lastKey] = id;
+        this[qtyKey] = take;
+        qty -= take;
+        if (qty <= 0) return true;
+      } else if (curId === id && curQty < 2) {
+        const take = Math.min(qty, 2 - curQty);
+        this[qtyKey] = curQty + take;
+        qty -= take;
         if (qty <= 0) return true;
       }
     }

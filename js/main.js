@@ -2985,12 +2985,48 @@
     }
 
     // Physical loose loot & dropped items on the ground
-    for (const gi of (world.groundItems || [])) {
+    const gItems = world.groundItems || [];
+    for (let i = gItems.length - 1; i >= 0; i--) {
+      const gi = gItems[i];
+      if (!gi) continue;
       const d = Math.hypot(player.position.x - gi.position.x, player.position.z - gi.position.z);
       const giPos = new THREE.Vector3(gi.position.x, Math.max(0.25, gi.position.y + 0.15), gi.position.z);
+      const def = GAME_DATA.ITEMS[gi.id];
+
+      // Auto-fill ground grenades (lethal / tactical) directly into active grenade slot when approaching with space!
+      if (!player.dead && !player.isDowned && def && (def.type === 'lethal' || def.type === 'tactical') && d < 1.95 && hasInteractLineOfSight(giPos)) {
+        const slotKey = def.type;
+        const qtyKey = def.type === 'lethal' ? 'lethalQty' : 'tacticalQty';
+        const lastKey = def.type === 'lethal' ? 'lastEquippedLethal' : 'lastEquippedTactical';
+        const curId = player[slotKey];
+        const curQty = player[qtyKey] || 0;
+        const hasSpace = (!curId || curQty <= 0) || (curId === gi.id && curQty < 2);
+        if (hasSpace) {
+          const room = (!curId || curQty <= 0) ? 2 : (2 - curQty);
+          const take = Math.min(gi.qty || 1, room);
+          if (take > 0) {
+            player[slotKey] = gi.id;
+            player[lastKey] = gi.id;
+            player[qtyKey] = (!curId || curQty <= 0) ? take : (curQty + take);
+            gi.qty = (gi.qty || 1) - take;
+            if (window.soundEngine && window.soundEngine.playClick) {
+              try { window.soundEngine.playClick(); } catch (e) {}
+            }
+            ui.addFeedMessage(`+${take} ${def.name} (Active Slot)`, '#69f0ae');
+            if (gi.qty <= 0) {
+              const pickedUid = gi.uid;
+              world.removeGroundItem(gi);
+              if (mpSession && mpSession.active && pickedUid) {
+                mpSession.sendEvent({ type: 'ground_pickup', uid: pickedUid });
+              }
+              continue;
+            }
+          }
+        }
+      }
+
       if (d < bestDist && d < 2.9 && hasInteractLineOfSight(giPos)) {
         bestDist = d;
-        const def = GAME_DATA.ITEMS[gi.id];
         const qtyTag = gi.qty > 1 ? ` x${gi.qty}` : '';
         nearbyInteractable = { type: 'ground', label: `${def ? def.name : gi.id}${qtyTag}`, groundItem: gi };
       }

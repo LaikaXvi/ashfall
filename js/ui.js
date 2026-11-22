@@ -5581,10 +5581,11 @@ class GameUI {
       if (player.plateSlots === 0) {
         hc.segContainer.innerHTML = '<span style="font-size:10px;color:#8f968e;">NO VEST</span>';
       } else {
+        const perPlate = (GAME_DATA.OPERATOR_STATS && GAME_DATA.OPERATOR_STATS.plateArmor) || 35;
         let html = '';
         for (let i = 0; i < player.plateSlots; i++) {
-          const plateVal = THREE.MathUtils.clamp(player.armor - i * 50, 0, 50);
-          const pct = (plateVal / 50) * 100;
+          const plateVal = THREE.MathUtils.clamp(player.armor - i * perPlate, 0, perPlate);
+          const pct = (plateVal / perPlate) * 100;
           html += `<div class="plate-seg"><div class="plate-seg-fill" style="width:${pct}%"></div></div>`;
         }
         hc.segContainer.innerHTML = html;
@@ -7234,9 +7235,10 @@ class GameUI {
     if (!def) return null;
     if (def.type === 'armor') {
       const prev = player.armorId;
+      const perPlate = (GAME_DATA.OPERATOR_STATS && GAME_DATA.OPERATOR_STATS.plateArmor) || 35;
       player.armorId = itemId;
       player.plateSlots = def.plateSlots || 2;
-      player.maxArmor = def.maxArmor || 100;
+      player.maxArmor = player.plateSlots * perPlate;
       player.armor = Math.min(player.maxArmor, Math.max(player.armor, player.maxArmor));
       return prev;
     }
