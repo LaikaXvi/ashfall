@@ -1,6 +1,9 @@
 // Shared Global Articulated Low-Poly Tactical Operator Character Model Factory
 // Used by Player 3rd-person, Pre-Match Deployment Countdown, Squadmates, and Enemy Operators!
 window.buildTacticalOperatorModel = function buildTacticalOperatorModel(opts = {}) {
+  if (window.MW2Rig && window.MW2Rig.buildCharacterRig) {
+    return window.MW2Rig.buildCharacterRig(opts);
+  }
   const root = new THREE.Group();
   const rigPivot = new THREE.Group();
   if (opts.faceForwardZ) {
@@ -382,17 +385,35 @@ class Player {
     if (this.tpWeapon && this.tpWeapon.group) {
       const s = this.tpWeapon.isPistol ? 1.25 : 1.38;
       this.tpWeapon.group.scale.setScalar(s);
-      // Align rear pistol grip to right glove & tuck buttstock solidly into right shoulder pocket
+      // Align rear pistol grip to right-hand IK anchor & seat buttstock firmly in right shoulder pocket
       if (this.tpWeapon.isPistol) {
-        this.tpWeapon.group.position.set(0.0, 0.04, -0.05);
+        this.tpWeapon.group.position.set(0.0, 0.01, -0.02);
       } else {
-        this.tpWeapon.group.position.set(-0.02, 0.035, -0.10);
+        this.tpWeapon.group.position.set(0.0, 0.01, -0.12);
       }
       this.avatarParts.weaponMount.add(this.tpWeapon.group);
     }
   }
 
   _buildThirdPersonModel() {
+    if (window.MW2Rig && window.MW2Rig.buildCharacterRig) {
+      const rig = window.MW2Rig.buildCharacterRig({
+        archetype: 'operator',
+        uniformColor: 0x3b4437,
+        vestId: this.armorVest || 'vest_2',
+        bagId: this.backpack || 'bag_medium',
+        faceForwardZ: false
+      });
+      rig.root.visible = false;
+      if (this.world && this.world.scene) {
+        this.world.scene.add(rig.root);
+      }
+      this.avatarGroup = rig.root;
+      this.avatarParts = rig;
+      this.mw2Anim = new window.MW2Animator(rig);
+      this._syncThirdPersonGear();
+      return;
+    }
     const root = new THREE.Group();
     const rigPivot = new THREE.Group();
     root.add(rigPivot);
@@ -684,6 +705,58 @@ class Player {
     const feetY = Math.max(groundBase, this.position.y - this.currentEyeHeight);
     this.avatarGroup.position.set(this.position.x, feetY, this.position.z);
     this.avatarGroup.rotation.y = this.yaw;
+
+    // Unified MW2 Layered Rig & Analytical 2-Bone IK Driver
+    if (this.mw2Anim) {
+      const horizSpeed = Math.hypot(this.velocity.x, this.velocity.z);
+      const strafeInput = this.isMenuBlocked ? 0 : ((this.keys['KeyD'] ? 1 : 0) - (this.keys['KeyA'] ? 1 : 0));
+      const ws = this.weaponSystem;
+      if (p.handMag) p.handMag.visible = false;
+      if (p.handShell) p.handShell.visible = false;
+      if (p.inventoryTablet) p.inventoryTablet.visible = !!this.isInventoryOpen && !this.isDowned && !this.dead;
+      if (p.weaponMount) p.weaponMount.visible = !this.isDowned && !this.dead && !this.mantleState && !this.ledgeState && !this.isInventoryOpen;
+
+      // Sync 3rd-person weapon bolt blowback
+      if (ws && this.tpWeapon && this.tpWeapon.boltMesh && !ws.isReloading) {
+        this.tpWeapon.boltMesh.position.z = this.tpWeapon.boltRestPos.z + (ws.boltKick || 0);
+      }
+
+      const plateProg = (ws && ws.isPlating && ws.plateDuration > 0)
+        ? THREE.MathUtils.clamp(1 - (ws.plateTimer / ws.plateDuration), 0, 1)
+        : 0;
+      const reloadProg = (ws && ws.isReloading && ws.reloadDuration > 0)
+        ? THREE.MathUtils.clamp(1 - (ws.reloadTimer / ws.reloadDuration), 0, 1)
+        : 0;
+
+      this.mw2Anim.update(dt, {
+        speed: this.onGround ? horizSpeed : 0,
+        moveRight: strafeInput,
+        stance: this.isProne ? 'prone' : (this.stance === 'crouch' ? 'crouch' : 'stand'),
+        isSprinting: this.isSprinting,
+        isTacSprinting: this.isTacSprinting,
+        isSliding: this.isSliding,
+        slideProgress: this.slideDuration > 0 ? (1 - this.slideTimer / this.slideDuration) : 0.5,
+        isADS: this.isADS,
+        onGround: this.onGround,
+        aimPitch: this.pitch || 0,
+        lean: this.lean || 0,
+        isDowned: this.isDowned,
+        dead: this.dead,
+        isPlating: !!(ws && ws.isPlating),
+        plateProgress: plateProg,
+        isReloading: !!(ws && ws.isReloading),
+        reloadProgress: reloadProg,
+        isHealing: !!(ws && ws.isHealing),
+        stanceTrans: this.stanceTrans,
+        recoilKick: ws ? (ws.recoilZ || ws.recoilOffset || 0) : 0,
+        isPistol: !!(this.tpWeapon && this.tpWeapon.isPistol),
+        world: this.world,
+        worldPos: this.position,
+        worldYaw: this.yaw,
+        feetY: feetY
+      });
+      return;
+    }
 
     const horizSpeed = Math.hypot(this.velocity.x, this.velocity.z);
     const moving = this.onGround && horizSpeed > 0.35;

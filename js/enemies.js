@@ -304,12 +304,21 @@ class Enemy {
   }
 
   _buildModel() {
-    // Use the global articulated low-poly tactical operator model for all Enemy Operators (with equipped vest, backpack & 3D weapon!)
-    if (this.isOperator && typeof window.buildTacticalOperatorModel === 'function') {
-      const built = window.buildTacticalOperatorModel({
+    // Unified MW2 Skeletal Rig & Layered Animation System for ALL Enemy Operators & NPCs!
+    if (window.MW2Rig && window.MW2Rig.buildCharacterRig) {
+      const archetype = this.isOperator ? 'operator' : (this.tier || 'scavenger');
+      const vestId = this.isOperator
+        ? ((this.operatorEquipment && this.operatorEquipment.armor) || 'vest_2')
+        : (this.tier === 'boss' || this.tier === 'boss_guard' || this.tier === 'heavy' ? 'vest_3' : (this.tier === 'raider' ? 'vest_2' : 'none'));
+      const bagId = this.isOperator
+        ? ((this.operatorEquipment && this.operatorEquipment.backpack) || 'bag_medium')
+        : (this.tier === 'boss' ? 'bag_large' : (this.tier === 'raider' ? 'bag_small' : 'none'));
+      const built = window.MW2Rig.buildCharacterRig({
+        archetype,
         uniformColor: this.armorColor || 0x3b4437,
-        vestId: (this.operatorEquipment && this.operatorEquipment.armor) || 'vest_2',
-        bagId: (this.operatorEquipment && this.operatorEquipment.backpack) || 'bag_medium',
+        headColor: this.headColor || 0xd1a483,
+        vestId,
+        bagId,
         faceForwardZ: true
       });
       this.group.add(built.root);
@@ -323,13 +332,16 @@ class Enemy {
       this.rightElbow = built.rightArm.elbow || null;
       this.torsoGroup = built.torso || null;
       this.headGroup = built.head || null;
+      this.plateProp = built.plateProp || null;
       this.opModel = built;
+      this.mw2Anim = new window.MW2Animator(built);
 
       built.chest.userData = { enemy: this, part: 'torso' };
       built.skull.userData = { enemy: this, part: 'head' };
       this.hitboxes.push(built.chest, built.skull);
 
       const wDef = GAME_DATA.ITEMS[this.weaponId];
+      this.isPistol = !!(wDef && wDef.slot === 'secondary');
       let weaponObj = null;
       let muzzleLocalPos = new THREE.Vector3(0, 0.03, -0.44);
       if (this.weaponSystem && wDef && this.weaponSystem.buildThirdPersonWeapon) {
@@ -337,8 +349,8 @@ class Enemy {
         if (builtWpn && builtWpn.group) {
           weaponObj = builtWpn.group;
           weaponObj.scale.setScalar(builtWpn.isPistol ? 1.25 : 1.38);
-          // Seat buttstock firmly into right shoulder & align rear grip to right glove
-          weaponObj.position.set(builtWpn.isPistol ? 0 : -0.02, 0.035, builtWpn.isPistol ? -0.05 : -0.10);
+          // Seat rear grip at weaponPivot IK anchor & buttstock firmly into right shoulder pocket
+          weaponObj.position.set(0, 0.01, builtWpn.isPistol ? -0.02 : -0.12);
           if (builtWpn.muzzlePos) {
             muzzleLocalPos.copy(builtWpn.muzzlePos);
           } else {
@@ -348,30 +360,11 @@ class Enemy {
       }
       if (!weaponObj) {
         weaponObj = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.09, 0.62), new THREE.MeshLambertMaterial({ color: 0x1a1c1e }));
-        weaponObj.position.set(0, 0.04, -0.22);
+        weaponObj.position.set(0, 0.01, -0.16);
         muzzleLocalPos.set(0, 0, -0.34);
       }
       if (built.weaponMount) built.weaponMount.add(weaponObj);
       this.weaponMeshGroup = weaponObj;
-
-      // Visible 3D ceramic armor plate prop in operator's left hand during plating animation
-      this.plateProp = new THREE.Group();
-      const plateBody = new THREE.Mesh(
-        new THREE.BoxGeometry(0.18, 0.22, 0.024),
-        new THREE.MeshLambertMaterial({ color: 0x22384c })
-      );
-      const plateTrim = new THREE.Mesh(
-        new THREE.BoxGeometry(0.16, 0.03, 0.028),
-        new THREE.MeshLambertMaterial({ color: 0x4ea8de })
-      );
-      plateTrim.position.y = 0.07;
-      this.plateProp.add(plateBody, plateTrim);
-      this.plateProp.position.set(0, -0.11, -0.04);
-      this.plateProp.rotation.set(0.35, 0, 0.15);
-      this.plateProp.visible = false;
-      if (built.leftArm && built.leftArm.wrist) {
-        built.leftArm.wrist.add(this.plateProp);
-      }
 
       // Attach muzzle flash directly to the physical gun barrel tip so bullets & tracers spawn from the muzzle!
       this.muzzleMesh = new THREE.Mesh(
@@ -564,6 +557,7 @@ class Enemy {
 
     // Operators & Armored Boss Guards absorb incoming fire with their vest armor just like players!
     this.timeSinceDamaged = 0;
+    if (this.mw2Anim) this.mw2Anim.triggerHitFlinch(Math.random() < 0.5 ? 1 : -1);
     if ((this.isOperator || this.tier === 'boss_guard' || this.tier === 'boss') && this.armor > 0) {
       this.lastHitArmor = true;
       const absorbed = Math.min(this.armor, Math.round(amount * 0.78));
@@ -919,8 +913,51 @@ class Enemy {
     return this._animMoving;
   }
 
-  // Articulated motion-capture-adjacent 3rd-person animation (also runs smoothly at long sniper scope distances!)
+  // Unified MW2 Layered Animation Driver (runs smoothly for ALL NPCs & Operators, even at long sniper scope distances!)
   updateVisualAnim(dt, movingOverride = null, speedOverride = null) {
+    if (this.mw2Anim) {
+      if (this.group) {
+        this.group.visible = !this.extracted && !this.removed;
+        this.group.position.x = this.position.x;
+        this.group.position.z = this.position.z;
+        const baseGy = this._getGroundY();
+        this.position.y = baseGy;
+        this.group.position.y = baseGy;
+        this.group.rotation.x = 0;
+        this.group.rotation.z = 0;
+      }
+      const isMoving = movingOverride !== null ? movingOverride : !!this._animMoving;
+      const spd = speedOverride !== null ? speedOverride : (this._animSpeed || this.speed || 3.4);
+      const isCrouching = !this.isProne && !isMoving && (this.state === 'COMBAT' && this.coverSpot != null && !this.isPeeking);
+      const isPlating = (this.platingTimer || 0) > 0;
+      const plateProg = isPlating ? THREE.MathUtils.clamp(1 - (this.platingTimer / 2.6), 0, 1) : 0;
+      const isReloading = (this.reloadTimer || 0) > 0;
+      const reloadProg = isReloading ? THREE.MathUtils.clamp(1 - (this.reloadTimer / 2.0), 0, 1) : 0;
+
+      this.mw2Anim.update(dt, {
+        speed: isMoving ? spd : 0,
+        stance: this.isProne ? 'prone' : (isCrouching ? 'crouch' : 'stand'),
+        isSprinting: isMoving && spd >= 4.4,
+        isTacSprinting: !!this.isTacSprinting && isMoving,
+        isSliding: (this.slideTimer || 0) > 0,
+        slideProgress: (this.slideTimer || 0) > 0 ? (1 - this.slideTimer / 0.55) : 0,
+        isADS: this.state === 'COMBAT' && !this.isTacSprinting && !isPlating && !!this._hasCombatLOS,
+        aimPitch: this._combatAimPitch || 0,
+        lean: this.leanAngle || 0,
+        isDowned: !!this.isDowned,
+        dead: !!this.dead,
+        isPlating,
+        plateProgress: plateProg,
+        isReloading,
+        reloadProgress: reloadProg,
+        isPistol: !!this.isPistol,
+        world: this.world,
+        worldPos: this.position,
+        worldYaw: this.group ? (this.group.rotation.y + Math.PI) : 0,
+        feetY: this.position.y
+      });
+      return;
+    }
     if (this.dead || this.isDowned) return;
     const isMoving = movingOverride !== null ? movingOverride : !!this._animMoving;
     const spd = speedOverride !== null ? speedOverride : (this._animSpeed || this.speed || 3.4);
@@ -1577,27 +1614,19 @@ class Enemy {
             this.position.z += vz;
             this.group.position.z = this.position.z;
           }
-          // Face toward threat with legs in front while scooting backward on supporting arm (natural seated scoot!)
+          // Face toward threat with legs in front while scooting backward
           this.group.rotation.y = Math.atan2(-awayX, -awayZ);
-          this._scootCycle = (this._scootCycle || 0) + dt * 4.4;
-          const phase = Math.sin(this._scootCycle);
-          const heave = Math.max(0, phase);
-          // With rotation.order = 'YXZ', group.rotation.x (-0.22) + hip.rotation.x (-1.38..-1.52) = -1.60..-1.74 rad
-          // keeping feet at Y >= +0.28m (bottom of foot >= +0.16m above ground in ALL 360° directions!)
-          const gyScoot = this._getGroundY();
-          this.position.y = gyScoot;
-          this.group.position.y = gyScoot - 0.50 + heave * 0.035;
-          this.group.rotation.x = -0.22 - heave * 0.04;
-          this.group.rotation.z = phase * 0.045;
-          if (this.opModel) {
-            if (this.leftArm) { this.leftArm.rotation.x = 0.48 + phase * 0.24; this.leftArm.rotation.z = 0.24; }
-            if (this.rightArm) { this.rightArm.rotation.x = -0.58; this.rightArm.rotation.z = -0.40; }
-            // Anatomical seated scoot: positive hip swings legs forward, NEGATIVE knee bends knees naturally downward!
-            if (this.leftHip) this.leftHip.rotation.x = 1.32 + heave * 0.14;
-            if (this.rightHip) this.rightHip.rotation.x = 1.28 + Math.max(0, -phase) * 0.10;
-            if (this.leftKnee) this.leftKnee.rotation.x = -0.68 - heave * 0.16;
-            if (this.rightKnee) this.rightKnee.rotation.x = -0.64 - Math.max(0, -phase) * 0.14;
+          if (this.mw2Anim) {
+            this.updateVisualAnim(dt, true, crawlSpd);
           } else {
+            this._scootCycle = (this._scootCycle || 0) + dt * 4.4;
+            const phase = Math.sin(this._scootCycle);
+            const heave = Math.max(0, phase);
+            const gyScoot = this._getGroundY();
+            this.position.y = gyScoot;
+            this.group.position.y = gyScoot - 0.50 + heave * 0.035;
+            this.group.rotation.x = -0.22 - heave * 0.04;
+            this.group.rotation.z = phase * 0.045;
             if (this.leftArm) { this.leftArm.rotation.x = 0.55 + phase * 0.28; this.leftArm.rotation.z = 0.24; }
             if (this.rightArm) { this.rightArm.rotation.x = -0.75; this.rightArm.rotation.z = -0.45; }
             if (this.leftHip) this.leftHip.rotation.x = -1.38 - heave * 0.14;
@@ -1605,17 +1634,14 @@ class Enemy {
           }
         }
       } else {
-        const gyIdleDown = this._getGroundY();
-        this.position.y = gyIdleDown;
-        this.group.position.y = gyIdleDown - 0.50;
-        this.group.rotation.x = -0.26;
-        this.group.rotation.z = 0;
-        if (this.opModel) {
-          if (this.leftHip) this.leftHip.rotation.x = 1.28;
-          if (this.rightHip) this.rightHip.rotation.x = 1.28;
-          if (this.leftKnee) this.leftKnee.rotation.x = -0.65;
-          if (this.rightKnee) this.rightKnee.rotation.x = -0.65;
+        if (this.mw2Anim) {
+          this.updateVisualAnim(dt, false, 0);
         } else {
+          const gyIdleDown = this._getGroundY();
+          this.position.y = gyIdleDown;
+          this.group.position.y = gyIdleDown - 0.50;
+          this.group.rotation.x = -0.26;
+          this.group.rotation.z = 0;
           if (this.leftHip) this.leftHip.rotation.x = -1.34;
           if (this.rightHip) this.rightHip.rotation.x = -1.34;
         }
@@ -1760,24 +1786,16 @@ class Enemy {
         }
         const gySlide = this._getGroundY();
         this.position.y = gySlide;
-        this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, gySlide - 0.36, dt * 16);
-        this.group.rotation.x = THREE.MathUtils.lerp(this.group.rotation.x, -0.26, dt * 14);
-        if (this.opModel) {
-          // Baseball-slide pose: lead leg kicked straight out in front, trailing knee tucked!
-          this.opModel.leftLeg.hip.rotation.x = 1.52;
-          this.opModel.leftLeg.knee.rotation.x = -0.05;
-          this.opModel.rightLeg.hip.rotation.x = 1.15;
-          this.opModel.rightLeg.knee.rotation.x = -2.25;
+        if (this.mw2Anim) {
+          this.updateVisualAnim(dt, true, slideSpd);
         } else {
+          this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, gySlide - 0.36, dt * 16);
+          this.group.rotation.x = THREE.MathUtils.lerp(this.group.rotation.x, -0.26, dt * 14);
           if (this.leftHip) this.leftHip.rotation.x = -0.95;
           if (this.rightHip) this.rightHip.rotation.x = -0.35;
-        }
-        if (this.slideTimer <= 0) {
-          this.group.position.y = gySlide;
-          this.group.rotation.x = 0;
-          if (this.opModel) {
-            this.opModel.leftLeg.knee.rotation.x = -0.12;
-            this.opModel.rightLeg.knee.rotation.x = -0.12;
+          if (this.slideTimer <= 0) {
+            this.group.position.y = gySlide;
+            this.group.rotation.x = 0;
           }
         }
         return;
@@ -1879,56 +1897,21 @@ class Enemy {
         if (hasClearLOS) targetLean = this.leanDir * 0.18;
       }
 
-      if (this.isOperator) {
-        const gyStand = this._getGroundY();
-        this.position.y = gyStand;
-        this.leanAngle = THREE.MathUtils.lerp(this.leanAngle || 0, this.isProne ? 0 : targetLean, Math.min(1, dt * 10));
-        this.group.rotation.z = this.leanAngle;
-        if (!this.isProne) {
-          this.group.position.y = THREE.MathUtils.lerp(this.group.position.y, gyStand, Math.min(1, dt * 12));
-          this.group.rotation.x = THREE.MathUtils.lerp(this.group.rotation.x, 0, Math.min(1, dt * 12));
-        }
-        // Aim head, torso, both arms & weaponMount directly at target elevation ONLY when we have clear LOS!
-        if (this.opModel && tPos && hasClearLOS) {
-          const m = this.opModel;
-          const hDist = Math.max(1, Math.hypot(tPos.x - this.position.x, tPos.z - this.position.z));
-          const aimTargetY = (target.type === 'player') ? (tPos.y - 0.15) : (tPos.y + 1.25);
-          const eyeH = this.position.y + (this.isProne ? 0.45 : 1.38);
-          const aimPitch = THREE.MathUtils.clamp(Math.atan2((aimTargetY - eyeH), hDist), -0.75, 0.75);
-          if (this.isProne) {
-            // Propped-up prone aiming: head looks forward/up at target, rifle elevated cleanly above ground
-            m.head.rotation.x = THREE.MathUtils.lerp(m.head.rotation.x, 0.86 + aimPitch * 0.45, Math.min(1, dt * 14));
-            m.torso.rotation.x = THREE.MathUtils.lerp(m.torso.rotation.x, 0.48 + aimPitch * 0.18, Math.min(1, dt * 14));
-            m.leftArm.shoulder.rotation.x = THREE.MathUtils.lerp(m.leftArm.shoulder.rotation.x, 1.50 + aimPitch * 0.55, Math.min(1, dt * 14));
-            m.rightArm.shoulder.rotation.x = THREE.MathUtils.lerp(m.rightArm.shoulder.rotation.x, 1.52 + aimPitch * 0.55, Math.min(1, dt * 14));
-            if (m.weaponMount) m.weaponMount.rotation.set(-Math.PI / 2 - 0.18, 0.04, -0.02);
-          } else if (this.isTacSprinting && this.fireTimer > 0.18) {
-            m.head.rotation.x = THREE.MathUtils.lerp(m.head.rotation.x, aimPitch * 0.6, Math.min(1, dt * 12));
-            m.torso.rotation.x = THREE.MathUtils.lerp(m.torso.rotation.x, -0.26, Math.min(1, dt * 12));
-            m.rightArm.shoulder.rotation.set(1.12, 0, -0.18);
-            m.leftArm.shoulder.rotation.set(0.36, 0, 0.18);
-          } else {
-            // Shouldered two-handed firing pose aimed squarely at target
-            m.head.rotation.x = THREE.MathUtils.lerp(m.head.rotation.x, aimPitch * 0.72, Math.min(1, dt * 14));
-            m.torso.rotation.x = THREE.MathUtils.lerp(m.torso.rotation.x, -0.06 + aimPitch * 0.25, Math.min(1, dt * 15));
-            const armP = 0.98 + aimPitch * 0.75;
-            m.leftArm.shoulder.rotation.x = THREE.MathUtils.lerp(m.leftArm.shoulder.rotation.x, armP + 0.02, Math.min(1, dt * 15));
-            m.leftArm.shoulder.rotation.z = THREE.MathUtils.lerp(m.leftArm.shoulder.rotation.z, 0.50, Math.min(1, dt * 15));
-            m.rightArm.shoulder.rotation.x = THREE.MathUtils.lerp(m.rightArm.shoulder.rotation.x, armP, Math.min(1, dt * 15));
-            m.rightArm.shoulder.rotation.z = THREE.MathUtils.lerp(m.rightArm.shoulder.rotation.z, -0.12, Math.min(1, dt * 15));
-            if (m.rightArm.elbow) m.rightArm.elbow.rotation.x = THREE.MathUtils.lerp(m.rightArm.elbow.rotation.x, 1.08, Math.min(1, dt * 15));
-            if (m.leftArm.elbow) m.leftArm.elbow.rotation.x = THREE.MathUtils.lerp(m.leftArm.elbow.rotation.x, 1.18, Math.min(1, dt * 15));
-            if (m.weaponMount) {
-              m.weaponMount.rotation.set(-Math.PI / 2 - 0.14, 0.04, -0.03);
-            }
-          }
-        }
-      } else if (this.weaponMeshGroup && tPos && hasClearLOS) {
-        // Non-operator AI also pitch their weapon barrel directly at target elevation when LOS is clear
+      // Update MW2 combat aim pitch & lean for unified 2-bone IK solver
+      this._hasCombatLOS = hasClearLOS;
+      this.leanAngle = THREE.MathUtils.lerp(this.leanAngle || 0, this.isProne ? 0 : targetLean, Math.min(1, dt * 10));
+      if (tPos && hasClearLOS) {
         const hDist = Math.max(1, Math.hypot(tPos.x - this.position.x, tPos.z - this.position.z));
         const aimTargetY = (target.type === 'player') ? (tPos.y - 0.15) : (tPos.y + 1.25);
-        const aimPitch = THREE.MathUtils.clamp(Math.atan2((aimTargetY - (this.position.y + 1.24)), hDist), -0.7, 0.7);
-        this.weaponMeshGroup.rotation.x = aimPitch;
+        const eyeH = this.position.y + (this.isProne ? 0.45 : 1.38);
+        this._combatAimPitch = THREE.MathUtils.clamp(Math.atan2((aimTargetY - eyeH), hDist), -0.75, 0.75);
+      } else {
+        this._combatAimPitch = THREE.MathUtils.lerp(this._combatAimPitch || 0, 0, Math.min(1, dt * 8));
+      }
+      if (this.mw2Anim) {
+        this.updateVisualAnim(dt, this._animMoving, this._animSpeed);
+      } else if (this.weaponMeshGroup && tPos && hasClearLOS) {
+        this.weaponMeshGroup.rotation.x = this._combatAimPitch;
       }
 
       this.fireTimer -= dt;
@@ -1939,27 +1922,8 @@ class Enemy {
         if (distToPlayer < 75) {
           window.soundEngine.playGunshot(this.weaponId, distToPlayer);
         }
-        // Snap weapon straight onto target & flush world matrices so bullets & tracers spawn directly from the gun muzzle!
-        if (this.opModel && tPos) {
-          const m = this.opModel;
-          const hDist = Math.max(1, Math.hypot(tPos.x - this.position.x, tPos.z - this.position.z));
-          const aimTargetY = (target.type === 'player') ? (tPos.y - 0.15) : (tPos.y + 1.25);
-          const eyeH = this.position.y + (this.isProne ? 0.45 : 1.38);
-          const aimPitch = THREE.MathUtils.clamp(Math.atan2((aimTargetY - eyeH), hDist), -0.75, 0.75);
-          if (this.isProne) {
-            m.torso.rotation.x = 0.48 + aimPitch * 0.18;
-            m.rightArm.shoulder.rotation.set(1.52 + aimPitch * 0.55, 0, -0.12);
-            m.leftArm.shoulder.rotation.set(1.50 + aimPitch * 0.55, 0, 0.44);
-            if (m.weaponMount) m.weaponMount.rotation.set(-Math.PI / 2 - 0.18, 0.04, -0.02);
-          } else {
-            m.torso.rotation.x = -0.06 + aimPitch * 0.25;
-            const armP = 0.98 + aimPitch * 0.75;
-            m.rightArm.shoulder.rotation.set(armP, 0, -0.12);
-            m.leftArm.shoulder.rotation.set(armP + 0.02, 0, 0.50);
-            if (m.rightArm.elbow) m.rightArm.elbow.rotation.x = 1.08;
-            if (m.leftArm.elbow) m.leftArm.elbow.rotation.x = 1.18;
-            if (m.weaponMount) m.weaponMount.rotation.set(-Math.PI / 2 - 0.14, 0.04, -0.03);
-          }
+        if (this.mw2Anim) {
+          this.mw2Anim.triggerRecoil(0.95);
         }
         this.group.updateMatrixWorld(true);
         this.muzzleMesh.material.opacity = 0.95;

@@ -85,6 +85,7 @@ class SquadMate {
       this.leftArm = built.leftArm.shoulder;
       this.rightArm = built.rightArm.shoulder;
       this.opModel = built;
+      this.mw2Anim = (window.MW2Animator && built) ? new window.MW2Animator(built) : null;
 
       built.chest.userData = { ally: this, part: 'torso' };
       built.skull.userData = { ally: this, part: 'head' };
@@ -165,8 +166,9 @@ class SquadMate {
       const builtWpn = this.weaponSystem.buildThirdPersonWeapon(wDef, {});
       if (builtWpn && builtWpn.group) {
         wObj = builtWpn.group;
+        this.isPistol = !!builtWpn.isPistol;
         wObj.scale.setScalar(builtWpn.isPistol ? 1.25 : 1.38);
-        wObj.position.set(0, 0.04, builtWpn.isPistol ? -0.06 : -0.18);
+        wObj.position.set(0, 0.01, builtWpn.isPistol ? -0.02 : -0.12);
       }
     }
     if (!wObj) {
@@ -1068,6 +1070,23 @@ class SquadMate {
           this.group.rotation.y = Math.atan2(goalX - this.position.x, goalZ - this.position.z);
         }
       }
+    }
+
+    if (this.mw2Anim) {
+      this.mw2Anim.update(dt, {
+        speed: moving ? 4.4 : 0,
+        stance: 'stand',
+        isSprinting: moving && this.state === 'FOLLOW',
+        isADS: this.state === 'COMBAT',
+        isDowned: !!this.isDowned,
+        dead: !!this.dead,
+        isPistol: !!this.isPistol,
+        world: this.world,
+        worldPos: this.position,
+        worldYaw: this.group ? (this.group.rotation.y + Math.PI) : 0,
+        feetY: this.position.y
+      });
+      return;
     }
 
     if (moving) {
