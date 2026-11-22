@@ -1062,7 +1062,11 @@ class SquadMate {
         this.muzzleTimer = 0.05;
 
         const distToPlayer = this.position.distanceTo(player.position);
-        window.soundEngine.playGunshot(this.weaponId, distToPlayer, false);
+        const dx = this.position.x - player.position.x;
+        const dz = this.position.z - player.position.z;
+        const len = Math.hypot(dx, dz) || 1;
+        const pan = (dx / len) * Math.cos(player.yaw) - (dz / len) * Math.sin(player.yaw);
+        window.soundEngine.playGunshot(this.weaponId, distToPlayer, false, { pan });
 
         const muzzleWorld = new THREE.Vector3();
         this.muzzleMesh.getWorldPosition(muzzleWorld);

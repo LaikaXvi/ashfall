@@ -1473,7 +1473,17 @@ class Enemy {
 
           const distToPlayer = player ? g.pos.distanceTo(player.position) : 60;
           if (window.soundEngine && window.soundEngine.playExplosion) {
-            try { window.soundEngine.playExplosion(distToPlayer); } catch (e) {}
+            try {
+              let expOpts;
+              if (player) {
+                const dx = g.pos.x - player.position.x;
+                const dz = g.pos.z - player.position.z;
+                const len = Math.hypot(dx, dz) || 1;
+                const pan = (dx / len) * Math.cos(player.yaw) - (dz / len) * Math.sin(player.yaw);
+                expOpts = { pan };
+              }
+              window.soundEngine.playExplosion(distToPlayer, expOpts);
+            } catch (e) {}
           }
           if (player && !player.dead && distToPlayer < 8.5) {
             const falloff = 1 - (distToPlayer / 8.5) * 0.75;
@@ -2182,7 +2192,15 @@ class Enemy {
         this.fireTimer = this.fireInterval + Math.random() * 0.22;
         const distToPlayer = player ? this.position.distanceTo(player.position) : 40;
         if (distToPlayer < 75) {
-          window.soundEngine.playGunshot(this.weaponId, distToPlayer);
+          let shotOpts;
+          if (player) {
+            const dx = this.position.x - player.position.x;
+            const dz = this.position.z - player.position.z;
+            const len = Math.hypot(dx, dz) || 1;
+            const pan = (dx / len) * Math.cos(player.yaw) - (dz / len) * Math.sin(player.yaw);
+            shotOpts = { pan };
+          }
+          window.soundEngine.playGunshot(this.weaponId, distToPlayer, false, shotOpts);
         }
         if (this.mw2Anim) {
           this.mw2Anim.triggerRecoil(0.95);

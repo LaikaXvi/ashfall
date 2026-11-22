@@ -387,7 +387,11 @@ class ThrowableSystem {
 
   _detonateFrag(pos, player, enemyManager, onHitCallback) {
     const distToPlayer = pos.distanceTo(player.position);
-    window.soundEngine.playExplosion(distToPlayer);
+    const dx = pos.x - player.position.x;
+    const dz = pos.z - player.position.z;
+    const len = Math.hypot(dx, dz) || 1;
+    const pan = (dx / len) * Math.cos(player.yaw) - (dz / len) * Math.sin(player.yaw);
+    window.soundEngine.playExplosion(distToPlayer, { pan });
 
     // Visual explosion flash + blast sphere (no dynamic PointLight to avoid WebGL shader recompile stutter!)
     const light = null;

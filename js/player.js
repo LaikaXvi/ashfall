@@ -2724,7 +2724,11 @@ class Player {
       if (this.footstepTimer <= 0) {
         this.footstepTimer = this.isTacSprinting ? 0.30 : (this.isSprinting ? 0.38 : (this.isProne ? 0.95 : (this.isCrouching ? 0.72 : 0.56)));
         if ((this.deadSilenceTimer || 0) <= 0) {
-          window.soundEngine.playFootstep(this.isSprinting || this.isTacSprinting);
+          const feetY = this.position.y - (this.currentEyeHeight || 1.65);
+          const surf = (this.world && this.world.getTerrainHeight && feetY > this.world.getTerrainHeight(this.position.x, this.position.z) + 0.12)
+            ? 'concrete'
+            : 'grass';
+          window.soundEngine.playFootstep(this.isSprinting || this.isTacSprinting, surf);
         }
       }
       const cadence = this.isTacSprinting ? 10.6 : (this.isSprinting ? 8.4 : (this.isProne ? 3.2 : (this.isCrouching ? 4.2 : 5.6)));

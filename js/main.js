@@ -312,7 +312,11 @@
               if (window.soundEngine && window.soundEngine.playGunshot && player) {
                 const shotDist = player.position.distanceTo(ally.position);
                 if (shotDist < 340) {
-                  window.soundEngine.playGunshot(pkt.weaponId || ally.weaponId || 'ak74m', shotDist, !!pkt.suppressed);
+                  const dx = ally.position.x - player.position.x;
+                  const dz = ally.position.z - player.position.z;
+                  const len = Math.hypot(dx, dz) || 1;
+                  const pan = (dx / len) * Math.cos(player.yaw) - (dz / len) * Math.sin(player.yaw);
+                  window.soundEngine.playGunshot(pkt.weaponId || ally.weaponId || 'ak74m', shotDist, !!pkt.suppressed, { pan });
                 }
               }
               if (weaponSystem && weaponSystem.spawnEnemyShot && pkt.tx !== undefined) {
@@ -393,7 +397,11 @@
                 if (window.soundEngine && window.soundEngine.playGunshot && player) {
                   const eDist = player.position.distanceTo(e.position);
                   if (eDist < 300) {
-                    window.soundEngine.playGunshot(e.weaponId || 'ak74m', eDist, false);
+                    const dx = e.position.x - player.position.x;
+                    const dz = e.position.z - player.position.z;
+                    const len = Math.hypot(dx, dz) || 1;
+                    const pan = (dx / len) * Math.cos(player.yaw) - (dz / len) * Math.sin(player.yaw);
+                    window.soundEngine.playGunshot(e.weaponId || 'ak74m', eDist, false, { pan });
                   }
                 }
                 if (weaponSystem && weaponSystem.spawnEnemyShot && pkt.tx !== undefined) {
@@ -2483,6 +2491,7 @@
     const killerName = getPlayerCallsign();
 
     if (enemy.justBrokeArmor) {
+      if (window.soundEngine && window.soundEngine.playArmorBreak) window.soundEngine.playArmorBreak();
       enemy.justBrokeArmor = false;
       raidXp += 25;
       ui.showXpFeedback({ label: 'ARMOR BROKEN', xp: 25, isArmorBreak: true });
@@ -2505,6 +2514,7 @@
       ui.showXpFeedback({ label: 'DOWNED', xp: 50, isDowned: true });
     }
     if (killed) {
+      if (window.soundEngine && window.soundEngine.playKillConfirm) window.soundEngine.playKillConfirm();
       raidKills += 1;
       const xp = isHead ? 150 : 100;
       raidXp += xp;
