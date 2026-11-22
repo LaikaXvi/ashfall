@@ -1524,27 +1524,26 @@ class Enemy {
                 }
               }
             }
-            // Loot nearby unsearched POI containers (including inside buildings & upstairs via 2.5D A* staircases!)
+            // Check each loot location ONCE, pick the nearest unchecked container, loot & immediately move on!
+            if (!this._checkedContainers) this._checkedContainers = new Set();
             if (!this._activeLootGoal && Array.isArray(this.world.lootContainers)) {
+              let bestCt = null;
+              let bestDist = 26.0;
               for (let cIdx = 0; cIdx < this.world.lootContainers.length; cIdx++) {
                 const ct = this.world.lootContainers[cIdx];
-                if (!ct || ct.requiresKey || !Array.isArray(ct.items) || ct.items.length === 0) continue;
+                if (!ct || ct.requiresKey || this._checkedContainers.has(ct) || !Array.isArray(ct.items) || ct.items.length === 0) continue;
                 const cd = Math.hypot(this.position.x - ct.position.x, this.position.z - ct.position.z);
                 const cdy = Math.abs(this.position.y - ct.position.y);
-                if (cd < 2.8 && cdy < 1.8) {
-                  const taken = ct.items.shift();
-                  if (taken) {
-                    if (taken.id === 'armor_plate' && this.operatorEquipment) {
-                      this.operatorEquipment.plates = Math.min(6, (this.operatorEquipment.plates || 0) + (taken.qty || 1));
-                    } else if (this.lootItems && this.lootItems.length < 10) {
-                      this.lootItems.push({ id: taken.id, qty: taken.qty || 1, revealed: false });
-                    }
-                  }
-                  break;
-                } else if (cd < 28.0) {
-                  this._activeLootGoal = ct.position.clone();
-                  break;
+                const score = cd + cdy * 1.6;
+                if (score < bestDist) {
+                  bestDist = score;
+                  bestCt = ct;
                 }
+              }
+              if (bestCt) {
+                this._activeLootContainer = bestCt;
+                this._activeLootGoal = bestCt.position.clone();
+                this._lootGoalTimer = 0;
               }
             }
           }
@@ -1552,8 +1551,37 @@ class Enemy {
             this._lootGoalTimer = (this._lootGoalTimer || 0) + dt;
             const ld = Math.hypot(this.position.x - this._activeLootGoal.x, this.position.z - this._activeLootGoal.z);
             const ldy = Math.abs(this.position.y - (this._activeLootGoal.y || this.position.y));
-            if ((ld < 2.1 && ldy < 1.8) || this._lootGoalTimer > 12.0) {
+            if (ld < 2.6 && ldy < 1.8) {
+              // Reached loot container: check it ONCE, grab 1-2 items, mark checked & move on!
+              const ct = this._activeLootContainer;
+              if (ct) {
+                if (!this._checkedContainers) this._checkedContainers = new Set();
+                this._checkedContainers.add(ct);
+                if (Array.isArray(ct.items)) {
+                  const takeCount = Math.min(2, ct.items.length);
+                  for (let t = 0; t < takeCount; t++) {
+                    const taken = ct.items.shift();
+                    if (!taken) break;
+                    if (taken.id === 'armor_plate' && this.operatorEquipment) {
+                      this.operatorEquipment.plates = Math.min(6, (this.operatorEquipment.plates || 0) + (taken.qty || 1));
+                    } else if (this.lootItems && this.lootItems.length < 10) {
+                      this.lootItems.push({ id: taken.id, qty: taken.qty || 1, revealed: false });
+                    }
+                  }
+                }
+              }
               this._activeLootGoal = null;
+              this._activeLootContainer = null;
+              this._lootGoalTimer = 0;
+              this._lootScanCd = 0.6; // Quickly pick next unchecked room container or exit building!
+            } else if (this._lootGoalTimer > 8.5) {
+              // Unreachable within 8.5s -> mark checked so operator NEVER circles back to it!
+              if (this._activeLootContainer) {
+                if (!this._checkedContainers) this._checkedContainers = new Set();
+                this._checkedContainers.add(this._activeLootContainer);
+              }
+              this._activeLootGoal = null;
+              this._activeLootContainer = null;
               this._lootGoalTimer = 0;
             }
           } else {
@@ -1561,6 +1589,7 @@ class Enemy {
           }
         } else {
           this._activeLootGoal = null;
+          this._activeLootContainer = null;
           this._lootGoalTimer = 0;
         }
       }
