@@ -11,10 +11,14 @@ class SoundEngine {
     this.gunGain = null;
     this.footGain = null;
     this.ambientGain = null;
+    this.ambientDuck = null;
     this.sfxGain = null;
     this.tailBus = null;
+    this.roomBus = null;
+    this.indoor = false;
     this._ambient = null;
     this._birdTimer = null;
+    this._fobTimer = null;
     this.muted = false;
     this.levels = this._loadLevels ? this._loadLevels() : { master: 1, gun: 1, foot: 1, ambient: 1, sfx: 1 };
   }
@@ -163,12 +167,42 @@ class SoundEngine {
     this.sfxGain.gain.setValueAtTime(this.levels ? this.levels.sfx : 1, this.ctx.currentTime);
     this.sfxGain.connect(compressor);
 
+    this.ambientDuck = this.ctx.createGain();
+    this.ambientDuck.gain.setValueAtTime(1.0, this.ctx.currentTime);
+    this.ambientDuck.connect(compressor);
+
     this.ambientGain = this.ctx.createGain();
     this.ambientGain.gain.setValueAtTime(this.levels ? this.levels.ambient : 1, this.ctx.currentTime);
-    this.ambientGain.connect(compressor);
+    this.ambientGain.connect(this.ambientDuck);
+
+    // Tight concrete / bunker indoor room reverb bus (0.45s decay -> 3500Hz LP -> 0.5 -> gunBus)
+    const sr = this.ctx.sampleRate;
+    const roomIrLen = Math.floor(sr * 0.45);
+    const roomIrBuf = this.ctx.createBuffer(2, roomIrLen, sr);
+    for (let ch = 0; ch < 2; ch++) {
+      const rd = roomIrBuf.getChannelData(ch);
+      for (let i = 0; i < roomIrLen; i++) {
+        const t = i / sr;
+        const att = Math.min(1, t / 0.004);
+        rd[i] = (Math.random() * 2 - 1) * att * Math.exp(-t * 9.0);
+      }
+    }
+    const roomConv = this.ctx.createConvolver();
+    roomConv.buffer = roomIrBuf;
+    const roomLP = this.ctx.createBiquadFilter();
+    roomLP.type = 'lowpass';
+    roomLP.frequency.setValueAtTime(3500, this.ctx.currentTime);
+    const roomGain = this.ctx.createGain();
+    roomGain.gain.setValueAtTime(0.5, this.ctx.currentTime);
+    const roomBus = this.ctx.createGain();
+    roomBus.gain.setValueAtTime(1.0, this.ctx.currentTime);
+    roomBus.connect(roomConv);
+    roomConv.connect(roomLP);
+    roomLP.connect(roomGain);
+    roomGain.connect(this.gunBus);
+    this.roomBus = roomBus;
 
     // Warzone Outdoor Multi-Tap Canyon & Foliage Reflection Tail (3 delay taps -> 1.8s IR convolver -> gunBus)
-    const sr = this.ctx.sampleRate;
     const irLen = Math.floor(sr * 1.8);
     const irBuf = this.ctx.createBuffer(2, irLen, sr);
     for (let ch = 0; ch < 2; ch++) {
@@ -267,6 +301,94 @@ class SoundEngine {
     }, waitMs);
   }
 
+  _scheduleFobChatter() {
+    if (!this._ambient || this._ambient.kind !== 'fob') return;
+    const waitMs = 9000 + Math.random() * 11000;
+    this._fobTimer = setTimeout(() => {
+      if (!this._ambient || this._ambient.kind !== 'fob') return;
+      if (!this.muted && this.ctx) {
+        const now = this.ctx.currentTime;
+        // Squelch click (1.8kHz BP noise 0.05s)
+        const sq = this._makeNoise(now, 0.055);
+        const sqBP = this.ctx.createBiquadFilter();
+        sqBP.type = 'bandpass';
+        sqBP.frequency.setValueAtTime(1800, now);
+        sqBP.Q.setValueAtTime(2.6, now);
+        const sqG = this.ctx.createGain();
+        sqG.gain.setValueAtTime(0.055, now);
+        sqG.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+        sq.connect(sqBP);
+        sqBP.connect(sqG);
+        sqG.connect(this._bus('ambient'));
+
+        // AM-modulated muffled tactical voice chatter (0.6-1.4s at 1.2kHz BP)
+        const chatDur = 0.6 + Math.random() * 0.8;
+        const chatT = now + 0.06;
+        const ch = this._makeNoise(chatT, chatDur + 0.04);
+        const chBP = this.ctx.createBiquadFilter();
+        chBP.type = 'bandpass';
+        chBP.frequency.setValueAtTime(1180 + Math.random() * 160, chatT);
+        chBP.Q.setValueAtTime(3.2, chatT);
+        const am = this.ctx.createGain();
+        am.gain.setValueAtTime(0.032, chatT);
+        const lfo = this.ctx.createOscillator();
+        lfo.type = 'sine';
+        lfo.frequency.setValueAtTime(5.5 + Math.random() * 3.0, chatT);
+        const lfoG = this.ctx.createGain();
+        lfoG.gain.setValueAtTime(0.024, chatT);
+        lfo.connect(lfoG);
+        lfoG.connect(am.gain);
+        const tailG = this.ctx.createGain();
+        tailG.gain.setValueAtTime(0.001, chatT);
+        tailG.gain.linearRampToValueAtTime(1.0, chatT + 0.03);
+        tailG.gain.setValueAtTime(1.0, chatT + chatDur - 0.04);
+        tailG.gain.exponentialRampToValueAtTime(0.001, chatT + chatDur);
+        ch.connect(chBP);
+        chBP.connect(am);
+        am.connect(tailG);
+        tailG.connect(this._bus('ambient'));
+        lfo.start(chatT);
+        lfo.stop(chatT + chatDur + 0.02);
+
+        // End squelch
+        const sqEndT = chatT + chatDur;
+        const sq2 = this._makeNoise(sqEndT, 0.045);
+        const sq2BP = this.ctx.createBiquadFilter();
+        sq2BP.type = 'bandpass';
+        sq2BP.frequency.setValueAtTime(1750, sqEndT);
+        sq2BP.Q.setValueAtTime(2.6, sqEndT);
+        const sq2G = this.ctx.createGain();
+        sq2G.gain.setValueAtTime(0.0001, now);
+        sq2G.gain.setValueAtTime(0.045, sqEndT);
+        sq2G.gain.exponentialRampToValueAtTime(0.001, sqEndT + 0.04);
+        sq2.connect(sq2BP);
+        sq2BP.connect(sq2G);
+        sq2G.connect(this._bus('ambient'));
+      }
+      this._scheduleFobChatter();
+    }, waitMs);
+  }
+
+  setIndoor(flag) {
+    const next = !!flag;
+    if (next === this.indoor) return;
+    this.indoor = next;
+    if (this.ctx && this.ambientDuck) {
+      try {
+        this.ambientDuck.gain.setTargetAtTime(next ? 0.35 : 1.0, this.ctx.currentTime, 0.3);
+      } catch (e) {}
+    }
+  }
+
+  startFobAmbience() {
+    this.init();
+    return this.startAmbient('fob');
+  }
+
+  stopFobAmbience() {
+    this.stopAmbient(false);
+  }
+
   startAmbient(kind) {
     if (!this.ctx) return null;
     try { this.stopAmbient(true); } catch (e) {}
@@ -277,7 +399,33 @@ class SoundEngine {
     const masterAmb = this.ctx.createGain();
     masterAmb.gain.setValueAtTime(0.0001, now);
 
-    if (mode === 'rumble') {
+    if (mode === 'fob') {
+      // Concrete FOB hangar 55Hz power generator hum + sub-150Hz air handling rumble
+      masterAmb.gain.exponentialRampToValueAtTime(0.072, now + 1.6);
+      const hum = this.ctx.createOscillator();
+      hum.type = 'sine';
+      hum.frequency.setValueAtTime(55, now);
+      const humG = this.ctx.createGain();
+      humG.gain.setValueAtTime(0.22, now);
+      hum.connect(humG);
+      humG.connect(masterAmb);
+      hum.start(now);
+      lfos.push(hum);
+
+      const src = this.ctx.createBufferSource();
+      src.buffer = this.noiseBuffer;
+      src.loop = true;
+      const lp = this.ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.setValueAtTime(150, now);
+      const ng = this.ctx.createGain();
+      ng.gain.setValueAtTime(0.75, now);
+      src.connect(lp);
+      lp.connect(ng);
+      ng.connect(masterAmb);
+      src.start(now);
+      srcs.push(src);
+    } else if (mode === 'rumble') {
       const src = this.ctx.createBufferSource();
       src.buffer = this.noiseBuffer;
       src.loop = true;
@@ -339,6 +487,8 @@ class SoundEngine {
     this._ambient = { src: srcs[0] || null, srcs, lfos, gain: masterAmb, kind: mode };
     if (mode === 'wind') {
       this._scheduleNextBird();
+    } else if (mode === 'fob') {
+      this._scheduleFobChatter();
     }
     return this._ambient;
   }
@@ -347,6 +497,10 @@ class SoundEngine {
     if (this._birdTimer) {
       clearTimeout(this._birdTimer);
       this._birdTimer = null;
+    }
+    if (this._fobTimer) {
+      clearTimeout(this._fobTimer);
+      this._fobTimer = null;
     }
     const a = this._ambient;
     this._ambient = null;
@@ -381,6 +535,20 @@ class SoundEngine {
     return 'rifle';
   }
 
+  _weaponCharacter(weaponId) {
+    const map = {
+      ak74m:     { bodyHz: 1100, bodyQ: 1.5, bodyDur: 0.075, thumpHz: 85, thumpDur: 0.090, thumpGain: 0.42 },
+      mp5k:      { bodyHz: 1800, bodyQ: 2.0, bodyDur: 0.048, thumpHz: 95, thumpDur: 0.060, thumpGain: 0.30 },
+      m870:      { bodyHz: 520,  bodyQ: 1.0, bodyDur: 0.145, thumpHz: 70, thumpDur: 0.140, thumpGain: 0.72 },
+      m24:       { bodyHz: 820,  bodyQ: 1.3, bodyDur: 0.165, thumpHz: 55, thumpDur: 0.160, thumpGain: 0.65 },
+      mosin9130: { bodyHz: 940,  bodyQ: 1.4, bodyDur: 0.155, thumpHz: 58, thumpDur: 0.150, thumpGain: 0.62 },
+      awm338:    { bodyHz: 700,  bodyQ: 1.2, bodyDur: 0.195, thumpHz: 52, thumpDur: 0.180, thumpGain: 0.78 },
+      g17:       { bodyHz: 2200, bodyQ: 2.2, bodyDur: 0.052, thumpHz: 110, thumpDur: 0.065, thumpGain: 0.34 },
+      pm9:       { bodyHz: 2100, bodyQ: 2.4, bodyDur: 0.055, thumpHz: 118, thumpDur: 0.060, thumpGain: 0.32 }
+    };
+    return map[weaponId] || map.ak74m;
+  }
+
   playGunshot(weaponId, distance = 0, suppressed = false, opts = {}) {
     if (this.muted || !this.ctx || !this.gunBus) return;
     const now = this.ctx.currentTime;
@@ -406,14 +574,24 @@ class SoundEngine {
     }
     routeOut.connect(this.gunBus);
 
-    // Outdoor canyon / valley tail send
+    // Outdoor canyon / valley tail send (attenuated indoors) + close indoor concrete room reflection
     if (this.tailBus) {
-      const sendAmt = suppressed ? (0.04 * distAtten) : ((0.22 + Math.min(0.4, distance * 0.004)) * distAtten);
+      let sendAmt = suppressed ? (0.04 * distAtten) : ((0.22 + Math.min(0.4, distance * 0.004)) * distAtten);
+      if (this.indoor) sendAmt *= 0.3;
       if (sendAmt > 0.002) {
         const tailG = this.ctx.createGain();
         tailG.gain.setValueAtTime(sendAmt, t0);
         routeOut.connect(tailG);
         tailG.connect(this.tailBus);
+      }
+    }
+    if (this.indoor && !isDistant && this.roomBus) {
+      const roomSendAmt = (suppressed ? 0.12 : 0.38) * distAtten;
+      if (roomSendAmt > 0.002) {
+        const roomSendG = this.ctx.createGain();
+        roomSendG.gain.setValueAtTime(roomSendAmt, t0);
+        routeOut.connect(roomSendG);
+        roomSendG.connect(this.roomBus);
       }
     }
 
@@ -513,6 +691,34 @@ class SoundEngine {
       slideBP.connect(slideG);
       slideG.connect(shotOut);
     }
+
+    // Tarkov-style weapon-specific close-range body & chest thump character layer (< 60m)
+    const ch = this._weaponCharacter(weaponId);
+    const charScale = vol * (suppressed ? 0.45 : 1.0);
+    const chJitter = 0.94 + Math.random() * 0.12;
+    const chN = this._makeNoise(t0, ch.bodyDur + 0.015);
+    const chBP = this.ctx.createBiquadFilter();
+    chBP.type = 'bandpass';
+    chBP.frequency.setValueAtTime(ch.bodyHz * chJitter, t0);
+    chBP.Q.setValueAtTime(ch.bodyQ, t0);
+    const chG = this.ctx.createGain();
+    chG.gain.setValueAtTime(0.42 * charScale, t0);
+    chG.gain.exponentialRampToValueAtTime(0.001, t0 + ch.bodyDur);
+    chN.connect(chBP);
+    chBP.connect(chG);
+    chG.connect(shotOut);
+
+    const thOsc = this.ctx.createOscillator();
+    thOsc.type = 'sine';
+    thOsc.frequency.setValueAtTime(ch.thumpHz * chJitter, t0);
+    thOsc.frequency.exponentialRampToValueAtTime(32, t0 + ch.thumpDur);
+    const thG = this.ctx.createGain();
+    thG.gain.setValueAtTime(ch.thumpGain * charScale, t0);
+    thG.gain.exponentialRampToValueAtTime(0.001, t0 + ch.thumpDur);
+    thOsc.connect(thG);
+    thG.connect(shotOut);
+    thOsc.start(t0);
+    thOsc.stop(t0 + ch.thumpDur + 0.015);
 
     // (a) Real CC0 close/mid firearm sample layer (< 60m)
     const sampleKey = (weaponId === 'awm338' || weaponId === 'mosin9130') ? 'm24' : weaponId;
@@ -1281,92 +1487,94 @@ class SoundEngine {
     if (this.muted || !this.ctx) return;
     const now = this.ctx.currentTime;
 
-    // 1. Tactical carrier pouch Velcro rip (noise amplitude-modulated by 34Hz square LFO -> bandpass 2.5kHz over 0.35s)
-    const vNoise = this._makeNoise(now, 0.36);
+    // 1. Highpassed nylon plate-carrier Velcro rip crackle (0.18s)
+    const vNoise = this._makeNoise(now, 0.20);
+    const vHP = this.ctx.createBiquadFilter();
+    vHP.type = 'highpass';
+    vHP.frequency.setValueAtTime(2400, now);
     const vBP = this.ctx.createBiquadFilter();
     vBP.type = 'bandpass';
-    vBP.frequency.setValueAtTime(2500, now);
-    vBP.Q.setValueAtTime(1.8, now);
-    const amGain = this.ctx.createGain();
-    amGain.gain.setValueAtTime(0.11, now);
-    const vLfo = this.ctx.createOscillator();
-    vLfo.type = 'square';
-    vLfo.frequency.setValueAtTime(34, now);
-    const vLfoDepth = this.ctx.createGain();
-    vLfoDepth.gain.setValueAtTime(0.08, now);
-    vLfo.connect(vLfoDepth);
-    vLfoDepth.connect(amGain.gain);
-    const vEnv = this.ctx.createGain();
-    vEnv.gain.setValueAtTime(0.95, now);
-    vEnv.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
-    vNoise.connect(vBP);
-    vBP.connect(amGain);
-    amGain.connect(vEnv);
-    vEnv.connect(this._bus('sfx'));
-    vLfo.start(now);
-    vLfo.stop(now + 0.36);
+    vBP.frequency.setValueAtTime(3400, now);
+    vBP.Q.setValueAtTime(1.1, now);
+    const vG = this.ctx.createGain();
+    vG.gain.setValueAtTime(0.18, now);
+    vG.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+    vNoise.connect(vHP);
+    vHP.connect(vBP);
+    vBP.connect(vG);
+    vG.connect(this._bus('sfx'));
 
-    // 2. Heavy SAPI ceramic plate sliding into nylon sleeve (+0.18s)
-    const slideT = now + 0.18;
-    const slideN = this._makeNoise(slideT, 0.25);
-    const sBP = this.ctx.createBiquadFilter();
-    sBP.type = 'bandpass';
-    sBP.frequency.setValueAtTime(1600, slideT);
-    sBP.frequency.exponentialRampToValueAtTime(1100, slideT + 0.24);
-    sBP.Q.setValueAtTime(1.4, slideT);
-    const sG = this.ctx.createGain();
-    sG.gain.setValueAtTime(0.14, slideT);
-    sG.gain.exponentialRampToValueAtTime(0.001, slideT + 0.25);
-    slideN.connect(sBP);
-    sBP.connect(sG);
-    sG.connect(this._bus('sfx'));
+    // Crackle bursts along the rip
+    for (let i = 0; i < 6; i++) {
+      const ct = now + i * 0.028;
+      const cn = this._makeNoise(ct, 0.014);
+      const cBP = this.ctx.createBiquadFilter();
+      cBP.type = 'bandpass';
+      cBP.frequency.setValueAtTime(2900 + Math.random() * 1400, ct);
+      cBP.Q.setValueAtTime(2.8, ct);
+      const cg = this.ctx.createGain();
+      cg.gain.setValueAtTime(0.14, ct);
+      cg.gain.exponentialRampToValueAtTime(0.001, ct + 0.013);
+      cn.connect(cBP);
+      cBP.connect(cg);
+      cg.connect(this._bus('sfx'));
+    }
 
-    // 3. Solid ceramic plate lock/seat thunk at +0.45s
-    const thunkT = now + 0.45;
+    // 2. Heavy SAPI ceramic armor plate seat thunk (+0.22s): 90Hz sine + 600Hz bandpass knock
+    const thunkT = now + 0.22;
     const osc = this.ctx.createOscillator();
-    osc.type = 'triangle';
-    osc.frequency.setValueAtTime(175, thunkT);
-    osc.frequency.exponentialRampToValueAtTime(62, thunkT + 0.11);
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(90, thunkT);
+    osc.frequency.exponentialRampToValueAtTime(40, thunkT + 0.11);
     const oGain = this.ctx.createGain();
-    oGain.gain.setValueAtTime(0.28, thunkT);
+    oGain.gain.setValueAtTime(0.38, thunkT);
     oGain.gain.exponentialRampToValueAtTime(0.001, thunkT + 0.12);
     osc.connect(oGain);
     oGain.connect(this._bus('sfx'));
     osc.start(thunkT);
     osc.stop(thunkT + 0.13);
-    this._playMetallicClick(thunkT, 1450, 2.2, 0.032, 0.16, 600);
+
+    const kN = this._makeNoise(thunkT, 0.055);
+    const kBP = this.ctx.createBiquadFilter();
+    kBP.type = 'bandpass';
+    kBP.frequency.setValueAtTime(600, thunkT);
+    kBP.Q.setValueAtTime(2.0, thunkT);
+    const kG = this.ctx.createGain();
+    kG.gain.setValueAtTime(0.30, thunkT);
+    kG.gain.exponentialRampToValueAtTime(0.001, thunkT + 0.05);
+    kN.connect(kBP);
+    kBP.connect(kG);
+    kG.connect(this._bus('sfx'));
   }
 
   playZipper(closing = false) {
     if (this.muted || !this.ctx) return;
     const now = this.ctx.currentTime;
-    const dur = 0.22;
-    const noise = this._makeNoise(now, dur + 0.02);
-
-    const bp = this.ctx.createBiquadFilter();
-    bp.type = 'bandpass';
-    bp.Q.setValueAtTime(4.5, now);
-    bp.frequency.setValueAtTime(closing ? 2400 : 3800, now);
-    bp.frequency.exponentialRampToValueAtTime(closing ? 4400 : 2100, now + dur);
-
-    // Rapid zipper teeth amplitude modulation (~48 Hz)
-    const lfo = this.ctx.createOscillator();
-    lfo.type = 'sawtooth';
-    lfo.frequency.setValueAtTime(closing ? 52 : 44, now);
-    const lfoGain = this.ctx.createGain();
-    lfoGain.gain.setValueAtTime(0.08, now);
-
-    const amp = this.ctx.createGain();
-    amp.gain.setValueAtTime(0.11, now);
-    amp.gain.exponentialRampToValueAtTime(0.001, now + dur);
-
-    lfo.connect(lfoGain);
-    lfoGain.connect(amp.gain);
-    noise.connect(bp);
-    bp.connect(amp);
-    amp.connect(this._bus('sfx'));
-    lfo.start(now);
-    lfo.stop(now + dur);
+    // Authentic tooth-by-tooth tactical carrier zipper pull (~0.45s, 23 individual 3-5kHz bandpassed teeth ticks)
+    const count = 23;
+    const totalDur = 0.45;
+    let t = now;
+    for (let i = 0; i < count; i++) {
+      const frac = i / (count - 1);
+      // Accelerating when closing, decelerating when pulling open
+      const stepFactor = closing ? (1.35 - frac * 0.70) : (0.65 + frac * 0.70);
+      const step = (totalDur / count) * stepFactor;
+      const tickDur = 0.012;
+      const n = this._makeNoise(t, tickDur + 0.004);
+      const bp = this.ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      const baseHz = closing ? (3100 + frac * 1700) : (4800 - frac * 1700);
+      bp.frequency.setValueAtTime(baseHz + (Math.random() - 0.5) * 280, t);
+      bp.Q.setValueAtTime(5.5, t);
+      const g = this.ctx.createGain();
+      const env = Math.sin(frac * Math.PI) * 0.4 + 0.6;
+      g.gain.setValueAtTime(0.11 * env, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + tickDur);
+      n.connect(bp);
+      bp.connect(g);
+      g.connect(this._bus('sfx'));
+      t += step;
+    }
   }
 
   playSelectorMove() {
@@ -1595,12 +1803,33 @@ class SoundEngine {
     n.connect(bp);
     bp.connect(ng);
     ng.connect(this._bus('sfx'));
+
+    // Rusty metal hinge squeak on full door swing
+    if (!isPeek) {
+      const sqT = now + 0.05;
+      const sq = this.ctx.createOscillator();
+      sq.type = 'sine';
+      sq.frequency.setValueAtTime(920, sqT);
+      sq.frequency.exponentialRampToValueAtTime(760, sqT + 0.16);
+      const sqBP = this.ctx.createBiquadFilter();
+      sqBP.type = 'bandpass';
+      sqBP.frequency.setValueAtTime(840, sqT);
+      sqBP.Q.setValueAtTime(7.0, sqT);
+      const sqG = this.ctx.createGain();
+      sqG.gain.setValueAtTime(0.045, sqT);
+      sqG.gain.exponentialRampToValueAtTime(0.001, sqT + 0.17);
+      sq.connect(sqBP);
+      sqBP.connect(sqG);
+      sqG.connect(this._bus('sfx'));
+      sq.start(sqT);
+      sq.stop(sqT + 0.18);
+    }
   }
 
   playDoorClose() {
     if (this.muted || !this.ctx) return;
     const now = this.ctx.currentTime;
-    // Wood thump into frame + latch click
+    // Wood thump into frame + metallic latch settle
     const osc = this.ctx.createOscillator();
     osc.type = 'sine';
     osc.frequency.setValueAtTime(135, now);
@@ -1612,12 +1841,13 @@ class SoundEngine {
     g.connect(this._bus('sfx'));
     osc.start(now);
     osc.stop(now + 0.12);
+    this._playMetallicClick(now + 0.02, 1650, 3.0, 0.018, 0.14, 900);
   }
 
   playDoorBash() {
     if (this.muted || !this.ctx) return;
     const now = this.ctx.currentTime;
-    // Heavy tactical shoulder-bash THUD (sub-bass punch + splintering frame slap!)
+    // Heavy tactical shoulder-bash THUD (sub-bass punch + splintering frame crunch)
     const sub = this.ctx.createOscillator();
     sub.type = 'sine';
     sub.frequency.setValueAtTime(128, now);
@@ -1641,6 +1871,317 @@ class SoundEngine {
     slap.connect(lp);
     lp.connect(slapG);
     slapG.connect(this._bus('sfx'));
+
+    const crunch = this._makeNoise(now + 0.015, 0.12);
+    const cHP = this.ctx.createBiquadFilter();
+    cHP.type = 'bandpass';
+    cHP.frequency.setValueAtTime(2100, now + 0.015);
+    cHP.Q.setValueAtTime(1.4, now + 0.015);
+    const cG = this.ctx.createGain();
+    cG.gain.setValueAtTime(0.32, now + 0.015);
+    cG.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+    crunch.connect(cHP);
+    cHP.connect(cG);
+    cG.connect(this._bus('sfx'));
+  }
+
+  // ==================== GRITTY TARKOV UI & FOLEY ====================
+  playClick() {
+    if (this.muted || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    const n = this._makeNoise(now, 0.014);
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(2200, now);
+    bp.Q.setValueAtTime(3.2, now);
+    const ng = this.ctx.createGain();
+    ng.gain.setValueAtTime(0.14, now);
+    ng.gain.exponentialRampToValueAtTime(0.001, now + 0.012);
+    n.connect(bp);
+    bp.connect(ng);
+    ng.connect(this._bus('sfx'));
+
+    const osc = this.ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(170, now);
+    osc.frequency.exponentialRampToValueAtTime(85, now + 0.028);
+    const og = this.ctx.createGain();
+    og.gain.setValueAtTime(0.15, now);
+    og.gain.exponentialRampToValueAtTime(0.001, now + 0.030);
+    osc.connect(og);
+    og.connect(this._bus('sfx'));
+    osc.start(now);
+    osc.stop(now + 0.034);
+  }
+
+  playUiConfirm() {
+    if (this.muted || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    this._playMetallicClick(now, 2400, 3.0, 0.020, 0.15, 1100);
+    const osc = this.ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(210, now);
+    osc.frequency.exponentialRampToValueAtTime(110, now + 0.055);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.18, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+    osc.connect(g);
+    g.connect(this._bus('sfx'));
+    osc.start(now);
+    osc.stop(now + 0.065);
+    this._playMetallicClick(now + 0.045, 3100, 3.4, 0.018, 0.12, 1400);
+  }
+
+  playUiBack() {
+    if (this.muted || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    const osc = this.ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(160, now);
+    osc.frequency.exponentialRampToValueAtTime(78, now + 0.06);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.17, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.065);
+    osc.connect(g);
+    g.connect(this._bus('sfx'));
+    osc.start(now);
+    osc.stop(now + 0.07);
+    this._playMetallicClick(now, 1150, 2.5, 0.015, 0.10, 600);
+  }
+
+  playUiError() {
+    if (this.muted || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    for (let i = 0; i < 2; i++) {
+      const t = now + i * 0.095;
+      const osc = this.ctx.createOscillator();
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(140, t);
+      const lp = this.ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.setValueAtTime(480, t);
+      const g = this.ctx.createGain();
+      g.gain.setValueAtTime(0.16, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.065);
+      osc.connect(lp);
+      lp.connect(g);
+      g.connect(this._bus('sfx'));
+      osc.start(t);
+      osc.stop(t + 0.07);
+    }
+  }
+
+  playTabSwitch() {
+    if (this.muted || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    const n = this._makeNoise(now, 0.020);
+    const hp = this.ctx.createBiquadFilter();
+    hp.type = 'bandpass';
+    hp.frequency.setValueAtTime(2600, now);
+    hp.Q.setValueAtTime(2.0, now);
+    const ng = this.ctx.createGain();
+    ng.gain.setValueAtTime(0.12, now);
+    ng.gain.exponentialRampToValueAtTime(0.001, now + 0.018);
+    n.connect(hp);
+    hp.connect(ng);
+    ng.connect(this._bus('sfx'));
+
+    const osc = this.ctx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(215, now);
+    osc.frequency.exponentialRampToValueAtTime(125, now + 0.025);
+    const og = this.ctx.createGain();
+    og.gain.setValueAtTime(0.10, now);
+    og.gain.exponentialRampToValueAtTime(0.001, now + 0.028);
+    osc.connect(og);
+    og.connect(this._bus('sfx'));
+    osc.start(now);
+    osc.stop(now + 0.032);
+  }
+
+  playPurchase() {
+    if (this.muted || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    this._playMetallicClick(now, 2400, 3.2, 0.018, 0.16, 1100);
+    this._playMetallicClick(now + 0.065, 3050, 3.6, 0.020, 0.15, 1300);
+    const n = this._makeNoise(now + 0.02, 0.095);
+    const hp = this.ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.setValueAtTime(2200, now + 0.02);
+    const ng = this.ctx.createGain();
+    ng.gain.setValueAtTime(0.11, now + 0.02);
+    ng.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+    n.connect(hp);
+    hp.connect(ng);
+    ng.connect(this._bus('sfx'));
+  }
+
+  playCraft() {
+    if (this.muted || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    for (let i = 0; i < 4; i++) {
+      this._playMetallicClick(now + i * 0.06, 2000 + i * 160, 4.0, 0.014, 0.13, 1000);
+    }
+    const clankT = now + 0.25;
+    this._playMetallicClick(clankT, 1350, 2.2, 0.045, 0.22, 650);
+    const th = this.ctx.createOscillator();
+    th.type = 'triangle';
+    th.frequency.setValueAtTime(180, clankT);
+    th.frequency.exponentialRampToValueAtTime(68, clankT + 0.075);
+    const tg = this.ctx.createGain();
+    tg.gain.setValueAtTime(0.24, clankT);
+    tg.gain.exponentialRampToValueAtTime(0.001, clankT + 0.08);
+    th.connect(tg);
+    tg.connect(this._bus('sfx'));
+    th.start(clankT);
+    th.stop(clankT + 0.085);
+  }
+
+  playContainerOpen(kind = 'supply') {
+    if (this.muted || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    if (kind === 'boss') {
+      this.playZipper(false);
+      return;
+    }
+    if (kind === 'military' || kind === 'police_fire' || kind === 'boss_key_room' || kind === 'locker') {
+      // Heavy steel latch clank + hinge creak
+      this._playMetallicClick(now, 1550, 2.6, 0.032, 0.26, 700);
+      const th = this.ctx.createOscillator();
+      th.type = 'sine';
+      th.frequency.setValueAtTime(140, now);
+      th.frequency.exponentialRampToValueAtTime(52, now + 0.07);
+      const tg = this.ctx.createGain();
+      tg.gain.setValueAtTime(0.24, now);
+      tg.gain.exponentialRampToValueAtTime(0.001, now + 0.075);
+      th.connect(tg);
+      tg.connect(this._bus('sfx'));
+      th.start(now);
+      th.stop(now + 0.08);
+
+      const crT = now + 0.05;
+      const sq = this.ctx.createOscillator();
+      sq.type = 'sine';
+      sq.frequency.setValueAtTime(700, crT);
+      sq.frequency.exponentialRampToValueAtTime(480, crT + 0.22);
+      const bp = this.ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.setValueAtTime(620, crT);
+      bp.Q.setValueAtTime(6.0, crT);
+      const sg = this.ctx.createGain();
+      sg.gain.setValueAtTime(0.08, crT);
+      sg.gain.exponentialRampToValueAtTime(0.001, crT + 0.23);
+      sq.connect(bp);
+      bp.connect(sg);
+      sg.connect(this._bus('sfx'));
+      sq.start(crT);
+      sq.stop(crT + 0.24);
+    } else if (kind === 'supply') {
+      // Wood crate creak (sawtooth 140->90Hz LP) + lid thud
+      const cr = this.ctx.createOscillator();
+      cr.type = 'sawtooth';
+      cr.frequency.setValueAtTime(140, now);
+      cr.frequency.exponentialRampToValueAtTime(90, now + 0.19);
+      const lp = this.ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.setValueAtTime(520, now);
+      const cg = this.ctx.createGain();
+      cg.gain.setValueAtTime(0.14, now);
+      cg.gain.exponentialRampToValueAtTime(0.001, now + 0.20);
+      cr.connect(lp);
+      lp.connect(cg);
+      cg.connect(this._bus('sfx'));
+      cr.start(now);
+      cr.stop(now + 0.21);
+
+      const th = this.ctx.createOscillator();
+      th.type = 'sine';
+      th.frequency.setValueAtTime(110, now + 0.04);
+      th.frequency.exponentialRampToValueAtTime(45, now + 0.12);
+      const tg = this.ctx.createGain();
+      tg.gain.setValueAtTime(0.22, now + 0.04);
+      tg.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+      th.connect(tg);
+      tg.connect(this._bus('sfx'));
+      th.start(now + 0.04);
+      th.stop(now + 0.14);
+    } else if (kind === 'hospital' || kind === 'medical') {
+      // Sharp ABS medical latch snap
+      const n = this._makeNoise(now, 0.025);
+      const bp = this.ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.setValueAtTime(1850, now);
+      bp.Q.setValueAtTime(3.2, now);
+      const ng = this.ctx.createGain();
+      ng.gain.setValueAtTime(0.24, now);
+      ng.gain.exponentialRampToValueAtTime(0.001, now + 0.022);
+      n.connect(bp);
+      bp.connect(ng);
+      ng.connect(this._bus('sfx'));
+      this._playMetallicClick(now + 0.025, 2300, 3.0, 0.016, 0.15, 1100);
+    } else {
+      this._playMetallicClick(now, 1450, 2.5, 0.025, 0.18, 700);
+    }
+  }
+
+  playReviveStart() {
+    if (this.muted || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    // Cloth/nylon rustle + quick med-pouch zipper burst
+    const n = this._makeNoise(now, 0.20);
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(980, now);
+    bp.Q.setValueAtTime(1.1, now);
+    const g = this.ctx.createGain();
+    g.gain.setValueAtTime(0.18, now);
+    g.gain.exponentialRampToValueAtTime(0.001, now + 0.19);
+    n.connect(bp);
+    bp.connect(g);
+    g.connect(this._bus('sfx'));
+
+    for (let i = 0; i < 8; i++) {
+      const t = now + 0.06 + i * 0.018;
+      const zn = this._makeNoise(t, 0.010);
+      const zbp = this.ctx.createBiquadFilter();
+      zbp.type = 'bandpass';
+      zbp.frequency.setValueAtTime(3500 + i * 140, t);
+      zbp.Q.setValueAtTime(5.0, t);
+      const zg = this.ctx.createGain();
+      zg.gain.setValueAtTime(0.09, t);
+      zg.gain.exponentialRampToValueAtTime(0.001, t + 0.009);
+      zn.connect(zbp);
+      zbp.connect(zg);
+      zg.connect(this._bus('sfx'));
+    }
+  }
+
+  playReviveComplete() {
+    if (this.muted || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    // 0.4s epinephrine autoinjector hiss + relief exhale
+    const hiss = this._makeNoise(now, 0.42);
+    const hp = this.ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.setValueAtTime(2600, now);
+    const hg = this.ctx.createGain();
+    hg.gain.setValueAtTime(0.20, now);
+    hg.gain.exponentialRampToValueAtTime(0.001, now + 0.40);
+    hiss.connect(hp);
+    hp.connect(hg);
+    hg.connect(this._bus('sfx'));
+
+    const exT = now + 0.08;
+    const ex = this._makeNoise(exT, 0.34);
+    const exLP = this.ctx.createBiquadFilter();
+    exLP.type = 'lowpass';
+    exLP.frequency.setValueAtTime(400, exT);
+    const exG = this.ctx.createGain();
+    exG.gain.setValueAtTime(0.24, exT);
+    exG.gain.exponentialRampToValueAtTime(0.001, exT + 0.32);
+    ex.connect(exLP);
+    exLP.connect(exG);
+    exG.connect(this._bus('sfx'));
   }
 }
 

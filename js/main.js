@@ -205,6 +205,9 @@
     if (hideoutScreen) hideoutScreen.classList.add('hideout-roam-mode');
     if (roamHud) roamHud.classList.remove('hidden');
     hideoutBunker.enterRoam(canvas);
+    if (window.soundEngine && window.soundEngine.startFobAmbience) {
+      try { window.soundEngine.startFobAmbience(); } catch (e) {}
+    }
   }
   window.enterHideoutRoam = enterHideoutRoam;
   window.onCloseHideoutOverlayTo3D = () => {
@@ -220,6 +223,9 @@
     if (!hideoutBunker) return;
     hideoutHadPointerLock = false;
     hideoutBunker.exitRoam();
+    if (window.soundEngine && window.soundEngine.stopFobAmbience) {
+      try { window.soundEngine.stopFobAmbience(); } catch (e) {}
+    }
     const hideoutScreen = document.getElementById('hideout-screen');
     const roamHud = document.getElementById('hideout-roam-hud');
     if (hideoutScreen) hideoutScreen.classList.remove('hideout-roam-mode');
@@ -580,6 +586,9 @@
             if (pkt.targetClientId === ui._clientId && player && (player.isDowned || player.dead)) {
               player.beingDragged = false;
               player.revive(pkt.hp || 45);
+              if (window.soundEngine && window.soundEngine.playReviveComplete) {
+                try { window.soundEngine.playReviveComplete(); } catch (e) {}
+              }
               if (mpSession && mpSession.active && mpSession.sendStateNow) {
                 mpSession.sendStateNow(player);
               }
@@ -677,6 +686,13 @@
     ksCooldown = 0;
     inRaid = true;
     exitHideoutRoam(false);
+    if (window.soundEngine) {
+      try {
+        window.soundEngine.init();
+        if (window.soundEngine.setIndoor) window.soundEngine.setIndoor(false);
+        if (window.soundEngine.startAmbient) window.soundEngine.startAmbient('wind');
+      } catch (e) {}
+    }
     isModalOpen = false;
     ui.toggleTacMap(false);
     const rzEl = document.getElementById('redzone-banner');
@@ -733,6 +749,9 @@
 
   function endRaid(extracted, opts = {}) {
     if (mpSession) mpSession.stop();
+    if (window.soundEngine && window.soundEngine.stopAmbient) {
+      try { window.soundEngine.stopAmbient(false); } catch (e) {}
+    }
     if (ui && ui.setSelfPartyReady) ui.setSelfPartyReady(false);
     if (inRaid) {
       if (ui && ui.closeInGameSettings) ui.closeInGameSettings(false);
@@ -2814,26 +2833,47 @@
       const canSelfRevive = !player.beingRevivedBy || player.beingRevivedBy === 'SELF-REVIVE' || player.beingRevivedBy === 'TOURNIQUET';
       const holdingInteract = !isModalOpen && !(devConsole && devConsole.isOpen) && player.keys[interactKey];
       if (player.selfRevive && holdingInteract && canSelfRevive) {
+        if (!player._selfReviveSfx) {
+          player._selfReviveSfx = true;
+          if (window.soundEngine && window.soundEngine.playReviveStart) {
+            try { window.soundEngine.playReviveStart(); } catch (e) {}
+          }
+        }
         player.beingRevivedBy = 'SELF-REVIVE';
         player.reviveProgress = Math.min(1, (player.reviveProgress || 0) + dt / 4.5);
         if (player.reviveProgress >= 1) {
+          player._selfReviveSfx = false;
           player.selfRevive = null;
           player.revive(45);
+          if (window.soundEngine && window.soundEngine.playReviveComplete) {
+            try { window.soundEngine.playReviveComplete(); } catch (e) {}
+          }
           if (mpSession && mpSession.active && mpSession.sendStateNow) mpSession.sendStateNow(player);
           ui.showCenterToast('SELF-REVIVE COMPLETE', '#69f0ae');
           ui.addFeedMessage('Used Self-Revive Kit', '#69f0ae');
         }
       } else if (!player.selfRevive && holdingInteract && canSelfRevive && (player.disabledHp || 0) < (player.maxHp - 25)) {
+        if (!player._selfReviveSfx) {
+          player._selfReviveSfx = true;
+          if (window.soundEngine && window.soundEngine.playReviveStart) {
+            try { window.soundEngine.playReviveStart(); } catch (e) {}
+          }
+        }
         player.beingRevivedBy = 'TOURNIQUET';
         player.reviveProgress = Math.min(1, (player.reviveProgress || 0) + dt / 2.6);
         if (player.reviveProgress >= 1) {
+          player._selfReviveSfx = false;
           player.applyTourniquet();
+          if (window.soundEngine && window.soundEngine.playReviveComplete) {
+            try { window.soundEngine.playReviveComplete(); } catch (e) {}
+          }
           if (mpSession && mpSession.active && mpSession.sendStateNow) mpSession.sendStateNow(player);
           ui.showCenterToast('TOURNIQUET APPLIED — MAX HP REDUCED', '#ffca28');
           ui.addFeedMessage('Applied Tourniquet (-25 Max HP) — Use Medkit to restore permanently', '#ffca28');
         }
       } else if (player.beingRevivedBy === 'SELF-REVIVE' || player.beingRevivedBy === 'TOURNIQUET') {
         player.beingRevivedBy = null;
+        player._selfReviveSfx = false;
       }
       ui.updateReviveBanner(player, null, false);
       return;
@@ -2846,6 +2886,12 @@
       const d = Math.hypot(player.position.x - candidate.position.x, player.position.z - candidate.position.z);
       if (d <= 3.6) {
         activeReviveAlly = candidate;
+        if (!candidate._reviveSfx) {
+          candidate._reviveSfx = true;
+          if (window.soundEngine && window.soundEngine.playReviveStart) {
+            try { window.soundEngine.playReviveStart(); } catch (e) {}
+          }
+        }
         player.isRevivingAlly = true;
         player.isDraggingAlly = !!candidate.isDowned;
         candidate.beingRevivedBy = getPlayerCallsign();
@@ -2893,7 +2939,11 @@
         }
 
         if (candidate.reviveProgress >= 1) {
+          candidate._reviveSfx = false;
           candidate.revive(45);
+          if (window.soundEngine && window.soundEngine.playReviveComplete) {
+            try { window.soundEngine.playReviveComplete(); } catch (e) {}
+          }
           if (candidate.isRemoteHuman && mpSession && mpSession.active && candidate.clientId) {
             mpSession.sendEvent({
               type: 'revive_complete',
@@ -2915,6 +2965,7 @@
     }
 
     if (activeReviveAlly) {
+      activeReviveAlly._reviveSfx = false;
       if (activeReviveAlly.beingRevivedBy === getPlayerCallsign()) {
         activeReviveAlly.beingRevivedBy = null;
       }

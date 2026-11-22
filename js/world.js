@@ -8,6 +8,11 @@ class WastelandWorld {
     this.wallMeshes = [];      // Fast low-poly box/structure meshes ONLY (excludes high-poly terrain for 60+ FPS LOS & wall-push!)
     this.lootContainers = []; // { id, name, mesh, position, items, searched, requiresKey, lid }
     this._animLids = [];      // Active container lids/doors animating toward ajar angle
+    this.isIndoors = false;
+    this._indoorTimer = 0;
+    this._indoorRay = null;
+    this._indoorOrigin = new THREE.Vector3();
+    this._indoorUp = new THREE.Vector3(0, 1, 0);
     this.groundItems = [];    // { id, qty, mesh, position, ringMesh } physical loose & dropped loot
     this.doors = [];          // Interactive bidirectional hinged doors (open / peek / sprint bash / close)
     this.staircases = [];     // Registered multi-floor staircases { bottomEntry, topExit, bottomY, topY } for AI pathfinding
@@ -3277,6 +3282,26 @@ class WastelandWorld {
   }
 
   update(dt, time, playerPos = null) {
+    // Poll overhead roof/ceiling every 0.25s to drive indoor room reverb & wind attenuation
+    if (playerPos) {
+      this._indoorTimer += dt;
+      if (this._indoorTimer >= 0.25) {
+        this._indoorTimer = 0;
+        if (!this._indoorRay) this._indoorRay = new THREE.Raycaster();
+        this._indoorOrigin.set(playerPos.x, Number.isFinite(playerPos.y) ? playerPos.y : 1.7, playerPos.z);
+        this._indoorRay.set(this._indoorOrigin, this._indoorUp);
+        this._indoorRay.near = 0;
+        this._indoorRay.far = 25;
+        const hits = this._indoorRay.intersectObjects(this.wallMeshes, false);
+        const nextIndoor = hits.length > 0;
+        if (nextIndoor !== this.isIndoors) {
+          this.isIndoors = nextIndoor;
+          if (window.soundEngine && window.soundEngine.setIndoor) {
+            try { window.soundEngine.setIndoor(nextIndoor); } catch (e) {}
+          }
+        }
+      }
+    }
     // Animate container lids / doors swinging slightly ajar when looted
     if (this._animLids && this._animLids.length > 0) {
       for (let i = this._animLids.length - 1; i >= 0; i--) {

@@ -2403,6 +2403,11 @@ class GameUI {
     if (this.activeMenuTab === 'matchmaking' && tabName !== 'matchmaking' && this.matchmakingStage) {
       this.matchmakingStage.stop();
     }
+    if (this.activeMenuTab && this.activeMenuTab !== tabName && tabName !== 'home') {
+      if (window.soundEngine && window.soundEngine.playTabSwitch) {
+        try { window.soundEngine.playTabSwitch(); } catch (e) {}
+      }
+    }
     this.activeMenuTab = tabName;
     const isHome = tabName === 'home';
     const topbar = document.getElementById('menu-topbar');
@@ -2554,6 +2559,9 @@ class GameUI {
     const backBtn = document.getElementById('btn-menu-home');
     if (backBtn) {
       backBtn.addEventListener('click', () => {
+        if (window.soundEngine && window.soundEngine.playUiBack) {
+          try { window.soundEngine.playUiBack(); } catch (e) {}
+        }
         this.openMenuTab('home');
         if (typeof window.enterHideoutRoam === 'function') {
           window.enterHideoutRoam();
@@ -2594,6 +2602,9 @@ class GameUI {
     const btnNext = document.getElementById('btn-prematch-next');
     if (btnNext) {
       btnNext.addEventListener('click', () => {
+        if (window.soundEngine && window.soundEngine.playUiConfirm) {
+          try { window.soundEngine.playUiConfirm(); } catch (e) {}
+        }
         const L = this.profile.loadout;
         if (!L.primary && !L.secondary) {
           L.secondary = 'pm9';
@@ -3127,6 +3138,9 @@ class GameUI {
 
       const matchId = (this.matchmakingStage && this.matchmakingStage.matchId) || ('m_' + Date.now().toString(36));
       if (this.matchmakingStage) this.matchmakingStage.stop();
+      if (window.soundEngine && window.soundEngine.playUiConfirm) {
+        try { window.soundEngine.playUiConfirm(); } catch (e) {}
+      }
       // Ensure player at least has a fallback pistol if completely naked
       const L = this.profile.loadout;
       if (!L.primary && !L.secondary) {
@@ -4087,9 +4101,17 @@ class GameUI {
         <button class="btn-small" ${canCraft ? '' : 'disabled'}>CRAFT</button>
       `;
       row.querySelector('button').addEventListener('click', () => {
-        if (!canCraft) return;
+        if (!canCraft) {
+          if (window.soundEngine && window.soundEngine.playUiError) {
+            try { window.soundEngine.playUiError(); } catch (e) {}
+          }
+          return;
+        }
         for (const [mId, need] of Object.entries(r.inputs)) consumeMat(mId, need);
         this.addToStash(r.output, r.qty || 1);
+        if (window.soundEngine && window.soundEngine.playCraft) {
+          try { window.soundEngine.playCraft(); } catch (e) {}
+        }
         this.saveProfile();
         this.renderHideout();
       });
@@ -5132,12 +5154,20 @@ class GameUI {
       `;
 
       row.querySelector('button').addEventListener('click', () => {
-        if (this.profile.credits < price) return;
+        if (this.profile.credits < price) {
+          if (window.soundEngine && window.soundEngine.playUiError) {
+            try { window.soundEngine.playUiError(); } catch (e) {}
+          }
+          return;
+        }
         this.profile.credits -= price;
         if (def.type === 'ammo') {
           this.profile.loadout.ammo[id] = (this.profile.loadout.ammo[id] || 0) + qty;
         } else {
           this.addToStash(id, qty);
+        }
+        if (window.soundEngine && window.soundEngine.playPurchase) {
+          try { window.soundEngine.playPurchase(); } catch (e) {}
         }
         this.saveProfile();
         this.renderHideout();
@@ -6487,7 +6517,11 @@ class GameUI {
 
   closeLootModal() {
     const modal = document.getElementById('loot-modal');
+    const wasOpen = modal && !modal.classList.contains('hidden');
     if (modal) modal.classList.add('hidden');
+    if (wasOpen && window.soundEngine && window.soundEngine.playUiBack) {
+      try { window.soundEngine.playUiBack(); } catch (e) {}
+    }
     this.hideItemPopout();
     this.closeRaidWeaponPickMode();
     this.closeWeaponStagingModal();
