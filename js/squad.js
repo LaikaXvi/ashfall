@@ -61,6 +61,7 @@ class SquadMate {
     this.targetContainer = null;
     this.extractProgress = 0;
     this.calloutCooldown = 0;
+    this.supportCooldown = 0;
     this._lastTagState = '';
 
     this._buildMesh();
@@ -804,6 +805,7 @@ class SquadMate {
     }
 
     if (this.calloutCooldown > 0) this.calloutCooldown = Math.max(0, this.calloutCooldown - dt);
+    if (this.supportCooldown > 0) this.supportCooldown = Math.max(0, this.supportCooldown - dt);
     if (this.muzzleTimer > 0) {
       this.muzzleTimer -= dt;
       if (this.muzzleTimer <= 0) {
@@ -847,7 +849,10 @@ class SquadMate {
       }
     }
 
-    if (reviveCandidate) {
+    // Priority: Eliminate immediate visible threat FIRST if not already mid-revive; if threat can't be found, immediately revive!
+    const midRevive = reviveCandidate && reviveCandidate.ref && reviveCandidate.ref.beingRevivedBy === this.name &&
+      Math.hypot(reviveCandidate.ref.position.x - this.position.x, reviveCandidate.ref.position.z - this.position.z) < 2.6;
+    if (reviveCandidate && (!targetEnemy || bestEnemyDist > 24 || midRevive)) {
       const tRef = reviveCandidate.ref;
       const distToMate = Math.hypot(tRef.position.x - this.position.x, tRef.position.z - this.position.z);
       this.state = 'REVIVING';
@@ -1099,17 +1104,61 @@ class SquadMate {
       }
 
       if (!this.targetContainer) {
-        this.state = 'FOLLOW';
-        this._redrawTag('ESCORT', '#69f0ae');
-        const sinY = Math.sin(player.yaw);
-        const cosY = Math.cos(player.yaw);
-        const goalX = player.position.x + sinY * 2.8 + cosY * (this.flankSide * 2.4);
-        const goalZ = player.position.z + cosY * 2.8 - sinY * (this.flankSide * 2.4);
-        const distToGoal = Math.hypot(goalX - this.position.x, goalZ - this.position.z);
-        if (distToGoal > 1.5) {
-          const moveSpeed = distToGoal > 7.5 ? 8.4 : (distToGoal > 3.5 ? 5.6 : 3.8);
-          moving = this._moveToward(goalX, goalZ, moveSpeed, dt);
-          this.group.rotation.y = Math.atan2(goalX - this.position.x, goalZ - this.position.z);
+        // Team Support: Drop Medkit for injured player/ally or Share Armor Plate if missing plates!
+        if (!targetEnemy && this.supportCooldown <= 0 && this.world && this.world.spawnGroundItem) {
+          const teamList = [];
+          if (player && !player.dead && !player.isDowned) teamList.push({ isPlayer: true, ref: player });
+          for (const m of allAllies) {
+            if (m && m !== this && !m.dead && !m.isDowned && !m.extracted) teamList.push({ isPlayer: false, ref: m });
+          }
+          for (let ti = 0; ti < teamList.length; ti++) {
+            const tm = teamList[ti];
+            const ref = tm.ref;
+            const dTm = Math.hypot(ref.position.x - this.position.x, ref.position.z - this.position.z);
+            if (dTm > 16) continue;
+            const needsMed = ref.hp < (ref.maxHp || 100) * 0.72 && (this.medkits || 0) > 0;
+            const refPlates = tm.isPlayer
+              ? (ref.getItemCount ? ref.getItemCount('armor_plate') : 0)
+              : (ref.plates || 0);
+            const needsPlate = (ref.armor || 0) < (ref.maxArmor || 100) * 0.65 && refPlates <= 0 && (this.plates || 0) >= 2;
+            if (needsMed || needsPlate) {
+              if (dTm > 3.2) {
+                this.state = 'SUPPORT';
+                this._redrawTag(needsMed ? 'DROPPING MEDKIT' : 'SHARING PLATES', '#69f0ae');
+                moving = this._moveToward(ref.position.x, ref.position.z, 5.2, dt);
+                this.group.rotation.y = Math.atan2(ref.position.x - this.position.x, ref.position.z - this.position.z);
+                break;
+              }
+              const dropPos = ref.position.clone().lerp(this.position, 0.35);
+              if (needsMed) {
+                this.medkits = Math.max(0, (this.medkits || 1) - 1);
+                this.world.spawnGroundItem('medkit', 1, dropPos);
+                if (!tm.isPlayer) ref.hp = Math.min(ref.maxHp || 100, ref.hp + 55);
+                this._say(onComms, 'Dropping a medkit for you — patch up!', '#69f0ae');
+              } else {
+                this.plates = Math.max(0, (this.plates || 2) - 1);
+                this.world.spawnGroundItem('armor_plate', 1, dropPos);
+                if (!tm.isPlayer) ref.plates = (ref.plates || 0) + 1;
+                this._say(onComms, 'Tossing you an armor plate!', '#42a5f5');
+              }
+              this.supportCooldown = 16.0;
+              break;
+            }
+          }
+        }
+        if (this.state !== 'SUPPORT') {
+          this.state = 'FOLLOW';
+          this._redrawTag('ESCORT', '#69f0ae');
+          const sinY = Math.sin(player.yaw);
+          const cosY = Math.cos(player.yaw);
+          const goalX = player.position.x + sinY * 2.8 + cosY * (this.flankSide * 2.4);
+          const goalZ = player.position.z + cosY * 2.8 - sinY * (this.flankSide * 2.4);
+          const distToGoal = Math.hypot(goalX - this.position.x, goalZ - this.position.z);
+          if (distToGoal > 1.5) {
+            const moveSpeed = distToGoal > 7.5 ? 8.4 : (distToGoal > 3.5 ? 5.6 : 3.8);
+            moving = this._moveToward(goalX, goalZ, moveSpeed, dt);
+            this.group.rotation.y = Math.atan2(goalX - this.position.x, goalZ - this.position.z);
+          }
         }
       }
     }

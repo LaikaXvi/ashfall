@@ -1209,23 +1209,21 @@ class Enemy {
     }
   }
 
-  revive(hpRestore = 65) {
-    if (this.dead) return;
+  revive(hpRestore = 65, allowDead = false) {
+    if (this.dead && !allowDead) return;
+    this.dead = false;
     this.isDowned = false;
     this.hp = Math.min(this.maxHp, hpRestore);
     this.downedHp = 55;
     this.downedBleedTimer = this.downedBleedMax;
     this.beingRevivedBy = null;
     this.reviveProgress = 0;
-    const gy = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(this.position.x, this.position.z) : 0;
+    const gy = this._getGroundY(this.position.x, this.position.z);
     this.position.y = gy;
     this.group.position.y = gy;
     this.group.rotation.x = 0;
+    this.group.rotation.z = 0;
     if (this.weaponMeshGroup) this.weaponMeshGroup.visible = true;
-    if (this.leftHip) this.leftHip.rotation.x = 0;
-    if (this.rightHip) this.rightHip.rotation.x = 0;
-    if (this.leftArm) { this.leftArm.rotation.x = -0.8; this.leftArm.rotation.z = 0; }
-    if (this.rightArm) { this.rightArm.rotation.x = -1.1; this.rightArm.rotation.z = 0; }
     if (this.bleedSprite) this.bleedSprite.visible = false;
     this.state = 'ALERT';
     this.alertTimer = 4.0;
@@ -1693,55 +1691,6 @@ class Enemy {
       return;
     }
 
-    // Priority 0 for AI Operators: Revive & Drag-to-Cover downed squadmates (silently, no player-visible icons)
-    if (this.isOperator && this.squadName && allEnemies.length > 0) {
-      let downedMate = null;
-      let bestMateDist = 28;
-      for (const mate of allEnemies) {
-        if (!mate || mate === this || mate.dead || !mate.isDowned || mate.extracted) continue;
-        if (mate.squadName !== this.squadName) continue;
-        if (mate.beingRevivedBy && mate.beingRevivedBy !== this.name) continue;
-        const d = this.position.distanceTo(mate.position);
-        if (d < bestMateDist) {
-          bestMateDist = d;
-          downedMate = mate;
-        }
-      }
-
-      if (downedMate) {
-        const dMate = Math.hypot(downedMate.position.x - this.position.x, downedMate.position.z - this.position.z);
-        if (dMate > 2.0) {
-          this._moveToward(downedMate.position, this.speed * 1.15, dt);
-          return;
-        }
-        downedMate.beingRevivedBy = this.name;
-        downedMate.reviveProgress = Math.min(1, (downedMate.reviveProgress || 0) + dt / 4.0);
-
-        const threatPos = this.lastKnownPlayerPos || (player && !player.dead && !player.isDowned && !player.invisible ? player.position : null);
-        if (threatPos && this._hasLineOfSightFrom(this.position, threatPos)) {
-          const cover = this._findBestCoverSpot(threatPos, 15);
-          let dragDest = cover ? cover.coverPos : null;
-          if (!dragDest) {
-            const awayX = this.position.x - threatPos.x;
-            const awayZ = this.position.z - threatPos.z;
-            const len = Math.hypot(awayX, awayZ) || 1;
-            dragDest = new THREE.Vector3(this.position.x + (awayX / len) * 3.5, 0, this.position.z + (awayZ / len) * 3.5);
-          }
-          const moved = this._moveToward(dragDest, 1.75, dt);
-          if (moved) {
-            const dx = dragDest.x - this.position.x;
-            const dz = dragDest.z - this.position.z;
-            const dLen = Math.hypot(dx, dz) || 1;
-            downedMate.dragToward(this.position.x - (dx / dLen) * 0.95, this.position.z - (dz / dLen) * 0.95, 2.2, dt);
-          }
-        }
-        if (downedMate.reviveProgress >= 1) {
-          downedMate.revive(65);
-        }
-        return;
-      }
-    }
-
     // If player turned on /invis, immediately drop aggro & clear memory of player
     if (player && player.invisible) {
       if (this.focusedTarget && this.focusedTarget.type === 'player') {
@@ -1753,8 +1702,122 @@ class Enemy {
       }
     }
 
-    // Scan for nearest visible standing hostile (Player OR hostile AI faction!)
+    // Scan for nearest visible standing hostile FIRST (eliminate immediate threat before reviving; if threat can't be found, prioritize reviving & team health!)
     const target = this._findBestHostileTarget(player, allEnemies);
+
+    // Priority 0 for AI Operators: Revive downed or dead squadmates (when threat is eliminated/not found, or already mid-revive) + Share Medkits & Armor Plates!
+    if (this.isOperator && this.squadName && allEnemies.length > 0) {
+      let reviveMate = null;
+      let bestMateScore = Infinity;
+      let injuredMate = null;
+      let unplatedMate = null;
+
+      for (const mate of allEnemies) {
+        if (!mate || mate === this || mate.extracted || mate.removed) continue;
+        if (mate.squadName !== this.squadName) continue;
+        const d = this.position.distanceTo(mate.position);
+        if (mate.isDowned || mate.dead) {
+          if (mate.beingRevivedBy && mate.beingRevivedBy !== this.name) continue;
+          if (d < 46) {
+            // Prioritize downed allies before eliminated allies
+            const score = (mate.isDowned ? 0 : 120) + d;
+            if (score < bestMateScore) {
+              bestMateScore = score;
+              reviveMate = mate;
+            }
+          }
+        } else if (d < 24) {
+          if (!injuredMate && mate.hp < mate.maxHp * 0.72) injuredMate = mate;
+          if (!unplatedMate && mate.operatorEquipment && mate.armor < (mate.maxArmor || 100) * 0.65 && (mate.operatorEquipment.plates || 0) <= 0) {
+            unplatedMate = mate;
+          }
+        }
+      }
+
+      // 1. Revive downed/dead ally whenever NO visible threat is found (or if already within 2.4m completing a revive!)
+      const alreadyReviving = reviveMate && reviveMate.beingRevivedBy === this.name && this.position.distanceTo(reviveMate.position) < 2.6;
+      if (reviveMate && (!target || alreadyReviving)) {
+        const dMate = Math.hypot(reviveMate.position.x - this.position.x, reviveMate.position.z - this.position.z);
+        if (dMate > 2.1) {
+          // Pop smoke on approach if exposed and carrying smoke!
+          if (this.smokeLeft > 0 && this.grenadeCooldown <= 0 && dMate < 18) {
+            this.smokeLeft -= 1;
+            this.grenadeCooldown = 10.0;
+            this._throwOperatorGrenade(reviveMate.position, 'smoke');
+          }
+          this._moveToward(reviveMate.position, this.speed * 1.25, dt);
+          return;
+        }
+        const reviveDur = reviveMate.dead ? 7.5 : 4.0;
+        reviveMate.beingRevivedBy = this.name;
+        reviveMate.reviveProgress = Math.min(1, (reviveMate.reviveProgress || 0) + dt / reviveDur);
+
+        const threatPos = this.lastKnownPlayerPos || (player && !player.dead && !player.isDowned && !player.invisible ? player.position : null);
+        if (reviveMate.isDowned && threatPos && this._hasLineOfSightFrom(this.position, threatPos)) {
+          const cover = this._findBestCoverSpot(threatPos, 15);
+          let dragDest = cover ? cover.coverPos : null;
+          if (!dragDest) {
+            const awayX = this.position.x - threatPos.x;
+            const awayZ = this.position.z - threatPos.z;
+            const len = Math.hypot(awayX, awayZ) || 1;
+            dragDest = new THREE.Vector3(this.position.x + (awayX / len) * 3.5, this.position.y, this.position.z + (awayZ / len) * 3.5);
+          }
+          const moved = this._moveToward(dragDest, 1.75, dt);
+          if (moved) {
+            const dx = dragDest.x - this.position.x;
+            const dz = dragDest.z - this.position.z;
+            const dLen = Math.hypot(dx, dz) || 1;
+            reviveMate.dragToward(this.position.x - (dx / dLen) * 0.95, this.position.z - (dz / dLen) * 0.95, 2.2, dt);
+          }
+        } else {
+          this._animMoving = false;
+          this.updateVisualAnim(dt, false, 0);
+        }
+        if (reviveMate.reviveProgress >= 1) {
+          reviveMate.revive(reviveMate.dead ? 55 : 65, true);
+        }
+        return;
+      }
+
+      // 2. Team Support (when no immediate firefight): Drop Medkits for injured allies & Share Armor Plates with unplated allies!
+      this._supportCooldown = Math.max(0, (this._supportCooldown || 0) - dt);
+      if (!target && this._supportCooldown <= 0) {
+        // 2a. Drop a Medkit for an injured teammate
+        if (injuredMate && Array.isArray(this.lootItems)) {
+          const medIdx = this.lootItems.findIndex(it => it && (it.id === 'medkit' || it.id === 'bandage'));
+          if (medIdx !== -1) {
+            const dInj = Math.hypot(injuredMate.position.x - this.position.x, injuredMate.position.z - this.position.z);
+            if (dInj > 3.0) {
+              this._moveToward(injuredMate.position, this.speed * 1.05, dt);
+              return;
+            }
+            const medItem = this.lootItems[medIdx];
+            if (medItem.qty > 1) medItem.qty -= 1;
+            else this.lootItems.splice(medIdx, 1);
+            // Physically drop medkit at ally's feet (or apply directly so ally heals up!)
+            if (this.world && this.world.spawnGroundItem) {
+              const dropPos = injuredMate.position.clone().lerp(this.position, 0.35);
+              this.world.spawnGroundItem('medkit', 1, dropPos);
+            }
+            injuredMate.hp = Math.min(injuredMate.maxHp, injuredMate.hp + 55);
+            this._supportCooldown = 8.0;
+          }
+        }
+        // 2b. Share Armor Plates with a squadmate who is out of plates!
+        if (unplatedMate && this.operatorEquipment && (this.operatorEquipment.plates || 0) >= 2) {
+          const dPl = Math.hypot(unplatedMate.position.x - this.position.x, unplatedMate.position.z - this.position.z);
+          if (dPl > 3.2) {
+            this._moveToward(unplatedMate.position, this.speed * 1.05, dt);
+            return;
+          }
+          this.operatorEquipment.plates -= 1;
+          unplatedMate.operatorEquipment.plates = (unplatedMate.operatorEquipment.plates || 0) + 1;
+          // Trigger ally to immediately plate up using the shared plate!
+          if (unplatedMate.platingTimer <= 0) unplatedMate.platingTimer = 2.6;
+          this._supportCooldown = 7.0;
+        }
+      }
+    }
 
     if (target) {
       if (this.state !== 'COMBAT') {
