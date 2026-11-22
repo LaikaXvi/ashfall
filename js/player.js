@@ -2154,8 +2154,16 @@ class Player {
     this.crouchHoldTime = 0;
     this.crouchHoldTriggeredProne = false;
 
-    // Pressing crouch while sprinting or tac-sprinting triggers an immediate tactical slide!
+    // Pressing crouch while sprinting or tac-sprinting triggers a momentum-boosted tactical slide!
     if ((this.isSprinting || this.isTacSprinting) && this.onGround && !this.isSliding && this.slideCooldown <= 0) {
+      const entryHoriz = Math.hypot(this.velocity.x, this.velocity.z);
+      this._slideEntryWasSprinting = !!(this.isSprinting || this.isTacSprinting);
+      this._slideEntryWasTacSprint = !!this.isTacSprinting;
+      this._slideEntryStance = this.stance || 'stand';
+      this._slideEntrySpeed = Math.max(6.8, entryHoriz);
+      // Slight punchy momentum boost (+22%) on slide entry, capped cleanly
+      this._slidePeakSpeed = THREE.MathUtils.clamp(this._slideEntrySpeed * 1.22, 10.8, 14.6);
+
       this.isSliding = true;
       this.isTacSprinting = false;
       this.slideTimer = this.slideDuration;
@@ -2487,9 +2495,22 @@ class Player {
       const sp = THREE.MathUtils.clamp(1 - (this.slideTimer / this.slideDuration), 0, 1);
       // Slight corner steering while sliding
       if (wishDir.lengthSq() > 0) {
-        this.slideDir.lerp(wishDir, Math.min(1, dt * 2.2)).normalize();
+        this.slideDir.lerp(wishDir, Math.min(1, dt * 2.4)).normalize();
       }
-      const slideSpeed = THREE.MathUtils.lerp(13.6, 4.6, sp * sp);
+      // Momentum-boosted slide curve: initial surge to peak speed, then smooth friction decay toward previous stance speed!
+      const entrySpd = this._slideEntrySpeed || 9.6;
+      const peakSpd = this._slidePeakSpeed || 12.6;
+      const wantsContinueSprint = !!(this._slideEntryWasSprinting && (wantsSprintInput || moveForward > 0.25) && !(this.crouchKeyHeld && this.crouchHoldTime >= 0.28));
+      const exitTargetSpd = wantsContinueSprint ? 9.6 : ((this.crouchKeyHeld && this.crouchHoldTime >= 0.28) ? 2.2 : 4.2);
+      let slideSpeed;
+      if (sp < 0.18) {
+        // Quick +22% momentum surge into the slide
+        slideSpeed = THREE.MathUtils.lerp(entrySpd, peakSpd, sp / 0.18);
+      } else {
+        // Smooth gradual bleed back down to the target exit speed
+        const decay = (sp - 0.18) / 0.82;
+        slideSpeed = THREE.MathUtils.lerp(peakSpd, exitTargetSpd, decay * decay);
+      }
       this.velocity.x = this.slideDir.x * slideSpeed;
       this.velocity.z = this.slideDir.z * slideSpeed;
       this.isSprinting = false;
@@ -2497,11 +2518,15 @@ class Player {
 
       if (this.slideTimer <= 0) {
         this.isSliding = false;
-        if (wantsSprintInput) {
+        if (this.crouchKeyHeld && this.crouchHoldTime >= 0.28) {
+          this.stance = 'prone';
+        } else if (wantsContinueSprint) {
+          // Dynamically pop straight back into sprinting out of the slide with preserved momentum!
           this.stance = 'stand';
           this.isSprinting = true;
-        } else if (this.crouchKeyHeld && this.crouchHoldTime >= 0.28) {
-          this.stance = 'prone';
+          if (this._slideEntryWasTacSprint && wantsSprintInput && this.stamina >= 15) {
+            this.isTacSprinting = true;
+          }
         } else {
           this.stance = 'crouch';
         }
@@ -2549,8 +2574,39 @@ class Player {
         speed *= 1.12;
       }
 
-      this.velocity.x = wishDir.x * speed * moveMag;
-      this.velocity.z = wishDir.z * speed * moveMag;
+      // === MOMENTUM-BASED HORIZONTAL ACCELERATION & GROUND FRICTION ===
+      const targetVx = wishDir.x * speed * moveMag;
+      const targetVz = wishDir.z * speed * moveMag;
+      const hasInput = moveMag > 0.05;
+      let accelRate;
+      if (!this.onGround) {
+        // Reduced air control so momentum carries naturally through jumps
+        accelRate = hasInput ? 3.2 : 1.0;
+      } else if (!hasInput) {
+        // Crisp ground friction deceleration when releasing movement keys
+        accelRate = 12.0;
+      } else {
+        // Gradual weighty buildup: walk ramps smoothly, sprint & tac-sprint build momentum progressively!
+        const curSpd = Math.hypot(this.velocity.x, this.velocity.z);
+        const dot = curSpd > 0.2 ? ((this.velocity.x * wishDir.x + this.velocity.z * wishDir.z) / curSpd) : 1;
+        if (dot < 0.2) {
+          // Responsive counter-strafe / direction-change traction
+          accelRate = 11.0;
+        } else if (this.isTacSprinting) {
+          accelRate = 5.2;
+        } else if (this.isSprinting) {
+          accelRate = 6.5;
+        } else {
+          accelRate = 9.5;
+        }
+      }
+      const blend = 1 - Math.exp(-accelRate * dt);
+      this.velocity.x += (targetVx - this.velocity.x) * blend;
+      this.velocity.z += (targetVz - this.velocity.z) * blend;
+      if (!hasInput && Math.hypot(this.velocity.x, this.velocity.z) < 0.04) {
+        this.velocity.x = 0;
+        this.velocity.z = 0;
+      }
     }
 
     this.isProne = (this.stance === 'prone' && !this.isSliding);
