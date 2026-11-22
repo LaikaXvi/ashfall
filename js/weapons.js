@@ -687,7 +687,35 @@ class WeaponSystem {
   _getCamoMaterial(weaponDef, camoId) {
     const camo = GAME_DATA.COSMETICS?.camo[camoId || 'none'];
     if (!camo || camo.id === 'none') {
-      return new THREE.MeshLambertMaterial({ color: weaponDef.color });
+      if (!window._weaponFinishTex) {
+        const c = document.createElement('canvas');
+        c.width = 128;
+        c.height = 128;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#e6e6e6';
+        ctx.fillRect(0, 0, 128, 128);
+        for (let i = 0; i < 1800; i++) {
+          const v = 212 + Math.floor(Math.random() * 32);
+          ctx.fillStyle = `rgba(${v},${v},${v},0.32)`;
+          ctx.fillRect(Math.random() * 128, Math.random() * 128, 2, 1.5);
+        }
+        // Edge-wear micro-scratches
+        ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+        ctx.lineWidth = 1;
+        for (let i = 0; i < 18; i++) {
+          const x = Math.random() * 128;
+          const y = Math.random() * 128;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x + (Math.random() - 0.5) * 26, y + (Math.random() - 0.5) * 6);
+          ctx.stroke();
+        }
+        const tex = new THREE.CanvasTexture(c);
+        tex.wrapS = THREE.RepeatWrapping;
+        tex.wrapT = THREE.RepeatWrapping;
+        window._weaponFinishTex = tex;
+      }
+      return new THREE.MeshLambertMaterial({ color: weaponDef.color, map: window._weaponFinishTex });
     }
     if (camo.color !== undefined) {
       return new THREE.MeshLambertMaterial({ color: camo.color });
