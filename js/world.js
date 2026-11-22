@@ -45,12 +45,17 @@ class WastelandWorld {
     this._queryBuf = [];
     this._queryStamp = 0;
 
+    this._batchEntries = [];
+    this._batchingOpen = true;
+    this._batchedMeshes = [];
+
     this._materials = this._createMaterials();
     this._buildSkybox();
     this._buildEnvironment();
     this._buildVolumetricFogLayers();
     this._buildMapLayout();
     this._buildForestAndFoliage();
+    this._batchStaticGeometry();
     this.buildColliderGrid();
 
     const spawnY = this.getTerrainHeight(0, 485);
@@ -284,136 +289,113 @@ class WastelandWorld {
 
   _createGroundTexture() {
     const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 512;
+    canvas.width = 256;
+    canvas.height = 256;
     const ctx = canvas.getContext('2d');
 
-    // Muted Warzone Verdansk / Al Mazrah temperate-arid grass & steppe base
-    ctx.fillStyle = '#626b46';
-    ctx.fillRect(0, 0, 512, 512);
+    // Gritty PS2 / Tarkov desaturated olive & compacted soil base
+    ctx.fillStyle = '#55573f';
+    ctx.fillRect(0, 0, 256, 256);
 
-    // Broad organic steppe & compacted dirt patches
-    for (let i = 0; i < 240; i++) {
-      const x = Math.random() * 512;
-      const y = Math.random() * 512;
-      const r = 14 + Math.random() * 36;
-      const roll = Math.random();
-      ctx.fillStyle = roll < 0.38
-        ? 'rgba(116, 108, 78, 0.28)'
-        : (roll < 0.72 ? 'rgba(88, 102, 58, 0.24)' : 'rgba(66, 76, 46, 0.26)');
+    // Mottled dirt & dead-grass patches
+    for (let i = 0; i < 160; i++) {
+      const x = Math.random() * 256;
+      const y = Math.random() * 256;
+      const r = 8 + Math.random() * 22;
+      ctx.fillStyle = Math.random() > 0.45 ? 'rgba(107, 94, 68, 0.36)' : 'rgba(74, 75, 51, 0.36)';
       ctx.beginPath();
       ctx.arc(x, y, r, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // Fine grit & scattered pebbles
-    for (let i = 0; i < 1400; i++) {
-      const x = Math.random() * 512;
-      const y = Math.random() * 512;
-      const s = 1 + Math.random() * 2.2;
-      ctx.fillStyle = Math.random() > 0.5 ? 'rgba(135, 128, 106, 0.35)' : 'rgba(54, 52, 44, 0.30)';
-      ctx.fillRect(x, y, s, s);
+    // Dark soil grit specks
+    for (let i = 0; i < 1100; i++) {
+      ctx.fillStyle = Math.random() > 0.5 ? 'rgba(42, 40, 30, 0.36)' : 'rgba(128, 120, 92, 0.24)';
+      ctx.fillRect(Math.random() * 256, Math.random() * 256, 2, 2);
     }
 
-    // Muted grass blade strokes & dry tufts
-    const bladeCols = ['rgba(122,130,80,0.42)', 'rgba(92,102,60,0.48)', 'rgba(72,82,48,0.42)', 'rgba(138,132,96,0.32)'];
-    for (let i = 0; i < 7500; i++) {
-      const x = Math.random() * 512;
-      const y = Math.random() * 512;
-      const len = 2.5 + Math.random() * 5.0;
+    // Sparse 2px dried grass strokes
+    const bladeCols = ['rgba(124,120,76,0.42)', 'rgba(94,96,62,0.46)', 'rgba(66,68,44,0.40)'];
+    for (let i = 0; i < 1800; i++) {
+      const x = Math.random() * 256;
+      const y = Math.random() * 256;
+      const len = 2 + Math.random() * 4;
       ctx.fillStyle = bladeCols[i % bladeCols.length];
-      ctx.fillRect(x, y, 1.3, len);
+      ctx.fillRect(x, y, 2, len);
     }
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(110, 110);
+    tex.magFilter = THREE.NearestFilter;
     return tex;
   }
 
-  _createBushFoliageTexture() {
+  _createGrassTuftTexture() {
     const canvas = document.createElement('canvas');
-    canvas.width = 256;
-    canvas.height = 256;
+    canvas.width = 64;
+    canvas.height = 64;
     const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, 256, 256);
+    ctx.clearRect(0, 0, 64, 64);
 
-    // Subtle dark inner twigs
-    ctx.strokeStyle = '#3a2d1e';
-    ctx.lineWidth = 4;
-    for (let i = 0; i < 9; i++) {
-      const ang = -Math.PI * 0.85 + (i / 8) * Math.PI * 0.7;
+    const cols = ['#7d7a4a', '#6a6c3f', '#8a8458'];
+    for (let i = 0; i < 18; i++) {
+      const bx = 10 + (i / 17) * 44 + (Math.random() - 0.5) * 3;
+      const h = 24 + Math.random() * 30;
+      const lean = (Math.random() - 0.5) * 18;
+      ctx.strokeStyle = cols[i % cols.length];
+      ctx.lineWidth = 2 + Math.random();
+      ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(128, 242);
-      ctx.lineTo(128 + Math.cos(ang) * 95, 242 + Math.sin(ang) * 145);
+      ctx.moveTo(bx, 63);
+      ctx.quadraticCurveTo(bx + lean * 0.4, 63 - h * 0.55, bx + lean, 63 - h);
       ctx.stroke();
-    }
-
-    // Layered see-through leaf clusters with natural air gaps around perimeter
-    const leafCols = ['#24421d', '#315925', '#3f6e2e', '#528538', '#2a4d20'];
-    for (let i = 0; i < 210; i++) {
-      const t = Math.random() * Math.PI * 2;
-      const rad = Math.pow(Math.random(), 0.65) * 98;
-      const lx = 128 + Math.cos(t) * rad * 1.05;
-      const ly = 136 + Math.sin(t) * rad * 0.88;
-      if (ly > 246 || ly < 16 || lx < 12 || lx > 244) continue;
-      // Leave small see-through perforations
-      if (rad > 72 && Math.random() < 0.32) continue;
-      ctx.save();
-      ctx.translate(lx, ly);
-      ctx.rotate(Math.random() * Math.PI * 2);
-      ctx.fillStyle = leafCols[i % leafCols.length];
-      ctx.beginPath();
-      ctx.ellipse(0, 0, 6 + Math.random() * 9, 3.2 + Math.random() * 4.5, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
     }
 
     const tex = new THREE.CanvasTexture(canvas);
+    tex.magFilter = THREE.NearestFilter;
     return tex;
   }
 
-  _createTreeCanopyTexture() {
+  _createFernCardTexture() {
     const canvas = document.createElement('canvas');
-    canvas.width = 256;
-    canvas.height = 256;
+    canvas.width = 128;
+    canvas.height = 128;
     const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, 256, 256);
+    ctx.clearRect(0, 0, 128, 128);
 
-    // Conifer pine bough silhouette with jagged needle fronds and see-through gaps between tiers
-    const pineCols = ['#1e381d', '#284a25', '#345e2e', '#407036', '#182e18'];
-    for (let tier = 0; tier < 7; tier++) {
-      const ty = 32 + tier * 31;
-      const spread = 24 + tier * 17;
-      // Branch stems
-      ctx.strokeStyle = '#3b2c1d';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(128, ty - 6);
-      ctx.lineTo(128 - spread * 0.9, ty + 14);
-      ctx.moveTo(128, ty - 6);
-      ctx.lineTo(128 + spread * 0.9, ty + 14);
-      ctx.stroke();
+    // Central woody sapling/fern stem
+    ctx.strokeStyle = '#5a5634';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(64, 126);
+    ctx.quadraticCurveTo(66, 70, 62, 14);
+    ctx.stroke();
 
-      // Pine needle clusters along each bough
-      const clusterCount = 18 + tier * 7;
-      for (let c = 0; c < clusterCount; c++) {
-        const frac = (Math.random() * 2 - 1);
-        const nx = 128 + frac * spread;
-        const ny = ty + Math.abs(frac) * 14 + (Math.random() - 0.5) * 16;
-        ctx.save();
-        ctx.translate(nx, ny);
-        ctx.rotate(frac * 0.65 + (Math.random() - 0.5) * 0.5);
-        ctx.fillStyle = pineCols[(tier + c) % pineCols.length];
+    // 7 pairs of sharp serrated frond strokes (zero round blobs)
+    const frondCols = ['#4d5c33', '#5c693b', '#3e4d29', '#6d7745'];
+    for (let p = 0; p < 7; p++) {
+      const yBase = 112 - p * 14;
+      const span = (16 + (1 - Math.abs(p - 2.5) / 4.5) * 28);
+      for (const dir of [-1, 1]) {
+        ctx.strokeStyle = frondCols[(p + (dir > 0 ? 1 : 0)) % frondCols.length];
+        ctx.lineWidth = 3.2;
         ctx.beginPath();
-        ctx.ellipse(0, 0, 9 + Math.random() * 9, 3.2 + Math.random() * 3.5, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
+        ctx.moveTo(64, yBase);
+        ctx.lineTo(64 + dir * span, yBase - 14);
+        ctx.stroke();
+        // Sub-leaflets
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(64 + dir * span * 0.45, yBase - 6);
+        ctx.lineTo(64 + dir * span * 0.65, yBase - 18);
+        ctx.stroke();
       }
     }
 
     const tex = new THREE.CanvasTexture(canvas);
+    tex.magFilter = THREE.NearestFilter;
     return tex;
   }
 
@@ -859,10 +841,10 @@ class WastelandWorld {
     const posAttr = groundGeo.attributes.position;
     const heights = new Float32Array(posAttr.count);
     const colors = new Float32Array(posAttr.count * 3);
-    const colLow = new THREE.Color(0x5a7c3c);     // Lush valley meadow grass
-    const colMid = new THREE.Color(0x6b9246);     // Sunlit green pasture grass
-    const colHigh = new THREE.Color(0x7c9658);    // Highland alpine grass
-    const colSlope = new THREE.Color(0x5e6e48);   // Mossy hillside grass
+    const colLow = new THREE.Color(0x6b6f4e);     // Gritty desaturated valley olive
+    const colMid = new THREE.Color(0x77784f);     // Sun-baked steppe grass
+    const colHigh = new THREE.Color(0x80805c);    // Highland dry pasture
+    const colSlope = new THREE.Color(0x6a6247);   // Rocky dirt hillside
     const tmpCol = new THREE.Color();
 
     for (let i = 0; i < posAttr.count; i++) {
@@ -1006,28 +988,74 @@ class WastelandWorld {
       return g;
     };
 
-    // 1. Instanced Alpha-Tested See-Through Conifer / Pine Forest Trees (760 trees -> only 2 draw calls!)
+    // Helper: Merge vertex-colored PS2 geometries (supports flatShading + vertexColors)
+    const mergeColoredParts = (parts) => {
+      let totalVerts = 0;
+      const nonIdxList = parts.map((p) => {
+        const g = p.geo.index ? p.geo.toNonIndexed() : p.geo.clone();
+        if (p.rot) g.rotateX(p.rot[0] || 0), g.rotateY(p.rot[1] || 0), g.rotateZ(p.rot[2] || 0);
+        if (p.pos) g.translate(p.pos[0] || 0, p.pos[1] || 0, p.pos[2] || 0);
+        totalVerts += g.attributes.position.count;
+        return { g, color: new THREE.Color(p.color) };
+      });
+      const posArr = new Float32Array(totalVerts * 3);
+      const normArr = new Float32Array(totalVerts * 3);
+      const colArr = new Float32Array(totalVerts * 3);
+      let vOff = 0;
+      for (const item of nonIdxList) {
+        const pa = item.g.attributes.position;
+        const na = item.g.attributes.normal;
+        for (let i = 0; i < pa.count; i++) {
+          const idx3 = (vOff + i) * 3;
+          posArr[idx3] = pa.getX(i);
+          posArr[idx3 + 1] = pa.getY(i);
+          posArr[idx3 + 2] = pa.getZ(i);
+          if (na) {
+            normArr[idx3] = na.getX(i);
+            normArr[idx3 + 1] = na.getY(i);
+            normArr[idx3 + 2] = na.getZ(i);
+          } else {
+            normArr[idx3 + 1] = 1;
+          }
+          colArr[idx3] = item.color.r;
+          colArr[idx3 + 1] = item.color.g;
+          colArr[idx3 + 2] = item.color.b;
+        }
+        vOff += pa.count;
+        item.g.dispose();
+      }
+      const out = new THREE.BufferGeometry();
+      out.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+      out.setAttribute('normal', new THREE.BufferAttribute(normArr, 3));
+      out.setAttribute('color', new THREE.BufferAttribute(colArr, 3));
+      return out;
+    };
+
+    // 1. Low-Poly PS2 Pine Trees & Bare/Dead Trees (760 total -> 2 draw calls!)
     const pineCount = 760;
-    const trunkGeo = new THREE.CylinderGeometry(0.18, 0.34, 5.0, 6);
-    trunkGeo.translate(0, 2.5, 0);
-    const treeCanopyGeo = buildCrossedPlanesGeo(6.4, 9.6, 2.0, 3);
+    const livePineGeo = mergeColoredParts([
+      { geo: new THREE.CylinderGeometry(0.16, 0.30, 2.2, 5), pos: [0, 1.1, 0], color: 0x4a3826 },
+      { geo: new THREE.ConeGeometry(2.2, 2.6, 7), pos: [0, 2.9, 0], color: 0x2f4a2a },
+      { geo: new THREE.ConeGeometry(1.7, 2.2, 7), pos: [0, 4.1, 0], color: 0x36522e },
+      { geo: new THREE.ConeGeometry(1.1, 1.8, 7), pos: [0, 5.2, 0], color: 0x3e5b33 }
+    ]);
+    const deadTreeGeo = mergeColoredParts([
+      { geo: new THREE.CylinderGeometry(0.14, 0.28, 4.4, 5), pos: [0, 2.2, 0], color: 0x5a4a38 },
+      { geo: new THREE.BoxGeometry(0.13, 1.5, 0.13), pos: [0.42, 2.6, 0.12], rot: [0.2, 0, -0.68], color: 0x524231 },
+      { geo: new THREE.BoxGeometry(0.12, 1.4, 0.12), pos: [-0.38, 3.2, -0.18], rot: [-0.25, 0, 0.62], color: 0x5a4a38 },
+      { geo: new THREE.BoxGeometry(0.11, 1.1, 0.11), pos: [0.10, 3.8, 0.36], rot: [0.58, 0, 0.18], color: 0x4f4030 }
+    ]);
 
-    const trunkMat = new THREE.MeshLambertMaterial({ color: 0x4b3827 });
-    const treeCanopyMat = new THREE.MeshLambertMaterial({
-      map: this._createTreeCanopyTexture(),
-      alphaTest: 0.38,
-      side: THREE.DoubleSide
-    });
-
-    const trunkInst = new THREE.InstancedMesh(trunkGeo, trunkMat, pineCount);
-    const canopyInst = new THREE.InstancedMesh(treeCanopyGeo, treeCanopyMat, pineCount);
-    trunkInst.castShadow = false;
-    canopyInst.castShadow = false;
-    canopyInst.receiveShadow = false;
+    const treeMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+    const livePineInst = new THREE.InstancedMesh(livePineGeo, treeMat, pineCount);
+    const deadTreeInst = new THREE.InstancedMesh(deadTreeGeo, treeMat, Math.ceil(pineCount * 0.35));
+    livePineInst.castShadow = false;
+    deadTreeInst.castShadow = false;
 
     let placedPines = 0;
+    let placedLive = 0;
+    let placedDead = 0;
     for (let tries = 0; tries < 3600 && placedPines < pineCount; tries++) {
-      // Cluster trees into lush natural groves across the 1240m map
       const x = (rand() * 2 - 1) * (this.mapHalfSize + 70);
       const z = (rand() * 2 - 1) * (this.mapHalfSize + 70);
       if (!isClearForNature(x, z, 6)) continue;
@@ -1036,15 +1064,18 @@ class WastelandWorld {
 
       const y = this.getTerrainHeight(x, z);
       const s = 0.78 + rand() * 0.72;
+      const isDead = rand() < 0.25 && placedDead < deadTreeInst.instanceMatrix.count;
       dummy.position.set(x, y - 0.15, z);
       dummy.rotation.set((rand() - 0.5) * 0.05, rand() * Math.PI * 2, (rand() - 0.5) * 0.05);
       dummy.scale.set(s, s * (0.9 + rand() * 0.28), s);
       dummy.updateMatrix();
 
-      trunkInst.setMatrixAt(placedPines, dummy.matrix);
-      canopyInst.setMatrixAt(placedPines, dummy.matrix);
+      if (isDead) {
+        deadTreeInst.setMatrixAt(placedDead++, dummy.matrix);
+      } else {
+        livePineInst.setMatrixAt(placedLive++, dummy.matrix);
+      }
 
-      // Add trunk collider for playable interior trees
       if (Math.abs(x) <= this.mapHalfSize && Math.abs(z) <= this.mapHalfSize) {
         const cr = 0.36 * s;
         this.colliders.push({
@@ -1055,48 +1086,81 @@ class WastelandWorld {
       }
       placedPines++;
     }
-    trunkInst.count = placedPines;
-    canopyInst.count = placedPines;
-    trunkInst.instanceMatrix.needsUpdate = true;
-    canopyInst.instanceMatrix.needsUpdate = true;
-    trunkInst.matrixAutoUpdate = false;
-    canopyInst.matrixAutoUpdate = false;
-    this._pineMeshes = [trunkInst, canopyInst];
-    this._maxPines = placedPines;
-    this.scene.add(trunkInst, canopyInst);
+    livePineInst.count = placedLive;
+    deadTreeInst.count = placedDead;
+    livePineInst.userData.maxCount = placedLive;
+    deadTreeInst.userData.maxCount = placedDead;
+    livePineInst.instanceMatrix.needsUpdate = true;
+    deadTreeInst.instanceMatrix.needsUpdate = true;
+    livePineInst.matrixAutoUpdate = false;
+    deadTreeInst.matrixAutoUpdate = false;
+    this._pineMeshes = [livePineInst, deadTreeInst];
+    this._maxPines = placedLive;
+    this.scene.add(livePineInst, deadTreeInst);
 
-    // 2. Instanced See-Through Leaf-Textured Tactical Bushes (1,600 dense bushes -> 1 draw call!)
-    const bushCount = 1600;
-    const bushGeo = buildCrossedPlanesGeo(2.5, 1.85, -0.08, 3);
-    const bushMat = new THREE.MeshLambertMaterial({
-      map: this._createBushFoliageTexture(),
-      alphaTest: 0.42,
+    // 2. Crisp Grass Tufts (3,200 instances of 2-plane crossed cards -> 1 draw call!)
+    const grassCount = 3200;
+    const grassGeo = buildCrossedPlanesGeo(0.9, 0.55, -0.04, 2);
+    const grassMat = new THREE.MeshLambertMaterial({
+      map: this._createGrassTuftTexture(),
+      alphaTest: 0.5,
       side: THREE.DoubleSide
     });
-    const bushInst = new THREE.InstancedMesh(bushGeo, bushMat, bushCount);
-    bushInst.receiveShadow = false;
-    bushInst.castShadow = false;
+    const grassInst = new THREE.InstancedMesh(grassGeo, grassMat, grassCount);
+    grassInst.receiveShadow = false;
+    grassInst.castShadow = false;
 
-    let placedBushes = 0;
-    for (let tries = 0; tries < 4800 && placedBushes < bushCount; tries++) {
+    let placedGrass = 0;
+    for (let tries = 0; tries < 7500 && placedGrass < grassCount; tries++) {
       const x = (rand() * 2 - 1) * this.mapHalfSize;
       const z = (rand() * 2 - 1) * this.mapHalfSize;
       if (!isClearForNature(x, z, 2)) continue;
       const y = this.getTerrainHeight(x, z);
-      const s = 0.65 + rand() * 0.95;
-      dummy.position.set(x, y - 0.05, z);
+      const s = 0.72 + rand() * 0.75;
+      dummy.position.set(x, y - 0.03, z);
       dummy.rotation.set(0, rand() * Math.PI * 2, 0);
-      dummy.scale.set(s, s * (0.78 + rand() * 0.42), s);
+      dummy.scale.set(s, s * (0.75 + rand() * 0.5), s);
       dummy.updateMatrix();
-      bushInst.setMatrixAt(placedBushes, dummy.matrix);
-      placedBushes++;
+      grassInst.setMatrixAt(placedGrass++, dummy.matrix);
     }
-    bushInst.count = placedBushes;
-    bushInst.instanceMatrix.needsUpdate = true;
-    bushInst.matrixAutoUpdate = false;
-    this._bushInst = bushInst;
-    this._maxBushes = placedBushes;
-    this.scene.add(bushInst);
+    grassInst.count = placedGrass;
+    grassInst.instanceMatrix.needsUpdate = true;
+    grassInst.matrixAutoUpdate = false;
+    this._bushInst = grassInst;
+    this._maxBushes = placedGrass;
+    this.scene.add(grassInst);
+
+    // 3. Sharp PS2 Fern / Sapling Cards (700 instances of 3-plane cards -> 1 draw call!)
+    const fernCount = 700;
+    const fernGeo = buildCrossedPlanesGeo(1.6, 1.3, -0.05, 3);
+    const fernMat = new THREE.MeshLambertMaterial({
+      map: this._createFernCardTexture(),
+      alphaTest: 0.5,
+      side: THREE.DoubleSide
+    });
+    const fernInst = new THREE.InstancedMesh(fernGeo, fernMat, fernCount);
+    fernInst.receiveShadow = false;
+    fernInst.castShadow = false;
+
+    let placedFerns = 0;
+    for (let tries = 0; tries < 2800 && placedFerns < fernCount; tries++) {
+      const x = (rand() * 2 - 1) * this.mapHalfSize;
+      const z = (rand() * 2 - 1) * this.mapHalfSize;
+      if (!isClearForNature(x, z, 3)) continue;
+      const y = this.getTerrainHeight(x, z);
+      const s = 0.75 + rand() * 0.65;
+      dummy.position.set(x, y - 0.04, z);
+      dummy.rotation.set(0, rand() * Math.PI * 2, 0);
+      dummy.scale.set(s, s * (0.85 + rand() * 0.35), s);
+      dummy.updateMatrix();
+      fernInst.setMatrixAt(placedFerns++, dummy.matrix);
+    }
+    fernInst.count = placedFerns;
+    fernInst.instanceMatrix.needsUpdate = true;
+    fernInst.matrixAutoUpdate = false;
+    this._fernInst = fernInst;
+    this._maxFerns = placedFerns;
+    this.scene.add(fernInst);
 
     // 3. Natural Rock Outcrops & Tactical Cover Boulders (110 formations with colliders -> 1 draw call!)
     const rockCount = 110;
@@ -1159,7 +1223,118 @@ class WastelandWorld {
         maxZ: z + d / 2
       });
     }
+    if (this._batchingOpen && this._batchEntries) {
+      this._batchEntries.push({ geometry: geo, matrix: mesh.matrix.clone(), material, castShadow: mesh.castShadow, source: mesh });
+    }
     return mesh;
+  }
+
+  _batchStaticGeometry() {
+    if (!this._batchEntries || this._batchEntries.length === 0) {
+      this._batchingOpen = false;
+      this._batchEntries = null;
+      return;
+    }
+    const groups = new Map();
+    for (let i = 0; i < this._batchEntries.length; i++) {
+      const e = this._batchEntries[i];
+      if (!e || !e.geometry || !e.material) continue;
+      const ex = e.matrix.elements[12];
+      const ez = e.matrix.elements[14];
+      const key = `${e.material.uuid}|${Math.floor(ex / 96)}|${Math.floor(ez / 96)}`;
+      let bucket = groups.get(key);
+      if (!bucket) {
+        bucket = { material: e.material, entries: [] };
+        groups.set(key, bucket);
+      }
+      bucket.entries.push(e);
+    }
+
+    const pVec = new THREE.Vector3();
+    const nVec = new THREE.Vector3();
+    const normMat = new THREE.Matrix3();
+
+    for (const bucket of groups.values()) {
+      const list = bucket.entries;
+      let totalVerts = 0;
+      let totalIndices = 0;
+      let anyCastShadow = false;
+      for (const e of list) {
+        const g = e.geometry;
+        totalVerts += g.attributes.position.count;
+        totalIndices += g.index ? g.index.count : g.attributes.position.count;
+        if (e.castShadow) anyCastShadow = true;
+        if (e.source) e.source.visible = false;
+      }
+
+      const positions = new Float32Array(totalVerts * 3);
+      const normals = new Float32Array(totalVerts * 3);
+      const uvs = new Float32Array(totalVerts * 2);
+      const indices = totalVerts > 65535 ? new Uint32Array(totalIndices) : new Uint16Array(totalIndices);
+
+      let vOffset = 0;
+      let iOffset = 0;
+      for (const e of list) {
+        const g = e.geometry;
+        const posAttr = g.attributes.position;
+        const normAttr = g.attributes.normal;
+        const uvAttr = g.attributes.uv;
+        normMat.getNormalMatrix(e.matrix);
+
+        for (let i = 0; i < posAttr.count; i++) {
+          const vi3 = (vOffset + i) * 3;
+          const vi2 = (vOffset + i) * 2;
+          pVec.fromBufferAttribute(posAttr, i).applyMatrix4(e.matrix);
+          positions[vi3] = pVec.x;
+          positions[vi3 + 1] = pVec.y;
+          positions[vi3 + 2] = pVec.z;
+
+          if (normAttr) {
+            nVec.fromBufferAttribute(normAttr, i).applyMatrix3(normMat).normalize();
+            normals[vi3] = nVec.x;
+            normals[vi3 + 1] = nVec.y;
+            normals[vi3 + 2] = nVec.z;
+          } else {
+            normals[vi3 + 1] = 1;
+          }
+
+          if (uvAttr) {
+            uvs[vi2] = uvAttr.getX(i);
+            uvs[vi2 + 1] = uvAttr.getY(i);
+          }
+        }
+
+        if (g.index) {
+          const gIdx = g.index;
+          for (let k = 0; k < gIdx.count; k++) {
+            indices[iOffset++] = gIdx.getX(k) + vOffset;
+          }
+        } else {
+          for (let k = 0; k < posAttr.count; k++) {
+            indices[iOffset++] = k + vOffset;
+          }
+        }
+        vOffset += posAttr.count;
+      }
+
+      const merged = new THREE.BufferGeometry();
+      merged.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      merged.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
+      merged.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+      merged.setIndex(new THREE.BufferAttribute(indices, 1));
+      merged.computeBoundingSphere();
+
+      const batchMesh = new THREE.Mesh(merged, bucket.material);
+      batchMesh.receiveShadow = true;
+      batchMesh.castShadow = anyCastShadow;
+      batchMesh.matrixAutoUpdate = false;
+      batchMesh.updateMatrix();
+      this.scene.add(batchMesh);
+      this._batchedMeshes.push(batchMesh);
+    }
+
+    this._batchingOpen = false;
+    this._batchEntries = null;
   }
 
   _rng(seed) {
@@ -1184,7 +1359,11 @@ class WastelandWorld {
     mesh.receiveShadow = true;
     mesh.updateMatrix();
     mesh.matrixAutoUpdate = false;
-    this.scene.add(mesh);
+    if (this._batchingOpen && this._batchEntries) {
+      this._batchEntries.push({ geometry: geo, matrix: mesh.matrix.clone(), material: mat, castShadow: false, source: null });
+    } else {
+      this.scene.add(mesh);
+    }
     return mesh;
   }
 
@@ -1332,7 +1511,11 @@ class WastelandWorld {
       fan.position.set(ax, roofTopY + 0.94, az);
       fan.updateMatrix();
       fan.matrixAutoUpdate = false;
-      this.scene.add(fan);
+      if (this._batchingOpen && this._batchEntries) {
+        this._batchEntries.push({ geometry: this._acFanGeo, matrix: fan.matrix.clone(), material: this._materials.windowFrame, castShadow: false, source: null });
+      } else {
+        this.scene.add(fan);
+      }
     }
     for (let i = 0; i < 2; i++) {
       const vx = cx + (rng() * 2 - 1) * spanX;
@@ -1536,9 +1719,15 @@ class WastelandWorld {
     const lintel = new THREE.Mesh(new THREE.BoxGeometry(w + 0.3, 0.16, 0.2), this._materials.concrete);
     lintel.position.y = h / 2 + 0.1;
     grp.add(glass, glassInner, topBar, botBar, midBar, horizMullion, sill, lintel);
-    grp.updateMatrix();
+    grp.updateMatrixWorld(true);
     grp.matrixAutoUpdate = false;
-    this.scene.add(grp);
+    if (this._batchingOpen && this._batchEntries) {
+      for (const ch of grp.children) {
+        this._batchEntries.push({ geometry: ch.geometry, matrix: ch.matrixWorld.clone(), material: ch.material, castShadow: false, source: null });
+      }
+    } else {
+      this.scene.add(grp);
+    }
   }
 
   _addDoor(cx, baseY, cz, width = 1.65, height = 2.6, rotY = 0, label = 'Door', style = 'wood') {
@@ -2969,11 +3158,16 @@ class WastelandWorld {
     const lighting = gfx.lighting ?? 3; // 1..4
     const lodFrac = lod === 1 ? 0.35 : (lod === 2 ? 0.62 : (lod === 3 ? 0.85 : 1.0));
     if (this._pineMeshes && this._maxPines) {
-      const c = Math.max(40, Math.round(this._maxPines * lodFrac));
-      this._pineMeshes.forEach(m => { m.count = c; });
+      this._pineMeshes.forEach((m) => {
+        const maxC = (m.userData && m.userData.maxCount) || this._maxPines;
+        m.count = Math.max(20, Math.round(maxC * lodFrac));
+      });
     }
     if (this._bushInst && this._maxBushes) {
-      this._bushInst.count = Math.max(60, Math.round(this._maxBushes * lodFrac));
+      this._bushInst.count = Math.max(80, Math.round(this._maxBushes * lodFrac));
+    }
+    if (this._fernInst && this._maxFerns) {
+      this._fernInst.count = Math.max(40, Math.round(this._maxFerns * lodFrac));
     }
     if (this.fogLayers) {
       const showMist = lighting >= 2;

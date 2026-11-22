@@ -425,8 +425,14 @@ class HideoutBunker {
       this.hoveredStation = null;
     }
 
-    renderer.autoClear = true;
-    renderer.render(this.scene, this.camera);
+    if (window.renderPipeline) {
+      window.renderPipeline.begin();
+      window.renderPipeline.render(this.scene, this.camera, false);
+      window.renderPipeline.end();
+    } else {
+      renderer.autoClear = true;
+      renderer.render(this.scene, this.camera);
+    }
     this._updateStationOverlay();
   }
 

@@ -1,15 +1,114 @@
 // Main Game Loop, Three.js Scene Setup & Raid Lifecycle
 (function () {
   const canvas = document.getElementById('game-canvas');
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.25));
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(1);
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFShadowMap;
+  renderer.shadowMap.autoUpdate = false;
   if (THREE.ACESFilmicToneMapping !== undefined) {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.08;
   }
+
+  // PS2 Low-Res Post Pipeline (Bayer 4x4 ordered dither + color quantization + gritty grade)
+  window.renderPipeline = (() => {
+    const getScale = () => {
+      const p = (window.GFX_SETTINGS && typeof window.GFX_SETTINGS.pixel === 'number') ? window.GFX_SETTINGS.pixel : 2;
+      return Math.max(1, Math.min(3, Math.round(p)));
+    };
+    let curScale = getScale();
+    let rtW = Math.max(1, Math.ceil(window.innerWidth / curScale));
+    let rtH = Math.max(1, Math.ceil(window.innerHeight / curScale));
+    const rt = new THREE.WebGLRenderTarget(rtW, rtH, {
+      minFilter: THREE.NearestFilter,
+      magFilter: THREE.NearestFilter,
+      format: THREE.RGBAFormat,
+      depthBuffer: true,
+      stencilBuffer: false
+    });
+    rt.texture.generateMipmaps = false;
+
+    const postScene = new THREE.Scene();
+    const postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const postMat = new THREE.ShaderMaterial({
+      uniforms: {
+        tDiffuse: { value: rt.texture },
+        uRes: { value: new THREE.Vector2(rtW, rtH) },
+        uScale: { value: curScale },
+        uLevels: { value: 32.0 },
+        uDither: { value: 1.0 }
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = vec4(position.xy, 0.0, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform vec2 uRes;
+        uniform float uScale;
+        uniform float uLevels;
+        uniform float uDither;
+        varying vec2 vUv;
+        float b2(vec2 a) { a = floor(a); return fract(dot(a, vec2(0.5, a.y * 0.75))); }
+        float b4(vec2 a) { return b2(0.5 * a) * 0.25 + b2(a); }
+        void main() {
+          vec3 c = texture2D(tDiffuse, vUv).rgb * 1.08;
+          float d = b4(gl_FragCoord.xy / max(1.0, uScale)) - 0.5;
+          c = floor(clamp(c, 0.0, 1.0) * uLevels + d * uDither) / uLevels;
+          float lum = dot(c, vec3(0.299, 0.587, 0.114));
+          c = mix(c, vec3(lum), 0.18);
+          c *= vec3(1.02, 1.0, 0.94);
+          c = clamp((c - 0.5) * 1.08 + 0.5, 0.0, 1.0);
+          gl_FragColor = vec4(c, 1.0);
+        }
+      `,
+      depthTest: false,
+      depthWrite: false
+    });
+    const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), postMat);
+    postScene.add(quad);
+
+    const resize = () => {
+      curScale = getScale();
+      const s = curScale > 1 ? curScale : 1;
+      rtW = Math.max(1, Math.ceil(window.innerWidth / s));
+      rtH = Math.max(1, Math.ceil(window.innerHeight / s));
+      if (rt.width !== rtW || rt.height !== rtH) {
+        rt.setSize(rtW, rtH);
+      }
+      postMat.uniforms.uRes.value.set(rtW, rtH);
+      postMat.uniforms.uScale.value = curScale;
+    };
+
+    return {
+      get scale() { return curScale; },
+      resize,
+      begin() {
+        curScale = getScale();
+        postMat.uniforms.uScale.value = curScale;
+        renderer.setRenderTarget(curScale > 1 ? rt : null);
+        renderer.autoClear = false;
+        renderer.clear();
+      },
+      render(sc, cam, clearDepthFirst = false) {
+        if (!sc || !cam) return;
+        if (clearDepthFirst) renderer.clearDepth();
+        renderer.render(sc, cam);
+      },
+      end() {
+        if (curScale > 1) {
+          renderer.setRenderTarget(null);
+          renderer.clear();
+          renderer.render(postScene, postCam);
+        }
+      }
+    };
+  })();
 
   let scene = null;
   let camera = null;
@@ -21,19 +120,18 @@
     const lod = gfx.lod ?? 3;
     const lighting = gfx.lighting ?? 3;
     const shadows = gfx.shadows ?? 3;
-    const textures = gfx.textures ?? 3;
 
-    // 1. Texture Quality -> pixel ratio (capped at 1.25x for smooth high-FPS rendering on HiDPI displays)
-    const dpr = window.devicePixelRatio || 1;
-    const targetPr = textures === 1 ? 0.72 : (textures === 2 ? 1.0 : Math.min(dpr, 1.25));
-    renderer.setPixelRatio(targetPr);
+    renderer.setPixelRatio(1);
     renderer.setSize(window.innerWidth, window.innerHeight);
+    if (window.renderPipeline && window.renderPipeline.resize) {
+      window.renderPipeline.resize();
+    }
 
-    // 2. Realtime Shadows
+    // 2. Realtime Shadows (default 1024, throttled update every 3rd frame)
     renderer.shadowMap.enabled = shadows > 0;
     if (sunLight) {
       sunLight.castShadow = shadows > 0;
-      const res = shadows === 1 ? 512 : (shadows === 2 ? 1024 : 1536);
+      const res = shadows === 1 ? 512 : (shadows === 2 ? 768 : 1024);
       if (sunLight.shadow && sunLight.shadow.mapSize && sunLight.shadow.mapSize.width !== res) {
         sunLight.shadow.mapSize.width = res;
         sunLight.shadow.mapSize.height = res;
@@ -42,6 +140,7 @@
           sunLight.shadow.map = null;
         }
       }
+      renderer.shadowMap.needsUpdate = true;
     }
 
     // 3. Lighting Quality
@@ -195,6 +294,9 @@
 
   window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
+    if (window.renderPipeline && window.renderPipeline.resize) {
+      window.renderPipeline.resize();
+    }
     if (camera) {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
@@ -3446,12 +3548,22 @@
         viewmodelCamera.updateMatrixWorld();
       }
 
-      renderer.autoClear = false;
-      renderer.clear();
-      renderer.render(scene, camera);
-      if (viewmodelScene && viewmodelCamera && !player.isThirdPerson) {
-        renderer.clearDepth();
-        renderer.render(viewmodelScene, viewmodelCamera);
+      renderer.shadowMap.needsUpdate = ((window._shadowFrameCount = ((window._shadowFrameCount || 0) + 1) % 3) === 0);
+      if (window.renderPipeline) {
+        window.renderPipeline.begin();
+        window.renderPipeline.render(scene, camera, false);
+        if (viewmodelScene && viewmodelCamera && !player.isThirdPerson) {
+          window.renderPipeline.render(viewmodelScene, viewmodelCamera, true);
+        }
+        window.renderPipeline.end();
+      } else {
+        renderer.autoClear = false;
+        renderer.clear();
+        renderer.render(scene, camera);
+        if (viewmodelScene && viewmodelCamera && !player.isThirdPerson) {
+          renderer.clearDepth();
+          renderer.render(viewmodelScene, viewmodelCamera);
+        }
       }
     } else {
       // Update 3D Matchmaking Operator Stage + countdown if active
