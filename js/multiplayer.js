@@ -253,7 +253,7 @@ class MultiplayerSession {
       pkt.type === 'ground_drop' || pkt.type === 'ground_pickup' ||
       pkt.type === 'pvp_hit' || pkt.type === 'pvp_toggle' || pkt.type === 'revive_ping' ||
       pkt.type === 'revive_progress' || pkt.type === 'revive_complete' ||
-      pkt.type === 'killstreak' || pkt.type === 'raid_timer'
+      pkt.type === 'killstreak' || pkt.type === 'field_upgrade' || pkt.type === 'raid_timer'
     ) {
       this._handleDataPacket(peerId, pkt);
     }

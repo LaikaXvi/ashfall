@@ -1,7 +1,7 @@
 // Game Item Database, 5-Tier Loot Rarity, Logical POI Tables, Workbench & Attachments
 // IMPORTANT: Update GAME_DATA.VERSION (and ?v= cache-busters in index.html) with EVERY new commit!
 window.GAME_DATA = {
-  VERSION: 'v2.17',
+  VERSION: 'v2.18',
   OPERATOR_STATS: {
     maxHp: 100,
     walkSpeed: 6.8,

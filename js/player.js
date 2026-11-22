@@ -2034,7 +2034,7 @@ class Player {
         t: 0,
         duration: 0.34
       };
-      if (window.soundEngine && window.soundEngine.playFootstep) {
+      if ((this.deadSilenceTimer || 0) <= 0 && window.soundEngine && window.soundEngine.playFootstep) {
         try { window.soundEngine.playFootstep(true); } catch (e) {}
       }
       return true;
@@ -2054,7 +2054,7 @@ class Player {
       inwardZ: info.inwardZ,
       ledgeYaw: info.ledgeYaw
     };
-    if (window.soundEngine && window.soundEngine.playFootstep) {
+    if ((this.deadSilenceTimer || 0) <= 0 && window.soundEngine && window.soundEngine.playFootstep) {
       try { window.soundEngine.playFootstep(false); } catch (e) {}
     }
     return true;
@@ -2102,11 +2102,20 @@ class Player {
     this.fieldUpgradeCharge = 0;
     const def = GAME_DATA.ITEMS[this.fieldUpgrade];
     if (this.fieldUpgrade === 'fu_ammo_box') {
+      const feetY = this.position.y - this.currentEyeHeight;
+      const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
+      const origin = new THREE.Vector3(this.position.x, feetY, this.position.z);
       if (this.world && this.world.deployMunitionBox) {
-        const feetY = this.position.y - this.currentEyeHeight;
-        const fwd = new THREE.Vector3(-Math.sin(this.yaw), 0, -Math.cos(this.yaw));
-        this.world.deployMunitionBox(new THREE.Vector3(this.position.x, feetY, this.position.z), fwd, 'YOU');
+        this.world.deployMunitionBox(origin, fwd, 'YOU');
       }
+      this._lastFieldUpgradeDeploy = {
+        upgradeId: 'fu_ammo_box',
+        x: Math.round(origin.x * 10) / 10,
+        y: Math.round(origin.y * 10) / 10,
+        z: Math.round(origin.z * 10) / 10,
+        dx: Math.round(fwd.x * 100) / 100,
+        dz: Math.round(fwd.z * 100) / 100
+      };
       if (window.soundEngine && window.soundEngine.playThrowWhoosh) {
         try { window.soundEngine.playThrowWhoosh(false); } catch (e) {}
       }
@@ -2115,9 +2124,11 @@ class Player {
     } else if (this.fieldUpgrade === 'fu_dead_silence') {
       this.deadSilenceTimer = 12.0;
       this.stamina = 100;
+      this._lastFieldUpgradeDeploy = { upgradeId: 'fu_dead_silence', duration: 12.0 };
       window.soundEngine.playHeal();
-      return 'Dead Silence active (12s silent footsteps)';
+      return 'Dead Silence active (12s silent footsteps · +3s per kill)';
     } else {
+      this._lastFieldUpgradeDeploy = { upgradeId: this.fieldUpgrade };
       window.soundEngine.playMagIn();
       return `${def ? def.name : 'Field Upgrade'} deployed!`;
     }
@@ -2630,7 +2641,9 @@ class Player {
       this.footstepTimer -= dt;
       if (this.footstepTimer <= 0) {
         this.footstepTimer = this.isTacSprinting ? 0.30 : (this.isSprinting ? 0.38 : (this.isProne ? 0.95 : (this.isCrouching ? 0.72 : 0.56)));
-        window.soundEngine.playFootstep(this.isSprinting || this.isTacSprinting);
+        if ((this.deadSilenceTimer || 0) <= 0) {
+          window.soundEngine.playFootstep(this.isSprinting || this.isTacSprinting);
+        }
       }
       const cadence = this.isTacSprinting ? 10.6 : (this.isSprinting ? 8.4 : (this.isProne ? 3.2 : (this.isCrouching ? 4.2 : 5.6)));
       this.headBobTimer += dt * cadence;

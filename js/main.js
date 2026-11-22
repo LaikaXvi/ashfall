@@ -327,7 +327,32 @@
               raidEndTimestamp = Date.now() + pkt.rt * 1000;
               raidTimeLeft = pkt.rt;
             }
+          } else if (pkt.type === 'field_upgrade') {
+            if (pkt.evId) {
+              if (!window._seenMpEvents) window._seenMpEvents = new Set();
+              if (window._seenMpEvents.has(pkt.evId)) return;
+              window._seenMpEvents.add(pkt.evId);
+              if (window._seenMpEvents.size > 160) window._seenMpEvents.clear();
+            }
+            if (pkt.upgradeId === 'fu_ammo_box' && world && world.deployMunitionBox) {
+              const origin = new THREE.Vector3(pkt.x || 0, pkt.y || 0, pkt.z || 0);
+              const fwd = new THREE.Vector3(pkt.dx || 0, 0, pkt.dz || -1);
+              world.deployMunitionBox(origin, fwd, pkt.fromName || 'SQUAD');
+              if (window.soundEngine && window.soundEngine.playMagIn) window.soundEngine.playMagIn();
+              ui.addFeedMessage(`${pkt.fromName || 'SQUAD'} deployed a Munition Box — press [E] to resupply!`, '#69f0ae');
+            } else if (pkt.upgradeId === 'fu_dead_silence') {
+              ui.addFeedMessage(`${pkt.fromName || 'SQUAD'} activated Dead Silence`, '#69f0ae');
+            } else if (pkt.upgradeId) {
+              const fuDef = GAME_DATA.ITEMS[pkt.upgradeId];
+              ui.addFeedMessage(`${pkt.fromName || 'SQUAD'} deployed ${(fuDef && fuDef.name) || 'Field Upgrade'}`, '#69f0ae');
+            }
           } else if (pkt.type === 'killstreak') {
+            if (pkt.evId) {
+              if (!window._seenMpEvents) window._seenMpEvents = new Set();
+              if (window._seenMpEvents.has(pkt.evId)) return;
+              window._seenMpEvents.add(pkt.evId);
+              if (window._seenMpEvents.size > 160) window._seenMpEvents.clear();
+            }
             if (pkt.kind === 'airstrike') {
               const tPos = new THREE.Vector3(pkt.tx || 0, pkt.ty || 0, pkt.tz || 0);
               const sDir = new THREE.Vector3(pkt.dx || 1, 0, pkt.dz || 0);
@@ -965,7 +990,16 @@
       player.startPlating();
     } else if (e.code === (kb.fieldUpgrade || 'KeyZ')) {
       const fuMsg = player.activateFieldUpgrade ? player.activateFieldUpgrade() : null;
-      if (fuMsg) ui.addFeedMessage(fuMsg, '#69f0ae');
+      if (fuMsg) {
+        ui.addFeedMessage(fuMsg, '#69f0ae');
+        if (mpSession && mpSession.active && player._lastFieldUpgradeDeploy) {
+          mpSession.sendEvent({
+            type: 'field_upgrade',
+            evId: `${ui._clientId}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            ...player._lastFieldUpgradeDeploy
+          });
+        }
+      }
     } else if (e.code === (kb.killstreak || 'KeyK')) {
       activateKillstreak();
     } else if (e.code === (kb.map || 'KeyM')) {
@@ -1932,6 +1966,7 @@
     if (!isRemote && mpSession && mpSession.active) {
       mpSession.sendEvent({
         type: 'killstreak',
+        evId: `${ui._clientId}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         kind: 'airstrike',
         tx: Math.round(targetPos.x * 10) / 10,
         ty: Math.round(targetPos.y * 10) / 10,
@@ -2073,7 +2108,12 @@
           window.soundEngine.playUavPhoneTap();
         }
         if (mpSession && mpSession.active) {
-          mpSession.sendEvent({ type: 'killstreak', kind: 'uav', duration: 30.0 });
+          mpSession.sendEvent({
+            type: 'killstreak',
+            evId: `${ui._clientId}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            kind: 'uav',
+            duration: 30.0
+          });
         }
         ui.showCenterToast('UAV RECON ONLINE — 30s (150m RADAR)', '#69f0ae');
         ui.addFeedMessage('UAV Recon activated — 150m pulsing radar active on map & minimap (30s)', '#69f0ae');
@@ -2395,6 +2435,10 @@
       raidKills += 1;
       const xp = isHead ? 150 : 100;
       raidXp += xp;
+      if (player && player.deadSilenceTimer > 0) {
+        player.deadSilenceTimer += 3.0;
+        ui.addFeedMessage(`+3s DEAD SILENCE (${Math.ceil(player.deadSilenceTimer)}s)`, '#69f0ae');
+      }
       if (enemy.isOperator) {
         ui.addKillFeedEntry({
           killerName,
@@ -2992,7 +3036,16 @@
           interact: () => openNearbyInteractable(),
           activateFieldUpgrade: () => {
             const fuMsg = player.activateFieldUpgrade ? player.activateFieldUpgrade() : null;
-            if (fuMsg) ui.addFeedMessage(fuMsg, '#69f0ae');
+            if (fuMsg) {
+              ui.addFeedMessage(fuMsg, '#69f0ae');
+              if (mpSession && mpSession.active && player._lastFieldUpgradeDeploy) {
+                mpSession.sendEvent({
+                  type: 'field_upgrade',
+                  evId: `${ui._clientId}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+                  ...player._lastFieldUpgradeDeploy
+                });
+              }
+            }
           },
           activateKillstreak: () => activateKillstreak(),
           quickMelee: () => performMeleeStrike(true)
