@@ -560,7 +560,8 @@ class Enemy {
       if (this.isOperator && this.hp > 0) {
         const cov = this._findBestCoverSpot(attackerPos, 18);
         if (cov) {
-          this.coverTarget = cov;
+          this.coverSpot = cov;
+          this.isPeeking = false;
           this.isProne = false;
         } else {
           // No nearby cover: drop prone immediately and fight back!
@@ -662,7 +663,7 @@ class Enemy {
   }
 
   _hasLineOfSight(playerPos, maxDist = 32) {
-    const eye = new THREE.Vector3(this.position.x, 1.6, this.position.z);
+    const eye = new THREE.Vector3(this.position.x, this.position.y + 1.55, this.position.z);
     const target = playerPos.clone();
     const dir = target.sub(eye);
     const dist = dir.length();
@@ -688,6 +689,9 @@ class Enemy {
   }
 
   _moveToward(target, speed, dt, faceTarget = null) {
+    if (!target || typeof target.x !== 'number' || typeof target.z !== 'number' || !Number.isFinite(target.x) || !Number.isFinite(target.z)) {
+      return false;
+    }
     const dx = target.x - this.position.x;
     const dz = target.z - this.position.z;
     const dist = Math.hypot(dx, dz);
@@ -1200,7 +1204,7 @@ class Enemy {
             if (ld < 2.2) {
               this._activeLootGoal = null;
             } else {
-              this._moveToward(this._activeLootGoal.x, this._activeLootGoal.z, this.speed * 0.85, dt);
+              this._moveToward(this._activeLootGoal, this.speed * 0.85, dt);
             }
           }
         } else {
