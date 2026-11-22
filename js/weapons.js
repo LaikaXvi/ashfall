@@ -890,12 +890,15 @@ class WeaponSystem {
         handGroup.add(fBase, fTip);
       }
 
-      // Thumb resting along left side of handguard
+      // Thumb resting along left side of handguard (grouped so reload animations can tuck it cleanly along magazine spine)
+      const thumbGroup = new THREE.Group();
       const thumb = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.014, 0.042), gloveMat);
       thumb.position.set(-0.026, 0.012, -0.006);
       const thumbTip = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.012, 0.016), skinMat);
       thumbTip.position.set(-0.026, 0.014, -0.032);
-      handGroup.add(thumb, thumbTip);
+      thumbGroup.add(thumb, thumbTip);
+      handGroup.add(thumbGroup);
+      handGroup.userData.thumbGroup = thumbGroup;
     } else if (style === 'leftFist') {
       // Clenched left-handed tactical fist (knuckles outward-left/front, fingers curled tight, thumb tucked across)
       const palm = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.058, 0.050), gloveMat);
@@ -2991,18 +2994,28 @@ class WeaponSystem {
         window.soundEngine.playRechamber(this.reloadWeaponId || (weaponDef && weaponDef.id) || 'ak74m');
       }
 
-      // Helper: lock left glove directly onto the curved AK-74M banana magazine body through its exact rotation arc!
+      // Helper: lock left palm flush against left side of AK banana mag with all 4 fingers wrapped around the far side & thumb tucked along rear spine!
       const gripSpareAkMag = (mag) => {
         if (!mag) return;
         const mr = mag.rotation.x;
-        const localY = -0.048;
-        const localZ = 0.012;
-        const gx = mag.position.x - 0.014;
+        const localY = -0.044;
+        const localZ = 0.004;
+        const gx = mag.position.x - 0.006;
         const gy = mag.position.y + (localY * Math.cos(mr) - localZ * Math.sin(mr));
         const gz = mag.position.z + (localY * Math.sin(mr) + localZ * Math.cos(mr));
         moveLeftHand(gx, gy, gz);
         if (this.leftHand) {
-          this.leftHand.rotation.set(mr * 0.88 + 0.14, 0.22, -0.44);
+          // Z = -1.48 rotates bottom palm flush onto left side of mag & wraps 4 fingers tightly around the far/front side!
+          this.leftHand.rotation.set(mr * 0.90 + 0.08, 0.14, -1.48);
+          if (this.leftHand.userData && this.leftHand.userData.thumbGroup) {
+            // Tuck thumb cleanly against rear spine of magazine (never sticking out!)
+            this.leftHand.userData.thumbGroup.rotation.set(0.18, -0.42, 0.25);
+          }
+        }
+      };
+      const releaseAkThumb = () => {
+        if (this.leftHand && this.leftHand.userData && this.leftHand.userData.thumbGroup) {
+          this.leftHand.userData.thumbGroup.rotation.set(0, 0, 0);
         }
       };
 
@@ -3087,6 +3100,7 @@ class WeaponSystem {
         const t = smooth(rawT);
         if (this.spareMagMesh) this.spareMagMesh.visible = false;
         if (this.magMesh) { this.magMesh.visible = true; this.magMesh.position.copy(this.magRestPos); this.magMesh.rotation.copy(this.magRestRot); }
+        releaseAkThumb();
         restLeftHand();
 
         const pose = Math.sin(Math.min(1, rawT * 1.2) * Math.PI * 0.5);
@@ -3107,6 +3121,7 @@ class WeaponSystem {
         if (this.spareMagMesh) this.spareMagMesh.visible = false;
         if (this.magMesh) { this.magMesh.visible = true; this.magMesh.position.copy(this.magRestPos); this.magMesh.rotation.copy(this.magRestRot); }
         if (this.boltMesh) { this.boltMesh.position.copy(this.boltRestPos); }
+        releaseAkThumb();
         restLeftHand();
         restRightHand();
         pos.x = THREE.MathUtils.lerp(this.wasEmptyReload ? -0.06 : -0.12, 0, t);
