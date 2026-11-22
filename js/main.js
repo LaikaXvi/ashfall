@@ -3697,25 +3697,33 @@
       } else if (hideoutBunker && !(gunsmith && gunsmith.isOpen)) {
         hideoutBunker.update(dt, renderer);
       }
+      // Broadcast live FOB position to party members (10Hz while roaming, 1Hz while in FOB menus)
+      if (hideoutBunker && ui && ui._sendSocialPacket && ui.partyMembers && ui.partyMembers.length > 1) {
+        const nowMs = performance.now();
+        const intervalMs = hideoutBunker.activeRoam ? 100 : 1000;
+        if (nowMs - _lastFobPosBroadcast >= intervalMs) {
+          _lastFobPosBroadcast = nowMs;
+          const selfM = ui.partyMembers.find(m => m.isSelf || m.clientId === ui._clientId);
+          const tabStatus = hideoutBunker.activeRoam
+            ? ''
+            : ((selfM && selfM.ready) ? 'READY' : ((ui.activeMenuTab && ui.activeMenuTab !== 'home') ? ui.activeMenuTab.toUpperCase() : 'TAC-MENU'));
+          ui._sendSocialPacket({
+            type: 'fob_pos',
+            clientId: ui._clientId,
+            from: getPlayerCallsign(),
+            partyId: ui.partyId || null,
+            squadColor: (selfM && selfM.squadColor) || '#69f0ae',
+            isLeader: !!(ui.isPartyLeader && ui.isPartyLeader()),
+            status: tabStatus,
+            x: Math.round(hideoutBunker.pos.x * 100) / 100,
+            y: Math.round(hideoutBunker.pos.y * 100) / 100,
+            z: Math.round(hideoutBunker.pos.z * 100) / 100,
+            yaw: Math.round(hideoutBunker.yaw * 1000) / 1000
+          });
+        }
+      }
       // Enable full controller navigation in Main Menu, Stash, Operator, Settings, Gunsmith & Summary screens!
       if (hideoutBunker && hideoutBunker.activeRoam) {
-        // Broadcast live FOB position to party members at ~10Hz
-        if (ui && ui._sendSocialPacket && ui.partyMembers && ui.partyMembers.length > 1) {
-          const nowMs = performance.now();
-          if (nowMs - _lastFobPosBroadcast >= 100) {
-            _lastFobPosBroadcast = nowMs;
-            ui._sendSocialPacket({
-              type: 'fob_pos',
-              clientId: ui._clientId,
-              from: getPlayerCallsign(),
-              partyId: ui.partyId || null,
-              x: Math.round(hideoutBunker.pos.x * 100) / 100,
-              y: Math.round(hideoutBunker.pos.y * 100) / 100,
-              z: Math.round(hideoutBunker.pos.z * 100) / 100,
-              yaw: Math.round(hideoutBunker.yaw * 1000) / 1000
-            });
-          }
-        }
         gamepad.updateHideoutRoam(dt, hideoutBunker, {
           onOpenMenu: () => exitHideoutRoam(true),
           onInteractStation: (st) => openFobStation(st)

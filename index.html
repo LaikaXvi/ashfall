@@ -30,6 +30,7 @@
     <div id="hideout-station-markers" class="hideout-station-markers hidden"></div>
     <div class="hideout-roam-topbar">
       <button id="btn-exit-hideout-roam" class="btn-small topbar-back-btn">← MENU [ESC / M]</button>
+      <span id="fob-host-banner" class="hideout-roam-hint" style="border-color:rgba(105,240,174,0.45);color:#69f0ae;">YOUR FOB (1/3)</span>
       <span class="hideout-roam-hint">WASD WALK · SHIFT SPRINT · [E] / CLICK INTERACT WITH STATIONS</span>
     </div>
     <div id="hideout-roam-crosshair" class="hideout-roam-crosshair"></div>
@@ -49,7 +50,7 @@
     <!-- IMPORTANT: Update version in GAME_DATA.VERSION (js/data.js) and here with EVERY new commit -->
     <div class="menu-version-stack">
       <button id="menu-update-badge" class="menu-update-badge hidden" title="Click to reload into the latest version">NEW VERSION AVAILABLE</button>
-      <div id="menu-version-badge" class="menu-version-badge">v2.38</div>
+      <div id="menu-version-badge" class="menu-version-badge">v2.39</div>
     </div>
     <!-- Minimal Sub-Menu Top Bar (Top-Left Back Button only — no redundant nav band) -->
     <header id="menu-topbar" class="hideout-header hidden">
@@ -161,7 +162,7 @@
           <!-- Current Party Box -->
           <div class="party-box">
             <div class="party-head">
-              <span id="party-title" class="party-label">YOUR PARTY (1/4)</span>
+              <span id="party-title" class="party-label">YOUR PARTY (1/3)</span>
               <button id="btn-leave-party" class="btn-small hidden">LEAVE</button>
             </div>
             <div id="party-members" class="party-members"></div>
@@ -1257,7 +1258,7 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION with every new commit) -->
-  <script src="js/data.js?v=238"></script>
+  <script src="js/data.js?v=239"></script>
   <script src="js/animation.js?v=211"></script>
   <script src="js/net.js?v=123"></script>
   <script src="js/sfx_samples.js?v=21"></script>
@@ -1273,9 +1274,9 @@
   <script src="js/gamepad.js?v=228"></script>
   <script src="js/gunsmith.js?v=195"></script>
   <script src="js/matchmaking.js?v=215"></script>
-  <script src="js/hideout.js?v=238"></script>
-  <script src="js/ui.js?v=238"></script>
+  <script src="js/hideout.js?v=239"></script>
+  <script src="js/ui.js?v=239"></script>
   <script src="js/console.js?v=226"></script>
-  <script src="js/main.js?v=238"></script>
+  <script src="js/main.js?v=239"></script>
 </body>
 </html>

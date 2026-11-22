@@ -22,6 +22,9 @@ class HideoutBunker {
     this.heloMainRotor = null;
     this.heloTailRotor = null;
     this.remoteAvatars = new Map();
+    this.fobHostName = null;
+    this.isHostFob = true;
+    this._partyMemberIds = new Set();
 
     this._buildLighting();
     this._buildArchitecture();
@@ -369,59 +372,185 @@ class HideoutBunker {
     this._addBox(1.1, 0.72, 1.1, -13.4, 0.36, 9.6, crateMat, true);
   }
 
-  _makeNameTagSprite(name) {
-    const c = document.createElement('canvas');
-    c.width = 256;
-    c.height = 48;
+  getPartySpawnSlot(slotIdx = 0) {
+    const slots = [
+      { x: 0.0, z: 3.2, yaw: 0.0 },
+      { x: -2.2, z: 2.3, yaw: -0.25 },
+      { x: 2.2, z: 2.3, yaw: 0.25 }
+    ];
+    return slots[Math.max(0, Math.min(slots.length - 1, slotIdx | 0))];
+  }
+
+  joinHostFob(hostName, slotIdx = 1) {
+    this.fobHostName = hostName || null;
+    this.isHostFob = false;
+    const slot = this.getPartySpawnSlot(slotIdx);
+    this.pos.set(slot.x, 1.68, slot.z);
+    this.yaw = slot.yaw;
+    this.pitch = -0.04;
+    this.velY = 0;
+    this.onGround = true;
+  }
+
+  syncPartyRoster(partyMembers = [], hostName = null, isHost = true, selfClientId = null) {
+    this.fobHostName = hostName || null;
+    this.isHostFob = !!isHost;
+    const members = Array.isArray(partyMembers) ? partyMembers.slice(0, 3) : [];
+    const count = Math.max(1, members.length);
+
+    const banner = document.getElementById('fob-host-banner');
+    if (banner) {
+      if (count <= 1) {
+        banner.textContent = 'YOUR FOB (1/3)';
+        banner.style.color = '#69f0ae';
+        banner.style.borderColor = 'rgba(105,240,174,0.45)';
+      } else if (isHost) {
+        banner.textContent = `YOUR FOB // SQUAD (${count}/3)`;
+        banner.style.color = '#69f0ae';
+        banner.style.borderColor = 'rgba(105,240,174,0.65)';
+      } else {
+        banner.textContent = `${(hostName || 'HOST').toUpperCase()}'S FOB // SQUAD (${count}/3)`;
+        banner.style.color = '#ffca28';
+        banner.style.borderColor = 'rgba(255,202,40,0.65)';
+      }
+    }
+
+    const activeIds = new Set();
+    members.forEach((m, idx) => {
+      if (!m || !m.clientId || m.isSelf || m.clientId === selfClientId) return;
+      activeIds.add(m.clientId);
+      const existing = this.remoteAvatars.get(m.clientId);
+      const slot = this.getPartySpawnSlot(idx);
+      const status = m.ready ? 'READY' : (existing && existing.status ? existing.status : '');
+      if (!existing) {
+        this.upsertRemoteAvatar(m.clientId, m.name || 'SQUAD', slot.x, 1.68, slot.z, slot.yaw, {
+          squadColor: m.squadColor || '#69f0ae',
+          isLeader: !!m.isLeader,
+          status,
+          inParty: true
+        });
+      } else {
+        existing.inParty = true;
+        existing.lastSeen = performance.now();
+        const nextLabel = `${m.isLeader ? '★ ' : ''}${m.name || existing.callsign}${status ? ' · ' + status : ''}`;
+        if (existing.labelText !== nextLabel || existing.squadColor !== (m.squadColor || '#69f0ae')) {
+          existing.callsign = m.name || existing.callsign;
+          existing.squadColor = m.squadColor || '#69f0ae';
+          existing.isLeader = !!m.isLeader;
+          existing.status = status;
+          existing.labelText = nextLabel;
+          this._updateNameTagSprite(existing.tagSprite, nextLabel, existing.squadColor);
+        }
+      }
+    });
+
+    this._partyMemberIds = activeIds;
+    // Immediately remove avatars who left the party
+    for (const [id, av] of this.remoteAvatars.entries()) {
+      if (!activeIds.has(id)) {
+        if (av.group) this.scene.remove(av.group);
+        this.remoteAvatars.delete(id);
+      }
+    }
+  }
+
+  _drawNameTagCanvas(c, label, accentColor = '#69f0ae') {
     const ctx = c.getContext('2d');
-    ctx.fillStyle = 'rgba(10, 14, 18, 0.82)';
-    ctx.fillRect(4, 6, 248, 36);
-    ctx.strokeStyle = '#69f0ae';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(4, 6, 248, 36);
-    ctx.fillStyle = '#e8f5e9';
-    ctx.font = 'bold 20px monospace';
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.fillStyle = 'rgba(10, 14, 18, 0.86)';
+    ctx.fillRect(4, 6, c.width - 8, c.height - 12);
+    ctx.strokeStyle = accentColor || '#69f0ae';
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(4, 6, c.width - 8, c.height - 12);
+    ctx.fillStyle = '#f2f7f4';
+    ctx.font = 'bold 18px monospace';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(String(name || 'SQUAD').slice(0, 18), 128, 25);
+    ctx.fillText(String(label || 'SQUAD').slice(0, 24), c.width / 2, c.height / 2 + 1);
+  }
+
+  _makeNameTagSprite(label, accentColor = '#69f0ae') {
+    const c = document.createElement('canvas');
+    c.width = 320;
+    c.height = 48;
+    this._drawNameTagCanvas(c, label, accentColor);
     const tex = new THREE.CanvasTexture(c);
     tex.magFilter = THREE.NearestFilter;
     tex.minFilter = THREE.NearestFilter;
     const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
     const sp = new THREE.Sprite(mat);
-    sp.scale.set(1.55, 0.30, 1);
+    sp.scale.set(1.85, 0.30, 1);
+    sp.userData._canvas = c;
+    sp.userData._tex = tex;
     return sp;
   }
 
-  upsertRemoteAvatar(clientId, callsign, x, y, z, yaw = 0) {
+  _updateNameTagSprite(sp, label, accentColor = '#69f0ae') {
+    if (!sp || !sp.userData || !sp.userData._canvas || !sp.userData._tex) return;
+    this._drawNameTagCanvas(sp.userData._canvas, label, accentColor);
+    sp.userData._tex.needsUpdate = true;
+  }
+
+  upsertRemoteAvatar(clientId, callsign, x, y, z, yaw = 0, opts = {}) {
     if (!clientId) return;
+    const squadColor = opts.squadColor || '#69f0ae';
+    const isLeader = !!opts.isLeader;
+    const status = opts.status || '';
+    const labelText = `${isLeader ? '★ ' : ''}${callsign || 'SQUAD'}${status ? ' · ' + status : ''}`;
     let av = this.remoteAvatars.get(clientId);
     if (!av) {
       const grp = new THREE.Group();
       const bodyMat = new THREE.MeshLambertMaterial({ color: 0x3b4836 });
       const vestMat = new THREE.MeshLambertMaterial({ color: 0x222624 });
+      const pantsMat = new THREE.MeshLambertMaterial({ color: 0x2a2f2b });
       const skinMat = new THREE.MeshLambertMaterial({ color: 0xc99c7a });
       const helmMat = new THREE.MeshLambertMaterial({ color: 0x2d332c });
+      const visorMat = new THREE.MeshLambertMaterial({ color: 0x162229 });
+      const patchMat = new THREE.MeshBasicMaterial({ color: squadColor });
+      const gunMat = new THREE.MeshLambertMaterial({ color: 0x1b1e22 });
 
-      const legs = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.82, 0.24), vestMat);
-      legs.position.y = 0.41;
+      const legL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.82, 0.22), pantsMat);
+      legL.position.set(-0.12, 0.41, 0);
+      const legR = legL.clone();
+      legR.position.x = 0.12;
       const torso = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.62, 0.28), bodyMat);
       torso.position.y = 1.12;
       const vest = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.46, 0.32), vestMat);
       vest.position.y = 1.14;
+      const armL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.56, 0.16), bodyMat);
+      armL.position.set(-0.32, 1.08, 0.04);
+      const armR = armL.clone();
+      armR.position.x = 0.32;
+      const patchL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.08, 0.18), patchMat);
+      patchL.position.set(-0.32, 1.32, 0.02);
+      const patchR = patchL.clone();
+      patchR.position.x = 0.32;
+      // Slung tactical carbine across chest
+      const rifle = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.09, 0.06), gunMat);
+      rifle.position.set(0.02, 1.05, -0.20);
+      rifle.rotation.z = -0.35;
       const head = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.25, 0.24), skinMat);
       head.position.y = 1.56;
-      const helm = new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.14, 0.27), helmMat);
+      const helm = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.15, 0.28), helmMat);
       helm.position.y = 1.66;
-      const tag = this._makeNameTagSprite(callsign);
-      tag.position.set(0, 2.08, 0);
+      const goggles = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.07, 0.06), visorMat);
+      goggles.position.set(0, 1.59, -0.12);
+      const tag = this._makeNameTagSprite(labelText, squadColor);
+      tag.position.set(0, 2.12, 0);
 
-      grp.add(legs, torso, vest, head, helm, tag);
+      grp.add(legL, legR, torso, vest, armL, armR, patchL, patchR, rifle, head, helm, goggles, tag);
       grp.position.set(x || 0, 0, z || 0);
+      grp.rotation.y = yaw || 0;
       this.scene.add(grp);
       av = {
         group: grp,
-        callsign,
+        tagSprite: tag,
+        callsign: callsign || 'SQUAD',
+        squadColor,
+        isLeader,
+        status,
+        labelText,
+        inParty: opts.inParty !== false,
         targetPos: new THREE.Vector3(x || 0, 0, z || 0),
         targetYaw: yaw || 0,
         lastSeen: performance.now()
@@ -431,12 +560,23 @@ class HideoutBunker {
       av.targetPos.set(x || 0, 0, z || 0);
       av.targetYaw = yaw || 0;
       av.lastSeen = performance.now();
+      if (opts.inParty !== undefined) av.inParty = !!opts.inParty;
+      if (av.labelText !== labelText || av.squadColor !== squadColor) {
+        av.callsign = callsign || av.callsign;
+        av.squadColor = squadColor;
+        av.isLeader = isLeader;
+        av.status = status;
+        av.labelText = labelText;
+        this._updateNameTagSprite(av.tagSprite, labelText, squadColor);
+      }
     }
   }
 
-  pruneRemoteAvatars(maxAgeMs = 4500) {
+  pruneRemoteAvatars(maxAgeMs = 12000) {
     const now = performance.now();
     for (const [id, av] of this.remoteAvatars.entries()) {
+      // Never prune active party members while they are in the party (e.g. browsing menus)
+      if (this._partyMemberIds && this._partyMemberIds.has(id)) continue;
       if (now - av.lastSeen > maxAgeMs) {
         if (av.group) this.scene.remove(av.group);
         this.remoteAvatars.delete(id);

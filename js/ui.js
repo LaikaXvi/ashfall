@@ -1365,18 +1365,45 @@ class GameUI {
       }
 
       if (msg.type === 'fob_pos') {
-        const sameParty = (msg.partyId && this.partyId && msg.partyId === this.partyId) ||
-          (Array.isArray(this.partyMembers) && this.partyMembers.some(m => m.clientId === msg.clientId));
+        const partyList = Array.isArray(this.partyMembers) ? this.partyMembers : [];
+        const member = partyList.find(m => m.clientId === msg.clientId);
+        const sameParty = (msg.partyId && this.partyId && msg.partyId === this.partyId) || !!member;
         if (sameParty && window.hideoutBunker && window.hideoutBunker.upsertRemoteAvatar) {
           window.hideoutBunker.upsertRemoteAvatar(
             msg.clientId,
-            msg.from || 'SQUAD',
+            (member && member.name) || msg.from || 'SQUAD',
             Number(msg.x) || 0,
             Number(msg.y) || 0,
             Number(msg.z) || 0,
-            Number(msg.yaw) || 0
+            Number(msg.yaw) || 0,
+            {
+              squadColor: (member && member.squadColor) || msg.squadColor || '#69f0ae',
+              isLeader: member ? !!member.isLeader : !!msg.isLeader,
+              status: (member && member.ready) ? 'READY' : (msg.status || ''),
+              inParty: true
+            }
           );
         }
+        return;
+      }
+
+      if (msg.type === 'party_full' && msg.toClientId === this._clientId) {
+        this.partyId = 'p_' + this._clientId;
+        this.partyHost = this.profile.social.callsign;
+        this.partyMembers = [{
+          clientId: this._clientId,
+          name: this.profile.social.callsign,
+          isSelf: true,
+          isLeader: true,
+          isRemoteHuman: false,
+          ready: false,
+          squadColor: '#69f0ae'
+        }];
+        this._partyReady = false;
+        this.syncFobParty(false);
+        this.renderSocial();
+        this.renderHideout();
+        this._showSocialToast(`${msg.hostName || 'Host'}'s party is full (3/3).`);
         return;
       }
 
@@ -1512,12 +1539,20 @@ class GameUI {
 
       if ((msg.type === 'party_accept' || msg.type === 'party_join_req') && isAddressedToMe) {
         if (!this.isPartyLeader()) {
-          // If someone clicked Join on a non-leader member, forward them the current party sync so they join our party!
+          // If someone clicked Join on a non-leader member, ignore (only party host manages roster & FOB)
           return;
         }
-        if (this.partyMembers.length >= 4) return;
         const joinName = (msg.from || 'OPERATOR').toUpperCase();
         const alreadyIn = this.partyMembers.some(m => m.clientId === msg.clientId || m.name.toUpperCase() === joinName);
+        if (!alreadyIn && this.partyMembers.length >= 3) {
+          this._sendSocialPacket({
+            type: 'party_full',
+            clientId: this._clientId,
+            toClientId: msg.clientId,
+            hostName: this.partyHost
+          });
+          return;
+        }
         if (!alreadyIn) {
           this.partyMembers.push({
             clientId: msg.clientId,
@@ -1533,21 +1568,23 @@ class GameUI {
         this.assignSquadColors();
         this._broadcastPartySync();
         setTimeout(() => { if (this.isPartyLeader()) this._broadcastPartySync(); }, 1100);
+        this.syncFobParty(false);
         this.renderSocial();
         this.renderHideout();
         if (this.matchmakingStage && this.matchmakingStage.active) this.matchmakingStage.refreshSquadUI(true);
-        if (!alreadyIn) this._showSocialToast(`${joinName} joined your party!`);
+        if (!alreadyIn) this._showSocialToast(`${joinName} joined your FOB (${this.partyMembers.length}/3)!`);
         return;
       }
 
       if (msg.type === 'party_sync' && msg.partyId && Array.isArray(msg.members)) {
         const includesMe = msg.members.some(m => m.clientId === this._clientId || (m.name && m.name.toUpperCase() === myName));
         if (msg.partyId !== this.partyId && !includesMe) return;
+        const prevPartyId = this.partyId;
         this.partyId = msg.partyId;
         this._partySynced = true;
         const myPrev = this.partyMembers.find(m => m.isSelf);
         this.partyHost = msg.hostName || this.partyHost;
-        this.partyMembers = msg.members.map((m) => ({
+        this.partyMembers = msg.members.slice(0, 3).map((m) => ({
           clientId: m.clientId,
           name: m.name,
           isSelf: m.clientId === this._clientId,
@@ -1563,6 +1600,7 @@ class GameUI {
           if (this.syncSettingsUI) this.syncSettingsUI();
         }
         this.assignSquadColors();
+        this.syncFobParty(prevPartyId !== this.partyId);
         this.renderSocial();
         this.renderHideout();
         if (this.matchmakingStage && this.matchmakingStage.active) this.matchmakingStage.refreshSquadUI(true);
@@ -1573,6 +1611,7 @@ class GameUI {
         const m = this.partyMembers.find(it => it.clientId === msg.clientId || it.name.toUpperCase() === (msg.from || '').toUpperCase());
         if (m) {
           m.ready = !!msg.ready;
+          this.syncFobParty(false);
           this.renderSocial();
           this.renderPreMatchLoadout();
           if (this.matchmakingStage && this.matchmakingStage.active) {
@@ -1604,6 +1643,7 @@ class GameUI {
             this._showSocialToast(`${left.name} left the party.`);
           }
           this.assignSquadColors();
+          this.syncFobParty(false);
           this.renderSocial();
           this.renderHideout();
           if (this.matchmakingStage && this.matchmakingStage.active) this.matchmakingStage.refreshSquadUI(true);
@@ -1939,6 +1979,35 @@ class GameUI {
     this.renderSocial();
   }
 
+  syncFobParty(joinedNewHost = false) {
+    if (!window.hideoutBunker || !window.hideoutBunker.syncPartyRoster) return;
+    const isHost = this.isPartyLeader();
+    const members = (this.partyMembers || []).slice(0, 3);
+    if (joinedNewHost && !isHost && window.hideoutBunker.joinHostFob) {
+      const selfIdx = Math.max(1, members.findIndex(m => m.isSelf || m.clientId === this._clientId));
+      window.hideoutBunker.joinHostFob(this.partyHost, selfIdx);
+    }
+    window.hideoutBunker.syncPartyRoster(members, this.partyHost, isHost, this._clientId);
+    // Broadcast our FOB position immediately so teammates see us at our new slot right away
+    if (members.length > 1 && this._sendSocialPacket) {
+      const selfM = members.find(m => m.isSelf || m.clientId === this._clientId);
+      const pos = window.hideoutBunker.pos;
+      this._sendSocialPacket({
+        type: 'fob_pos',
+        clientId: this._clientId,
+        from: (this.profile && this.profile.social && this.profile.social.callsign) || 'OPERATOR',
+        partyId: this.partyId || null,
+        squadColor: (selfM && selfM.squadColor) || '#69f0ae',
+        isLeader: isHost,
+        status: window.hideoutBunker.activeRoam ? '' : ((this.activeMenuTab || 'FOB').toUpperCase()),
+        x: Math.round((pos ? pos.x : 0) * 100) / 100,
+        y: Math.round((pos ? pos.y : 1.68) * 100) / 100,
+        z: Math.round((pos ? pos.z : 3.2) * 100) / 100,
+        yaw: Math.round((window.hideoutBunker.yaw || 0) * 1000) / 1000
+      });
+    }
+  }
+
   _broadcastPartySync() {
     if (!this.isPartyLeader()) return;
     this._sendSocialPacket({
@@ -2049,9 +2118,10 @@ class GameUI {
     const targetPid = this.partyId;
     setTimeout(() => { if (!this._partySynced && this.partyId === targetPid) this._sendSocialPacket({ ...acceptPkt }); }, 1400);
     setTimeout(() => { if (!this._partySynced && this.partyId === targetPid) this._sendSocialPacket({ ...acceptPkt }); }, 3000);
+    this.syncFobParty(true);
     this.renderSocial();
     this.renderHideout();
-    this._showSocialToast(`Joined ${inv.from}'s party!`);
+    this._showSocialToast(`Joined ${inv.from}'s FOB!`);
   }
 
   declinePendingPartyInvite() {
@@ -2060,8 +2130,8 @@ class GameUI {
   }
 
   inviteFriendToParty(friendName) {
-    if (this.partyMembers.length >= 4) {
-      this._showSocialToast('Party is full (4/4).');
+    if (this.partyMembers.length >= 3) {
+      this._showSocialToast('Party is full (3/3).');
       return;
     }
     if (this.partyMembers.some(m => m.name.toUpperCase() === friendName.toUpperCase())) {
@@ -2117,9 +2187,10 @@ class GameUI {
     const targetPid = this.partyId;
     setTimeout(() => { if (!this._partySynced && this.partyId === targetPid) this._sendSocialPacket({ ...joinPkt }); }, 1400);
     setTimeout(() => { if (!this._partySynced && this.partyId === targetPid) this._sendSocialPacket({ ...joinPkt }); }, 3000);
+    this.syncFobParty(true);
     this.renderSocial();
     this.renderHideout();
-    this._showSocialToast(`Joining ${peer.name}'s party...`);
+    this._showSocialToast(`Joining ${peer.name}'s FOB...`);
   }
 
   leaveParty() {
@@ -2143,6 +2214,7 @@ class GameUI {
       squadColor: '#69f0ae'
     }];
     this._partyReady = false;
+    this.syncFobParty(false);
     this.assignSquadColors();
     this.renderSocial();
     this.renderHideout();
@@ -2179,8 +2251,8 @@ class GameUI {
     const multiSquad = this.partyMembers.length > 1;
     if (partyTitle) {
       partyTitle.textContent = isOwnParty
-        ? `YOUR PARTY (${this.partyMembers.length}/4)`
-        : `${this.partyHost}'S PARTY (${this.partyMembers.length}/4)`;
+        ? `YOUR PARTY (${this.partyMembers.length}/3)`
+        : `${this.partyHost}'S PARTY (${this.partyMembers.length}/3)`;
     }
     if (leaveBtn) {
       leaveBtn.classList.toggle('hidden', isOwnParty && this.partyMembers.length <= 1);
