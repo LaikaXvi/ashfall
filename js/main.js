@@ -546,6 +546,8 @@
             }
           } else if (pkt.type === 'ground_pickup' && world && pkt.uid) {
             world.removeGroundItemByUid(pkt.uid);
+          } else if (pkt.type === 'container_open' && world && world.openContainer && pkt.id) {
+            world.openContainer(pkt.id);
           } else if (pkt.type === 'pvp_toggle') {
             window.SQUAD_PVP = !!pkt.enabled;
             if (window.SQUAD_PVP) {
@@ -1326,6 +1328,20 @@
       } else {
         ui.addFeedMessage(`LOCKED — Requires Boss Armory Key`, '#ff5252');
         return false;
+      }
+    }
+    if (c && world && world.openContainer) {
+      const newlyOpened = world.openContainer(c);
+      if (newlyOpened) {
+        if (window.soundEngine) {
+          try {
+            if (window.soundEngine.playContainerOpen) window.soundEngine.playContainerOpen(c.kind);
+            else if (window.soundEngine.playClick) window.soundEngine.playClick();
+          } catch (e) {}
+        }
+        if (mpSession && mpSession.active) {
+          mpSession.sendEvent({ type: 'container_open', id: c.id });
+        }
       }
     }
     isModalOpen = true;

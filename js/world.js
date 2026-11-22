@@ -6,7 +6,8 @@ class WastelandWorld {
     this.colliders = [];      // { minX, maxX, minY, maxY, minZ, maxZ }
     this.shootableMeshes = []; // Static geometry meshes for bullet/airstrike raycasts
     this.wallMeshes = [];      // Fast low-poly box/structure meshes ONLY (excludes high-poly terrain for 60+ FPS LOS & wall-push!)
-    this.lootContainers = []; // { id, name, mesh, position, items, searched, requiresKey }
+    this.lootContainers = []; // { id, name, mesh, position, items, searched, requiresKey, lid }
+    this._animLids = [];      // Active container lids/doors animating toward ajar angle
     this.groundItems = [];    // { id, qty, mesh, position, ringMesh } physical loose & dropped loot
     this.doors = [];          // Interactive bidirectional hinged doors (open / peek / sprint bash / close)
     this.staircases = [];     // Registered multi-floor staircases { bottomEntry, topExit, bottomY, topY } for AI pathfinding
@@ -2046,12 +2047,52 @@ class WastelandWorld {
     }
 
     const baseY = this.getTerrainHeight(x, z) + y;
-    const mesh = this._addBox(x, baseY + h / 2, z, w, h, d, mat, true);
+    const recessMat = this._materials.darkTrim || (this._materials.darkTrim = new THREE.MeshLambertMaterial({ color: 0x131614 }));
+    let mesh;
+    let lid = null;
+
+    if (kind === 'hospital' || kind === 'police_fire') {
+      // Wall/medical cabinet with recessed interior & hinged front door
+      mesh = this._addBox(x, baseY + h / 2, z - 0.02, w, h, Math.max(0.2, d - 0.04), mat, true);
+      const back = new THREE.Mesh(new THREE.BoxGeometry(w * 0.88, h * 0.80, 0.02), recessMat);
+      back.position.set(x, baseY + h / 2, z + d / 2 - 0.035);
+      this.scene.add(back);
+
+      const lidPivot = new THREE.Group();
+      lidPivot.position.set(x - w * 0.48, baseY + h * 0.5, z + d / 2 - 0.01);
+      const doorMesh = new THREE.Mesh(new THREE.BoxGeometry(w * 0.96, h * 0.88, 0.04), mat);
+      doorMesh.position.set(w * 0.48, 0, 0);
+      const handle = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.16, 0.03), recessMat);
+      handle.position.set(w * 0.88, 0, 0.025);
+      lidPivot.add(doorMesh, handle);
+      this.scene.add(lidPivot);
+      lid = { pivot: lidPivot, axis: 'y', angle: 0, target: 0, openAngle: -0.55, opened: false };
+    } else {
+      // Top-opening crate / case / vault with statically batched lower body & hinged lid
+      const bodyH = h * 0.86;
+      const lidH = h * 0.14;
+      mesh = this._addBox(x, baseY + bodyH / 2, z, w, bodyH, d, mat, true);
+      const recess = new THREE.Mesh(new THREE.BoxGeometry(w * 0.88, 0.02, d * 0.86), recessMat);
+      recess.position.set(x, baseY + bodyH + 0.005, z);
+      this.scene.add(recess);
+
+      const lidPivot = new THREE.Group();
+      lidPivot.position.set(x, baseY + bodyH, z - d / 2);
+      const lidMesh = new THREE.Mesh(new THREE.BoxGeometry(w + 0.02, lidH, d + 0.02), mat);
+      lidMesh.position.set(0, lidH * 0.5, d / 2);
+      const latch = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.06, 0.03), recessMat);
+      latch.position.set(0, lidH * 0.25, d + 0.015);
+      lidPivot.add(lidMesh, latch);
+      this.scene.add(lidPivot);
+      lid = { pivot: lidPivot, axis: 'x', angle: 0, target: 0, openAngle: -0.40, opened: false };
+    }
+
     this.lootContainers.push({
       id: 'crate_' + this.lootContainers.length,
       name,
       kind,
       mesh,
+      lid,
       position: new THREE.Vector3(x, baseY + h / 2, z),
       items,
       requiresKey: requiresKey || null,
@@ -2875,14 +2916,24 @@ class WastelandWorld {
     const packMat = new THREE.MeshLambertMaterial({ color: 0x3a2f24 });
     const strapMat = new THREE.MeshLambertMaterial({ color: 0x1c1e1d });
     const trimMat = new THREE.MeshBasicMaterial({ color: 0xffc107 });
+    const recessMat = new THREE.MeshLambertMaterial({ color: 0x121412 });
 
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.24, 0.34), packMat);
-    body.position.y = 0.12;
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.22, 0.34), packMat);
+    body.position.y = 0.11;
+    const recess = new THREE.Mesh(new THREE.BoxGeometry(0.40, 0.02, 0.28), recessMat);
+    recess.position.set(0, 0.225, 0);
     const pocket = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.14, 0.08), strapMat);
     pocket.position.set(0, 0.10, 0.20);
+
+    const lidPivot = new THREE.Group();
+    lidPivot.position.set(0, 0.22, -0.17);
+    const topFlap = new THREE.Mesh(new THREE.BoxGeometry(0.47, 0.045, 0.35), packMat);
+    topFlap.position.set(0, 0.022, 0.17);
     const tag = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.05, 0.02), trimMat);
-    tag.position.set(0, 0.25, 0);
-    g.add(body, pocket, tag);
+    tag.position.set(0, 0.05, 0.17);
+    lidPivot.add(topFlap, tag);
+
+    g.add(body, recess, pocket, lidPivot);
     this.scene.add(g);
 
     const legWpns = (GAME_DATA.LOOT_TABLES && GAME_DATA.LOOT_TABLES.boss_legendary_weapons) || ['ak74m', 'm24', 'm870'];
@@ -2905,6 +2956,7 @@ class WastelandWorld {
       name: `${bossName} Small Pack`,
       kind: 'boss',
       mesh: g,
+      lid: { pivot: lidPivot, axis: 'x', angle: 0, target: 0, openAngle: -0.52, opened: false },
       position: new THREE.Vector3(pos.x, yBase + 0.22, pos.z),
       items,
       requiresKey: null,
@@ -2925,22 +2977,33 @@ class WastelandWorld {
       ? new THREE.MeshLambertMaterial({ color: 0x2f4352 })
       : new THREE.MeshLambertMaterial({ color: 0x354231 });
     const trimMat = new THREE.MeshLambertMaterial({ color: 0x1a1e1d });
+    const recessMat = new THREE.MeshLambertMaterial({ color: 0x111412 });
     const handleMat = new THREE.MeshLambertMaterial({ color: 0xb0b8b4 });
 
-    const body = new THREE.Mesh(new THREE.BoxGeometry(1.15, 2.05, 0.62), bodyMat);
-    body.position.y = 1.025;
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.15, 2.05, 0.58), bodyMat);
+    body.position.set(0, 1.025, -0.02);
+    const recessL = new THREE.Mesh(new THREE.BoxGeometry(0.50, 1.88, 0.02), recessMat);
+    recessL.position.set(-0.28, 1.025, 0.275);
+    const doorR = new THREE.Mesh(new THREE.BoxGeometry(0.56, 2.02, 0.04), bodyMat);
+    doorR.position.set(0.28, 1.025, 0.29);
     const seam = new THREE.Mesh(new THREE.BoxGeometry(0.03, 1.95, 0.04), trimMat);
-    seam.position.set(0, 1.025, 0.31);
-    const ventL = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.16, 0.03), trimMat);
-    ventL.position.set(-0.28, 1.78, 0.31);
+    seam.position.set(0, 1.025, 0.30);
     const ventR = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.16, 0.03), trimMat);
-    ventR.position.set(0.28, 1.78, 0.31);
-    const handleL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.18, 0.06), handleMat);
-    handleL.position.set(-0.08, 1.05, 0.33);
+    ventR.position.set(0.28, 1.78, 0.312);
     const handleR = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.18, 0.06), handleMat);
     handleR.position.set(0.08, 1.05, 0.33);
 
-    g.add(body, seam, ventL, ventR, handleL, handleR);
+    const doorPivotL = new THREE.Group();
+    doorPivotL.position.set(-0.56, 1.025, 0.29);
+    const doorL = new THREE.Mesh(new THREE.BoxGeometry(0.56, 2.02, 0.04), bodyMat);
+    doorL.position.set(0.28, 0, 0);
+    const ventL = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.16, 0.03), trimMat);
+    ventL.position.set(0.28, 0.755, 0.022);
+    const handleL = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.18, 0.06), handleMat);
+    handleL.position.set(0.48, 0.025, 0.04);
+    doorPivotL.add(doorL, ventL, handleL);
+
+    g.add(body, recessL, doorR, seam, ventR, handleR, doorPivotL);
     this.scene.add(g);
 
     const w = Math.abs(Math.sin(rotY)) > 0.5 ? 0.65 : 1.15;
@@ -2959,6 +3022,7 @@ class WastelandWorld {
       name: customName,
       kind,
       mesh: g,
+      lid: { pivot: doorPivotL, axis: 'y', angle: 0, target: 0, openAngle: -0.60, opened: false },
       position: new THREE.Vector3(x, baseY + 1.15, z),
       items,
       requiresKey: null,
@@ -2974,16 +3038,24 @@ class WastelandWorld {
     g.position.set(x, baseY + 1.48, z);
     g.rotation.y = rotMap[wallSide] || 0;
 
-    const box = new THREE.Mesh(
-      new THREE.BoxGeometry(0.46, 0.42, 0.18),
-      new THREE.MeshLambertMaterial({ color: 0xe2e8e4 })
-    );
+    const kitMat = new THREE.MeshLambertMaterial({ color: 0xe2e8e4 });
+    const recessMat = new THREE.MeshLambertMaterial({ color: 0x5c1a1a });
+    const box = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.42, 0.15), kitMat);
+    box.position.z = -0.015;
+    const recess = new THREE.Mesh(new THREE.BoxGeometry(0.40, 0.36, 0.02), recessMat);
+    recess.position.z = 0.062;
+
+    const lidPivot = new THREE.Group();
+    lidPivot.position.set(0, 0.21, 0.075);
+    const frontLid = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.42, 0.03), kitMat);
+    frontLid.position.set(0, -0.21, 0);
     const crossMat = new THREE.MeshBasicMaterial({ color: 0xd93030 });
     const cH = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.07, 0.02), crossMat);
     const cV = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.22, 0.02), crossMat);
-    cH.position.z = 0.095;
-    cV.position.z = 0.095;
-    g.add(box, cH, cV);
+    cH.position.set(0, -0.21, 0.02);
+    cV.position.set(0, -0.21, 0.02);
+    lidPivot.add(frontLid, cH, cV);
+    g.add(box, recess, lidPivot);
     this.scene.add(g);
 
     const items = this._rollLoot('hospital', 2);
@@ -2996,6 +3068,7 @@ class WastelandWorld {
       name: customName,
       kind: 'hospital',
       mesh: g,
+      lid: { pivot: lidPivot, axis: 'x', angle: 0, target: 0, openAngle: -0.65, opened: false },
       position: new THREE.Vector3(x, baseY + 1.48, z),
       items,
       requiresKey: null,
@@ -3011,23 +3084,34 @@ class WastelandWorld {
     g.position.set(x, baseY + 1.52, z);
     g.rotation.y = rotMap[wallSide] || 0;
 
-    // White cabinet frame + reflective pale mirror face
-    const frame = new THREE.Mesh(
-      new THREE.BoxGeometry(0.72, 0.78, 0.18),
-      new THREE.MeshLambertMaterial({ color: 0xd8deda })
+    // White cabinet frame + recessed dark interior + hinged mirror door
+    const frameMat = new THREE.MeshLambertMaterial({ color: 0xd8deda });
+    const frame = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.78, 0.15), frameMat);
+    frame.position.z = -0.015;
+    const recess = new THREE.Mesh(
+      new THREE.BoxGeometry(0.60, 0.66, 0.02),
+      new THREE.MeshLambertMaterial({ color: 0x1b2226 })
     );
+    recess.position.z = 0.062;
+
+    const lidPivot = new THREE.Group();
+    lidPivot.position.set(-0.31, 0, 0.08);
+    const doorBacking = new THREE.Mesh(new THREE.BoxGeometry(0.64, 0.70, 0.025), frameMat);
+    doorBacking.position.set(0.31, 0, 0);
     const mirror = new THREE.Mesh(
       new THREE.BoxGeometry(0.60, 0.66, 0.02),
       new THREE.MeshLambertMaterial({ color: 0x8fb0bf })
     );
-    mirror.position.z = 0.09;
+    mirror.position.set(0.31, 0, 0.015);
+    lidPivot.add(doorBacking, mirror);
+
     // Sink vanity below cabinet
     const sink = new THREE.Mesh(
       new THREE.BoxGeometry(0.76, 0.16, 0.44),
       new THREE.MeshLambertMaterial({ color: 0xcfd4d0 })
     );
     sink.position.set(0, -0.68, 0.16);
-    g.add(frame, mirror, sink);
+    g.add(frame, recess, lidPivot, sink);
     this.scene.add(g);
 
     const items = this._rollLoot('hospital', 2);
@@ -3039,6 +3123,7 @@ class WastelandWorld {
       name: customName,
       kind: 'hospital',
       mesh: g,
+      lid: { pivot: lidPivot, axis: 'y', angle: 0, target: 0, openAngle: -0.68, opened: false },
       position: new THREE.Vector3(x, baseY + 1.52, z),
       items,
       requiresKey: null,
@@ -3175,7 +3260,38 @@ class WastelandWorld {
     }
   }
 
+  openContainer(cOrId) {
+    const c = (typeof cOrId === 'string')
+      ? this.lootContainers.find(x => x.id === cOrId)
+      : cOrId;
+    if (!c || !c.lid) return false;
+    c.opened = true;
+    const lid = c.lid;
+    if (lid.opened) return false;
+    lid.opened = true;
+    lid.target = lid.openAngle;
+    if (!this._animLids.includes(lid)) {
+      this._animLids.push(lid);
+    }
+    return true;
+  }
+
   update(dt, time, playerPos = null) {
+    // Animate container lids / doors swinging slightly ajar when looted
+    if (this._animLids && this._animLids.length > 0) {
+      for (let i = this._animLids.length - 1; i >= 0; i--) {
+        const lid = this._animLids[i];
+        const diff = lid.target - lid.angle;
+        if (Math.abs(diff) < 0.005) {
+          lid.angle = lid.target;
+          lid.pivot.rotation[lid.axis] = lid.angle;
+          this._animLids.splice(i, 1);
+        } else {
+          lid.angle += diff * Math.min(1, dt * 7.5);
+          lid.pivot.rotation[lid.axis] = lid.angle;
+        }
+      }
+    }
     // Keep procedural skybox dome centered on player & animate drifting clouds
     if (this.skyDome) {
       if (playerPos) {
