@@ -78,7 +78,7 @@
         try {
           const loader = new THREE.GLTFLoader();
           loader.load(
-            'assets/models/characters/soldier.glb',
+            'assets/models/characters/tactical_soldier.glb',
             (gltf) => {
               if (settled) return;
               if (!gltf || !gltf.scene) {
@@ -132,14 +132,15 @@
         if (!obj.isMesh) return;
         const n = normName(obj.name);
         if (n.includes('visor')) visor = obj;
-        else if (n.includes('vanguardmesh') || obj.isSkinnedMesh) {
-          if (!body || n.includes('vanguardmesh')) body = obj;
+        else if (n.includes('tacticalsoldiermesh') || n.includes('vanguardmesh') || obj.isSkinnedMesh) {
+          if (!body || n.includes('tacticalsoldiermesh') || n.includes('vanguardmesh')) body = obj;
         }
 
         const makeLambert = (orig) => {
           if (!orig) return new THREE.MeshLambertMaterial({ color: 0xffffff, skinning: true });
           if (orig.map) {
             orig.map.magFilter = THREE.NearestFilter;
+            orig.map.encoding = THREE.LinearEncoding;
             orig.map.needsUpdate = true;
           }
           const col = orig.map
@@ -346,11 +347,11 @@
 
   const ARCHETYPE_TINTS = {
     operator: 0xffffff,
-    scavenger: 0xc9b38f,
-    raider: 0xbdb59b,
-    heavy: 0x8c9096,
-    boss: 0x8c9096,
-    boss_guard: 0x8c9096
+    scavenger: 0xd8c8a8,
+    raider: 0xc8c0a6,
+    heavy: 0x90969e,
+    boss: 0x8a8f96,
+    boss_guard: 0x969aa2
   };
 
   class RiggedCharacter {
@@ -553,24 +554,28 @@
       const stance = s.stance || 'stand';
       const cDt = Math.min(Math.max(dt || 0.016, 0), 0.1);
 
-      // 1. Update Mixamo locomotion blend weights & speed-matched timeScales
-      const wRun = smoothstepRange(2.6, 4.0, speed);
-      const wWalk = smoothstepRange(0.3, 1.0, speed) * (1 - wRun);
-      const wIdle = Math.max(0, 1 - wWalk - wRun);
-      if (this.actions.idle) this.actions.idle.setEffectiveWeight(wIdle);
-      if (this.actions.walk) {
-        this.actions.walk.setEffectiveWeight(wWalk);
-        this.actions.walk.timeScale = THREE.MathUtils.clamp(speed / 1.5, 0.6, 1.6);
-      }
-      if (this.actions.run) {
-        this.actions.run.setEffectiveWeight(wRun);
-        this.actions.run.timeScale = THREE.MathUtils.clamp(speed / 4.0, 0.7, 1.5);
-      }
-      this.mixer.update(cDt);
+      // 1. Update Mixamo locomotion blend weights (freeze & disable mocap immediately when dead so ragdoll drives every bone)
+      if (s.dead) {
+        this.mocapW = 0;
+      } else {
+        const wRun = smoothstepRange(2.6, 4.0, speed);
+        const wWalk = smoothstepRange(0.3, 1.0, speed) * (1 - wRun);
+        const wIdle = Math.max(0, 1 - wWalk - wRun);
+        if (this.actions.idle) this.actions.idle.setEffectiveWeight(wIdle);
+        if (this.actions.walk) {
+          this.actions.walk.setEffectiveWeight(wWalk);
+          this.actions.walk.timeScale = THREE.MathUtils.clamp(speed / 1.5, 0.6, 1.6);
+        }
+        if (this.actions.run) {
+          this.actions.run.setEffectiveWeight(wRun);
+          this.actions.run.timeScale = THREE.MathUtils.clamp(speed / 4.0, 0.7, 1.5);
+        }
+        this.mixer.update(cDt);
 
-      // 2. Smooth mocapWeight (1 when standing/walking/running; 0 for crouch/prone/slide/downed/dead/stanceTrans)
-      const useMocap = !s.dead && !s.isDowned && !s.isSliding && stance === 'stand' && !s.stanceTrans;
-      this.mocapW = THREE.MathUtils.lerp(this.mocapW, useMocap ? 1 : 0, Math.min(1, cDt * 6));
+        // 2. Smooth mocapWeight (1 when standing/walking/running; 0 for crouch/prone/slide/downed/dead/stanceTrans)
+        const useMocap = !s.isDowned && !s.isSliding && stance === 'stand' && !s.stanceTrans;
+        this.mocapW = THREE.MathUtils.lerp(this.mocapW, useMocap ? 1 : 0, Math.min(1, cDt * 6));
+      }
       const mw = this.mocapW;
 
       // 3. Measure mocap hips height & save mocap local transforms before proxy override
@@ -822,13 +827,19 @@
       });
 
       const vCount = skinIdx.count;
+      const idxArr = skinIdx.array;
+      const wtArr = skinWt.array;
+      const idxStride = skinIdx.itemSize || 4;
+      const wtStride = skinWt.itemSize || 4;
       const armSideArr = new Float32Array(vCount);
       for (let i = 0; i < vCount; i++) {
         let lSum = 0;
         let rSum = 0;
+        const iBase = i * idxStride;
+        const wBase = i * wtStride;
         for (let k = 0; k < 4; k++) {
-          const bi = skinIdx.getComponent(i, k) | 0;
-          const wt = skinWt.getComponent(i, k);
+          const bi = idxArr[iBase + k] | 0;
+          const wt = wtArr[wBase + k];
           const bs = boneSide[bi] || 0;
           if (bs === 1) lSum += wt;
           else if (bs === 2) rSum += wt;
@@ -842,7 +853,10 @@
       const fpMat = new THREE.MeshLambertMaterial({
         map: (origMat && origMat.map) || null,
         color: 0xffffff,
-        skinning: true
+        skinning: true,
+        fog: false,
+        depthTest: true,
+        side: THREE.FrontSide
       });
       fpMat.onBeforeCompile = (shader) => {
         shader.uniforms.uShowL = this._uShowL;

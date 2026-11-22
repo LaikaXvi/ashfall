@@ -374,6 +374,29 @@ class GunsmithController {
     }
   }
 
+  _syncLoadoutSlotMods(weaponId, mods) {
+    const L = this.ui && this.ui.profile && this.ui.profile.loadout;
+    if (!L || !weaponId) return;
+    const clean = (window.GAME_DATA && GAME_DATA.normalizeWeaponMods)
+      ? GAME_DATA.normalizeWeaponMods(mods)
+      : { ...(mods || {}) };
+    const rar = (window.GAME_DATA && GAME_DATA.resolveWeaponRarity)
+      ? GAME_DATA.resolveWeaponRarity(weaponId, clean)
+      : 'common';
+    if (L.primary === weaponId) {
+      L.primaryMods = { ...clean };
+      L.primaryRarity = rar;
+    }
+    if (L.secondary === weaponId) {
+      L.secondaryMods = { ...clean };
+      L.secondaryRarity = rar;
+    }
+    if (L.backpackWeapon === weaponId) {
+      L.backpackWeaponMods = { ...clean };
+      L.backpackWeaponRarity = rar;
+    }
+  }
+
   _appendModCard(list, slotKey, item, isEquipped, unlocked, mods, onDone) {
     const isOwned = item.price === 0 || window.DEV_MODE || unlocked.includes(`${slotKey}:${item.id}`);
     const card = document.createElement('div');
@@ -394,6 +417,7 @@ class GunsmithController {
       btn.textContent = 'EQUIP';
       btn.addEventListener('click', () => {
         mods[slotKey] = item.id;
+        this._syncLoadoutSlotMods(this.activeWeaponId, mods);
         this.ui.saveProfile();
         this.rebuildModel();
         onDone();
@@ -406,6 +430,7 @@ class GunsmithController {
         this.ui.profile.credits -= item.price;
         unlocked.push(`${slotKey}:${item.id}`);
         mods[slotKey] = item.id;
+        this._syncLoadoutSlotMods(this.activeWeaponId, mods);
         this.ui.saveProfile();
         this.rebuildModel();
         onDone();

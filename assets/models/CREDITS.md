@@ -1,10 +1,8 @@
 # 3D Model & Rig Credits
 
 ## Character Models & Motion Capture
-- **Vanguard Soldier (`assets/models/characters/soldier.glb`)**
-  - Source: [Three.js r128 examples (`Soldier.glb`)](https://github.com/mrdoob/three.js/blob/r128/examples/models/gltf/Soldier.glb)
-  - Origin: Adobe Mixamo "Vanguard" character & motion-capture animation clips (`Idle`, `Walk`, `Run`, `TPose`).
-  - License: Three.js examples MIT / Mixamo royalty-free game usage.
+- **Tactical Operator (`assets/models/characters/tactical_soldier.glb`)**
+  - Custom procedural PS2/MW2-styled modern tactical soldier mesh & 512×512 grit atlas (FAST helmet, PVS-31 NVGs, ComTac headset, plate carrier with mag pouches, BDU camo, gloves, combat boots) rigged to the 49-bone Mixamo skeleton & clips (`Idle`, `Walk`, `Run`, `TPose`) from Three.js r128 `Soldier.glb` (`assets/models/characters/soldier.glb`, MIT / Mixamo royalty-free game usage).
 
 ## Vendor Loaders
 - **GLTFLoader & SkeletonUtils (`js/vendor/GLTFLoader.js`, `js/vendor/SkeletonUtils.js`)**

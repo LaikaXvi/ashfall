@@ -567,6 +567,12 @@ class Enemy {
     this.justDowned = false;
     this.lastHitArmor = false;
     this.justBrokeArmor = false;
+    if (attackerPos) {
+      const hdx = this.position.x - attackerPos.x;
+      const hdz = this.position.z - attackerPos.z;
+      const hl = Math.hypot(hdx, hdz);
+      if (hl > 1e-4) this._lastHitDir = { x: hdx / hl, z: hdz / hl };
+    }
 
     if (this.isDowned) {
       if (attackerInfo) this.downedBy = attackerInfo;
@@ -661,20 +667,70 @@ class Enemy {
     this.state = 'DEAD';
     if (this.alertSprite) this.alertSprite.visible = false;
     if (this.bleedSprite) this.bleedSprite.visible = false;
-    this.group.rotation.x = -Math.PI / 2;
+
     const gyDead = this._getGroundY();
     this.position.y = gyDead;
-    this.group.position.y = gyDead + 0.16;
-    // Reset limbs flat so corpses never have legs sticking up in the air from a downed pose!
-    if (this.leftHip) this.leftHip.rotation.set(0, 0, -0.06);
-    if (this.rightHip) this.rightHip.rotation.set(0, 0, 0.06);
-    if (this.leftArm) this.leftArm.rotation.set(0, 0, 0.28);
-    if (this.rightArm) this.rightArm.rotation.set(0, 0, -0.28);
 
-    // Scavengers, Raiders, and Bosses physically drop their gun in-hand + occasional plates/ammo (up to 60) + Boss Small Pack!
-    if (!this.isOperator && this.world && this.world.spawnGroundItem) {
+    if (this.opModel) {
+      const yaw = (this.group && this.group.rotation.y) || 0;
+      const hd = this._lastHitDir || { x: -Math.sin(yaw), z: -Math.cos(yaw) };
+      const fwdDot = hd.x * Math.sin(yaw) + hd.z * Math.cos(yaw);
+      const fallBack = fwdDot <= 0;
+      const tgtPitch = fallBack ? (Math.PI * 0.5) : (-Math.PI * 0.5);
+      const sgn = fallBack ? 1 : -1;
+
+      this.ragdoll = {
+        elapsed: 0,
+        settled: false,
+        bounced: false,
+        groundY: gyDead,
+        vx: hd.x * 3.4,
+        vy: 1.35,
+        vz: hd.z * 3.4,
+        targetPitch: tgtPitch,
+        pitch: 0,
+        vPitch: sgn * 5.2,
+        roll: 0,
+        vRoll: (Math.random() - 0.5) * 4.2,
+        yawSpin: 0,
+        vYawSpin: (Math.random() - 0.5) * 3.4,
+        j: {
+          spine:  { a: 0,     v: -sgn * 3.5,                  t: sgn * 0.08,                      min: -0.60, max: 0.60, k: 22, d: 7.0 },
+          head:   { a: 0,     v: -sgn * 6.5,                  t: -sgn * 0.16,                     min: -0.85, max: 0.75, k: 28, d: 8.0 },
+          lHipX:  { a: 0.10,  v: (Math.random() - 0.5) * 5.0, t: fallBack ? 0.24 : -0.06,         min: -1.10, max: 0.90, k: 18, d: 6.5 },
+          rHipX:  { a: -0.10, v: (Math.random() - 0.5) * 5.0, t: fallBack ? 0.18 : -0.10,         min: -1.10, max: 0.90, k: 18, d: 6.5 },
+          lHipZ:  { a: -0.06, v: -1.2 - Math.random() * 1.4,  t: -0.18 - Math.random() * 0.18,    min: -0.55, max: 0.05, k: 16, d: 6.0 },
+          rHipZ:  { a: 0.06,  v: 1.2 + Math.random() * 1.4,   t: 0.18 + Math.random() * 0.18,     min: -0.05, max: 0.55, k: 16, d: 6.0 },
+          lKneeX: { a: -0.22, v: -3.2 - Math.random() * 2.8,  t: -0.18 - Math.random() * 0.42,    min: -1.65, max: -0.04, k: 20, d: 7.0 },
+          rKneeX: { a: -0.22, v: -3.2 - Math.random() * 2.8,  t: -0.18 - Math.random() * 0.42,    min: -1.65, max: -0.04, k: 20, d: 7.0 },
+          lShX:   { a: 0.15,  v: (Math.random() - 0.3) * 5.0, t: (Math.random() - 0.3) * 0.65,    min: -1.20, max: 1.40, k: 16, d: 6.0 },
+          rShX:   { a: 0.15,  v: (Math.random() - 0.3) * 5.0, t: (Math.random() - 0.3) * 0.65,    min: -1.20, max: 1.40, k: 16, d: 6.0 },
+          lShZ:   { a: 0.40,  v: 2.0 + Math.random() * 2.4,   t: 0.55 + Math.random() * 0.45,     min: 0.15,  max: 1.35, k: 18, d: 6.5 },
+          rShZ:   { a: -0.40, v: -2.0 - Math.random() * 2.4,  t: -0.55 - Math.random() * 0.45,    min: -1.35, max: -0.15, k: 18, d: 6.5 },
+          lElbX:  { a: 0.45,  v: 2.8 + Math.random() * 2.8,   t: 0.35 + Math.random() * 0.65,     min: 0.08,  max: 1.75, k: 18, d: 6.5 },
+          rElbX:  { a: 0.45,  v: 2.8 + Math.random() * 2.8,   t: 0.35 + Math.random() * 0.65,     min: 0.08,  max: 1.75, k: 18, d: 6.5 }
+        }
+      };
+      this.opModel._animState = { speed: 0, stance: 'dead', dead: true, isDowned: false };
+      this._stepRagdoll(0.016);
+    } else {
+      this.group.rotation.x = -Math.PI / 2;
+      this.group.position.y = gyDead + 0.16;
+      if (this.leftHip) this.leftHip.rotation.set(0, 0, -0.06);
+      if (this.rightHip) this.rightHip.rotation.set(0, 0, 0.06);
+      if (this.leftArm) this.leftArm.rotation.set(0, 0, 0.28);
+      if (this.rightArm) this.rightArm.rotation.set(0, 0, -0.28);
+    }
+
+    // Scavengers, Raiders, and Bosses physically drop their gun in-hand + occasional plates/ammo + Boss Pack (Host only in multiplayer!)
+    if (!this.isOperator && !this.isRemoteReplicated && this.world && this.world.spawnGroundItem) {
       if (this.weaponMeshGroup) this.weaponMeshGroup.visible = false;
       const dropNear = (ox, oz) => new THREE.Vector3(this.position.x + ox, 0.02, this.position.z + oz);
+      const emitHostDrop = (gi) => {
+        if (gi && typeof window.onHostSpawnGroundItem === 'function') {
+          window.onHostSpawnGroundItem(gi);
+        }
+      };
 
       // 1. Always drop the gun they were holding (with randomized attachments matching its tier rarity)
       if (this.weaponId && GAME_DATA.ITEMS[this.weaponId]) {
@@ -682,29 +738,147 @@ class Enemy {
         const rolled = GAME_DATA.rollRandomAttachmentsForRarity
           ? GAME_DATA.rollRandomAttachmentsForRarity(this.weaponId, dropRar)
           : { mods: {}, rarity: dropRar };
-        this.world.spawnGroundItem(this.weaponId, 1, dropNear(0.45, 0.25), {
+        emitHostDrop(this.world.spawnGroundItem(this.weaponId, 1, dropNear(0.45, 0.25), {
           mods: rolled.mods,
           rarityOverride: rolled.rarity
-        });
+        }));
       }
       // 2. Occasionally drop 1-2 armor plates
       const plateChance = this.tier === 'boss' ? 0.90 : (this.tier === 'boss_guard' ? 0.85 : (this.tier === 'raider' ? 0.55 : 0.35));
       if (Math.random() < plateChance) {
         const plateQty = 1 + (Math.random() < 0.45 ? 1 : 0);
-        this.world.spawnGroundItem('armor_plate', plateQty, dropNear(-0.45, 0.35));
+        emitHostDrop(this.world.spawnGroundItem('armor_plate', plateQty, dropNear(-0.45, 0.35)));
       }
       // 3. Occasionally drop ammo stack matching their gun (up to 60 rounds)
       const wDef = GAME_DATA.ITEMS[this.weaponId];
       const ammoChance = this.tier === 'boss' ? 0.95 : 0.65;
       if (wDef && wDef.ammoType && Math.random() < ammoChance) {
         const cap = wDef.ammoType === 'ammo_12g' ? 20 : (wDef.ammoType === 'ammo_762' ? 30 : 60);
-        const qty = Math.min(cap, 15 + Math.floor(Math.random() * 46)); // up to 60 rounds
-        this.world.spawnGroundItem(wDef.ammoType, qty, dropNear(0.15, -0.50));
+        const qty = Math.min(cap, 15 + Math.floor(Math.random() * 46));
+        emitHostDrop(this.world.spawnGroundItem(wDef.ammoType, qty, dropNear(0.15, -0.50)));
       }
       // 4. Boss drops a lootable Small Pack containing rare valuables, a legendary weapon & Boss Key!
       if (this.tier === 'boss' && this.world.spawnBossPack) {
         this.world.spawnBossPack(dropNear(-0.65, -0.35), this.name);
       }
+    } else if (!this.isOperator && this.weaponMeshGroup) {
+      this.weaponMeshGroup.visible = false;
+    }
+  }
+
+  _stepRagdoll(dt) {
+    const rd = this.ragdoll;
+    const r = this.opModel;
+    if (!rd || rd.settled || !r) return;
+    const cDt = Math.min(Math.max(dt || 0.016, 0.001), 0.04);
+    rd.elapsed += cDt;
+
+    // 1. Horizontal knockback slide & vertical terrain settle
+    const nx = this.position.x + rd.vx * cDt;
+    const nz = this.position.z + rd.vz * cDt;
+    if (!this._collides(nx, this.position.z, 0.42)) {
+      this.position.x = nx;
+    } else {
+      rd.vx *= -0.35;
+    }
+    if (!this._collides(this.position.x, nz, 0.42)) {
+      this.position.z = nz;
+    } else {
+      rd.vz *= -0.35;
+    }
+    const gy = this._getGroundY(this.position.x, this.position.z);
+    rd.groundY = gy;
+    rd.vy -= 18.0 * cDt;
+    this.position.y += rd.vy * cDt;
+    if (this.position.y <= gy) {
+      this.position.y = gy;
+      if (rd.vy < -1.2) rd.vy = -rd.vy * 0.18;
+      else rd.vy = 0;
+    }
+    const linFriction = Math.exp(-8.5 * cDt);
+    rd.vx *= linFriction;
+    rd.vz *= linFriction;
+
+    if (this.group) {
+      this.group.position.set(this.position.x, this.position.y, this.position.z);
+      this.group.rotation.x = 0;
+      this.group.rotation.z = 0;
+    }
+
+    // 2. Angular gravity torque collapsing body toward flat ground rest pose
+    const sgn = rd.targetPitch >= 0 ? 1 : -1;
+    const gravTorque = Math.sin(rd.pitch) * 26.0 + sgn * 12.0 * (1.0 - Math.min(1, Math.abs(rd.pitch) / (Math.PI * 0.5)));
+    rd.vPitch = (rd.vPitch + gravTorque * cDt) * Math.exp(-2.6 * cDt);
+    rd.pitch += rd.vPitch * cDt;
+
+    // Ground impact bounce when chest/back slaps the dirt
+    if (Math.abs(rd.pitch) >= Math.PI * 0.5) {
+      rd.pitch = sgn * Math.PI * 0.5;
+      if (!rd.bounced && Math.abs(rd.vPitch) > 1.0) {
+        rd.bounced = true;
+        rd.vPitch = -rd.vPitch * 0.22;
+        rd.j.head.v += -sgn * 4.0;
+        rd.j.lElbX.v += 4.5;
+        rd.j.rElbX.v += 4.5;
+        rd.j.lKneeX.v -= 3.5;
+        rd.j.rKneeX.v -= 3.5;
+      } else {
+        rd.vPitch = 0;
+      }
+    }
+
+    rd.vRoll *= Math.exp(-5.0 * cDt);
+    rd.roll = THREE.MathUtils.clamp(rd.roll + rd.vRoll * cDt, -0.45, 0.45);
+    rd.vYawSpin *= Math.exp(-5.5 * cDt);
+    rd.yawSpin = THREE.MathUtils.clamp(rd.yawSpin + rd.vYawSpin * cDt, -0.55, 0.55);
+
+    // 3. Per-joint damped spring-pendulum physics with anatomical limits
+    let maxVel = Math.abs(rd.vPitch) + Math.abs(rd.vRoll);
+    const jKeys = Object.keys(rd.j);
+    for (let i = 0; i < jKeys.length; i++) {
+      const jt = rd.j[jKeys[i]];
+      const acc = (jt.t - jt.a) * jt.k;
+      jt.v = (jt.v + acc * cDt) * Math.exp(-jt.d * cDt);
+      jt.a += jt.v * cDt;
+      if (jt.a < jt.min) {
+        jt.a = jt.min;
+        if (jt.v < 0) jt.v = -jt.v * 0.2;
+      } else if (jt.a > jt.max) {
+        jt.a = jt.max;
+        if (jt.v > 0) jt.v = -jt.v * 0.2;
+      }
+      maxVel += Math.abs(jt.v);
+    }
+
+    // 4. Write articulated ragdoll pose to proxy rig for RiggedCharacter & fallback boxes
+    const fallFrac = Math.min(1, Math.abs(rd.pitch) / (Math.PI * 0.5));
+    r.rigPivot.position.y = THREE.MathUtils.lerp(0.0, 0.14, fallFrac);
+    r.rigPivot.rotation.x = rd.pitch;
+    r.rigPivot.rotation.z = rd.roll;
+    r.rigPivot.rotation.y = rd.yawSpin;
+    r.pelvis.position.y = THREE.MathUtils.lerp(0.90, 0.20, fallFrac);
+    r.pelvis.rotation.set(0, 0, 0);
+    r.spine.rotation.set(rd.j.spine.a * 0.5, 0, 0);
+    r.torso.rotation.set(rd.j.spine.a * 0.5, 0, 0);
+    r.neck.rotation.set(rd.j.head.a * 0.35, 0, 0);
+    r.head.rotation.set(rd.j.head.a * 0.65, 0, 0);
+
+    r.leftLeg.hip.rotation.set(rd.j.lHipX.a, 0, rd.j.lHipZ.a);
+    r.leftLeg.knee.rotation.x = rd.j.lKneeX.a;
+    r.leftLeg.ankle.rotation.x = 0.22;
+    r.rightLeg.hip.rotation.set(rd.j.rHipX.a, 0, rd.j.rHipZ.a);
+    r.rightLeg.knee.rotation.x = rd.j.rKneeX.a;
+    r.rightLeg.ankle.rotation.x = 0.22;
+
+    r.leftArm.shoulder.rotation.set(rd.j.lShX.a, 0, rd.j.lShZ.a);
+    r.leftArm.elbow.rotation.x = rd.j.lElbX.a;
+    r.rightArm.shoulder.rotation.set(rd.j.rShX.a, 0, rd.j.rShZ.a);
+    r.rightArm.elbow.rotation.x = rd.j.rElbX.a;
+
+    r._animState = { speed: 0, stance: 'dead', dead: true, isDowned: false };
+
+    if (rd.elapsed >= 1.8 && Math.hypot(rd.vx, rd.vz) < 0.04 && maxVel < 0.08 && Math.abs(rd.pitch - rd.targetPitch) < 0.03) {
+      rd.settled = true;
     }
   }
 
@@ -1230,6 +1404,7 @@ class Enemy {
     if (this.dead && !allowDead) return;
     this.dead = false;
     this.isDowned = false;
+    this.ragdoll = null;
     this.hp = Math.min(this.maxHp, hpRestore);
     this.downedHp = 55;
     this.downedBleedTimer = this.downedBleedMax;
@@ -1240,6 +1415,11 @@ class Enemy {
     this.group.position.y = gy;
     this.group.rotation.x = 0;
     this.group.rotation.z = 0;
+    if (this.opModel && this.opModel.rigPivot) {
+      this.opModel.rigPivot.position.set(0, 0, 0);
+      this.opModel.rigPivot.rotation.set(0, 0, 0);
+      this.opModel._animState = { speed: 0, stance: 'stand', dead: false, isDowned: false };
+    }
     if (this.weaponMeshGroup) this.weaponMeshGroup.visible = true;
     if (this.bleedSprite) this.bleedSprite.visible = false;
     this.state = 'ALERT';
@@ -1735,6 +1915,9 @@ class Enemy {
     }
     if (this.extracted) return;
     if (this.dead) {
+      if (this.ragdoll && !this.ragdoll.settled) {
+        this._stepRagdoll(dt);
+      }
       // Non-operator bodies despawn after 60s to save resources
       if (!this.isOperator && !this.removed) {
         this.deathTimer = (this.deathTimer || 0) + dt;
@@ -2623,7 +2806,11 @@ class EnemyManager {
       const e = this.enemies[i];
       if (!e) continue;
       if (e.dead) {
-        // Dead bodies only need occasional fade/settle ticks
+        if (e.ragdoll && !e.ragdoll.settled) {
+          e.update(dt, player, onEnemyFire, onEnemyBleedout, this.enemies, null, onAiVsAiEvent);
+          continue;
+        }
+        // Settled dead bodies only need occasional fade/despawn ticks
         if ((i + f) % 6 !== 0) continue;
         e.update(dt * 6, player, onEnemyFire, onEnemyBleedout, this.enemies, null, onAiVsAiEvent);
         continue;

@@ -69,21 +69,30 @@ class ItemIconRenderer {
   getIcon(itemId, opts = {}) {
     const def = (window.GAME_DATA && GAME_DATA.ITEMS && GAME_DATA.ITEMS[itemId]) || null;
     const wide = !!opts.wide;
-    const mods = opts.mods || {};
-    const modsKey = opts.mods ? JSON.stringify(opts.mods) : '';
+    const rawMods = opts.mods || {};
+    const mods = (window.GAME_DATA && GAME_DATA.normalizeWeaponMods)
+      ? GAME_DATA.normalizeWeaponMods(rawMods)
+      : (() => {
+          const clean = {};
+          ['optic', 'muzzle', 'underbarrel', 'magazine', 'stock'].forEach((k) => {
+            if (rawMods[k] && rawMods[k] !== 'none') clean[k] = rawMods[k];
+          });
+          return clean;
+        })();
+    const modsKey = Object.keys(mods).length ? JSON.stringify(mods) : '';
     const cacheKey = `${itemId}|${wide ? 'W' : 'S'}|${modsKey}`;
     if (this.cache[cacheKey]) return this.cache[cacheKey];
 
-    if (!this.renderer) {
-      if (def && def.type === 'weapon') {
-        const url2d = this._render2DWeaponIcon(itemId, mods, wide);
-        if (url2d) {
-          this.cache[cacheKey] = url2d;
-          return url2d;
-        }
+    // Primary path for weapons: crisp 2D side-profile vector icon with highlighted equipped attachments
+    if (def && def.type === 'weapon') {
+      const url2d = this._render2DWeaponIcon(itemId, mods, wide);
+      if (url2d) {
+        this.cache[cacheKey] = url2d;
+        return url2d;
       }
-      return '';
     }
+
+    if (!this.renderer) return '';
 
     const w = wide ? 304 : 144;
     const h = 144;
@@ -96,16 +105,7 @@ class ItemIconRenderer {
     }
 
     const mesh = this._buildItemMesh(itemId, mods);
-    if (!mesh) {
-      if (def && def.type === 'weapon') {
-        const url2d = this._render2DWeaponIcon(itemId, mods, wide);
-        if (url2d) {
-          this.cache[cacheKey] = url2d;
-          return url2d;
-        }
-      }
-      return '';
-    }
+    if (!mesh) return '';
     this.stage.add(mesh);
 
     // Auto-frame bounding box cleanly inside icon viewport
@@ -122,12 +122,12 @@ class ItemIconRenderer {
     const fovRad = (this.camera.fov * Math.PI) / 180;
     const distV = (maxDimY * 0.5) / Math.tan(fovRad * 0.5);
     const distH = (maxDimX * 0.5) / (Math.tan(fovRad * 0.5) * this.camera.aspect);
-    const padMult = 1.04;
+    const padMult = (def && def.type === 'armor') ? 1.18 : 1.04;
     const dist = Math.max(distV, distH) * padMult + size.z * (wide ? 0.38 : 0.55);
-    const isWeapon = !!(def && def.type === 'weapon');
+    const camYOff = (def && def.type === 'armor') ? -size.y * 0.09 : 0;
 
-    this.camera.position.set(0, isWeapon ? dist * 0.08 : 0, Math.max(0.32, dist));
-    this.camera.lookAt(0, 0, 0);
+    this.camera.position.set(0, camYOff, Math.max(0.32, dist));
+    this.camera.lookAt(0, camYOff * 0.6, 0);
 
     this.renderer.render(this.scene, this.camera);
     const dataUrl = this.canvas.toDataURL('image/png');
@@ -671,39 +671,113 @@ class ItemIconRenderer {
       return g;
     }
 
-    // 3. ARMOR VESTS (Front-facing studio plate-carrier silhouette matching reference!)
+    // 3. ARMOR VESTS (Sculpted front-facing tactical Plate Carrier matching reference screenshot!)
     if (def && def.type === 'armor') {
       const colMap = {
-        vest_1plate: 0xd8c39e,       // tactical desert tan
-        vest_2plate: 0x7a8376,       // ranger olive-grey
-        vest_2plate_gel: 0x526d88,   // tactical slate-blue
-        vest_2plate_helmet: 0x625a70,// heavy tactical charcoal-violet
-        vest_3plate: 0x8f3636        // crimson heavy plate carrier
+        vest_1plate: 0xdcc8a2,        // tactical desert tan
+        vest_2plate: 0x9fa89a,        // ranger olive-grey (reference carrier color)
+        vest_2plate_gel: 0x5d7c98,    // tactical slate-blue
+        vest_2plate_helmet: 0x6c657c, // heavy tactical charcoal-violet
+        vest_3plate: 0x873b3b         // heavy crimson plate carrier
       };
-      const baseMat = this._mat(colMap[id] || 0x7a8376, 0x000000, 22, 0x3a4044);
-      const pouchMat = this._mat(0x3a403c, 0x000000, 18, 0x2c3034);
-      const trimMat = this._mat(id === 'vest_3plate' ? 0xff5c5c : (id === 'vest_2plate_gel' ? 0x64c8ff : 0xb8c2ba));
-      const torso = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.54, 0.18), baseMat);
-      const cumbL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.24, 0.14), baseMat);
-      cumbL.position.set(-0.27, -0.10, 0);
-      const cumbR = cumbL.clone(); cumbR.position.x = 0.27;
-      const strapL = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.17, 0.18), baseMat);
-      strapL.position.set(-0.15, 0.32, 0);
-      const strapR = strapL.clone(); strapR.position.x = 0.15;
-      for (let i = -1; i <= 1; i++) {
-        const p = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.17, 0.06), pouchMat);
-        p.position.set(i * 0.135, -0.11, 0.11);
-        g.add(p);
+      const baseCol = colMap[id] || 0x9fa89a;
+      const darkCol = new THREE.Color(baseCol).multiplyScalar(0.64).getHex();
+      const slitCol = 0x262928;
+      const strapCol = 0x525750;
+      const baseMat = this._mat(baseCol, 0x000000, 18, 0x353b38);
+      const shadeMat = this._mat(darkCol, 0x000000, 16, 0x282d2b);
+      const slitMat = this._mat(slitCol, 0x000000, 12, 0x202424);
+      const strapMat = this._mat(strapCol, 0x000000, 20, 0x363a38);
+      const trimMat = this._mat(id === 'vest_3plate' ? 0xd94b4b : (id === 'vest_2plate_gel' ? 0x5fb8f0 : darkCol), 0x000000, 22);
+
+      // Chamfered front SAPI plate bag
+      const frontShape = new THREE.Shape();
+      frontShape.moveTo(-0.20, -0.22);
+      frontShape.lineTo(0.20, -0.22);
+      frontShape.lineTo(0.21, -0.02);
+      frontShape.lineTo(0.145, 0.21);
+      frontShape.lineTo(0.06, 0.23);
+      frontShape.lineTo(-0.06, 0.23);
+      frontShape.lineTo(-0.145, 0.21);
+      frontShape.lineTo(-0.21, -0.02);
+      frontShape.closePath();
+      const frontBag = new THREE.Mesh(
+        new THREE.ExtrudeGeometry(frontShape, { depth: 0.08, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.012, bevelSegments: 2 }),
+        baseMat
+      );
+      frontBag.position.set(0, -0.02, 0.015);
+
+      // Inner dark back panel & neck collar recess visible above front chest cut
+      const backShape = new THREE.Shape();
+      backShape.moveTo(-0.23, -0.23);
+      backShape.lineTo(0.23, -0.23);
+      backShape.lineTo(0.24, 0.02);
+      backShape.lineTo(0.175, 0.30);
+      backShape.lineTo(0.10, 0.33);
+      backShape.lineTo(-0.10, 0.33);
+      backShape.lineTo(-0.175, 0.30);
+      backShape.lineTo(-0.24, 0.02);
+      backShape.closePath();
+      const backBag = new THREE.Mesh(
+        new THREE.ExtrudeGeometry(backShape, { depth: 0.06, bevelEnabled: false }),
+        shadeMat
+      );
+      backBag.position.set(0, -0.02, -0.055);
+
+      // Wide padded shoulder straps rising from front collar up & back over traps
+      [-1, 1].forEach((sgn) => {
+        const strap = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.16, 0.13), strapMat);
+        strap.position.set(sgn * 0.145, 0.27, 0.01);
+        strap.rotation.z = -sgn * 0.14;
+        const pad = new THREE.Mesh(new THREE.BoxGeometry(0.115, 0.10, 0.145), shadeMat);
+        pad.position.set(sgn * 0.15, 0.30, 0.005);
+        pad.rotation.z = -sgn * 0.14;
+        g.add(strap, pad);
+
+        // Skeletonized side cummerbund wing + 3 horizontal MOLLE webbing ribs per side
+        const wing = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.22, 0.12), shadeMat);
+        wing.position.set(sgn * 0.245, -0.11, 0.0);
+        g.add(wing);
+        for (let r = 0; r < 3; r++) {
+          const rib = new THREE.Mesh(new THREE.BoxGeometry(0.095, 0.022, 0.132), slitMat);
+          rib.position.set(sgn * 0.248, -0.175 + r * 0.062, 0.005);
+          g.add(rib);
+        }
+      });
+
+      // Upper chest admin Velcro panel + 2 laser-cut MOLLE slits
+      const admin = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.095, 0.025), baseMat);
+      admin.position.set(0, 0.12, 0.10);
+      for (let s = 0; s < 2; s++) {
+        const slit = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.016, 0.028), slitMat);
+        slit.position.set(0, 0.10 + s * 0.042, 0.103);
+        g.add(slit);
       }
-      const badge = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.08, 0.03), trimMat);
-      badge.position.set(0, 0.14, 0.10);
-      g.add(torso, cumbL, cumbR, strapL, strapR, badge);
+
+      // Lower front kangaroo placard pouch + 3 horizontal PALS webbing rows + divider seams
+      const placard = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.20, 0.045), baseMat);
+      placard.position.set(0, -0.09, 0.105);
+      for (let m = 0; m < 3; m++) {
+        const web = new THREE.Mesh(new THREE.BoxGeometry(0.30, 0.022, 0.048), slitMat);
+        web.position.set(0, -0.155 + m * 0.058, 0.108);
+        g.add(web);
+      }
+      [-0.055, 0.055].forEach((vx) => {
+        const seam = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.18, 0.049), shadeMat);
+        seam.position.set(vx, -0.095, 0.107);
+        g.add(seam);
+      });
+
+      const crest = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.025, 0.02), trimMat);
+      crest.position.set(0, 0.03, 0.108);
+
+      g.add(frontBag, backBag, admin, placard, crest);
       if (id === 'vest_2plate_helmet') {
-        const helm = new THREE.Mesh(new THREE.SphereGeometry(0.17, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.6), this._mat(0x383d44, 0x000000, 55));
+        const helm = new THREE.Mesh(new THREE.SphereGeometry(0.155, 14, 10, 0, Math.PI * 2, 0, Math.PI * 0.58), this._mat(0x32363c, 0x000000, 40));
         helm.position.set(0, 0.44, 0);
         g.add(helm);
       }
-      g.rotation.set(0.06, -0.10, 0);
+      g.rotation.set(0.04, -0.05, 0);
       return g;
     }
 

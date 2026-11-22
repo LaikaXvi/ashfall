@@ -1,7 +1,7 @@
 // Game Item Database, 5-Tier Loot Rarity, Logical POI Tables, Workbench & Attachments
 // IMPORTANT: Update GAME_DATA.VERSION (and ?v= cache-busters in index.html) with EVERY new commit!
 window.GAME_DATA = {
-  VERSION: 'v2.42',
+  VERSION: 'v2.43',
   OPERATOR_STATS: {
     maxHp: 75,
     plateArmor: 35,
@@ -10,7 +10,7 @@ window.GAME_DATA = {
     tacSprintSpeed: 12.4,
     crouchSpeed: 3.9,
     adsSpeed: 4.3,
-    proneSpeed: 2.0,
+    proneSpeed: 1.9,
     downedSpeed: 1.9,
     slideStartSpeed: 13.6,
     slideEndSpeed: 4.6
@@ -758,6 +758,30 @@ window.GAME_DATA = {
     boss_epic: ['vest_2plate_helmet', 'bag_large', 'bag_weapon', 'intel_drive', 'gold_watch', 'fu_dead_silence', 'ks_uav', 'melee_karambit', 'ammo_rocket'],
     boss_rare: ['vest_2plate_gel', 'bag_medium', 'water_filter', 'fuel_can', 'painkillers', 'medkit', 'fu_ammo_box', 'fu_trophy', 'ammo_762'],
     boss_legendary_weapons: ['ak74m', 'm24', 'awm338', 'mosin9130', 'mp5k', 'm870']
+  },
+
+  normalizeWeaponMods(mods) {
+    const out = {};
+    if (!mods || typeof mods !== 'object') return out;
+    const keys = ['optic', 'muzzle', 'underbarrel', 'magazine', 'stock', 'camo', 'sticker', 'charm'];
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      if (mods[k] && mods[k] !== 'none') out[k] = mods[k];
+    }
+    return out;
+  },
+
+  resolveWeaponRarity(weaponId, mods = null, rarityOverride = null) {
+    const clean = this.normalizeWeaponMods(mods);
+    const hasFunctionalAtt = ['optic', 'muzzle', 'underbarrel', 'magazine', 'stock'].some((k) => !!clean[k]);
+    if (hasFunctionalAtt) {
+      return this.getWeaponRarityAndValue(weaponId, clean).rarity;
+    }
+    if (rarityOverride && this.RARITIES && this.RARITIES[rarityOverride]) {
+      return rarityOverride;
+    }
+    const base = this.ITEMS && this.ITEMS[weaponId];
+    return (base && base.rarity) || 'common';
   },
 
   getWeaponRarityAndValue(weaponId, mods = {}) {

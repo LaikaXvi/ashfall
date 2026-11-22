@@ -1014,7 +1014,7 @@ class WeaponSystem {
 
     handGroup.userData.handStyle = style;
     handGroup.userData.isRight = isRight;
-    if (window.RigAssets && window.RigAssets.ready && !this._buildVisibleHands) {
+    if (this.fpArms && !this.fpArms.disabled && window.RigAssets && window.RigAssets.ready && !this._buildVisibleHands) {
       handGroup.traverse((m) => {
         if (m.isMesh && m.material && m.material !== window.RigAssets.hiddenMaterial) {
           m.userData._origMat = m.material;
@@ -1043,7 +1043,7 @@ class WeaponSystem {
     cuff.position.set(0, 0, 0.982);
 
     armGroup.add(sleeve, cuff);
-    if (window.RigAssets && window.RigAssets.ready && !this._buildVisibleHands) {
+    if (this.fpArms && !this.fpArms.disabled && window.RigAssets && window.RigAssets.ready && !this._buildVisibleHands) {
       armGroup.traverse((m) => {
         if (m.isMesh && m.material && m.material !== window.RigAssets.hiddenMaterial) {
           m.userData._origMat = m.material;
@@ -2114,7 +2114,7 @@ class WeaponSystem {
       const thumbTip = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.014, 0.016), skinMat);
       thumbTip.position.set(0.002, -0.014, 0.019);
       plateHand.add(palm, knuckle, thumb, thumbTip);
-      if (window.RigAssets && window.RigAssets.ready && !this._buildVisibleHands) {
+      if (this.fpArms && !this.fpArms.disabled && window.RigAssets && window.RigAssets.ready && !this._buildVisibleHands) {
         [palm, knuckle, thumb, thumbTip].forEach((m) => {
           m.userData._origMat = m.material;
           m.material = window.RigAssets.hiddenMaterial;

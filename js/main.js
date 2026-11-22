@@ -447,7 +447,7 @@
     // Pack any pre-match backpack items into the operator's raid backpack
     if (Array.isArray(ui.profile.loadout.backpackItems) && ui.profile.loadout.backpackItems.length > 0) {
       for (const it of ui.profile.loadout.backpackItems) {
-        player.addToBackpack(it.id, it.qty);
+        player.addToBackpack(it.id, it.qty, { mods: it.mods || null, rarityOverride: it.rarityOverride || null });
       }
       ui.profile.loadout.backpackItems = [];
     }
@@ -477,6 +477,28 @@
       }
       if (mpSession && mpSession.active) {
         mpSession.sendEvent({ type: 'pvp_toggle', enabled: !!enabled });
+      }
+    };
+
+    const applyContainerItems = (cid, remoteItems) => {
+      if (!world || !Array.isArray(world.lootContainers) || !Array.isArray(remoteItems)) return;
+      const c = world.lootContainers.find(ct => ct.id === cid);
+      if (!c || !Array.isArray(c.items)) return;
+      c.items.length = 0;
+      for (const it of remoteItems) {
+        if (it && it.id) {
+          c.items.push({
+            id: it.id,
+            qty: it.qty || 1,
+            mods: it.mods || null,
+            mag: it.mag,
+            rarityOverride: it.rarityOverride || null,
+            revealed: it.revealed !== false
+          });
+        }
+      }
+      if (ui && ui.activeLootSource && ui.activeLootSource.containerId === cid && player) {
+        ui.renderLootModal(player);
       }
     };
 
@@ -629,6 +651,11 @@
             world.removeGroundItemByUid(pkt.uid);
           } else if (pkt.type === 'container_open' && world && world.openContainer && pkt.id) {
             world.openContainer(pkt.id);
+            if (Array.isArray(pkt.items)) {
+              applyContainerItems(pkt.id, pkt.items);
+            }
+          } else if (pkt.type === 'container_sync' && world && pkt.cid && Array.isArray(pkt.items)) {
+            applyContainerItems(pkt.cid, pkt.items);
           } else if (pkt.type === 'pvp_toggle') {
             window.SQUAD_PVP = !!pkt.enabled;
             if (window.SQUAD_PVP) {
@@ -811,6 +838,38 @@
         });
       }
     };
+    window.onHostSpawnGroundItem = (gi) => {
+      if (mpSession && mpSession.active && gi) {
+        mpSession.sendEvent({
+          type: 'ground_drop',
+          uid: gi.uid,
+          id: gi.id,
+          qty: gi.qty || 1,
+          x: Math.round(gi.position.x * 100) / 100,
+          y: Math.round(gi.position.y * 100) / 100,
+          z: Math.round(gi.position.z * 100) / 100,
+          mods: gi.mods || null,
+          mag: gi.mag,
+          rarityOverride: gi.rarityOverride || null
+        });
+      }
+    };
+    ui.onContainerChanged = (cid, items) => {
+      if (mpSession && mpSession.active && cid) {
+        mpSession.sendEvent({
+          type: 'container_sync',
+          cid,
+          items: (items || []).map(it => it ? {
+            id: it.id,
+            qty: it.qty || 1,
+            mods: it.mods || null,
+            mag: it.mag,
+            rarityOverride: it.rarityOverride || null,
+            revealed: it.revealed !== false
+          } : null).filter(Boolean)
+        });
+      }
+    };
     ui.addFeedMessage(`Deployed to ${zone.name}`, '#69f0ae');
     if (ui && ui.syncUpdateBadges) ui.syncUpdateBadges();
     canvas.requestPointerLock();
@@ -823,6 +882,8 @@
   }
 
   function endRaid(extracted, opts = {}) {
+    window.onHostSpawnGroundItem = null;
+    if (ui) ui.onContainerChanged = null;
     if (mpSession) mpSession.stop();
     if (window.soundEngine && window.soundEngine.stopAmbient) {
       try { window.soundEngine.stopAmbient(false); } catch (e) {}
@@ -848,9 +909,28 @@
       // Persist all swapped/looted operator equipment & cash back to hideout profile
       ui.profile.credits = (ui.profile.credits || 0) + (player.cash || 0);
       totalVal += (player.cash || 0);
+      const saveWpnMeta = (slotObj) => {
+        if (!slotObj || !slotObj.id) return { mods: null, rarity: null };
+        const cleanMods = (window.GAME_DATA && GAME_DATA.normalizeWeaponMods)
+          ? GAME_DATA.normalizeWeaponMods(slotObj.mods || {})
+          : { ...(slotObj.mods || {}) };
+        const rar = (window.GAME_DATA && GAME_DATA.resolveWeaponRarity)
+          ? GAME_DATA.resolveWeaponRarity(slotObj.id, cleanMods, slotObj.rarityOverride || null)
+          : (slotObj.rarityOverride || null);
+        return { mods: cleanMods, rarity: rar };
+      };
+      const pMeta = saveWpnMeta(player.slots.primary);
+      const sMeta = saveWpnMeta(player.slots.secondary);
+      const bwMeta = saveWpnMeta(player.backpackWeapon);
       ui.profile.loadout.primary = player.slots.primary ? player.slots.primary.id : null;
+      ui.profile.loadout.primaryMods = pMeta.mods;
+      ui.profile.loadout.primaryRarity = pMeta.rarity;
       ui.profile.loadout.secondary = player.slots.secondary ? player.slots.secondary.id : null;
+      ui.profile.loadout.secondaryMods = sMeta.mods;
+      ui.profile.loadout.secondaryRarity = sMeta.rarity;
       ui.profile.loadout.backpackWeapon = player.backpackWeapon ? player.backpackWeapon.id : null;
+      ui.profile.loadout.backpackWeaponMods = bwMeta.mods;
+      ui.profile.loadout.backpackWeaponRarity = bwMeta.rarity;
       ui.profile.loadout.melee = player.melee || null;
       ui.profile.loadout.armor = player.armorId || null;
       ui.profile.loadout.backpack = player.backpackId || 'bag_small';
@@ -864,7 +944,7 @@
       if (player.backpackWeapon && GAME_DATA.ITEMS[player.backpackWeapon.id]) {
         const bwDef = GAME_DATA.ITEMS[player.backpackWeapon.id];
         totalVal += bwDef.value || 0;
-        recovered.push({ id: player.backpackWeapon.id, qty: 1 });
+        recovered.push({ id: player.backpackWeapon.id, qty: 1, mods: bwMeta.mods, rarityOverride: bwMeta.rarity });
       }
 
       for (const item of player.backpack) {
@@ -874,7 +954,7 @@
         if (def.type === 'ammo') {
           ui.profile.loadout.ammo[item.id] = (ui.profile.loadout.ammo[item.id] || 0) + item.qty;
         } else {
-          ui.addToStash(item.id, item.qty);
+          ui.addToStash(item.id, item.qty, item.mods || null, item.rarityOverride || null);
         }
         recovered.push(item);
       }
@@ -882,8 +962,14 @@
       // KIA / MIA: lose raid gear and backpack (skipped in Dev Mode)
       ui.profile.loadout = {
         primary: null,
+        primaryMods: null,
+        primaryRarity: null,
         secondary: null,
+        secondaryMods: null,
+        secondaryRarity: null,
         backpackWeapon: null,
+        backpackWeaponMods: null,
+        backpackWeaponRarity: null,
         armor: null,
         backpackItems: [],
         ammo: {}
@@ -1404,7 +1490,7 @@
         }
         return _pickupGroundWeapon(gi, handSlot);
       }
-      if (player.addToBackpack(gi.id, gi.qty)) {
+      if (player.addToBackpack(gi.id, gi.qty, { mods: gi.mods || null, mag: gi.mag, rarityOverride: gi.rarityOverride || null })) {
         const pickedUid = gi.uid;
         world.removeGroundItem(gi);
         if (mpSession && mpSession.active && pickedUid) {
@@ -1445,7 +1531,18 @@
           } catch (e) {}
         }
         if (mpSession && mpSession.active) {
-          mpSession.sendEvent({ type: 'container_open', id: c.id });
+          mpSession.sendEvent({
+            type: 'container_open',
+            id: c.id,
+            items: (c.items || []).map(it => it ? {
+              id: it.id,
+              qty: it.qty || 1,
+              mods: it.mods || null,
+              mag: it.mag,
+              rarityOverride: it.rarityOverride || null,
+              revealed: it.revealed !== false
+            } : null).filter(Boolean)
+          });
         }
       }
     }
@@ -1454,7 +1551,7 @@
     const worldPos = (nearbyInteractable.container && nearbyInteractable.container.position)
       || nearbyInteractable.worldPos
       || null;
-    ui.openLootModal(player, nearbyInteractable.label, nearbyInteractable.items, nearbyInteractable.operatorEquipment || null, worldPos, camera);
+    ui.openLootModal(player, nearbyInteractable.label, nearbyInteractable.items, nearbyInteractable.operatorEquipment || null, worldPos, camera, c ? c.id : null);
     return true;
   }
 

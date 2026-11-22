@@ -517,6 +517,15 @@ class GameUI {
       case 'pm_op': {
         if (!L) return null;
         const k = desc.opKey;
+        if (k === 'primary' || k === 'secondary') {
+          if (!L[k]) return null;
+          const m = L[k + 'Mods'] || (this.profile.weaponMods && this.profile.weaponMods[L[k]]) || {};
+          const cleanM = (window.GAME_DATA && GAME_DATA.normalizeWeaponMods) ? GAME_DATA.normalizeWeaponMods(m) : { ...m };
+          const rar = (window.GAME_DATA && GAME_DATA.resolveWeaponRarity)
+            ? GAME_DATA.resolveWeaponRarity(L[k], cleanM, L[k + 'Rarity'])
+            : (L[k + 'Rarity'] || null);
+          return { id: L[k], qty: 1, mods: cleanM, rarityOverride: rar };
+        }
         if (k === 'plates') return (L.plates || 0) > 0 ? { id: 'armor_plate', qty: L.plates } : null;
         if (k === 'lethal') return (L.lethal && (L.lethalQty || 0) > 0) ? { id: L.lethal, qty: L.lethalQty } : null;
         if (k === 'tactical') return (L.tactical && (L.tacticalQty || 0) > 0) ? { id: L.tactical, qty: L.tacticalQty } : null;
@@ -557,7 +566,12 @@ class GameUI {
         if (eq.revealedSlots && !eq.revealedSlots[k]) return null;
         if (k === 'plates') return (eq.plates || 0) > 0 ? { id: 'armor_plate', qty: eq.plates } : null;
         if (k === 'cash' || k === 'dogtag') return null;
-        return eq[k] ? { id: eq[k], qty: 1, rarityOverride: (k === 'primary' ? eq.primaryRarity : (k === 'secondary' ? eq.secondaryRarity : null)) } : null;
+        if (k === 'primary' || k === 'secondary') {
+          return eq[k]
+            ? { id: eq[k], qty: 1, mods: eq[k + 'Mods'] || {}, rarityOverride: eq[k + 'Rarity'] || null }
+            : null;
+        }
+        return eq[k] ? { id: eq[k], qty: 1 } : null;
       }
     }
     return null;
@@ -614,6 +628,18 @@ class GameUI {
       }
       case 'pm_op': {
         const k = desc.opKey;
+        if (k === 'primary' || k === 'secondary') {
+          L[k] = item ? item.id : null;
+          const m = (item && item.mods) || (item && this.profile.weaponMods && this.profile.weaponMods[item.id]) || {};
+          const cleanM = (window.GAME_DATA && GAME_DATA.normalizeWeaponMods) ? GAME_DATA.normalizeWeaponMods(m) : { ...m };
+          L[k + 'Mods'] = item ? cleanM : null;
+          L[k + 'Rarity'] = item
+            ? ((window.GAME_DATA && GAME_DATA.resolveWeaponRarity)
+                ? GAME_DATA.resolveWeaponRarity(item.id, cleanM, item.rarityOverride)
+                : (item.rarityOverride || null))
+            : null;
+          return;
+        }
         if (k === 'plates') { L.plates = item ? Math.min(6, item.qty || 1) : 0; return; }
         if (k === 'lethal') { L.lethal = item ? item.id : null; L.lethalQty = item ? (item.qty || 1) : 0; return; }
         if (k === 'tactical') { L.tactical = item ? item.id : null; L.tacticalQty = item ? (item.qty || 1) : 0; return; }
@@ -693,6 +719,12 @@ class GameUI {
         if (!eq) return;
         const k = desc.opKey;
         if (k === 'plates') { eq.plates = item ? Math.min(6, item.qty || 1) : 0; return; }
+        if (k === 'primary' || k === 'secondary') {
+          eq[k] = item ? item.id : null;
+          eq[k + 'Mods'] = item && item.mods ? { ...item.mods } : {};
+          eq[k + 'Rarity'] = item ? (item.rarityOverride || null) : null;
+          return;
+        }
         eq[k] = item ? item.id : null;
         return;
       }
@@ -765,6 +797,9 @@ class GameUI {
       this.saveProfile();
       this.renderHideout();
     } else if (this._lootPlayer) {
+      if (srcDesc.zone === 'raid_container' || dstDesc.zone === 'raid_container' || srcDesc.zone === 'raid_enemy_op' || dstDesc.zone === 'raid_enemy_op') {
+        this._syncActiveContainerToNet();
+      }
       this.renderLootModal(this._lootPlayer);
     }
     return true;
@@ -997,7 +1032,12 @@ class GameUI {
         const count = Math.max(1, item.qty || 1);
         for (let c = 0; c < count; c++) {
           if (this.profile.weaponStash.length < 16) {
-            this.profile.weaponStash.push({ id: item.id, qty: 1, ...(item.mods ? { mods: item.mods } : {}) });
+            this.profile.weaponStash.push({
+              id: item.id,
+              qty: 1,
+              ...(item.mods ? { mods: item.mods } : {}),
+              ...(item.rarityOverride ? { rarityOverride: item.rarityOverride } : {})
+            });
           }
         }
       } else {
@@ -1011,9 +1051,16 @@ class GameUI {
     const hasWpnSlot = !!(bagDef && bagDef.weaponSlot);
     if (!hasWpnSlot && L.backpackWeapon) {
       if (this.profile.weaponStash.length < 16) {
-        this.profile.weaponStash.push({ id: L.backpackWeapon, qty: 1 });
+        this.profile.weaponStash.push({
+          id: L.backpackWeapon,
+          qty: 1,
+          ...(L.backpackWeaponMods ? { mods: L.backpackWeaponMods } : {}),
+          ...(L.backpackWeaponRarity ? { rarityOverride: L.backpackWeaponRarity } : {})
+        });
       }
       L.backpackWeapon = null;
+      L.backpackWeaponMods = null;
+      L.backpackWeaponRarity = null;
     }
     L.backpackItems = L.backpackItems.filter((item) => {
       if (!item || !GAME_DATA.ITEMS[item.id]) return false;
@@ -1021,8 +1068,15 @@ class GameUI {
       if (def.type === 'weapon') {
         if (hasWpnSlot && !L.backpackWeapon) {
           L.backpackWeapon = item.id;
+          if (item.mods) L.backpackWeaponMods = item.mods;
+          if (item.rarityOverride) L.backpackWeaponRarity = item.rarityOverride;
         } else if (this.profile.weaponStash.length < 16) {
-          this.profile.weaponStash.push({ id: item.id, qty: 1 });
+          this.profile.weaponStash.push({
+            id: item.id,
+            qty: 1,
+            ...(item.mods ? { mods: item.mods } : {}),
+            ...(item.rarityOverride ? { rarityOverride: item.rarityOverride } : {})
+          });
         }
         return false;
       }
@@ -3249,15 +3303,26 @@ class GameUI {
     });
   }
 
-  addToStash(id, qty = 1, mods = null) {
+  addToStash(id, qty = 1, mods = null, rarityOverride = null) {
     this._normalizeStash();
     const def = GAME_DATA.ITEMS[id];
     if (!def) return false;
-    // Weapons always go into the 15 dedicated double-wide weapon stash slots!
+    // Weapons always go into the 16 dedicated double-wide weapon stash slots!
     if (def.type === 'weapon') {
+      const cleanMods = (window.GAME_DATA && GAME_DATA.normalizeWeaponMods)
+        ? GAME_DATA.normalizeWeaponMods(mods)
+        : (mods ? { ...mods } : {});
+      const effRar = (window.GAME_DATA && GAME_DATA.resolveWeaponRarity)
+        ? GAME_DATA.resolveWeaponRarity(id, cleanMods, rarityOverride)
+        : (rarityOverride || def.rarity || 'common');
       let added = 0;
       for (let i = 0; i < qty && this.profile.weaponStash.length < 16; i++) {
-        this.profile.weaponStash.push({ id, qty: 1, ...(mods ? { mods } : {}) });
+        this.profile.weaponStash.push({
+          id,
+          qty: 1,
+          ...(Object.keys(cleanMods).length ? { mods: { ...cleanMods } } : {}),
+          ...(effRar ? { rarityOverride: effRar } : {})
+        });
         added++;
       }
       return added > 0;
@@ -3490,19 +3555,19 @@ class GameUI {
     if (!def && item && item.id && window.GAME_DATA && GAME_DATA.ITEMS) {
       def = GAME_DATA.ITEMS[item.id];
     }
-    if (item && item.rarityOverride) return item.rarityOverride;
-    if (def && def.type === 'weapon' && window.GAME_DATA && GAME_DATA.getWeaponRarityAndValue) {
+    if (def && def.type === 'weapon' && window.GAME_DATA && GAME_DATA.resolveWeaponRarity) {
       const mods = (item && item.mods)
         || (this.profile && this.profile.weaponMods && this.profile.weaponMods[def.id])
         || {};
-      const info = GAME_DATA.getWeaponRarityAndValue(def.id, mods);
-      if (info && info.rarity) return info.rarity;
+      return GAME_DATA.resolveWeaponRarity(def.id, mods, item && item.rarityOverride);
     }
+    if (item && item.rarityOverride) return item.rarityOverride;
     return (def && def.rarity) || 'common';
   }
 
   _getEmptySlotGlyphSVG(kind) {
     const svgs = {
+      cash: '<svg class="empty-slot-svg" viewBox="0 0 28 28" aria-hidden="true"><path d="M5 10l3.5-3.5 5 5 5-5L22 10M5 18l3.5-3.5 5 5 5-5L22 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M14 4v20" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
       selfRevive: '<svg class="empty-slot-svg" viewBox="0 0 28 28" aria-hidden="true"><path d="M10 4h8M14 4v20M9 8c-2 1.2-2 3.8 1 4.8l8 2.4c3 1 3 3.6 1 4.8M19 8c2 1.2 2 3.8-1 4.8l-8 2.4c-3 1-3 3.6-1 4.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>',
       plates: '<svg class="empty-slot-svg" viewBox="0 0 28 28" aria-hidden="true"><path d="M9.5 4h9L22 8.5V24H6V8.5L9.5 4zM10 10h8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg>',
       headgear: '<svg class="empty-slot-svg" viewBox="0 0 28 28" aria-hidden="true"><path d="M7 11a7 7 0 0 1 14 0v5l-3.5 4.5h-7L7 16v-5z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><circle cx="10.8" cy="12" r="2.2" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="17.2" cy="12" r="2.2" fill="none" stroke="currentColor" stroke-width="1.4"/><circle cx="14" cy="21" r="2.6" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>',
@@ -3532,6 +3597,7 @@ class GameUI {
     let pipsHtml = '';
     let ammoHtml = '';
     let catBottomHtml = '';
+    let plateBarsHtml = '';
     if (wide && isWpn) {
       const attCount = this._getWeaponModCount(item, def);
       if (attCount > 0) {
@@ -3541,6 +3607,10 @@ class GameUI {
       ammoHtml = `<span class="slot-ammo"><span class="slot-ammo-bars" aria-hidden="true">≡</span>${magVal}</span>`;
     } else if (!isWpn) {
       catBottomHtml = `<span class="slot-cat-glyph">${catGlyph}</span>`;
+      if (def && def.type === 'armor') {
+        const plateSlots = def.plateSlots || Math.max(1, Math.min(3, Math.ceil((def.maxArmor || 50) / 50)));
+        plateBarsHtml = `<span class="slot-plate-bars" aria-label="${plateSlots} Plates">${'<span class="slot-plate-bar"></span>'.repeat(plateSlots)}</span>`;
+      }
     }
     const showQty = (item.qty > 1 || opts.forceQty) && item.qty > 0;
     return `
@@ -3552,6 +3622,7 @@ class GameUI {
       ${pipsHtml}
       ${ammoHtml}
       ${catBottomHtml}
+      ${plateBarsHtml}
       ${wpnTag}
       ${showQty ? `<span class="slot-qty">${item.qty}</span>` : ''}
     `;
@@ -3592,6 +3663,22 @@ class GameUI {
     if (map[id]) return map[id];
     const name = (def && def.name) || id || '?';
     return name.replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase();
+  }
+
+  _getLoadoutWeaponMeta(slotKey) {
+    const L = (this.profile && this.profile.loadout) || {};
+    const id = L[slotKey];
+    if (!id) return { id: null, mods: {}, rarity: null };
+    const fallbackMods = (this.profile && this.profile.weaponMods && this.profile.weaponMods[id]) || {};
+    const rawMods = L[slotKey + 'Mods'] || fallbackMods;
+    const mods = (window.GAME_DATA && GAME_DATA.normalizeWeaponMods)
+      ? GAME_DATA.normalizeWeaponMods(rawMods)
+      : { ...rawMods };
+    const rar = L[slotKey + 'Rarity']
+      || ((window.GAME_DATA && GAME_DATA.resolveWeaponRarity)
+        ? GAME_DATA.resolveWeaponRarity(id, mods, null)
+        : this._resolveItemRarity({ id, mods }));
+    return { id, mods, rarity: rar };
   }
 
   // ==================== PRE-MATCH LOADOUT SETUP (15 DOUBLE-WIDE WEAPON SLOTS + 64-SLOT STASH + OPERATOR + BACKPACK) ====================
@@ -3680,6 +3767,8 @@ class GameUI {
     const pmMods = (this.profile && this.profile.weaponMods) || {};
     const pmPDef = L.primary ? GAME_DATA.ITEMS[L.primary] : null;
     const pmSDef = L.secondary ? GAME_DATA.ITEMS[L.secondary] : null;
+    const pMeta = this._getLoadoutWeaponMeta('primary');
+    const sMeta = this._getLoadoutWeaponMeta('secondary');
     this._renderOperatorTacticalGrid(opSlotsEl, {
       cash: this.profile.credits || 0,
       cashLabel: 'CREDITS',
@@ -3689,14 +3778,14 @@ class GameUI {
       headgear: L.headgear,
       selfRevive: L.selfRevive,
       primary: L.primary,
-      primaryMods: L.primary ? (pmMods[L.primary] || {}) : {},
+      primaryMods: pMeta.mods,
       primaryMag: pmPDef ? (pmPDef.magSize || 0) : undefined,
-      primaryRarity: L.primary ? this._resolveItemRarity({ id: L.primary }, pmPDef) : undefined,
+      primaryRarity: pMeta.rarity || undefined,
       armor: L.armor,
       secondary: L.secondary,
-      secondaryMods: L.secondary ? (pmMods[L.secondary] || {}) : {},
+      secondaryMods: sMeta.mods,
       secondaryMag: pmSDef ? (pmSDef.magSize || 0) : undefined,
-      secondaryRarity: L.secondary ? this._resolveItemRarity({ id: L.secondary }, pmSDef) : undefined,
+      secondaryRarity: sMeta.rarity || undefined,
       tactical: L.tactical,
       tacticalQty: L.tacticalQty || 0,
       lethal: L.lethal,
@@ -3726,11 +3815,20 @@ class GameUI {
           L.lethal = null; L.lethalQty = 0;
         }
       } else if (L[key]) {
-        this.addToStash(L[key], 1);
-        L[key] = null;
-        if (key === 'backpack' && L.backpackWeapon) {
-          this.addToStash(L.backpackWeapon, 1);
-          L.backpackWeapon = null;
+        if (key === 'primary' || key === 'secondary') {
+          this.addToStash(L[key], 1, L[key + 'Mods'] || pmMods[L[key]] || null, L[key + 'Rarity'] || null);
+          L[key] = null;
+          L[key + 'Mods'] = null;
+          L[key + 'Rarity'] = null;
+        } else {
+          this.addToStash(L[key], 1);
+          L[key] = null;
+          if (key === 'backpack' && L.backpackWeapon) {
+            this.addToStash(L.backpackWeapon, 1, L.backpackWeaponMods || pmMods[L.backpackWeapon] || null, L.backpackWeaponRarity || null);
+            L.backpackWeapon = null;
+            L.backpackWeaponMods = null;
+            L.backpackWeaponRarity = null;
+          }
         }
       }
       this.saveProfile();
@@ -3751,7 +3849,8 @@ class GameUI {
       wSlot.className = 'inv-slot weapon-slot-wide backpack-weapon-slot';
       if (L.backpackWeapon && GAME_DATA.ITEMS[L.backpackWeapon]) {
         const wDef = GAME_DATA.ITEMS[L.backpackWeapon];
-        const wItem = { id: L.backpackWeapon, qty: 1, mods: (this.profile.weaponMods && this.profile.weaponMods[L.backpackWeapon]) || {} };
+        const bwMeta = this._getLoadoutWeaponMeta('backpackWeapon');
+        const wItem = { id: L.backpackWeapon, qty: 1, mods: bwMeta.mods, rarityOverride: bwMeta.rarity };
         wSlot.classList.add(`rarity-${this._resolveItemRarity(wItem, wDef)}`);
         wSlot.innerHTML = this._renderInvSlotInner(wItem, wDef, { wide: true, typeLabel: 'WPN SLOT' });
         wSlot.title = `${wDef.name} (Backpack Weapon Slot) — Click to return to Weapon Stash`;
@@ -3760,8 +3859,10 @@ class GameUI {
             this._confirmDeployWeaponPickSlot('backpackWeapon');
             return;
           }
-          this.addToStash(L.backpackWeapon, 1);
+          this.addToStash(L.backpackWeapon, 1, bwMeta.mods, bwMeta.rarity);
           L.backpackWeapon = null;
+          L.backpackWeaponMods = null;
+          L.backpackWeaponRarity = null;
           this.saveProfile();
           this.renderHideout();
         });
@@ -3789,7 +3890,7 @@ class GameUI {
         cell.innerHTML = this._renderInvSlotInner(item, def, { wide: isWpn });
         cell.title = `${def.name}${item.qty > 1 ? ' x' + item.qty : ''} — Click to return to Stash`;
         cell.addEventListener('click', () => {
-          this.addToStash(item.id, item.qty);
+          this.addToStash(item.id, item.qty, item.mods || null, item.rarityOverride || null);
           L.backpackItems.splice(i, 1);
           this.saveProfile();
           this.renderHideout();
@@ -3817,9 +3918,19 @@ class GameUI {
     const { weaponStashIdx, wItem } = ctx;
     const L = this.profile.loadout;
     const prevId = L[targetKey];
+    const prevMods = prevId ? (L[targetKey + 'Mods'] || (this.profile.weaponMods && this.profile.weaponMods[prevId]) || null) : null;
+    const prevRarity = prevId ? (L[targetKey + 'Rarity'] || null) : null;
     this.profile.weaponStash.splice(weaponStashIdx, 1);
-    if (prevId) this.addToStash(prevId, 1);
+    if (prevId) this.addToStash(prevId, 1, prevMods, prevRarity);
     L[targetKey] = wItem.id;
+    const cleanMods = (window.GAME_DATA && GAME_DATA.normalizeWeaponMods)
+      ? GAME_DATA.normalizeWeaponMods(wItem.mods || {})
+      : { ...(wItem.mods || {}) };
+    L[targetKey + 'Mods'] = cleanMods;
+    L[targetKey + 'Rarity'] = wItem.rarityOverride
+      || ((window.GAME_DATA && GAME_DATA.resolveWeaponRarity)
+        ? GAME_DATA.resolveWeaponRarity(wItem.id, cleanMods, null)
+        : null);
     this.closeDeployWeaponPickMode();
     if (window.soundEngine && window.soundEngine.playMagIn) {
       try { window.soundEngine.playMagIn(); } catch (e) {}
@@ -3849,12 +3960,12 @@ class GameUI {
     this._deployWeaponPick = { weaponStashIdx, wItem, validTargets };
     view.classList.add('weapon-pick-active');
 
-    // Floating selected-weapon banner at top of the right-side backpack/loadout panel (matches in-raid UI!)
+    // Floating selected-weapon card at top of the right-side backpack/loadout panel (matches in-raid UI!)
     const banner = document.createElement('div');
     banner.id = 'deploy-wpn-pick-banner';
     banner.className = 'wpn-pick-banner';
-    const iconUrl = (window.itemIconRenderer && window.itemIconRenderer.getIcon)
-      ? window.itemIconRenderer.getIcon(wItem.id, { wide: true, mods: wItem.mods || allMods[wItem.id] || {} })
+    const iconUrl = (window.itemIcons && window.itemIcons.getIcon)
+      ? window.itemIcons.getIcon(wItem.id, { wide: true, mods: wItem.mods || allMods[wItem.id] || {} })
       : '';
     banner.innerHTML = `
       <div class="wpn-pick-banner-left">
@@ -4165,8 +4276,15 @@ class GameUI {
     if (def.type === 'weapon') {
       // Any gun can be equipped in either Primary or Secondary slot!
       const targetSlot = !L.primary ? 'primary' : (!L.secondary ? 'secondary' : 'primary');
-      if (L[targetSlot]) this.addToStash(L[targetSlot], 1);
+      if (L[targetSlot]) {
+        this.addToStash(L[targetSlot], 1, L[targetSlot + 'Mods'] || null, L[targetSlot + 'Rarity'] || null);
+      }
       L[targetSlot] = item.id;
+      L[targetSlot + 'Mods'] = item.mods || (this.profile.weaponMods && this.profile.weaponMods[item.id]) || {};
+      L[targetSlot + 'Rarity'] = item.rarityOverride
+        || ((window.GAME_DATA && GAME_DATA.resolveWeaponRarity)
+          ? GAME_DATA.resolveWeaponRarity(item.id, L[targetSlot + 'Mods'], null)
+          : null);
       this.profile.stash.splice(stashIdx, 1);
       this.saveProfile();
       this.renderHideout();
@@ -4191,12 +4309,14 @@ class GameUI {
         const newBagDef = GAME_DATA.ITEMS[item.id];
         const newMax = (newBagDef && (newBagDef.slots || newBagDef.bagSlots)) || 8;
         if (!(newBagDef && newBagDef.weaponSlot) && L.backpackWeapon) {
-          this.addToStash(L.backpackWeapon, 1);
+          this.addToStash(L.backpackWeapon, 1, L.backpackWeaponMods || null, L.backpackWeaponRarity || null);
           L.backpackWeapon = null;
+          L.backpackWeaponMods = null;
+          L.backpackWeaponRarity = null;
         }
         while (L.backpackItems.length > newMax) {
           const extra = L.backpackItems.pop();
-          if (extra) this.addToStash(extra.id, extra.qty);
+          if (extra) this.addToStash(extra.id, extra.qty, extra.mods || null, extra.rarityOverride || null);
         }
       }
     } else if (def.type === 'plate') {
@@ -4219,7 +4339,12 @@ class GameUI {
         existing.qty += item.qty;
         this.profile.stash.splice(stashIdx, 1);
       } else if (L.backpackItems.length < maxBagSlots) {
-        L.backpackItems.push({ id: item.id, qty: item.qty });
+        L.backpackItems.push({
+          id: item.id,
+          qty: item.qty,
+          ...(item.mods ? { mods: item.mods } : {}),
+          ...(item.rarityOverride ? { rarityOverride: item.rarityOverride } : {})
+        });
         this.profile.stash.splice(stashIdx, 1);
       } else {
         return;
@@ -6581,10 +6706,10 @@ class GameUI {
   }
 
   // ==================== NON-BLOCKING LOOT & BACKPACK UI ====================
-  openLootModal(player, title, containerItems, operatorEquipment = null, worldPos = null, camera = null) {
+  openLootModal(player, title, containerItems, operatorEquipment = null, worldPos = null, camera = null, containerId = null) {
     this._lootPlayer = player;
     this.activeLootSource = containerItems
-      ? { title, items: containerItems, operatorEquipment, worldPos: worldPos ? worldPos.clone() : null }
+      ? { title, items: containerItems, operatorEquipment, worldPos: worldPos ? worldPos.clone() : null, containerId: containerId || null }
       : null;
     this._searchRevealProgress = 0;
     this.hideItemPopout();
@@ -6614,6 +6739,13 @@ class GameUI {
         this.ensureInitialSelection({ inputMode: 'auto' });
       }
     });
+  }
+
+  _syncActiveContainerToNet() {
+    const src = this.activeLootSource;
+    if (src && src.containerId && typeof this.onContainerChanged === 'function') {
+      this.onContainerChanged(src.containerId, src.items || [], src.operatorEquipment || null);
+    }
   }
 
   autoLootExistingStacks(player) {
@@ -6676,8 +6808,11 @@ class GameUI {
       }
     }
 
-    if (movedAny && window.soundEngine && window.soundEngine.playClick) {
-      try { window.soundEngine.playClick(); } catch (e) {}
+    if (movedAny) {
+      this._syncActiveContainerToNet();
+      if (window.soundEngine && window.soundEngine.playClick) {
+        try { window.soundEngine.playClick(); } catch (e) {}
+      }
     }
     return movedAny;
   }
@@ -6897,8 +7032,8 @@ class GameUI {
     const banner = document.createElement('div');
     banner.id = 'raid-wpn-pick-banner';
     banner.className = 'wpn-pick-banner';
-    const iconUrl = (window.itemIconRenderer && window.itemIconRenderer.getIcon)
-      ? window.itemIconRenderer.getIcon(weaponItem.id, { wide: true, mods: weaponItem.mods || {} })
+    const iconUrl = (window.itemIcons && window.itemIcons.getIcon)
+      ? window.itemIcons.getIcon(weaponItem.id, { wide: true, mods: weaponItem.mods || {} })
       : '';
     banner.innerHTML = `
       <div class="wpn-pick-banner-left">
@@ -7054,6 +7189,7 @@ class GameUI {
               });
             }
             if (window.soundEngine && window.soundEngine.playMagIn) { try { window.soundEngine.playMagIn(); } catch (e) {} }
+            this._syncActiveContainerToNet();
             this.renderLootModal(player);
           }
           return true;
@@ -7065,6 +7201,7 @@ class GameUI {
             if (res.returned) this.activeLootSource.items.splice(idx, 0, res.returned);
             if (res.extra) this.activeLootSource.items.push(res.extra);
             if (window.soundEngine && window.soundEngine.playClick) { try { window.soundEngine.playClick(); } catch (e) {} }
+            this._syncActiveContainerToNet();
             this.renderLootModal(player);
           }
           return true;
@@ -7074,6 +7211,7 @@ class GameUI {
           this.activeLootSource.items.splice(idx, 1);
           if (prev) this.activeLootSource.items.splice(idx, 0, { id: prev, qty: 1, revealed: true });
           if (window.soundEngine && window.soundEngine.playClick) { try { window.soundEngine.playClick(); } catch (e) {} }
+          this._syncActiveContainerToNet();
           this.renderLootModal(player);
           return true;
         }
@@ -7082,6 +7220,7 @@ class GameUI {
           player.plates += move;
           item.qty -= move;
           if (item.qty <= 0) this.activeLootSource.items.splice(idx, 1);
+          this._syncActiveContainerToNet();
           this.renderLootModal(player);
           return true;
         }
@@ -7149,6 +7288,7 @@ class GameUI {
               eq[opKey + 'Mods'] = (res.prevSlotObj && res.prevSlotObj.mods) || {};
               eq[opKey + 'Rarity'] = (res.prevSlotObj && res.prevSlotObj.rarityOverride) || null;
               if (window.soundEngine && window.soundEngine.playMagIn) { try { window.soundEngine.playMagIn(); } catch (e) {} }
+              this._syncActiveContainerToNet();
               this.renderLootModal(player);
             }
           }
@@ -7212,15 +7352,17 @@ class GameUI {
               this.activeLootSource.items.splice(idx, 1);
               if (prevBagWpn) this.activeLootSource.items.splice(idx, 0, prevBagWpn);
               if (window.soundEngine && window.soundEngine.playMagIn) { try { window.soundEngine.playMagIn(); } catch (e) {} }
+              this._syncActiveContainerToNet();
               this.renderLootModal(player);
             } else {
               this._showSocialToast('No Weapon Backpack slot — press [X/Square] to equip weapon.');
             }
             return true;
           }
-          if (player.addToBackpack(item.id, item.qty)) {
+          if (player.addToBackpack(item.id, item.qty, { mods: item.mods || null, mag: item.mag, rarityOverride: item.rarityOverride || null })) {
             this.activeLootSource.items.splice(idx, 1);
             if (window.soundEngine && window.soundEngine.playClick) { try { window.soundEngine.playClick(); } catch (e) {} }
+            this._syncActiveContainerToNet();
             this.renderLootModal(player);
           } else {
             this._showSocialToast('Backpack full!');
@@ -7242,6 +7384,7 @@ class GameUI {
               eq[opKey + 'Mods'] = prevBagMods;
               eq[opKey + 'Rarity'] = prevBagRar;
               if (window.soundEngine && window.soundEngine.playMagIn) { try { window.soundEngine.playMagIn(); } catch (e) {} }
+              this._syncActiveContainerToNet();
               this.renderLootModal(player);
             } else {
               this._showSocialToast('No Weapon Backpack slot — press [X/Square] to equip weapon.');
@@ -7257,9 +7400,17 @@ class GameUI {
           const idx = parseInt(sel.dataset.idx, 10);
           const item = player.backpack[idx];
           if (item) {
-            this.activeLootSource.items.push({ id: item.id, qty: item.qty, revealed: true });
+            this.activeLootSource.items.push({
+              id: item.id,
+              qty: item.qty,
+              mods: item.mods || null,
+              mag: item.mag,
+              rarityOverride: item.rarityOverride || null,
+              revealed: true
+            });
             player.backpack.splice(idx, 1);
             if (window.soundEngine && window.soundEngine.playClick) { try { window.soundEngine.playClick(); } catch (e) {} }
+            this._syncActiveContainerToNet();
             this.renderLootModal(player);
           }
           return true;
@@ -7275,6 +7426,7 @@ class GameUI {
             revealed: true
           });
           player.backpackWeapon = null;
+          this._syncActiveContainerToNet();
           this.renderLootModal(player);
           return true;
         }
@@ -7759,7 +7911,10 @@ class GameUI {
 
     if (context === 'player_op') {
       if (action === 'stow_op') this._stowPlayerOperatorSlot(player, idx, 'backpack');
-      else if (action === 'op_to_container') this._stowPlayerOperatorSlot(player, idx, 'container');
+      else if (action === 'op_to_container') {
+        this._stowPlayerOperatorSlot(player, idx, 'container');
+        this._syncActiveContainerToNet();
+      }
       else if (action === 'drop_op') this._stowPlayerOperatorSlot(player, idx, 'ground');
       this.hideItemPopout();
       this.renderLootModal(player);
@@ -7795,6 +7950,7 @@ class GameUI {
                 revealed: true
               });
             }
+            if (context === 'container') this._syncActiveContainerToNet();
           }
         }
       });
@@ -7882,11 +8038,12 @@ class GameUI {
                   revealed: true
                 });
               }
+              this._syncActiveContainerToNet();
             }
           });
           return;
         }
-        if (player.addToBackpack(item.id, item.qty)) {
+        if (player.addToBackpack(item.id, item.qty, { mods: item.mods || null, mag: item.mag, rarityOverride: item.rarityOverride || null })) {
           this.activeLootSource.items.splice(idx, 1);
         }
       } else if (context === 'backpack_weapon') {
@@ -7903,7 +8060,14 @@ class GameUI {
         }
       } else if (context === 'backpack') {
         if (this.activeLootSource) {
-          this.activeLootSource.items.push({ id: item.id, qty: item.qty, revealed: true });
+          this.activeLootSource.items.push({
+            id: item.id,
+            qty: item.qty,
+            mods: item.mods || null,
+            mag: item.mag,
+            rarityOverride: item.rarityOverride || null,
+            revealed: true
+          });
           player.backpack.splice(idx, 1);
         } else if (def.type === 'plate' && player.plates < 6) {
           const move = Math.min(6 - player.plates, item.qty);
@@ -7961,6 +8125,9 @@ class GameUI {
       }
     }
 
+    if (context === 'container' || (action === 'quick' && this.activeLootSource)) {
+      this._syncActiveContainerToNet();
+    }
     this.hideItemPopout();
     this.renderLootModal(player);
   }
@@ -7995,7 +8162,8 @@ class GameUI {
       const rar = opts.rarity || this._resolveItemRarity({ id: opts.id, mods }, def);
       const val = opts.text !== undefined ? opts.text : (def ? def.name : 'EMPTY');
       const iconId = opts.iconId !== undefined ? opts.iconId : opts.id;
-      const showIcon = !!(hasVal && iconId && window.itemIcons && typeof window.itemIcons.getIcon === 'function');
+      const isCashCard = opts.key === 'cash';
+      const showIcon = !isCashCard && !!(hasVal && iconId && window.itemIcons && typeof window.itemIcons.getIcon === 'function');
       const iconHtml = showIcon
         ? this._renderItemIconHTML(iconId, def, { wide: opts.span === 2, cls: 'op-slot-icon', mods })
         : '';
@@ -8003,6 +8171,7 @@ class GameUI {
       let pipsHtml = '';
       let ammoHtml = '';
       let catGlyphHtml = '';
+      let plateBarsHtml = '';
       if (isWideWeapon) {
         const attCount = this._getWeaponModCount({ id: opts.id, mods }, def);
         if (attCount > 0) {
@@ -8010,22 +8179,29 @@ class GameUI {
         }
         const magCount = (opts.mag !== undefined) ? opts.mag : ((def && def.magSize) || 0);
         ammoHtml = `<span class="slot-ammo"><span class="slot-ammo-bars" aria-hidden="true">≡</span>${magCount}</span>`;
-      } else if (hasVal && def) {
+      } else if (!isCashCard && hasVal && def) {
         catGlyphHtml = `<span class="slot-cat-glyph">${this._getCategoryGlyphSVG(def)}</span>`;
-      } else if (hasVal && iconId === 'armor_plate') {
+        if (def.type === 'armor') {
+          const plateCount = Math.max(1, Math.min(3, def.plateSlots || (def.maxArmor ? Math.round(def.maxArmor / 50) : 1)));
+          plateBarsHtml = `<span class="slot-plate-bars">${'<span class="slot-plate-bar"></span>'.repeat(plateCount)}</span>`;
+        }
+      } else if (!isCashCard && hasVal && iconId === 'armor_plate') {
         const plDef = GAME_DATA.ITEMS.armor_plate || { type: 'plate', id: 'armor_plate' };
         catGlyphHtml = `<span class="slot-cat-glyph">${this._getCategoryGlyphSVG(plDef)}</span>`;
       }
+      const cashHtml = (isCashCard && hasVal)
+        ? `<span class="empty-slot-glyph" style="opacity:0.95;color:#f3f6f4;">${this._getEmptySlotGlyphSVG('cash')}</span><span class="slot-cash-amt">${opts.badge || this._formatShortValue(opts.value || 0)}</span>`
+        : '';
       const qtyNum = opts.qty || 0;
-      const qtyHtml = (hasVal && (qtyNum > 1 || (opts.forceQty && qtyNum > 0)))
+      const qtyHtml = (!isCashCard && hasVal && (qtyNum > 1 || (opts.forceQty && qtyNum > 0)))
         ? `<span class="slot-qty">${qtyNum}</span>`
         : '';
       const emptyGlyphHtml = (!hasVal)
         ? `<span class="empty-slot-glyph">${this._getEmptySlotGlyphSVG(opts.emptyKey || opts.key)}</span>`
         : '';
-      const badgeText = opts.sub || (showIcon && opts.badge ? opts.badge : '');
+      const badgeText = (!isCashCard) ? (opts.sub || (showIcon && opts.badge ? opts.badge : '')) : '';
       const sub = badgeText ? `<span class="op-slot-sub">${badgeText}</span>` : '';
-      const valHtml = (showIcon || !hasVal) ? '' : `<span class="op-slot-val">${val}</span>`;
+      const valHtml = (showIcon || !hasVal || isCashCard) ? '' : `<span class="op-slot-val">${val}</span>`;
       const cls = [
         'op-slot-card',
         hasVal ? `rarity-${rar}` : 'empty-slot-card',
@@ -8044,11 +8220,13 @@ class GameUI {
           ${priceStr ? `<span class="op-slot-price">${priceStr}</span>` : ''}
         </div>
         ${emptyGlyphHtml}
+        ${cashHtml}
         ${iconHtml}
         ${valHtml}
         ${pipsHtml}
         ${ammoHtml}
         ${catGlyphHtml}
+        ${plateBarsHtml}
         ${qtyHtml}
         ${sub}
       </div>`;
@@ -8062,35 +8240,30 @@ class GameUI {
     const portraitHtml = portraitUrl
       ? `<img class="op-portrait-bg" src="${portraitUrl}" alt="" draggable="false" />`
       : '';
-    const decoEmpty = (col, row, glyphKey) =>
-      `<div class="op-slot-card empty-slot-card dmz-deco-empty" style="grid-column:${col};grid-row:${row};" aria-hidden="true"><span class="empty-slot-glyph">${this._getEmptySlotGlyphSVG(glyphKey)}</span></div>`;
 
     containerEl.innerHTML = `
       <div class="op-tactical-grid">
         ${portraitHtml}
-        <!-- Row 1: Self-Revive | Plates | [Col 3 Empty for Portrait / Enemy Dogtag] | Gas Mask | Medical -->
-        ${card({ key: 'selfRevive', label: 'REVIVE', id: data.selfRevive, emptyKey: 'selfRevive', posStyle: 'grid-column:1;grid-row:1;' })}
+        <!-- Row 1: Cash (Top-Left) | Plates | Dogtag | Headgear | Self-Revive -->
+        ${card({ key: 'cash', label: data.cashLabel || 'CASH', value: data.cash || 0, badge: (data.cash || 0) > 0 ? this._formatShortValue(data.cash) : '', hasValue: (data.cash || 0) > 0, rarity: 'legendary', emptyKey: 'cash', posStyle: 'grid-column:1;grid-row:1;' })}
         ${card({ key: 'plates', label: 'PLATES', iconId: 'armor_plate', value: (data.plates || 0) * ((GAME_DATA.ITEMS.armor_plate && GAME_DATA.ITEMS.armor_plate.value) || 400), qty: data.plates || 0, forceQty: true, text: `${data.plates || 0} / 6`, badge: `${data.plates || 0}/6`, hasValue: (data.plates || 0) > 0, rarity: 'common', emptyKey: 'plates', posStyle: 'grid-column:2;grid-row:1;' })}
-        ${revealConfig && data.dogtag ? card({ key: 'dogtag', label: 'DOGTAG', id: data.dogtag, text: data.dogtagText || 'Operator Tag', hasValue: true, rarity: 'rare', spine: true, posStyle: 'grid-column:3;grid-row:1;' }) : ''}
+        ${card({ key: 'dogtag', label: 'DOGTAG', id: data.dogtag, text: data.dogtagText || 'Operator Tag', hasValue: !!data.dogtag, rarity: 'rare', spine: true, posStyle: 'grid-column:3;grid-row:1;' })}
         ${card({ key: 'headgear', label: 'HEAD', id: data.headgear, text: itemDef(data.headgear) ? itemDef(data.headgear).name : 'MASK / NVG', emptyKey: 'headgear', posStyle: 'grid-column:4;grid-row:1;' })}
-        ${decoEmpty(5, 1, 'medical')}
+        ${card({ key: 'selfRevive', label: 'REVIVE', id: data.selfRevive, emptyKey: 'selfRevive', posStyle: 'grid-column:5;grid-row:1;' })}
 
         <!-- Row 2: PRIMARY (Cols 1-2) | VEST (Col 3) | SECONDARY (Cols 4-5) -->
         ${card({ key: 'primary', label: 'PRIMARY', id: data.primary, mods: data.primaryMods, mag: data.primaryMag !== undefined ? data.primaryMag : (pDef ? pDef.magSize : undefined), rarity: data.primaryRarity || undefined, sub: pDef && data.primaryMag !== undefined ? `${data.primaryMag} RDS` : '', span: 2, posStyle: 'grid-column:1 / span 2;grid-row:2;' })}
         ${card({ key: 'armor', label: 'VEST', id: data.armor, spine: true, emptyKey: 'armor', posStyle: 'grid-column:3;grid-row:2;' })}
         ${card({ key: 'secondary', label: 'SECONDARY', id: data.secondary, mods: data.secondaryMods, mag: data.secondaryMag !== undefined ? data.secondaryMag : (sDef ? sDef.magSize : undefined), rarity: data.secondaryRarity || undefined, sub: sDef && data.secondaryMag !== undefined ? `${data.secondaryMag} RDS` : '', span: 2, posStyle: 'grid-column:4 / span 2;grid-row:2;' })}
 
-        <!-- Row 3: Lethal | Tactical | BACKPACK (Col 3) | Helmet/Gear | Melee-Glyph -->
-        ${card({ key: 'lethal', label: 'LETH', id: data.lethal, qty: data.lethalQty || 1, text: 'LETHAL', badge: data.lethalQty ? `x${data.lethalQty}` : '', emptyKey: 'lethal', posStyle: 'grid-column:1;grid-row:3;' })}
-        ${card({ key: 'tactical', label: 'TAC', id: data.tactical, qty: data.tacticalQty || 1, text: 'TACTICAL', badge: data.tacticalQty ? `x${data.tacticalQty}` : '', emptyKey: 'tactical', posStyle: 'grid-column:2;grid-row:3;' })}
+        <!-- Row 3: Tactical | Lethal | BACKPACK (Col 3) | Field Upgrade | Killstreak -->
+        ${card({ key: 'tactical', label: 'TAC', id: data.tactical, qty: data.tacticalQty || 1, text: 'TACTICAL', badge: data.tacticalQty ? `x${data.tacticalQty}` : '', emptyKey: 'tactical', posStyle: 'grid-column:1;grid-row:3;' })}
+        ${card({ key: 'lethal', label: 'LETH', id: data.lethal, qty: data.lethalQty || 1, text: 'LETHAL', badge: data.lethalQty ? `x${data.lethalQty}` : '', emptyKey: 'lethal', posStyle: 'grid-column:2;grid-row:3;' })}
         ${card({ key: 'backpack', label: 'PACK', id: data.backpack, spine: true, emptyKey: 'backpack', posStyle: 'grid-column:3;grid-row:3;' })}
-        ${decoEmpty(4, 3, 'helmet')}
-        ${decoEmpty(5, 3, 'melee')}
+        ${card({ key: 'fieldUpgrade', label: 'UPG', id: data.fieldUpgrade, emptyKey: 'fieldUpgrade', posStyle: 'grid-column:4;grid-row:3;' })}
+        ${card({ key: 'killstreak', label: 'STRK', id: data.killstreak, emptyKey: 'killstreak', posStyle: 'grid-column:5;grid-row:3;' })}
 
-        <!-- Row 4: Killstreak | Field Upgrade | [Col 3 Empty / Enemy Cash] | MELEE (Cols 4-5) -->
-        ${card({ key: 'killstreak', label: 'STRK', id: data.killstreak, emptyKey: 'killstreak', posStyle: 'grid-column:1;grid-row:4;' })}
-        ${card({ key: 'fieldUpgrade', label: 'UPG', id: data.fieldUpgrade, emptyKey: 'fieldUpgrade', posStyle: 'grid-column:2;grid-row:4;' })}
-        ${revealConfig && (data.cash || 0) > 0 ? card({ key: 'cash', label: data.cashLabel || 'CASH', iconId: 'cash', text: `₽${(data.cash || 0).toLocaleString()}`, badge: this._formatShortValue(data.cash || 0) || '₽0', hasValue: true, rarity: 'legendary', posStyle: 'grid-column:3;grid-row:4;' }) : ''}
+        <!-- Row 4: [Cols 1-3 Empty] | MELEE (Cols 4-5) -->
         ${card({ key: 'melee', label: 'MELEE', id: data.melee, span: 2, emptyKey: 'melee', posStyle: 'grid-column:4 / span 2;grid-row:4;' })}
       </div>
     `;
@@ -8260,6 +8433,7 @@ class GameUI {
               eq[k] = res.prevId || null;
               eq[k + 'Mods'] = (res.prevSlotObj && res.prevSlotObj.mods) || {};
               eq[k + 'Rarity'] = (res.prevSlotObj && res.prevSlotObj.rarityOverride) || null;
+              this._syncActiveContainerToNet();
             }
           });
         };
@@ -8291,6 +8465,7 @@ class GameUI {
             const amt = eq.cash;
             player.cash = (player.cash || 0) + amt;
             eq.cash = 0;
+            this._syncActiveContainerToNet();
             this.renderLootModal(player);
             return;
           }
@@ -8306,6 +8481,7 @@ class GameUI {
             } else {
               return;
             }
+            this._syncActiveContainerToNet();
             this.renderLootModal(player);
             return;
           }
@@ -8319,6 +8495,7 @@ class GameUI {
           if (k === 'dogtag') {
             if (player.addToBackpack('dogtag', 1)) {
               eq.dogtag = null;
+              this._syncActiveContainerToNet();
               this.renderLootModal(player);
             }
             return;
@@ -8326,6 +8503,7 @@ class GameUI {
           if (k === 'tactical' || k === 'lethal') {
             if (player.addToBackpack(itemId, 1)) {
               eq[k] = null;
+              this._syncActiveContainerToNet();
               this.renderLootModal(player);
             }
             return;
@@ -8343,12 +8521,14 @@ class GameUI {
             if (curMap[k] === itemId) {
               if (player.addToBackpack(itemId, 1)) {
                 eq[k] = null;
+                this._syncActiveContainerToNet();
                 this.renderLootModal(player);
               }
               return;
             }
             const prev = this._swapGearWithPlayer(player, itemId);
             eq[k] = prev || null;
+            this._syncActiveContainerToNet();
             this.renderLootModal(player);
           }
         }, 'Left-Click: Equip/Stage · Right-Click: Stow in Bag', { revealedMap: eq.revealedSlots, activeKey: activeOpRevealKey }, (k) => {
@@ -8357,6 +8537,7 @@ class GameUI {
             if ((eq.cash || 0) <= 0) return;
             player.cash = (player.cash || 0) + eq.cash;
             eq.cash = 0;
+            this._syncActiveContainerToNet();
             this.renderLootModal(player);
             return;
           }
@@ -8364,6 +8545,7 @@ class GameUI {
             if ((eq.plates || 0) <= 0) return;
             if (player.addToBackpack('armor_plate', eq.plates)) {
               eq.plates = 0;
+              this._syncActiveContainerToNet();
               this.renderLootModal(player);
             }
             return;
@@ -8380,6 +8562,7 @@ class GameUI {
             if (window.soundEngine && window.soundEngine.playClick) {
               try { window.soundEngine.playClick(); } catch (e) {}
             }
+            this._syncActiveContainerToNet();
             this.renderLootModal(player);
           }
         });

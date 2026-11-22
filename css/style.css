@@ -6822,16 +6822,35 @@ input[type="range"].gp-focus {
   z-index: 3;
 }
 
+.inv-overlay .inv-container-panel {
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 10px;
+  min-width: 0;
+  width: fit-content;
+}
+
 .inv-overlay #inv-operator-panel.dmz-operator-stack {
+  right: 14px;
+  bottom: 14px;
   background: transparent;
   border: none;
   padding: 0;
   box-shadow: none;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  width: fit-content;
+  gap: 8px;
+  width: 414px;
   min-width: 0;
+}
+
+.dmz-top-utility {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px;
 }
 
 .dmz-panel {
@@ -6840,6 +6859,7 @@ input[type="range"].gp-focus {
   padding: 10px;
   border-radius: 0;
   box-shadow: none;
+  box-sizing: border-box;
 }
 
 .dmz-panel-head {
@@ -6853,48 +6873,43 @@ input[type="range"].gp-focus {
 .dmz-pack-tab {
   background: rgba(210, 210, 210, 0.22);
   font-family: var(--font-mono);
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: 1px;
   text-transform: uppercase;
   color: #ffffff;
-  padding: 4px 18px;
+  padding: 4px 14px;
   line-height: 1.25;
 }
 
 .dmz-bag-count-inline {
-  font-size: 11px;
+  font-size: 10px;
   opacity: 0.75;
-  margin-left: 6px;
-}
-
-.dmz-pack-head-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  margin-left: 4px;
 }
 
 .dmz-bag-val {
   font-family: var(--font-mono);
   font-size: 11px;
   font-weight: 700;
-  color: rgba(255, 255, 255, 0.72);
+  color: rgba(255, 255, 255, 0.78);
 }
 
 .dmz-sort-head {
   width: 72px;
   text-align: center;
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 1px;
   color: rgba(255, 255, 255, 0.88);
+  flex-shrink: 0;
 }
 
 .dmz-ghost-btn {
-  background: transparent !important;
+  background: rgba(18, 20, 20, 0.65) !important;
   border: 1px solid rgba(255, 255, 255, 0.25) !important;
-  color: rgba(255, 255, 255, 0.78) !important;
+  color: rgba(255, 255, 255, 0.82) !important;
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.8px;
@@ -6903,14 +6918,14 @@ input[type="range"].gp-focus {
 }
 
 .dmz-ghost-btn:hover {
-  border-color: rgba(255, 255, 255, 0.8) !important;
+  border-color: rgba(255, 255, 255, 0.85) !important;
   color: #ffffff !important;
-  background: rgba(255, 255, 255, 0.08) !important;
+  background: rgba(255, 255, 255, 0.12) !important;
 }
 
 .dmz-bag-row {
   display: flex;
-  align-items: stretch;
+  align-items: flex-start;
   gap: 8px;
 }
 
@@ -6951,57 +6966,99 @@ input[type="range"].gp-focus {
 
 .dmz-sort-col {
   width: 72px;
+  height: 152px;
+  box-sizing: border-box;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(24, 27, 27, 0.55);
+  background: rgba(24, 27, 27, 0.58);
 }
 
 .dmz-sort-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 7px;
-  flex: 1;
+  padding: 0 5px;
+  height: 32px;
+  box-sizing: border-box;
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
   color: rgba(235, 240, 240, 0.9);
 }
 
 .dmz-sort-ico {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: #ffffff;
   opacity: 0.92;
+  flex-shrink: 0;
 }
 
 .dmz-sort-ico svg {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   display: block;
 }
 
 .dmz-sort-val {
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.4px;
+  letter-spacing: 0.3px;
 }
 
 .dmz-sort-max {
-  background: rgba(10, 12, 12, 0.78);
+  background: rgba(10, 12, 12, 0.82);
   border-top: 1px solid rgba(255, 255, 255, 0.12);
-  padding: 4px 0;
+  height: 22px;
+  line-height: 22px;
+  padding: 0;
   text-align: center;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
-  letter-spacing: 0.6px;
-  color: rgba(220, 226, 226, 0.75);
+  letter-spacing: 0.5px;
+  color: rgba(220, 226, 226, 0.78);
+}
+
+.slot-cash-amt {
+  position: absolute;
+  right: 5px;
+  bottom: 4px;
+  z-index: 2;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1;
+  color: #ffffff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
+  pointer-events: none;
+}
+
+.slot-plate-bars {
+  position: absolute;
+  left: 50%;
+  bottom: 5px;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  pointer-events: none;
+}
+
+.slot-plate-bar {
+  display: inline-block;
+  width: 11px;
+  height: 4px;
+  background: #f2f5f7;
+  border: 1px solid rgba(15, 18, 20, 0.78);
+  border-radius: 1px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
 }
 
 .dmz-loadout-title {

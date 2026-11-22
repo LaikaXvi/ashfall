@@ -338,21 +338,28 @@ class Player {
     this.uavTimer = 0;
     this.deadSilenceTimer = 0;
 
-    // Weapons (with Gunsmith attachment mods)
+    // Weapons (with per-instance & Gunsmith attachment mods + rarity preservation)
     const allMods = loadoutState.weaponMods || {};
-    const makeSlot = (wId) => {
+    const normMods = (m) => (GAME_DATA.normalizeWeaponMods ? GAME_DATA.normalizeWeaponMods(m) : { ...(m || {}) });
+    const makeSlot = (wId, slotMods = null, slotRarity = null) => {
       if (!wId) return null;
-      const mods = allMods[wId] || {};
+      const hasSlotMods = slotMods && typeof slotMods === 'object';
+      const mods = normMods(hasSlotMods ? slotMods : (allMods[wId] || {}));
       const eff = GAME_DATA.getEffectiveWeaponStats(wId, mods);
-      return { id: wId, mods, mag: eff.magSize };
+      const rarityOverride = GAME_DATA.resolveWeaponRarity
+        ? GAME_DATA.resolveWeaponRarity(wId, mods, slotRarity)
+        : (slotRarity || null);
+      return { id: wId, mods, mag: eff.magSize, rarityOverride };
     };
     this.slots = {
-      primary: makeSlot(loadoutState.primary),
-      secondary: makeSlot(loadoutState.secondary)
+      primary: makeSlot(loadoutState.primary, loadoutState.primaryMods, loadoutState.primaryRarity),
+      secondary: makeSlot(loadoutState.secondary, loadoutState.secondaryMods, loadoutState.secondaryRarity)
     };
     this.activeSlot = this.slots.primary ? 'primary' : 'secondary';
-    this.backpackWeapon = (bagDef && bagDef.weaponSlot && loadoutState.backpackWeapon)
-      ? makeSlot(typeof loadoutState.backpackWeapon === 'string' ? loadoutState.backpackWeapon : loadoutState.backpackWeapon.id)
+    const bwRaw = loadoutState.backpackWeapon;
+    const bwId = bwRaw ? (typeof bwRaw === 'string' ? bwRaw : bwRaw.id) : null;
+    this.backpackWeapon = (bagDef && bagDef.weaponSlot && bwId)
+      ? makeSlot(bwId, loadoutState.backpackWeaponMods || (bwRaw && bwRaw.mods), loadoutState.backpackWeaponRarity || (bwRaw && bwRaw.rarityOverride))
       : null;
 
     // Backpack (stores ammo, meds, and looted items during raid)
@@ -1514,10 +1521,12 @@ class Player {
       else targetSlot = def.slot || this.activeSlot || 'primary';
     }
 
-    const mods = extra.mods || {};
+    const mods = GAME_DATA.normalizeWeaponMods ? GAME_DATA.normalizeWeaponMods(extra.mods) : { ...(extra.mods || {}) };
     const eff = GAME_DATA.getEffectiveWeaponStats(weaponId, mods);
     const mag = extra.mag !== undefined ? extra.mag : (eff ? eff.magSize : (def.magSize || 30));
-    const rarityOverride = extra.rarityOverride || null;
+    const rarityOverride = GAME_DATA.resolveWeaponRarity
+      ? GAME_DATA.resolveWeaponRarity(weaponId, mods, extra.rarityOverride)
+      : (extra.rarityOverride || null);
 
     if (targetSlot === 'backpackWeapon') {
       if (!this.hasWeaponBackpack()) {
@@ -1811,12 +1820,16 @@ class Player {
     // Weapons can ONLY be looted into a backpack if a Weapon Backpack is equipped and its dedicated double-wide weapon slot is available!
     if (def.type === 'weapon') {
       if (!this.hasWeaponBackpack() || this.backpackWeapon) return false;
-      const mods = extra.mods || {};
+      const mods = GAME_DATA.normalizeWeaponMods ? GAME_DATA.normalizeWeaponMods(extra.mods) : { ...(extra.mods || {}) };
       const eff = GAME_DATA.getEffectiveWeaponStats(id, mods);
+      const rarityOverride = GAME_DATA.resolveWeaponRarity
+        ? GAME_DATA.resolveWeaponRarity(id, mods, extra.rarityOverride)
+        : (extra.rarityOverride || null);
       this.backpackWeapon = {
         id,
         mods,
-        mag: extra.mag !== undefined ? extra.mag : (eff ? eff.magSize : (def.magSize || 30))
+        mag: extra.mag !== undefined ? extra.mag : (eff ? eff.magSize : (def.magSize || 30)),
+        rarityOverride
       };
       return true;
     }
@@ -1888,8 +1901,15 @@ class Player {
     // Non-stackable items require 1 free slot each — never exceed maxSlots!
     if (this.backpack.length >= maxSlots) return false;
     let added = 0;
+    const itemMods = extra.mods ? (GAME_DATA.normalizeWeaponMods ? GAME_DATA.normalizeWeaponMods(extra.mods) : { ...extra.mods }) : null;
     for (let i = 0; i < qty && this.backpack.length < maxSlots; i++) {
-      this.backpack.push({ id, qty: 1 });
+      this.backpack.push({
+        id,
+        qty: 1,
+        ...(itemMods && Object.keys(itemMods).length ? { mods: itemMods } : {}),
+        ...(extra.rarityOverride ? { rarityOverride: extra.rarityOverride } : {}),
+        ...(extra.mag !== undefined ? { mag: extra.mag } : {})
+      });
       added++;
     }
     return added > 0;
@@ -2500,7 +2520,7 @@ class Player {
         this.velocity.x = 0;
         this.velocity.z = 0;
       } else {
-        const crawlSpeed = 1.9;
+        const crawlSpeed = (GAME_DATA.OPERATOR_STATS && GAME_DATA.OPERATOR_STATS.downedSpeed) || 1.9;
         this.velocity.x = wishDir.x * crawlSpeed * moveMag;
         this.velocity.z = wishDir.z * crawlSpeed * moveMag;
       }
@@ -2586,15 +2606,16 @@ class Player {
         }
       }
 
-      let speed = 6.8;
-      if (this.isTacSprinting) speed = 12.4;
-      else if (this.isSprinting) speed = 9.6;
-      else if (this.stance === 'prone') speed = 2.0;
-      else if (this.stance === 'crouch') speed = 3.9;
-      else if (this.isADS) speed = 4.3;
+      const opStats = GAME_DATA.OPERATOR_STATS || {};
+      let speed = opStats.walkSpeed || 6.8;
+      if (this.isTacSprinting) speed = opStats.tacSprintSpeed || 12.4;
+      else if (this.isSprinting) speed = opStats.sprintSpeed || 9.6;
+      else if (this.stance === 'prone') speed = opStats.proneSpeed || opStats.downedSpeed || 1.9;
+      else if (this.stance === 'crouch') speed = opStats.crouchSpeed || 3.9;
+      else if (this.isADS) speed = opStats.adsSpeed || 4.3;
 
-      // Dedicated melee weapon gives a slight movement & sprint speed boost (+12%)
-      if (this.activeSlot === 'melee') {
+      // Dedicated melee weapon gives a slight movement & sprint speed boost (+12%, not while prone)
+      if (this.activeSlot === 'melee' && this.stance !== 'prone') {
         speed *= 1.12;
       }
 

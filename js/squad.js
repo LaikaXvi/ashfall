@@ -170,7 +170,7 @@ class SquadMate {
     this.group = g;
   }
 
-  _rebuildWeaponMesh(weaponId) {
+  _rebuildWeaponMesh(weaponId, mods = {}) {
     if (!this.opModel || !this.opModel.weaponMount) return;
     if (this.rifleMesh) {
       this.opModel.weaponMount.remove(this.rifleMesh);
@@ -179,7 +179,7 @@ class SquadMate {
     const wDef = GAME_DATA.ITEMS[weaponId];
     let wObj = null;
     if (this.weaponSystem && wDef && this.weaponSystem.buildThirdPersonWeapon) {
-      const builtWpn = this.weaponSystem.buildThirdPersonWeapon(wDef, {});
+      const builtWpn = this.weaponSystem.buildThirdPersonWeapon(wDef, mods || {});
       if (builtWpn && builtWpn.group) {
         wObj = builtWpn.group;
         this.isPistol = !!builtWpn.isPistol;
@@ -584,9 +584,12 @@ class SquadMate {
     if (typeof st.mag === 'number') this._remoteMag = st.mag;
     if (typeof st.hp === 'number') this.hp = st.hp;
     if (typeof st.armor === 'number') this.armor = st.armor;
-    if (st.wpn && st.wpn !== this.weaponId) {
-      this.weaponId = st.wpn;
-      this._rebuildWeaponMesh(this.weaponId);
+    const nextMods = st.wpnMods || {};
+    const nextModsKey = JSON.stringify(nextMods);
+    if ((st.wpn && st.wpn !== this.weaponId) || nextModsKey !== (this._remoteWpnModsKey || '')) {
+      if (st.wpn) this.weaponId = st.wpn;
+      this._remoteWpnModsKey = nextModsKey;
+      this._rebuildWeaponMesh(this.weaponId, nextMods);
     }
     const inReviveGrace = performance.now() < (this._reviveGraceUntil || 0);
     if (!inReviveGrace || (!st.downed && !st.dead)) {

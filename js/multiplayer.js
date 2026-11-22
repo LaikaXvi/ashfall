@@ -246,11 +246,12 @@ class MultiplayerSession {
       return;
     }
 
-    // Fallback state / event packets over ntfy.sh if WebRTC hasn't connected yet
+    // Fallback state / event packets over ntfy.sh / MQTT if WebRTC hasn't connected yet
     if (
       pkt.type === 'state' || pkt.type === 'shot' || pkt.type === 'ping' ||
       pkt.type === 'enemy_hit' || pkt.type === 'enemies_sync' || pkt.type === 'enemy_shot' ||
       pkt.type === 'ground_drop' || pkt.type === 'ground_pickup' ||
+      pkt.type === 'container_open' || pkt.type === 'container_sync' ||
       pkt.type === 'pvp_hit' || pkt.type === 'pvp_toggle' || pkt.type === 'revive_ping' ||
       pkt.type === 'revive_progress' || pkt.type === 'revive_complete' ||
       pkt.type === 'killstreak' || pkt.type === 'field_upgrade' || pkt.type === 'raid_timer'
@@ -343,6 +344,8 @@ class MultiplayerSession {
       armor: Math.ceil(player.armor),
       stance: player.isDowned ? 'downed' : (player.dead ? 'dead' : (player.isSliding ? 'slide' : (player.isProne ? 'prone' : (player.isCrouching ? 'crouch' : 'stand')))),
       wpn: wSlot ? wSlot.id : 'melee',
+      wpnMods: (wSlot && wSlot.mods) ? wSlot.mods : null,
+      wpnRar: (wSlot && wSlot.rarityOverride) || null,
       mag: wSlot ? (wSlot.mag || 0) : 0,
       inv: !!player.isInventoryOpen,
       ads: !!player.isADS,
@@ -381,6 +384,8 @@ class MultiplayerSession {
       armor: Math.ceil(player.armor),
       stance: player.isDowned ? 'downed' : (player.dead ? 'dead' : (player.isSliding ? 'slide' : (player.isProne ? 'prone' : (player.isCrouching ? 'crouch' : 'stand')))),
       wpn: wSlot ? wSlot.id : 'melee',
+      wpnMods: (wSlot && wSlot.mods) ? wSlot.mods : null,
+      wpnRar: (wSlot && wSlot.rarityOverride) || null,
       mag: wSlot ? (wSlot.mag || 0) : 0,
       inv: !!player.isInventoryOpen,
       ads: !!player.isADS,

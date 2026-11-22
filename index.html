@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ASHFALL // 3D Extraction Looter-Shooter</title>
-  <link rel="stylesheet" href="css/style.css?v=242" />
+  <link rel="stylesheet" href="css/style.css?v=243" />
   <!-- Three.js r128 UMD for zero-build compatibility (works on both http:// and file://) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="js/vendor/GLTFLoader.js?v=240"></script>
@@ -52,7 +52,7 @@
     <!-- IMPORTANT: Update version in GAME_DATA.VERSION (js/data.js) and here with EVERY new commit -->
     <div class="menu-version-stack">
       <button id="menu-update-badge" class="menu-update-badge hidden" title="Click to reload into the latest version">NEW VERSION AVAILABLE</button>
-      <div id="menu-version-badge" class="menu-version-badge">v2.42</div>
+      <div id="menu-version-badge" class="menu-version-badge">v2.43</div>
     </div>
     <!-- Minimal Sub-Menu Top Bar (Top-Left Back Button only — no redundant nav band) -->
     <header id="menu-topbar" class="hideout-header hidden">
@@ -1085,16 +1085,16 @@
         <div id="loot-container-items" class="inv-grid dmz-grid"></div>
       </div>
 
-      <!-- Right Edge: Backpack+Sort (top) + Operator Loadout (bottom), always shown together -->
+      <!-- Right Edge: Utility strip + Backpack/Sort (top) + Operator Loadout (bottom) -->
       <div id="inv-operator-panel" class="inv-panel inv-operator-panel dmz-operator-stack">
+        <div class="dmz-top-utility">
+          <span id="bag-total-val" class="accent dmz-bag-val">₽ 0</span>
+          <button id="btn-close-loot" class="btn-small dmz-ghost-btn">CLOSE [TAB / B]</button>
+        </div>
         <div id="dmz-backpack-panel" class="dmz-panel">
           <div class="dmz-panel-head">
             <div class="dmz-pack-tab"><span id="bag-pack-name">BASIC PACK</span><span class="dmz-bag-count-inline"> (<span id="bag-slots-used">0</span>/<span id="bag-slots-max">8</span>)</span></div>
-            <div class="dmz-pack-head-right">
-              <span id="bag-total-val" class="accent dmz-bag-val">₽ 0</span>
-              <span class="dmz-sort-head">SORT</span>
-              <button id="btn-close-loot" class="btn-small dmz-ghost-btn">CLOSE [TAB / B]</button>
-            </div>
+            <span class="dmz-sort-head">SORT</span>
           </div>
           <div class="dmz-bag-row">
             <div id="loot-backpack-items" class="inv-grid dmz-bag-grid"></div>
@@ -1277,26 +1277,26 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION with every new commit) -->
-  <script src="js/data.js?v=242"></script>
-  <script src="js/rig.js?v=241"></script>
+  <script src="js/data.js?v=243"></script>
+  <script src="js/rig.js?v=243"></script>
   <script src="js/animation.js?v=240"></script>
   <script src="js/net.js?v=123"></script>
   <script src="js/sfx_samples.js?v=21"></script>
   <script src="js/audio.js?v=236"></script>
   <script src="js/world.js?v=236"></script>
-  <script src="js/weapons.js?v=241"></script>
-  <script src="js/icons.js?v=242"></script>
+  <script src="js/weapons.js?v=243"></script>
+  <script src="js/icons.js?v=243"></script>
   <script src="js/throwables.js?v=233"></script>
-  <script src="js/enemies.js?v=233"></script>
-  <script src="js/squad.js?v=233"></script>
-  <script src="js/multiplayer.js?v=218"></script>
-  <script src="js/player.js?v=233"></script>
+  <script src="js/enemies.js?v=243"></script>
+  <script src="js/squad.js?v=243"></script>
+  <script src="js/multiplayer.js?v=243"></script>
+  <script src="js/player.js?v=243"></script>
   <script src="js/gamepad.js?v=242"></script>
-  <script src="js/gunsmith.js?v=195"></script>
+  <script src="js/gunsmith.js?v=243"></script>
   <script src="js/matchmaking.js?v=240"></script>
   <script src="js/hideout.js?v=240"></script>
-  <script src="js/ui.js?v=242"></script>
+  <script src="js/ui.js?v=243"></script>
   <script src="js/console.js?v=226"></script>
-  <script src="js/main.js?v=242"></script>
+  <script src="js/main.js?v=243"></script>
 </body>
 </html>
