@@ -630,6 +630,8 @@ class GamepadController {
   }
 
   _getMenuScope() {
+    const fobOv = document.getElementById('fob-enter-overlay');
+    if (fobOv && !fobOv.classList.contains('hidden')) return fobOv;
     const inGameSettings = document.getElementById('ingame-settings-overlay');
     if (inGameSettings && !inGameSettings.classList.contains('hidden')) return inGameSettings;
     const pauseOv = document.getElementById('pointer-lock-overlay');

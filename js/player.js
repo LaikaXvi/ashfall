@@ -688,11 +688,12 @@ class Player {
     }
     // Reflect equipped Backpack accurately on the player model (RiggedCharacter skin + procedural fallback)
     const bagId = this.backpackId || null;
+    p._bagIdWanted = bagId;
     if (p.skin && typeof p.skin.setBackpack === 'function') {
       p.skin.setBackpack(bagId);
     }
     if (p.packGroup) {
-      p.packGroup.visible = !!bagId;
+      p.packGroup.visible = !!bagId && !p.skin;
       if (bagId && typeof window.buildTacticalBackpackMesh === 'function') {
         if (p.packGroup.userData.bagId !== bagId) {
           while (p.packGroup.children.length) p.packGroup.remove(p.packGroup.children[0]);
@@ -718,8 +719,11 @@ class Player {
   toggleThirdPerson() {
     this.isThirdPerson = !this.isThirdPerson;
     if (this.avatarGroup) this.avatarGroup.visible = !this.dead && !(this.isDowned && !this.isThirdPerson) && !(this.isProne && !this.isThirdPerson);
-    if (this.avatarParts && this.avatarParts.skin && typeof this.avatarParts.skin.setFirstPersonBodyMode === 'function') {
-      this.avatarParts.skin.setFirstPersonBodyMode(!this.isThirdPerson);
+    if (this.avatarParts) {
+      this.avatarParts._fpBodyModeWanted = !this.isThirdPerson;
+      if (this.avatarParts.skin && typeof this.avatarParts.skin.setFirstPersonBodyMode === 'function') {
+        this.avatarParts.skin.setFirstPersonBodyMode(!this.isThirdPerson);
+      }
     }
     if (this.weaponSystem && this.weaponSystem.setThirdPerson) {
       this.weaponSystem.setThirdPerson(this.isThirdPerson);
@@ -735,8 +739,13 @@ class Player {
     if (!showBody) return;
 
     const p = this.avatarParts;
+    p._fpBodyModeWanted = isFP;
     if (p.skin && typeof p.skin.setFirstPersonBodyMode === 'function') {
       p.skin.setFirstPersonBodyMode(isFP);
+      // Restore proxy node visibility in case procedural fallback hid them before async RiggedCharacter attached
+      if (p.head && !p.head.visible) p.head.visible = true;
+      if (p.leftArm && p.leftArm.shoulder && !p.leftArm.shoulder.visible) p.leftArm.shoulder.visible = true;
+      if (p.rightArm && p.rightArm.shoulder && !p.rightArm.shoulder.visible) p.rightArm.shoulder.visible = true;
     } else {
       // Procedural fallback FP masking: hide head/arms/backpack so camera never clips
       if (p.head) p.head.visible = !isFP;

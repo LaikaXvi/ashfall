@@ -430,11 +430,26 @@
       carrierFlap, plateProp, handMag, handShell, inventoryTablet, syringeProp, grenadeProp,
       isMW2Rig: true
     };
-    if (window.RigAssets && window.RigAssets.ready && window.RiggedCharacter) {
+    const attachRiggedSkin = () => {
+      if (rigObj.skin || !window.RigAssets || !window.RigAssets.ready || !window.RiggedCharacter) return;
       try {
         rigObj.skin = new window.RiggedCharacter(rigObj, opts);
+        if (rigObj._fpBodyModeWanted != null && typeof rigObj.skin.setFirstPersonBodyMode === 'function') {
+          rigObj.skin.setFirstPersonBodyMode(!!rigObj._fpBodyModeWanted);
+        }
+        if (rigObj._bagIdWanted !== undefined && typeof rigObj.skin.setBackpack === 'function') {
+          rigObj.skin.setBackpack(rigObj._bagIdWanted);
+        }
       } catch (e) {
         console.warn('[rig] Failed to attach RiggedCharacter, keeping procedural rig:', e);
+      }
+    };
+    if (window.RigAssets) {
+      if (window.RigAssets.ready) {
+        attachRiggedSkin();
+      } else {
+        if (typeof window.RigAssets.load === 'function') window.RigAssets.load();
+        if (typeof window.RigAssets.onReady === 'function') window.RigAssets.onReady(attachRiggedSkin);
       }
     }
     return rigObj;

@@ -38,25 +38,50 @@
     items: {},
     hiddenMaterial: new THREE.MeshBasicMaterial({ visible: false }),
     _loadPromise: null,
+    _readyCallbacks: [],
+
+    onReady(cb) {
+      if (typeof cb !== 'function') return;
+      if (this.ready && this.soldier) {
+        try { cb(); } catch (e) {}
+      } else {
+        this._readyCallbacks.push(cb);
+      }
+    },
+
+    _flushReadyCallbacks() {
+      const list = this._readyCallbacks.splice(0, this._readyCallbacks.length);
+      for (let i = 0; i < list.length; i++) {
+        try { list[i](); } catch (e) {}
+      }
+    },
 
     load(onProgress) {
+      if (this.ready && this.soldier) return Promise.resolve({ ok: true });
       if (this._loadPromise) return this._loadPromise;
       this._loadPromise = new Promise((resolve) => {
         try {
-          if (typeof localStorage !== 'undefined' && localStorage.getItem('ashfall_disable_rig') === '1') {
+          if (window.FORCE_LEGACY_RIG === true) {
             this.ready = false;
             this.failed = false;
+            this._loadPromise = null;
             resolve({ ok: false, disabled: true });
             return;
+          }
+          // Clear any stale debug flag from older test sessions so the new tactical_soldier.glb model never gets suppressed!
+          if (typeof localStorage !== 'undefined' && localStorage.getItem('ashfall_disable_rig') === '1') {
+            try { localStorage.removeItem('ashfall_disable_rig'); } catch (e) {}
           }
           if (!THREE || !THREE.GLTFLoader) {
             console.warn('[RigAssets] THREE.GLTFLoader unavailable; using legacy rigs.');
             this.failed = true;
+            this._loadPromise = null;
             resolve({ ok: false });
             return;
           }
         } catch (e) {
           this.failed = true;
+          this._loadPromise = null;
           resolve({ ok: false });
           return;
         }
@@ -66,46 +91,67 @@
           if (settled) return;
           settled = true;
           clearTimeout(timer);
+          if (!ok) this._loadPromise = null; // allow future retry if network recovers
+          if (ok) this._flushReadyCallbacks();
           resolve({ ok });
         };
 
         const timer = setTimeout(() => {
-          console.warn('[RigAssets] soldier.glb load timed out after 20s; falling back to legacy rigs.');
+          console.warn('[RigAssets] character glb load timed out after 25s.');
           this.failed = true;
           finish(false);
-        }, 20000);
+        }, 25000);
 
-        try {
-          const loader = new THREE.GLTFLoader();
-          loader.load(
-            'assets/models/characters/tactical_soldier.glb?v=252',
-            (gltf) => {
-              if (settled) return;
-              if (!gltf || !gltf.scene) {
-                this.failed = true;
-                finish(false);
-                return;
-              }
-              this.soldier = {
-                scene: gltf.scene,
-                animations: Array.isArray(gltf.animations) ? gltf.animations : []
-              };
-              this.ready = true;
-              this.failed = false;
-              finish(true);
-            },
-            onProgress || undefined,
-            (err) => {
-              console.warn('[RigAssets] Failed to load soldier.glb, using legacy rigs:', err);
-              this.failed = true;
-              finish(false);
+        const urls = [
+          'assets/models/characters/tactical_soldier.glb?v=259',
+          `assets/models/characters/tactical_soldier.glb?v=259&r=${Date.now()}`,
+          `assets/models/characters/tactical_soldier.glb?r=${Date.now() + 1}`,
+          'assets/models/characters/soldier.glb?v=259'
+        ];
+        const delays = [0, 450, 1000, 400];
+
+        const tryLoadIdx = (idx) => {
+          if (settled) return;
+          if (idx >= urls.length) {
+            console.warn('[RigAssets] All character glb load attempts failed.');
+            this.failed = true;
+            finish(false);
+            return;
+          }
+          setTimeout(() => {
+            if (settled) return;
+            try {
+              const loader = new THREE.GLTFLoader();
+              loader.load(
+                urls[idx],
+                (gltf) => {
+                  if (settled) return;
+                  if (!gltf || !gltf.scene) {
+                    tryLoadIdx(idx + 1);
+                    return;
+                  }
+                  this.soldier = {
+                    scene: gltf.scene,
+                    animations: Array.isArray(gltf.animations) ? gltf.animations : []
+                  };
+                  this.ready = true;
+                  this.failed = false;
+                  finish(true);
+                },
+                idx === 0 ? (onProgress || undefined) : undefined,
+                (err) => {
+                  console.warn(`[RigAssets] Attempt ${idx + 1} failed (${urls[idx]}):`, err);
+                  tryLoadIdx(idx + 1);
+                }
+              );
+            } catch (err) {
+              console.warn(`[RigAssets] GLTFLoader exception on attempt ${idx + 1}:`, err);
+              tryLoadIdx(idx + 1);
             }
-          );
-        } catch (err) {
-          console.warn('[RigAssets] GLTFLoader exception, using legacy rigs:', err);
-          this.failed = true;
-          finish(false);
-        }
+          }, delays[idx] || 0);
+        };
+
+        tryLoadIdx(0);
       });
       return this._loadPromise;
     },
@@ -1560,9 +1606,10 @@
           shOff.y = THREE.MathUtils.clamp(shOff.y + shVel.y * stepDt, -0.045, 0.045);
           shOff.z = THREE.MathUtils.clamp(shOff.z + shVel.z * stepDt, -0.055, 0.055);
 
-          // Right shoulder pockets inward/upward during ADS cheek-weld; left clavicle protracting slightly forward for C-clamp support
+          // Right shoulder pockets inward/upward matching tucked shoulder-center viewmodel; left clavicle protracts slightly forward for support
+          const shBaseX = side === 'right' ? 0.175 : 0.21;
           const shCamLocal = new THREE.Vector3(
-            sideSign * (0.22 - (side === 'right' ? adsB * 0.038 : adsB * 0.015)) + shOff.x,
+            sideSign * (shBaseX - (side === 'right' ? adsB * 0.032 : adsB * 0.015)) + shOff.x,
             -0.29 + (side === 'right' ? adsB * 0.024 : adsB * 0.014) - wp * 0.020 + shOff.y,
             0.14 + (side === 'left' ? -adsB * 0.022 : adsB * 0.012) + wp * 0.035 + shOff.z
           );
