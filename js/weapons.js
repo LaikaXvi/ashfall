@@ -584,6 +584,7 @@ class WeaponSystem {
         frontPivot.rotation.x = Math.PI / 2.2;
         frontPivot.position.y = frontBaseY + 0.002;
       }
+      frontPivot.traverse((ch) => { if (ch.isMesh) ch.renderOrder = -20; });
       ironGroup.add(rearPivot, frontPivot);
     } else if (weaponId === 'ak74m') {
       // Authentic AK-74M: rear tangent leaf sight block on front trunnion + hooded front sight block on barrel
@@ -622,6 +623,7 @@ class WeaponSystem {
         frontPivot.rotation.x = Math.PI / 2.15;
         frontPivot.position.y = 0.014;
       }
+      frontPivot.traverse((ch) => { if (ch.isMesh) ch.renderOrder = -20; });
       ironGroup.add(rearPivot, frontPivot);
     } else if (weaponId === 'm870') {
       // Authentic M870 Tactical: ghost-ring rear aperture with protective wings + ramped front tritium blade flush on barrel
@@ -653,6 +655,7 @@ class WeaponSystem {
         frontPivot.rotation.x = Math.PI / 2.2;
         frontPivot.position.y = 0.024;
       }
+      frontPivot.traverse((ch) => { if (ch.isMesh) ch.renderOrder = -20; });
       ironGroup.add(rearPivot, frontPivot);
     } else if (weaponId === 'mosin9130') {
       // M91/30 Mosin-Nagant: classic tangent leaf rear notch + hooded front globe post
@@ -673,6 +676,7 @@ class WeaponSystem {
       const fPost = new THREE.Mesh(new THREE.BoxGeometry(0.0016, 0.012, 0.0025), sightMat);
       fPost.position.set(0, 0.011, 0);
       frontPivot.add(fBase, fHood, fPost);
+      frontPivot.traverse((ch) => { if (ch.isMesh) ch.renderOrder = -20; });
       ironGroup.add(rearPivot, frontPivot);
     } else {
       // M24 / AWM .338: folding backup micro-peep rear + hooded front blade (always folded flat when optic mounted)
@@ -694,6 +698,7 @@ class WeaponSystem {
         rearPivot.rotation.x = -Math.PI / 2.15;
         frontPivot.rotation.x = Math.PI / 2.15;
       }
+      frontPivot.traverse((ch) => { if (ch.isMesh) ch.renderOrder = -20; });
       ironGroup.add(rearPivot, frontPivot);
     }
 
@@ -909,6 +914,7 @@ class WeaponSystem {
     if (withHands) {
       this.scopeOptic = {
         style,
+        scopeY,
         rearZ,
         rEye,
         holeMask: ocularHoleMask,
@@ -1002,7 +1008,7 @@ class WeaponSystem {
       this.sightHeight = y;
     }
 
-    // 2. Muzzle
+    // 2. Muzzle (renderOrder=-20 so barrel-mounted muzzle brakes/suppressors stay visible in bottom of magnified scopes!)
     const mz = this.muzzleMesh.position;
     if (mods.muzzle === 'suppressor') {
       const supLen = weaponDef.slot === 'secondary' ? 0.12 : 0.16;
@@ -1010,12 +1016,14 @@ class WeaponSystem {
       const sup = new THREE.Mesh(new THREE.CylinderGeometry(supRad, supRad, supLen, 12), matDark);
       sup.rotation.x = Math.PI / 2;
       sup.position.set(mz.x, mz.y, mz.z - supLen / 2 + 0.02);
+      sup.renderOrder = -20;
       g.add(sup);
       this.muzzleMesh.position.z -= supLen - 0.01;
       this.muzzleFlash.position.z -= supLen - 0.01;
     } else if (mods.muzzle === 'compensator') {
       const comp = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.024, 0.048), matSteel);
       comp.position.set(mz.x, mz.y, mz.z - 0.012);
+      comp.renderOrder = -20;
       g.add(comp);
       this.muzzleMesh.position.z -= 0.03;
       this.muzzleFlash.position.z -= 0.03;
@@ -2197,6 +2205,7 @@ class WeaponSystem {
         lower, magWell, paddleRel, selector, grip, endCap,
         mag, this.spareMagMesh, boltHandle, this.rightHand, this.leftHand
       );
+      [barrel, triLug, tripleFrame].forEach((m) => { m.renderOrder = -20; });
       // DMZ 2022 MP5 receiver push-pins, claw-mount lugs & low-profile optics rail
       addReceiverPins(0.019, [[-0.016, 0.168], [-0.016, 0.012], [-0.021, -0.042]]);
       addPicatinnyRail(0.036, -0.075, 0.085, 0.018, 0.014, bluedMat);
@@ -2374,6 +2383,7 @@ class WeaponSystem {
       const brakePort = new THREE.Mesh(new THREE.BoxGeometry(0.029, 0.011, 0.014), darkMat);
       brakePort.position.set(0, 0.002, -0.562);
       g.add(sideRail, sideRailGroove, brakePort);
+      [barrel, cleaningRod, gasBlock, fsbBase, brakeBase, brakeFront, brakePort].forEach((m) => { m.renderOrder = -20; });
       addReceiverPins(0.022, [[-0.014, 0.045], [-0.014, 0.088], [0.006, -0.085], [-0.010, -0.095]]);
 
       this.sightHeight = 0.044;
@@ -2448,6 +2458,7 @@ class WeaponSystem {
       this.leftHandRestRot.copy(this.leftHand.rotation);
 
       g.add(receiver, ejectionPort, barrel, magTube, bblClamp, pump, stockBody, stockPad, shell, this.rightHand, this.leftHand);
+      [barrel, magTube, bblClamp].forEach((m) => { m.renderOrder = -20; });
       // DMZ 2022 Remington 870 receiver trigger pins + milled top rail slots
       addReceiverPins(0.023, [[-0.012, 0.042], [-0.012, 0.095]]);
       addPicatinnyRail(0.030, -0.055, 0.095, 0.018, 0.014, bluedMat);
@@ -2530,6 +2541,7 @@ class WeaponSystem {
         bandRear, bandFront, cleaningRod, receiver, barrel, internalMag,
         boltGroup, clipGroup, this.rightHand, this.leftHand
       );
+      [barrel, cleaningRod, bandFront].forEach((m) => { m.renderOrder = -20; });
 
       this.sightHeight = 0.040;
       this.adsZ = -0.24;
@@ -2619,6 +2631,7 @@ class WeaponSystem {
         chassis, receiver, topRail, barrel, muzzleBrake, bipodMount, bipodL, bipodR,
         mag, this.spareMagMesh, boltGroup, this.rightHand, this.leftHand
       );
+      [barrel, muzzleBrake].forEach((m) => { m.renderOrder = -20; });
       // DMZ 2022 AWM milled top Picatinny rail teeth & chassis mounting bolts
       addPicatinnyRail(0.0465, -0.092, 0.132, 0.023, 0.013, darkMat);
       addReceiverPins(0.022, [[-0.014, -0.06], [-0.014, 0.08], [-0.014, -0.20]]);
@@ -2690,6 +2703,7 @@ class WeaponSystem {
       this.leftHandRestRot.copy(this.leftHand.rotation);
 
       g.add(chassis, receiver, topRail, barrel, mag, this.spareMagMesh, boltGroup, this.rightHand, this.leftHand);
+      barrel.renderOrder = -20;
       // DMZ 2022 M24 SWS milled Picatinny scope base teeth & receiver action pins
       addPicatinnyRail(0.043, -0.062, 0.122, 0.021, 0.013, darkMat);
       addReceiverPins(0.022, [[-0.014, -0.04], [-0.014, 0.09]]);
@@ -3086,7 +3100,17 @@ class WeaponSystem {
       if (player && player.isADS && !this.wallBlocked) {
         const env = p < 0.10 ? (p / 0.10) : (p > 0.90 ? (1 - p) / 0.10 : 1);
         const wId = this.reloadWeaponId;
-        if (wId === 'm24') {
+        const scZoom = (weaponDef && weaponDef.adsZoom) ? weaponDef.adsZoom : 1.25;
+        if (this.scopeOptic && scZoom >= 2.0) {
+          // Magnified-scope ADS reload (v2.55): eye-relief stays active while gently offsetting the optic during mag/bolt work!
+          const scRatio = 1 / Math.max(1.0, Math.sqrt(scZoom));
+          reloadPosOffset.x = THREE.MathUtils.clamp(reloadPosOffset.x * 0.08 * scRatio - 0.0045 * scRatio * env, -0.014, 0.014);
+          reloadPosOffset.y = THREE.MathUtils.clamp(reloadPosOffset.y * 0.07 * scRatio - 0.0055 * scRatio * env, -0.015, 0.012);
+          reloadPosOffset.z = THREE.MathUtils.clamp(reloadPosOffset.z * 0.14 + 0.016 * scRatio * env, -0.024, 0.032);
+          reloadRotOffset.x = THREE.MathUtils.clamp(reloadRotOffset.x * 0.14 * scRatio, -0.09, 0.09);
+          reloadRotOffset.y = THREE.MathUtils.clamp(reloadRotOffset.y * 0.10 * scRatio, -0.07, 0.07);
+          reloadRotOffset.z = THREE.MathUtils.clamp(reloadRotOffset.z * 0.24 * scRatio, -0.14, 0.14);
+        } else if (wId === 'm24') {
           // Scope-locked marksman ADS reload: minimal movement so eye stays on the glass
           reloadPosOffset.x = reloadPosOffset.x * 0.12;
           reloadPosOffset.y = reloadPosOffset.y * 0.12 - 0.010 * env;
@@ -3700,18 +3724,32 @@ class WeaponSystem {
     const grabRotZ = -0.14 * grabCantActive;
     const sprScale = isAdsActive ? (0.38 * Math.max(0.22, zoomDamp)) : 1.0;
 
-    // Wide-aperture magnified scope eye-box toggle & dynamic optical eye-relief (keeps 3x/4x/6x/8x scopes big & clear at ANY FOV!)
+    // Wide-aperture magnified scope eye-box toggle & dynamic optical eye-relief (stays active & slightly offset during ADS reload!)
+    const isAdsReload = !!(isAdsActive && this.isReloading && !this.isInspecting && !this.isPlating && !this.isHealing && !(this.meleeSwingTimer > 0));
+    const allowScopeEyeBox = !!(isAdsActive && (!customRot || isAdsReload) && !this.wallBlocked && !this.isThirdPerson);
     let effectiveAdsZ = this.adsZ;
+    let scopeEyeBoxActive = false;
     if (this.scopeOptic) {
       const sc = this.scopeOptic;
-      const eyeBoxActive = !!(isAdsActive && !customRot && !this.wallBlocked && !this.isThirdPerson && this._adsBlend > 0.48);
+      const eyeBoxActive = !!(allowScopeEyeBox && this._adsBlend > 0.48);
+      scopeEyeBoxActive = eyeBoxActive;
       if (sc.holeMask) sc.holeMask.visible = eyeBoxActive;
       if (sc.bezel) sc.bezel.visible = eyeBoxActive;
-      if (sc.shadowRing) sc.shadowRing.visible = eyeBoxActive;
+      if (sc.shadowRing) {
+        sc.shadowRing.visible = eyeBoxActive;
+        if (eyeBoxActive) {
+          const shOffX = isAdsReload ? THREE.MathUtils.clamp(-reloadPosOffset.x * 0.28, -0.0025, 0.0025) : 0;
+          const shOffY = isAdsReload ? THREE.MathUtils.clamp(-reloadPosOffset.y * 0.28, -0.0025, 0.0025) : 0;
+          sc.shadowRing.position.set(shOffX, (sc.scopeY || this.sightHeight) + shOffY, sc.rearZ + 0.0008);
+          if (sc.shadowRing.material) {
+            sc.shadowRing.material.opacity = THREE.MathUtils.lerp(sc.shadowRing.material.opacity, isAdsReload ? 0.48 : 0.34, Math.min(1, dt * 14));
+          }
+        }
+      }
       if (sc.boreMesh) sc.boreMesh.visible = !eyeBoxActive;
-      if (sc.retGroup) sc.retGroup.visible = eyeBoxActive || (isAdsActive && !customRot && !this.wallBlocked && !this.isThirdPerson && this._adsBlend > 0.25);
+      if (sc.retGroup) sc.retGroup.visible = eyeBoxActive || (allowScopeEyeBox && this._adsBlend > 0.25);
 
-      if (isAdsActive && !customRot && adsZoom >= 2.0) {
+      if (allowScopeEyeBox && adsZoom >= 2.0) {
         // Generous MW2019/Tarkov ocular aperture scaling with zoom: ~53% at 3x, ~59% at 4x, ~68% at 6x, ~74% at 8x
         const targetScreenFrac = THREE.MathUtils.clamp(0.30 + Math.log2(Math.max(1.5, adsZoom)) * 0.145, 0.46, 0.76);
         const baseFovNow = window.BASE_FOV || 75;
@@ -3723,6 +3761,10 @@ class WeaponSystem {
         const dEye = THREE.MathUtils.clamp(sc.rEye / (targetScreenFrac * tanHalfVm), 0.042, 0.56);
         effectiveAdsZ = -(sc.rearZ + dEye);
       }
+    }
+    if (this.muzzleMesh && this.muzzleMesh.material) {
+      // Allow muzzle flash to illuminate cleanly off the visible barrel/muzzle at the bottom of the magnified scope!
+      this.muzzleMesh.material.depthTest = !scopeEyeBoxActive;
     }
 
     const slideCantZ = (!customRot && !this.isFistsMode && player.isSliding) ? (isAdsActive ? -0.10 : -0.32) : 0;
@@ -3737,8 +3779,9 @@ class WeaponSystem {
 
     // MW2/DMZ One-Handed High-Port Tactical Sprint: weapon held UP in right hand, left fist pumping apart!
     // When in Fists mode, center the viewmodel horizontally so both hands come evenly from bottom-left & bottom-right!
-    const adsPivotX = (isAdsActive && !customRot) ? (Math.sin(targetRotZ) * this.sightHeight) : 0;
-    const adsPivotY = (isAdsActive && !customRot) ? ((1 - Math.cos(targetRotZ)) * this.sightHeight) : 0;
+    const adsPivotActive = isAdsActive && (!customRot || isAdsReload);
+    const adsPivotX = adsPivotActive ? (Math.sin(targetRotZ) * this.sightHeight) : 0;
+    const adsPivotY = adsPivotActive ? ((1 - Math.cos(targetRotZ)) * this.sightHeight) : 0;
     const basePosX = this.isFistsMode ? 0.0 : (isAdsActive ? adsPivotX : (tacSprintingHip ? 0.24 : (sprintingHip ? 0.19 : 0.22)));
     const basePosY = this.isFistsMode ? -0.16 : (isAdsActive ? (-this.sightHeight + adsPivotY) : (tacSprintingHip ? -0.14 : (sprintingHip ? -0.235 : -0.20)));
     const basePosZ = this.isFistsMode ? -0.38 : (isAdsActive ? effectiveAdsZ : (tacSprintingHip ? -0.34 : (sprintingHip ? -0.40 : -0.42)));
