@@ -357,8 +357,8 @@
           if (!boneDir) continue;
           let targetFold = palm;
           if (fName === 'thumb') {
-            // Swing thumb cleanly across curled index/middle phalanges (verified on GLB coordinates)
-            targetFold = palm.clone().multiplyScalar(-0.25).addScaledVector(fW, 0.20).addScaledVector(iW, -1.0).normalize();
+            // Curl anatomical lateral thumb smoothly inward into palm and across curled index/middle fingers
+            targetFold = palm.clone().multiplyScalar(0.45).addScaledVector(iW, -0.90).normalize();
           }
           const axisWorld = new THREE.Vector3().crossVectors(boneDir, targetFold);
           if (axisWorld.lengthSq() < 1e-6) continue;
@@ -379,7 +379,7 @@
 
     applyFingerCurl(curlData, angles = [0.9, 1.0, 0.6], thumb = 0.5) {
       if (!curlData || curlData.length === 0) return;
-      const tAngles = [thumb * 0.65, thumb * 0.28, thumb * 0.18];
+      const tAngles = [thumb * 0.72, thumb * 0.42, thumb * 0.25];
       for (let i = 0; i < curlData.length; i++) {
         const e = curlData[i];
         const arr = e.finger === 'thumb' ? tAngles : angles;
@@ -1179,23 +1179,23 @@
     }
   };
 
-  // ==================== FIRST-PERSON RIGGED ARMS (v2.48) ====================
+  // ==================== FIRST-PERSON RIGGED ARMS (v2.49) ====================
   const FP_HAND_STYLES = {
-    grip:          { f: new THREE.Vector3(-0.22, -0.08, -0.97), back: new THREE.Vector3( 0.97,  0.08, -0.22), palmOffset: new THREE.Vector3( 0.022, -0.004, 0.006), curl: [1.18, 1.28, 0.85], thumb: 0.72 },
+    grip:          { f: new THREE.Vector3(-0.22, -0.08, -0.97), back: new THREE.Vector3( 0.97,  0.08, -0.22), palmOffset: new THREE.Vector3( 0.020, -0.002, 0.005), curl: [1.18, 1.28, 0.85], thumb: 0.72 },
     rightFist:     { f: new THREE.Vector3(-0.22,  0.14, -0.96), back: new THREE.Vector3( 0.92,  0.34, -0.18), palmOffset: new THREE.Vector3( 0.005,  0.000, 0.002), curl: [1.50, 1.62, 0.95], thumb: 1.00 },
     leftFist:      { f: new THREE.Vector3( 0.22,  0.14, -0.96), back: new THREE.Vector3(-0.92,  0.34, -0.18), palmOffset: new THREE.Vector3(-0.005,  0.000, 0.002), curl: [1.50, 1.62, 0.95], thumb: 1.00 },
-    supportPistol: { f: new THREE.Vector3( 0.40,  0.05, -0.91), back: new THREE.Vector3(-0.88, -0.22, -0.42), palmOffset: new THREE.Vector3(-0.020, -0.014, 0.006), curl: [0.95, 1.05, 0.72], thumb: 0.50 },
-    foregrip:      { f: new THREE.Vector3( 0.24,  0.00, -0.97), back: new THREE.Vector3(-0.97,  0.00, -0.24), palmOffset: new THREE.Vector3(-0.022,  0.000, 0.006), curl: [1.18, 1.28, 0.85], thumb: 0.75 },
-    supportRifle:  { f: new THREE.Vector3( 0.36,  0.18, -0.92), back: new THREE.Vector3(-0.34, -0.92, -0.18), palmOffset: new THREE.Vector3(-0.010, -0.026, 0.006), curl: [0.80, 0.90, 0.62], thumb: 0.45 },
-    plate:         { f: new THREE.Vector3( 0.06, -0.22, -0.97), back: new THREE.Vector3(-0.18,  0.96, -0.20), palmOffset: new THREE.Vector3( 0.000,  0.010, 0.004), curl: [0.68, 0.78, 0.55], thumb: 0.55 },
-    // Dedicated reload IK grip styles (flush palm contact with magazines & bolts!)
-    magGrip:       { f: new THREE.Vector3( 0.44, -0.12, -0.89), back: new THREE.Vector3(-0.89,  0.10, -0.44), palmOffset: new THREE.Vector3(-0.008,  0.000, 0.002), curl: [1.26, 1.38, 0.88], thumb: 0.88 },
-    akMagGrip:     { f: new THREE.Vector3( 0.50, -0.08, -0.86), back: new THREE.Vector3(-0.86,  0.12, -0.50), palmOffset: new THREE.Vector3(-0.010,  0.000, 0.002), curl: [1.30, 1.42, 0.90], thumb: 0.90 },
-    boltPinch:     { f: new THREE.Vector3(-0.30,  0.06, -0.95), back: new THREE.Vector3( 0.80,  0.54, -0.24), palmOffset: new THREE.Vector3( 0.008,  0.004, 0.002), curl: [1.36, 1.48, 0.92], thumb: 0.92 },
-    leftBoltPinch: { f: new THREE.Vector3( 0.38,  0.08, -0.92), back: new THREE.Vector3(-0.84,  0.46, -0.28), palmOffset: new THREE.Vector3(-0.008,  0.004, 0.002), curl: [1.34, 1.46, 0.90], thumb: 0.90 },
-    slapOpen:      { f: new THREE.Vector3( 0.32, -0.15, -0.94), back: new THREE.Vector3(-0.25,  0.96, -0.12), palmOffset: new THREE.Vector3(-0.004,  0.012, 0.004), curl: [0.16, 0.18, 0.12], thumb: 0.28 },
-    shellFeed:     { f: new THREE.Vector3( 0.28,  0.35, -0.89), back: new THREE.Vector3(-0.30, -0.88, -0.36), palmOffset: new THREE.Vector3(-0.006, -0.012, 0.002), curl: [1.02, 1.12, 0.78], thumb: 0.80 },
-    slideGrab:     { f: new THREE.Vector3( 0.45, -0.16, -0.88), back: new THREE.Vector3(-0.36,  0.90, -0.24), palmOffset: new THREE.Vector3(-0.006,  0.010, 0.002), curl: [1.18, 1.28, 0.85], thumb: 0.85 }
+    supportPistol: { f: new THREE.Vector3( 0.40,  0.05, -0.91), back: new THREE.Vector3(-0.88, -0.22, -0.42), palmOffset: new THREE.Vector3(-0.018, -0.012, 0.005), curl: [0.95, 1.05, 0.72], thumb: 0.50 },
+    foregrip:      { f: new THREE.Vector3( 0.24,  0.00, -0.97), back: new THREE.Vector3(-0.97,  0.00, -0.24), palmOffset: new THREE.Vector3(-0.020,  0.000, 0.005), curl: [1.18, 1.28, 0.85], thumb: 0.75 },
+    supportRifle:  { f: new THREE.Vector3( 0.36,  0.18, -0.92), back: new THREE.Vector3(-0.34, -0.92, -0.18), palmOffset: new THREE.Vector3(-0.008, -0.024, 0.005), curl: [0.80, 0.90, 0.62], thumb: 0.45 },
+    plate:         { f: new THREE.Vector3( 0.06, -0.22, -0.97), back: new THREE.Vector3(-0.18,  0.96, -0.20), palmOffset: new THREE.Vector3( 0.000,  0.012, 0.004), curl: [0.68, 0.78, 0.55], thumb: 0.55 },
+    // Dedicated reload & plating IK grip styles (calibrated to 8.9cm anatomical palm!)
+    magGrip:       { f: new THREE.Vector3( 0.44, -0.12, -0.89), back: new THREE.Vector3(-0.89,  0.10, -0.44), palmOffset: new THREE.Vector3(-0.014,  0.000, 0.004), curl: [1.26, 1.38, 0.88], thumb: 0.88 },
+    akMagGrip:     { f: new THREE.Vector3( 0.50, -0.08, -0.86), back: new THREE.Vector3(-0.86,  0.12, -0.50), palmOffset: new THREE.Vector3(-0.016,  0.000, 0.004), curl: [1.30, 1.42, 0.90], thumb: 0.90 },
+    boltPinch:     { f: new THREE.Vector3(-0.30,  0.06, -0.95), back: new THREE.Vector3( 0.80,  0.54, -0.24), palmOffset: new THREE.Vector3( 0.014,  0.004, 0.004), curl: [1.36, 1.48, 0.92], thumb: 0.92 },
+    leftBoltPinch: { f: new THREE.Vector3( 0.32, -0.12, -0.94), back: new THREE.Vector3(-0.22,  0.96, -0.18), palmOffset: new THREE.Vector3(-0.012,  0.008, 0.004), curl: [1.24, 1.36, 0.86], thumb: 0.88 },
+    slapOpen:      { f: new THREE.Vector3( 0.32, -0.15, -0.94), back: new THREE.Vector3(-0.25,  0.96, -0.12), palmOffset: new THREE.Vector3(-0.006,  0.014, 0.004), curl: [0.16, 0.18, 0.12], thumb: 0.28 },
+    shellFeed:     { f: new THREE.Vector3( 0.28,  0.35, -0.89), back: new THREE.Vector3(-0.30, -0.88, -0.36), palmOffset: new THREE.Vector3(-0.008, -0.014, 0.004), curl: [1.02, 1.12, 0.78], thumb: 0.80 },
+    slideGrab:     { f: new THREE.Vector3( 0.45, -0.16, -0.88), back: new THREE.Vector3(-0.36,  0.90, -0.24), palmOffset: new THREE.Vector3(-0.010,  0.012, 0.004), curl: [1.18, 1.28, 0.85], thumb: 0.85 }
   };
 
   function isEffectivelyVisible(obj, stopAt) {

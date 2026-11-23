@@ -4187,22 +4187,25 @@ class WeaponSystem {
     if (this.plateRig) this.plateRig.visible = true;
 
     let handTarget = new THREE.Vector3(0.13, -0.14, -0.24);
-    let handRotTarget = new THREE.Euler(-0.35, -0.15, -1.45);
+    let handRotTarget = new THREE.Euler(-0.32, -0.18, -0.12);
+    let plateStyle = 'plate';
 
     if (p < grabOpenEnd) {
-      // === STEP 1: REACH TO LOWER-RIGHT COLLAR TO GRAB ZIPPER FROM ABOVE ===
+      // === STEP 1: REACH TO LOWER-RIGHT COLLAR TO GRAB ZIPPER FROM ABOVE (PALM DOWN) ===
       const t = smooth(p / grabOpenEnd);
+      plateStyle = 'leftBoltPinch';
       if (this.plateMesh) this.plateMesh.visible = false;
       handTarget.set(
         THREE.MathUtils.lerp(-0.08, 0.13, t),
         THREE.MathUtils.lerp(-0.24, -0.135, t),
         -0.24
       );
-      handRotTarget.set(-0.35, -0.25, -1.45);
+      handRotTarget.set(-0.32, -0.22, -0.12);
     } else if (p < unzipEnd) {
       // === STEP 2: UNZIP RIGHT-TO-LEFT ACROSS BOTTOM OF SCREEN (PALM DOWN) ===
       const rawT = (p - grabOpenEnd) / (unzipEnd - grabOpenEnd);
       const pullT = smooth(Math.min(1, rawT / 0.82)); // 0.82..1.00 is a brief hold/beat after unzip
+      plateStyle = 'leftBoltPinch';
       if (rawT > 0.04 && !this.plateZipFlags.open) {
         this.plateZipFlags.open = true;
         window.soundEngine.playZipper(false);
@@ -4213,7 +4216,7 @@ class WeaponSystem {
         -0.135 + Math.sin(pullT * Math.PI) * 0.012,
         -0.24
       );
-      handRotTarget.set(-0.35, -0.25 + pullT * 0.45, -1.45);
+      handRotTarget.set(-0.32, -0.22 + pullT * 0.42, -0.12);
     } else if (p < zipStart) {
       // === STEP 3: DISTINCT PER-PLATE REACH → PRESENT → HOLD → SHOVE IN ===
       const loadProg = (p - unzipEnd) / (zipStart - unzipEnd);
@@ -4288,16 +4291,18 @@ class WeaponSystem {
     } else if (p < grabCloseEnd) {
       // === STEP 4A: REPOSITION HAND TO LOWER-LEFT ZIPPER PULL (PALM DOWN) ===
       const t = smooth((p - zipStart) / (grabCloseEnd - zipStart));
+      plateStyle = 'leftBoltPinch';
       if (this.plateMesh) this.plateMesh.visible = false;
       handTarget.set(
         THREE.MathUtils.lerp(-0.04, -0.14, t),
         THREE.MathUtils.lerp(-0.20, -0.135, t),
         -0.24
       );
-      handRotTarget.set(-0.35, 0.20, -1.45);
+      handRotTarget.set(-0.32, 0.20, -0.12);
     } else if (p < zipEnd) {
       // === STEP 4B: ZIP LEFT-TO-RIGHT ACROSS BOTTOM OF SCREEN (PALM DOWN) ===
       const zipT = smooth((p - grabCloseEnd) / (zipEnd - grabCloseEnd));
+      plateStyle = 'leftBoltPinch';
       if (zipT > 0.04 && !this.plateZipFlags.close) {
         this.plateZipFlags.close = true;
         window.soundEngine.playZipper(true);
@@ -4308,20 +4313,22 @@ class WeaponSystem {
         -0.135 + Math.sin(zipT * Math.PI) * 0.012,
         -0.24
       );
-      handRotTarget.set(-0.35, 0.20 - zipT * 0.45, -1.45);
+      handRotTarget.set(-0.32, 0.20 - zipT * 0.42, -0.12);
     } else {
       // === STEP 5: DROP HAND & RETURN TO WEAPON ===
       const exitT = smooth((p - zipEnd) / (1 - zipEnd));
+      plateStyle = 'leftBoltPinch';
       if (this.plateMesh) this.plateMesh.visible = false;
       handTarget.set(
         THREE.MathUtils.lerp(0.13, 0.02, exitT),
         THREE.MathUtils.lerp(-0.135, -0.28, exitT),
         -0.24
       );
-      handRotTarget.set(-0.35, -0.25, -1.45);
+      handRotTarget.set(-0.32, -0.22, -0.12);
     }
 
     if (this.plateHand && this.plateArm) {
+      if (this.plateHand.userData) this.plateHand.userData.activeStyle = plateStyle;
       this.plateHand.position.lerp(handTarget, handRate);
       this.plateHand.rotation.x = THREE.MathUtils.lerp(this.plateHand.rotation.x, handRotTarget.x, handRate);
       this.plateHand.rotation.y = THREE.MathUtils.lerp(this.plateHand.rotation.y, handRotTarget.y, handRate);
@@ -4336,6 +4343,7 @@ class WeaponSystem {
   _endPlatingVisuals() {
     if (this.plateRig) this.plateRig.visible = false;
     if (this.plateMesh) this.plateMesh.visible = false;
+    if (this.plateHand && this.plateHand.userData) this.plateHand.userData.activeStyle = null;
     if (this.leftHand) this.leftHand.visible = true;
     if (this.leftArm) this.leftArm.visible = true;
   }
