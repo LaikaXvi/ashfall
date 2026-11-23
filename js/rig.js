@@ -78,7 +78,7 @@
         try {
           const loader = new THREE.GLTFLoader();
           loader.load(
-            'assets/models/characters/tactical_soldier.glb',
+            'assets/models/characters/tactical_soldier.glb?v=252',
             (gltf) => {
               if (settled) return;
               if (!gltf || !gltf.scene) {
@@ -357,8 +357,20 @@
           if (!boneDir) continue;
           let targetFold = palm;
           if (fName === 'thumb') {
-            // Curl anatomical lateral thumb smoothly inward into palm and across curled index/middle fingers
-            targetFold = palm.clone().multiplyScalar(0.45).addScaledVector(iW, -0.90).normalize();
+            // Verified anatomical opposable thumb curl:
+            //  j=1 (CMC): swings thumb forward-palmar & inward in front of index knuckle
+            //  j=2,3 (MCP/IP): clamps thumb tightly ACROSS the curled index/middle fingers (never drooping downward!)
+            if (j === 1) {
+              targetFold = fW.clone().multiplyScalar(0.32)
+                .addScaledVector(palm, 0.58)
+                .addScaledVector(iW, -0.74)
+                .normalize();
+            } else {
+              targetFold = fW.clone().multiplyScalar(-0.15)
+                .addScaledVector(palm, 0.22)
+                .addScaledVector(iW, -0.96)
+                .normalize();
+            }
           }
           const axisWorld = new THREE.Vector3().crossVectors(boneDir, targetFold);
           if (axisWorld.lengthSq() < 1e-6) continue;
@@ -379,11 +391,17 @@
 
     applyFingerCurl(curlData, angles = [0.9, 1.0, 0.6], thumb = 0.5) {
       if (!curlData || curlData.length === 0) return;
-      const tAngles = [thumb * 0.72, thumb * 0.42, thumb * 0.25];
+      const tAngles = [thumb * 0.85, thumb * 0.72, thumb * 0.45];
+      const isFist = angles[0] >= 1.42;
       for (let i = 0; i < curlData.length; i++) {
         const e = curlData[i];
         const arr = e.finger === 'thumb' ? tAngles : angles;
-        const ang = arr[e.joint - 1] || 0;
+        let ang = arr[e.joint - 1] || 0;
+        // Subtle anatomical finger cascade on non-fist grips (ring/pinky wrap slightly snugger than index)
+        if (!isFist && e.finger !== 'thumb') {
+          if (e.finger === 'ring') ang *= 1.05;
+          else if (e.finger === 'pinky') ang *= 1.10;
+        }
         _q1.setFromAxisAngle(e.axisLocal, ang);
         e.bone.quaternion.copy(e.bindLocal).multiply(_q1);
       }
@@ -957,23 +975,8 @@
           return;
         }
       } else {
-        const wRun = smoothstepRange(2.6, 4.0, speed);
-        const wWalk = smoothstepRange(0.3, 1.0, speed) * (1 - wRun);
-        const wIdle = Math.max(0, 1 - wWalk - wRun);
-        if (this.actions.idle) this.actions.idle.setEffectiveWeight(wIdle);
-        if (this.actions.walk) {
-          this.actions.walk.setEffectiveWeight(wWalk);
-          this.actions.walk.timeScale = THREE.MathUtils.clamp(speed / 1.5, 0.6, 1.6);
-        }
-        if (this.actions.run) {
-          this.actions.run.setEffectiveWeight(wRun);
-          this.actions.run.timeScale = THREE.MathUtils.clamp(speed / 4.0, 0.7, 1.5);
-        }
-        this.mixer.update(cDt);
-
-        // 2. Smooth mocapWeight (1 when standing/walking/running; 0 for crouch/prone/slide/downed/dead/stanceTrans)
-        const useMocap = !s.isDowned && !s.isSliding && stance === 'stand' && !s.stanceTrans;
-        this.mocapW = THREE.MathUtils.lerp(this.mocapW, useMocap ? 1 : 0, Math.min(1, cDt * 6));
+        // Pure procedural momentum-based locomotion driven 100% by MW2Animator (Start / Walk / Run / Tac-Sprint / Hard-Stop / Bank / Land)
+        this.mocapW = 0;
       }
       const mw = this.mocapW;
 
@@ -1184,8 +1187,8 @@
   // ==================== FIRST-PERSON RIGGED ARMS (v2.50 MW19/DMZ) ====================
   const FP_HAND_STYLES = {
     grip:          { f: new THREE.Vector3(-0.22, -0.08, -0.97), back: new THREE.Vector3( 0.97,  0.08, -0.22), palmOffset: new THREE.Vector3( 0.020, -0.002, 0.005), curl: [1.18, 1.28, 0.85], thumb: 0.72 },
-    rightFist:     { f: new THREE.Vector3(-0.22,  0.14, -0.96), back: new THREE.Vector3( 0.92,  0.34, -0.18), palmOffset: new THREE.Vector3( 0.005,  0.000, 0.002), curl: [1.50, 1.62, 0.95], thumb: 1.00 },
-    leftFist:      { f: new THREE.Vector3( 0.22,  0.14, -0.96), back: new THREE.Vector3(-0.92,  0.34, -0.18), palmOffset: new THREE.Vector3(-0.005,  0.000, 0.002), curl: [1.50, 1.62, 0.95], thumb: 1.00 },
+    rightFist:     { f: new THREE.Vector3(-0.22,  0.14, -0.96), back: new THREE.Vector3( 0.92,  0.34, -0.18), palmOffset: new THREE.Vector3( 0.005,  0.000, 0.002), curl: [1.56, 1.78, 1.12], thumb: 1.00 },
+    leftFist:      { f: new THREE.Vector3( 0.22,  0.14, -0.96), back: new THREE.Vector3(-0.92,  0.34, -0.18), palmOffset: new THREE.Vector3(-0.005,  0.000, 0.002), curl: [1.56, 1.78, 1.12], thumb: 1.00 },
     supportPistol: { f: new THREE.Vector3( 0.40,  0.05, -0.91), back: new THREE.Vector3(-0.88, -0.22, -0.42), palmOffset: new THREE.Vector3(-0.018, -0.012, 0.005), curl: [0.95, 1.05, 0.72], thumb: 0.50 },
     foregrip:      { f: new THREE.Vector3( 0.24,  0.00, -0.97), back: new THREE.Vector3(-0.97,  0.00, -0.24), palmOffset: new THREE.Vector3(-0.020,  0.000, 0.005), curl: [1.18, 1.28, 0.85], thumb: 0.75 },
     supportRifle:  { f: new THREE.Vector3( 0.36,  0.18, -0.92), back: new THREE.Vector3(-0.34, -0.92, -0.18), palmOffset: new THREE.Vector3(-0.008, -0.024, 0.005), curl: [0.80, 0.90, 0.62], thumb: 0.45 },

@@ -1642,11 +1642,23 @@ class Player {
     const slotObj = this.getActiveWeaponSlot();
     const def = this.getActiveWeaponDef();
     if (!slotObj || !def) return;
-    if (slotObj.mag >= def.magSize) return;
+    const stage = slotObj.reloadStage || 0;
     const reserve = this.getReserveAmmo(def.ammoType);
-    if (reserve <= 0) return;
-    const shellsToLoad = Math.min(def.magSize - slotObj.mag, reserve);
-    this.weaponSystem.startReload(def, slotObj.mag === 0, shellsToLoad);
+    // Allow resuming an interrupted staged reload (Stage 1: insert mag; Stage 2: rack bolt even if mag is full / 0 reserve!)
+    if (stage >= 2) {
+      this.weaponSystem.startReload(def, true, 0, slotObj);
+      return;
+    }
+    if (stage === 1) {
+      if (reserve <= 0 && !window.DEV_MODE) return;
+      const shellsToLoad = Math.min(Math.max(1, def.magSize - slotObj.mag), Math.max(1, reserve));
+      this.weaponSystem.startReload(def, !!slotObj.reloadWasEmpty || slotObj.mag === 0, shellsToLoad, slotObj);
+      return;
+    }
+    if (slotObj.mag >= def.magSize) return;
+    if (reserve <= 0 && !window.DEV_MODE) return;
+    const shellsToLoad = Math.min(def.magSize - slotObj.mag, window.DEV_MODE ? (def.magSize - slotObj.mag) : reserve);
+    this.weaponSystem.startReload(def, slotObj.mag === 0, shellsToLoad, slotObj);
   }
 
   loadSingleShell() {
@@ -1658,14 +1670,30 @@ class Player {
     slotObj.mag += loaded;
   }
 
+  commitReloadMag(slotObj = null) {
+    const s = slotObj || this.getActiveWeaponSlot();
+    const def = s ? GAME_DATA.ITEMS[s.id] : this.getActiveWeaponDef();
+    if (!s || !def) return;
+    if (def.id === 'm870') return;
+    if (s.reloadMagCommitted) return;
+    const needed = Math.max(0, def.magSize - s.mag);
+    if (needed > 0) {
+      const loaded = window.DEV_MODE ? needed : this.consumeReserveAmmo(def.ammoType, needed);
+      s.mag += loaded;
+    }
+    s.reloadMagCommitted = true;
+  }
+
   finishReload() {
     const slotObj = this.getActiveWeaponSlot();
     const def = this.getActiveWeaponDef();
     if (!slotObj || !def) return;
-    if (def.id === 'm870') return; // Shells are loaded live one-by-one during animation
-    const needed = def.magSize - slotObj.mag;
-    const loaded = this.consumeReserveAmmo(def.ammoType, needed);
-    slotObj.mag += loaded;
+    if (def.id !== 'm870' && !slotObj.reloadMagCommitted) {
+      this.commitReloadMag(slotObj);
+    }
+    slotObj.reloadStage = 0;
+    slotObj.reloadWasEmpty = false;
+    slotObj.reloadMagCommitted = false;
   }
 
   startPlating() {

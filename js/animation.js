@@ -448,6 +448,22 @@
       this.walkPhase = Math.random() * Math.PI * 2;
       this.idleTime = Math.random() * 10.0;
       this.crouchWalkBlend = 0;
+      // AAA Procedural Momentum-Based Locomotion state
+      this.velSpeed = 0;
+      this.accelFwd = 0;
+      this.prevSpeed = 0;
+      this.prevWorldYaw = null;
+      this.yawRate = 0;
+      this.prevOnGround = true;
+      this.airTime = 0;
+      this.landImpact = 0;
+      this.startTimer = 0;
+      this.stopTimer = 0;
+      this.stopLeadSide = 1;
+      this.wWalk = 0;
+      this.wRun = 0;
+      this.wTac = 0;
+      this.locoPhase = 'idle';
       this.recoilImpulse = 0;
       this.flinchImpulse = 0;
       this.flinchDir = 1;
@@ -541,17 +557,95 @@
         return;
       }
 
-      // === LAYER 1: RHYTHMIC IDLE BREATHING ===
+      // === LAYER 1: MOMENTUM, ACCELERATION, TURN-BANKING, LANDING & DISTINCT GAIT PHASES ===
       const breath = Math.sin(this.idleTime * 2.15);
       const breath2 = Math.cos(this.idleTime * 1.075);
+      const onGround = st.onGround !== false;
 
-      // Advance gait cycle proportionally to speed
-      if (moving && !isSlide && !isDowned) {
-        const freq = isTacSprint ? 11.4 : (isSprint ? 9.6 : (isProne ? 4.4 : (isCrouch ? 5.8 : (4.8 + Math.min(speed, 5.5) * 0.85))));
+      // Track airborne time & landing compression spring impulse
+      if (!onGround && !isDowned && !isDead) {
+        this.airTime = Math.min(2.0, this.airTime + cDt);
+      } else {
+        if (!this.prevOnGround && this.airTime > 0.10) {
+          this.landImpact = THREE.MathUtils.clamp(this.airTime * 1.75, 0.30, 1.0);
+        }
+        this.airTime = 0;
+      }
+      this.prevOnGround = onGround;
+      if (this.landImpact > 0.001) {
+        this.landImpact = Math.max(0, this.landImpact - cDt * 3.4);
+      }
+
+      // Compute smoothed planar momentum & longitudinal acceleration
+      const rawAccel = (speed - this.prevSpeed) / Math.max(0.008, cDt);
+      this.accelFwd = THREE.MathUtils.lerp(this.accelFwd, THREE.MathUtils.clamp(rawAccel, -28, 28), Math.min(1, cDt * 12));
+      this.prevSpeed = speed;
+
+      // Detect explosive Start Launch & Hard-Stop Braking Plant transitions!
+      const isStanding = !isProne && !isCrouch && !isSlide && !isDowned && !isDead;
+      if (isStanding && onGround) {
+        if (this.velSpeed < 1.15 && speed > 1.8 && this.accelFwd > 2.8 && this.startTimer <= 0) {
+          this.startTimer = 0.30;
+          this.stopTimer = 0;
+        } else if (this.velSpeed > 3.2 && (speed < 0.75 || this.accelFwd < -6.8) && this.stopTimer <= 0) {
+          this.stopTimer = 0.36;
+          this.startTimer = 0;
+          this.stopLeadSide = Math.sin(this.walkPhase) >= 0 ? -1 : 1; // plant whichever foot was forward!
+        }
+      } else {
+        this.startTimer = 0;
+        this.stopTimer = 0;
+      }
+      if (this.startTimer > 0) this.startTimer = Math.max(0, this.startTimer - cDt);
+      if (this.stopTimer > 0) {
+        this.stopTimer = Math.max(0, this.stopTimer - cDt);
+        if (speed > 2.2) this.stopTimer = 0; // cancel stop plant immediately if accelerating again
+      }
+
+      this.velSpeed = THREE.MathUtils.lerp(this.velSpeed, speed, Math.min(1, cDt * (speed > this.velSpeed ? 11 : 9)));
+
+      // Track angular turn velocity for realistic corner-banking roll
+      if (typeof st.worldYaw === 'number') {
+        if (this.prevWorldYaw === null) this.prevWorldYaw = st.worldYaw;
+        let dYaw = st.worldYaw - this.prevWorldYaw;
+        while (dYaw > Math.PI) dYaw -= Math.PI * 2;
+        while (dYaw < -Math.PI) dYaw += Math.PI * 2;
+        this.prevWorldYaw = st.worldYaw;
+        this.yawRate = THREE.MathUtils.lerp(this.yawRate, THREE.MathUtils.clamp(dYaw / Math.max(0.008, cDt), -8, 8), Math.min(1, cDt * 10));
+      } else {
+        this.yawRate = THREE.MathUtils.lerp(this.yawRate, 0, Math.min(1, cDt * 8));
+      }
+
+      // Smoothly blend distinct locomotion phase weights: Walk -> Run -> High-Port Tactical Sprint
+      const wantTac = isStanding && onGround && moving && (isTacSprint || this.velSpeed >= 10.6);
+      const wantRun = isStanding && onGround && moving && !wantTac && (isSprint || this.velSpeed >= 5.2);
+      const wantWalk = isStanding && onGround && moving && !wantTac && !wantRun;
+      const pLerp = Math.min(1, cDt * 9.5);
+      this.wTac  = THREE.MathUtils.lerp(this.wTac,  wantTac  ? 1 : 0, pLerp);
+      this.wRun  = THREE.MathUtils.lerp(this.wRun,  wantRun  ? 1 : 0, pLerp);
+      this.wWalk = THREE.MathUtils.lerp(this.wWalk, wantWalk ? 1 : 0, pLerp);
+      this.locoPhase = !moving
+        ? (this.stopTimer > 0 ? 'stop' : 'idle')
+        : (this.startTimer > 0 ? 'start' : (wantTac ? 'tacSprint' : (wantRun ? 'run' : 'walk')));
+      r._animState.locoPhase = this.locoPhase;
+
+      // Advance procedural gait cycle smoothly coupled to momentum & distinct phase cadence
+      if ((moving || this.velSpeed > 0.35) && !isSlide && !isDowned && onGround) {
+        let freq;
+        if (isProne) freq = 4.5;
+        else if (isCrouch) freq = 5.6 + Math.min(speed, 4.0) * 0.45;
+        else {
+          const walkF = 5.2 + Math.min(this.velSpeed, 5.4) * 0.68;
+          const runF  = 8.6 + Math.max(0, Math.min(this.velSpeed - 5.0, 5.5)) * 0.48;
+          const tacF  = 11.8 + Math.max(0, this.velSpeed - 10.0) * 0.32;
+          const wTot = Math.max(0.001, this.wWalk + this.wRun + this.wTac);
+          freq = (walkF * this.wWalk + runF * this.wRun + tacF * this.wTac) / wTot;
+        }
         this.walkPhase += cDt * freq;
       } else if (isDowned && moving) {
         this.walkPhase += cDt * 4.2;
       }
+      r._animState.gaitPhase = this.walkPhase;
       const stride = Math.sin(this.walkPhase);
       const strideCos = Math.cos(this.walkPhase);
 
@@ -680,78 +774,166 @@
         this._rPole.set(0.75, -0.55, 0.35);
         this._lPole.set(-0.75, -0.55, 0.30);
       } else {
-        // === MW2 STANDING: IDLE BREATHING / FORWARD KINETIC WALK / JOG / HIGH-PORT TACTICAL SPRINT ===
-        // Forward biomechanics:
-        //   stride = sin(ph) sweeps -1 -> +1 (SWING FORWARD) when strideCos = cos(ph) > 0: trailing knee bends high & swings forward!
-        //   stride = sin(ph) sweeps +1 -> -1 (STANCE PULL) when strideCos = cos(ph) < 0: lead foot plants & pulls body forward!
-        const spdNorm = THREE.MathUtils.clamp(speed / 5.2, 0, 1.35);
-        const amp = moving ? (0.20 + spdNorm * 0.56) : 0;
-        lHipX = moving ? (stride * amp) : 0.06;
-        rHipX = moving ? (-stride * amp) : -0.05;
-        const kneeLift = isTacSprint ? 1.28 : (isSprint ? 1.08 : (0.42 + spdNorm * 0.54));
-        // Trailing leg bends cleanly backward at the knee while swinging FORWARD (strideCos > 0 for left, -strideCos > 0 for right)!
-        // Stance leg stays planted with subtle weight-absorption bend (~-0.16) as it pulls the body forward!
-        const lSwing = Math.max(0, strideCos);
-        const rSwing = Math.max(0, -strideCos);
-        const lStanceCushion = Math.max(0, -strideCos) * 0.14;
-        const rStanceCushion = Math.max(0, strideCos) * 0.14;
-        lKneeX = moving ? (-lSwing * kneeLift - 0.10 - lStanceCushion) : -0.12;
-        rKneeX = moving ? (-rSwing * kneeLift - 0.10 - rStanceCushion) : -0.10;
-        // Heel-strike dorsiflexion at front contact -> flat stance -> toe-off push behind
-        lAnkX = moving ? (-(lHipX + lKneeX) * 0.55 + Math.max(0, stride) * 0.22 - Math.max(0, -stride) * 0.16) : 0.06;
-        rAnkX = moving ? (-(rHipX + rKneeX) * 0.55 + Math.max(0, -stride) * 0.22 - Math.max(0, stride) * 0.16) : 0.05;
+        // === AAA PROCEDURAL MOMENTUM-BASED LOCOMOTION (START -> WALK -> RUN -> TAC-SPRINT -> STOP + BANKING + AIR/LAND) ===
+        const moveBlend = THREE.MathUtils.clamp(this.wWalk + this.wRun + this.wTac, 0, 1);
+        const startArc = this.startTimer > 0 ? Math.sin((this.startTimer / 0.30) * Math.PI) : 0;
+        const stopProg = this.stopTimer > 0 ? (1 - this.stopTimer / 0.36) : 0;
+        const stopEnv = this.stopTimer > 0 ? Math.sin(stopProg * Math.PI) : 0;
+        const landArc = this.landImpact > 0.001 ? Math.sin(Math.min(1, this.landImpact) * Math.PI * 0.5) : 0;
 
-        pelvisY = 0.89 - (moving ? Math.abs(stride) * 0.042 * Math.min(1, spdNorm) : 0);
-        pelvisYaw = moving ? (stride * (0.07 + spdNorm * 0.09)) : 0.16;
-        spineYaw = -pelvisYaw * 0.60;
-        torsoYaw = -pelvisYaw * 0.40;
-        spinePitch = isTacSprint ? -0.15 : (isSprint ? -0.11 : -0.03);
-        torsoPitch = (isTacSprint ? -0.15 : (isSprint ? -0.10 : -0.04)) + breath * 0.018;
-        rigRoll = -(st.moveRight || 0) * (isSprint ? 0.07 : 0.035);
+        if (!onGround) {
+          // Airborne readiness tuck: front knee raised, trailing leg angled down-back, slight forward anticipation
+          const airBlend = Math.min(1, this.airTime * 6.0);
+          lHipX = THREE.MathUtils.lerp(0.06, 0.52, airBlend);
+          lHipZ = -0.06;
+          lKneeX = THREE.MathUtils.lerp(-0.12, -0.92, airBlend);
+          lAnkX = 0.22;
+          rHipX = THREE.MathUtils.lerp(-0.05, -0.18, airBlend);
+          rHipZ = 0.06;
+          rKneeX = THREE.MathUtils.lerp(-0.10, -0.68, airBlend);
+          rAnkX = -0.25;
+          pelvisY = 0.86;
+          spinePitch = -0.06;
+          torsoPitch = -0.06 + breath * 0.015;
+          wpnPosY += 0.025 * airBlend;
+          wpnRotX -= 0.06 * airBlend;
+        } else {
+          // Distinct biomechanical parameters blended cleanly across Walk / Run / High-Port Tac-Sprint phases
+          const wSum = Math.max(0.001, this.wWalk + this.wRun + this.wTac);
+          const nW = this.wWalk / wSum;
+          const nR = this.wRun / wSum;
+          const nT = this.wTac / wSum;
 
-        // 2-Foot Uneven Terrain IK (if world & worldPos provided)
-        if (st.world && st.world.getTerrainHeight && st.worldPos && !isProne && !isSlide) {
-          const sinY = Math.sin(st.worldYaw || 0);
-          const cosY = Math.cos(st.worldYaw || 0);
-          const feetY = st.feetY !== undefined ? st.feetY : st.worldPos.y;
-          const spread = 0.21;
-          const stepF = moving ? stride * 0.26 : 0.06;
-          const lG = st.world.getTerrainHeight(st.worldPos.x - cosY * spread - sinY * stepF, st.worldPos.z + sinY * spread - cosY * stepF);
-          const rG = st.world.getTerrainHeight(st.worldPos.x + cosY * spread + sinY * stepF, st.worldPos.z - sinY * spread + cosY * stepF);
-          const dL = THREE.MathUtils.clamp(lG - feetY, -0.34, 0.34);
-          const dR = THREE.MathUtils.clamp(rG - feetY, -0.34, 0.34);
-          const minDrop = Math.min(0, dL, dR);
-          pelvisY += minDrop * 0.62;
-          const liftL = Math.max(0, dL - minDrop);
-          const liftR = Math.max(0, dR - minDrop);
-          lHipX += liftL * 1.40; lKneeX -= liftL * 2.10; lAnkX += liftL * 0.80;
-          rHipX += liftR * 1.40; rKneeX -= liftR * 2.10; rAnkX += liftR * 0.80;
+          // Stride hip swing amplitude: controlled walk (0.36) -> athletic run (0.66) -> full-drive sprint (0.86)
+          const phaseAmp = (0.36 * nW + 0.66 * nR + 0.86 * nT) + startArc * 0.14;
+          const amp = phaseAmp * moveBlend;
+          // Knee lift during forward swing: crisp walk fold (0.62) -> high run heel-kick (1.16) -> explosive sprint drive (1.46)
+          const kneeLift = (0.62 * nW + 1.16 * nR + 1.46 * nT) + startArc * 0.18;
+          // Weight-acceptance stance cushion: grounded walk (0.18) -> springy run (0.28) -> power sprint (0.34)
+          const cushionAmp = 0.18 * nW + 0.28 * nR + 0.34 * nT;
+
+          // 4-subphase biomechanical cycle per leg: Swing Forward -> Heel-Strike -> Stance Cushion -> Toe-Off Push
+          const lSwing = Math.pow(Math.max(0, strideCos), 0.85);
+          const rSwing = Math.pow(Math.max(0, -strideCos), 0.85);
+          const lCushion = Math.max(0, -strideCos) * cushionAmp;
+          const rCushion = Math.max(0, strideCos) * cushionAmp;
+
+          // Strafe leg abduction for realistic lateral stepping
+          const strafe = THREE.MathUtils.clamp(st.moveRight || 0, -1, 1);
+          const strafeStep = Math.abs(strafe) * moveBlend;
+
+          let gLHipX = THREE.MathUtils.lerp(0.06, stride * amp + startArc * 0.08, moveBlend);
+          let gRHipX = THREE.MathUtils.lerp(-0.05, -stride * amp + startArc * 0.08, moveBlend);
+          let gLKneeX = THREE.MathUtils.lerp(-0.12, -lSwing * kneeLift - 0.08 - lCushion, moveBlend);
+          let gRKneeX = THREE.MathUtils.lerp(-0.10, -rSwing * kneeLift - 0.08 - rCushion, moveBlend);
+          // Heel-strike dorsiflexion (+) -> flat stance -> powerful toe-off plantarflexion (-)
+          let gLAnkX = THREE.MathUtils.lerp(0.06, -(gLHipX + gLKneeX) * 0.52 + Math.max(0, stride) * 0.26 - Math.max(0, -stride) * (0.22 + nT * 0.14), moveBlend);
+          let gRAnkX = THREE.MathUtils.lerp(0.05, -(gRHipX + gRKneeX) * 0.52 + Math.max(0, -stride) * 0.26 - Math.max(0, stride) * (0.22 + nT * 0.14), moveBlend);
+
+          // Phase 5: Hard-Stop Braking Plant (lead foot plants heel-first out front, rear knee absorbs momentum!)
+          if (stopEnv > 0.01) {
+            const leadIsLeft = this.stopLeadSide < 0;
+            const sLHip = leadIsLeft ? 0.44 : -0.22;
+            const sRHip = leadIsLeft ? -0.22 : 0.44;
+            const sLKnee = leadIsLeft ? -0.34 : -0.46;
+            const sRKnee = leadIsLeft ? -0.46 : -0.34;
+            const sLAnk = leadIsLeft ? 0.24 : -0.18;
+            const sRAnk = leadIsLeft ? -0.18 : 0.24;
+            gLHipX = THREE.MathUtils.lerp(gLHipX, sLHip, stopEnv);
+            gRHipX = THREE.MathUtils.lerp(gRHipX, sRHip, stopEnv);
+            gLKneeX = THREE.MathUtils.lerp(gLKneeX, sLKnee, stopEnv);
+            gRKneeX = THREE.MathUtils.lerp(gRKneeX, sRKnee, stopEnv);
+            gLAnkX = THREE.MathUtils.lerp(gLAnkX, sLAnk, stopEnv);
+            gRAnkX = THREE.MathUtils.lerp(gRAnkX, sRAnk, stopEnv);
+          }
+
+          lHipX = gLHipX;
+          rHipX = gRHipX;
+          lKneeX = gLKneeX - landArc * 0.52;
+          rKneeX = gRKneeX - landArc * 0.52;
+          lAnkX = gLAnkX + landArc * 0.26;
+          rAnkX = gRAnkX + landArc * 0.26;
+          lHipZ = -0.03 - strafeStep * (0.08 + Math.max(0, -stride * Math.sign(strafe || 1)) * 0.12);
+          rHipZ =  0.03 + strafeStep * (0.08 + Math.max(0,  stride * Math.sign(strafe || 1)) * 0.12);
+
+          // Vertical pelvis trajectory: double-support dip on walk vs athletic flight-arc bounce on run/sprint!
+          const walkBounce = -Math.abs(stride) * 0.030;
+          const runBounce = (Math.abs(strideCos) - 0.48) * (0.068 * nR + 0.095 * nT);
+          pelvisY = 0.89 + (walkBounce * nW + runBounce) * moveBlend - stopEnv * 0.055 - landArc * 0.15;
+
+          // Pelvis counter-rotation vs stabilized upper ribcage (MW19 tactical weapon-leveling dissociation)
+          const yawAmp = (0.08 * nW + 0.15 * nR + 0.20 * nT) * moveBlend;
+          pelvisYaw = THREE.MathUtils.lerp(0.16, stride * yawAmp, moveBlend);
+          spineYaw = -pelvisYaw * 0.62;
+          torsoYaw = -pelvisYaw * 0.38;
+
+          // Momentum-driven forward/backward pitch: Start launch lean, phase combat pitch, Braking counter-lean & landing shock!
+          const accelLean = THREE.MathUtils.clamp(-this.accelFwd * 0.011, -0.14, 0.10);
+          const stopWhip = stopEnv > 0.01 ? (Math.sin(stopProg * Math.PI * 1.6) * 0.09 * (1 - stopProg * 0.4)) : 0;
+          const phaseSpine = (-0.04 * nW - 0.12 * nR - 0.18 * nT) * moveBlend;
+          const phaseTorso = (-0.05 * nW - 0.14 * nR - 0.20 * nT) * moveBlend;
+          spinePitch = phaseSpine + accelLean * 0.6 - startArc * 0.12 - stopWhip - landArc * 0.12;
+          torsoPitch = phaseTorso + accelLean * 0.4 - startArc * 0.10 - stopWhip * 0.8 - landArc * 0.14 + breath * 0.016;
+
+          // Athletic corner-banking roll into turns + strafe banking
+          const bankRoll = THREE.MathUtils.clamp(this.yawRate * this.velSpeed * 0.018, -0.18, 0.18);
+          rigRoll = -strafe * (0.035 + 0.055 * (this.wRun + this.wTac)) + bankRoll;
+
+          // 2-Foot Uneven Terrain IK (if world & worldPos provided)
+          if (st.world && st.world.getTerrainHeight && st.worldPos && !isProne && !isSlide) {
+            const sinY = Math.sin(st.worldYaw || 0);
+            const cosY = Math.cos(st.worldYaw || 0);
+            const feetY = st.feetY !== undefined ? st.feetY : st.worldPos.y;
+            const spread = 0.21;
+            const stepF = moveBlend > 0.1 ? stride * 0.26 * moveBlend : 0.06;
+            const lG = st.world.getTerrainHeight(st.worldPos.x - cosY * spread - sinY * stepF, st.worldPos.z + sinY * spread - cosY * stepF);
+            const rG = st.world.getTerrainHeight(st.worldPos.x + cosY * spread + sinY * stepF, st.worldPos.z - sinY * spread + cosY * stepF);
+            const dL = THREE.MathUtils.clamp(lG - feetY, -0.34, 0.34);
+            const dR = THREE.MathUtils.clamp(rG - feetY, -0.34, 0.34);
+            const minDrop = Math.min(0, dL, dR);
+            pelvisY += minDrop * 0.62;
+            const liftL = Math.max(0, dL - minDrop);
+            const liftR = Math.max(0, dR - minDrop);
+            lHipX += liftL * 1.40; lKneeX -= liftL * 2.10; lAnkX += liftL * 0.80;
+            rHipX += liftR * 1.40; rKneeX -= liftR * 2.10; rAnkX += liftR * 0.80;
+          }
+
+          // Exact Foot-Contact Ground Clamp so boots never sink below terrain
+          const footDrop = (hX, kX) => 0.04 + 0.42 * Math.cos(hX) + 0.45 * Math.cos(hX + kX);
+          pelvisY = Math.max(0.45, Math.max(footDrop(lHipX, lKneeX), footDrop(rHipX, rKneeX)) + 0.008 - landArc * 0.06);
         }
-
-        // Exact Foot-Contact Ground Clamp so boots never sink below terrain
-        const footDrop = (hX, kX) => 0.04 + 0.42 * Math.cos(hX) + 0.45 * Math.cos(hX + kX);
-        pelvisY = Math.max(0.45, Math.max(footDrop(lHipX, lKneeX), footDrop(rHipX, rKneeX)) + 0.008);
 
         this._rPole.set(0.75, -0.55, 0.35);
         this._lPole.set(-0.75, -0.55, 0.30);
 
-        if (isTacSprint) {
-          // MW2 Signature High-Port Tactical Sprint: rifle held high in right hand, left arm pumping!
-          wpnPosX = 0.22;
-          wpnPosY = 0.42 + stride * 0.025;
-          wpnPosZ = -0.16;
-          wpnRotX = 0.68;
-          wpnRotY = 0.32;
-          wpnRotZ = -0.22;
-          leftIKWeight = 0.0; // Left arm detaches to pump athletically!
-        } else if (isSprint) {
-          // Two-handed combat jog across lower chest
-          wpnPosX = 0.08 + stride * 0.03;
-          wpnPosY = 0.27 - Math.abs(stride) * 0.02;
-          wpnPosZ = -0.26;
-          wpnRotX = -0.14;
-          wpnRotY = 0.42;
-          wpnRotZ = -0.16;
+        // Smooth phase-blended weapon carry across Walk -> Combat Run -> High-Port Tactical Sprint!
+        if (this.wTac > 0.02 || this.wRun > 0.02) {
+          const rW = this.wRun;
+          const tW = this.wTac;
+          // Combat Run low-ready cross-chest swing
+          if (rW > 0.01) {
+            wpnPosX = THREE.MathUtils.lerp(wpnPosX, 0.07 + stride * 0.036, rW);
+            wpnPosY = THREE.MathUtils.lerp(wpnPosY, 0.27 - Math.abs(stride) * 0.024, rW);
+            wpnPosZ = THREE.MathUtils.lerp(wpnPosZ, -0.26, rW);
+            wpnRotX = THREE.MathUtils.lerp(wpnRotX, -0.15 - Math.abs(stride) * 0.04, rW);
+            wpnRotY = THREE.MathUtils.lerp(wpnRotY, 0.44 - stride * 0.06, rW);
+            wpnRotZ = THREE.MathUtils.lerp(wpnRotZ, -0.16 + stride * 0.05, rW);
+          }
+          // High-Port Tactical Sprint one-handed skyward rifle carry + left arm full athletic pump!
+          if (tW > 0.01) {
+            wpnPosX = THREE.MathUtils.lerp(wpnPosX, 0.23, tW);
+            wpnPosY = THREE.MathUtils.lerp(wpnPosY, 0.43 + stride * 0.032, tW);
+            wpnPosZ = THREE.MathUtils.lerp(wpnPosZ, -0.15, tW);
+            wpnRotX = THREE.MathUtils.lerp(wpnRotX, 0.72, tW);
+            wpnRotY = THREE.MathUtils.lerp(wpnRotY, 0.32, tW);
+            wpnRotZ = THREE.MathUtils.lerp(wpnRotZ, -0.24, tW);
+            if (tW > 0.35) leftIKWeight = 0.0;
+          }
+        }
+        // Subtle landing weapon drop impulse
+        if (landArc > 0.01) {
+          wpnPosY -= landArc * 0.04;
+          wpnRotX -= landArc * 0.08;
         }
       }
 
@@ -1014,12 +1196,13 @@
         r.leftArm.shoulder.rotation.y = THREE.MathUtils.lerp(r.leftArm.shoulder.rotation.y, 0, rate);
         r.leftArm.shoulder.rotation.z = THREE.MathUtils.lerp(r.leftArm.shoulder.rotation.z, customLeftArm.shZ, rate);
         r.leftArm.elbow.rotation.x = THREE.MathUtils.lerp(r.leftArm.elbow.rotation.x, customLeftArm.elbX, rate);
-      } else if (isTacSprint) {
-        // Athletic left-arm tactical sprint pump
-        r.leftArm.shoulder.rotation.x = THREE.MathUtils.lerp(r.leftArm.shoulder.rotation.x, 0.35 - stride * 0.72, rate);
+      } else if (this.wTac > 0.35 || isTacSprint) {
+        // Athletic left-arm tactical sprint pump in counter-phase to legs
+        const pumpW = Math.max(this.wTac, isTacSprint ? 1 : 0);
+        r.leftArm.shoulder.rotation.x = THREE.MathUtils.lerp(r.leftArm.shoulder.rotation.x, (0.38 - stride * 0.88) * pumpW, rate);
         r.leftArm.shoulder.rotation.y = 0;
         r.leftArm.shoulder.rotation.z = THREE.MathUtils.lerp(r.leftArm.shoulder.rotation.z, 0.16, rate);
-        r.leftArm.elbow.rotation.x = THREE.MathUtils.lerp(r.leftArm.elbow.rotation.x, 1.25, rate);
+        r.leftArm.elbow.rotation.x = THREE.MathUtils.lerp(r.leftArm.elbow.rotation.x, 1.38 + Math.max(0, -stride) * 0.24, rate);
       } else if (isDowned) {
         r.leftArm.shoulder.rotation.set(0.45 + stride * 0.24, 0, 0.24);
         r.leftArm.elbow.rotation.set(0.55, 0, 0);

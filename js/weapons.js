@@ -64,6 +64,20 @@ class WeaponSystem {
     this.lastShellSoundIdx = -1;
     this.lastShellLoadedIdx = -1;
     this.reloadSfxFlags = { magOut: false, magIn: false, rack: false, boltLock: false };
+    this.reloadSlotRef = null;
+    this._reloadResumeBlend = 1.0;
+    this._reloadImpulseFlags = { boltLock: false, magOut: false, magIn: false, rack: false };
+    // AAA 6-DOF Second-Order Damped Spring (mechanical reload jolts, jump/land thud, sprint start/stop inertia, recoil punch)
+    this._sprPos = new THREE.Vector3();
+    this._sprPosVel = new THREE.Vector3();
+    this._sprRot = new THREE.Vector3();
+    this._sprRotVel = new THREE.Vector3();
+    this._prevOnGround = true;
+    this._airTime = 0;
+    this._prevLocoSpeed = 0;
+    this._fpPhaseWalk = 0;
+    this._fpPhaseRun = 0;
+    this._fpPhaseTac = 0;
 
     this.isInspecting = false;
     this.inspectTimer = 0;
@@ -148,6 +162,54 @@ class WeaponSystem {
     this.grabKind = kind || 'item';
     this.grabDuration = (kind === 'weapon' || kind === 'container') ? 0.38 : 0.32;
     this.grabTimer = this.grabDuration;
+    this.addWeaponImpulse(-0.010, -0.012, -0.014, 0.04, 0.03, -0.05);
+  }
+
+  addWeaponImpulse(px, py, pz, rx = 0, ry = 0, rz = 0) {
+    if (!this._sprPosVel || !this._sprRotVel) return;
+    this._sprPosVel.x = THREE.MathUtils.clamp(this._sprPosVel.x + px * 14, -1.6, 1.6);
+    this._sprPosVel.y = THREE.MathUtils.clamp(this._sprPosVel.y + py * 14, -1.6, 1.6);
+    this._sprPosVel.z = THREE.MathUtils.clamp(this._sprPosVel.z + pz * 14, -1.6, 1.6);
+    this._sprRotVel.x = THREE.MathUtils.clamp(this._sprRotVel.x + rx * 14, -5.5, 5.5);
+    this._sprRotVel.y = THREE.MathUtils.clamp(this._sprRotVel.y + ry * 14, -5.5, 5.5);
+    this._sprRotVel.z = THREE.MathUtils.clamp(this._sprRotVel.z + rz * 14, -5.5, 5.5);
+  }
+
+  _stepWeaponSpring(dt) {
+    const step = Math.min(0.033, Math.max(0.001, dt || 0.016));
+    const k = 215.0; // crisp MW19 spring stiffness
+    const c = 19.5;  // slightly underdamped for authentic tactile mechanical settle
+    // Semi-implicit Euler integration for 3D position & rotation springs
+    this._sprPosVel.x += (-k * this._sprPos.x - c * this._sprPosVel.x) * step;
+    this._sprPosVel.y += (-k * this._sprPos.y - c * this._sprPosVel.y) * step;
+    this._sprPosVel.z += (-k * this._sprPos.z - c * this._sprPosVel.z) * step;
+    this._sprPos.x = THREE.MathUtils.clamp(this._sprPos.x + this._sprPosVel.x * step, -0.08, 0.08);
+    this._sprPos.y = THREE.MathUtils.clamp(this._sprPos.y + this._sprPosVel.y * step, -0.09, 0.09);
+    this._sprPos.z = THREE.MathUtils.clamp(this._sprPos.z + this._sprPosVel.z * step, -0.08, 0.08);
+
+    this._sprRotVel.x += (-k * this._sprRot.x - c * this._sprRotVel.x) * step;
+    this._sprRotVel.y += (-k * this._sprRot.y - c * this._sprRotVel.y) * step;
+    this._sprRotVel.z += (-k * this._sprRot.z - c * this._sprRotVel.z) * step;
+    this._sprRot.x = THREE.MathUtils.clamp(this._sprRot.x + this._sprRotVel.x * step, -0.30, 0.30);
+    this._sprRot.y = THREE.MathUtils.clamp(this._sprRot.y + this._sprRotVel.y * step, -0.26, 0.26);
+    this._sprRot.z = THREE.MathUtils.clamp(this._sprRot.z + this._sprRotVel.z * step, -0.32, 0.32);
+  }
+
+  _getReloadStages(weaponId, isEmpty) {
+    if (weaponId === 'mp5k') {
+      return { magOutP: 0.42, magInP: 0.72, needsChamber: true };
+    }
+    if (weaponId === 'ak74m') {
+      return { magOutP: 0.38, magInP: 0.62, needsChamber: !!isEmpty };
+    }
+    if (weaponId === 'mosin9130') {
+      return { magOutP: 0.22, magInP: 0.68, needsChamber: true };
+    }
+    if (weaponId === 'm870') {
+      return { magOutP: 0.12, magInP: isEmpty ? 0.68 : 0.88, needsChamber: !!isEmpty };
+    }
+    // G17, PM-9, M24, AWM .338
+    return { magOutP: 0.26, magInP: 0.58, needsChamber: !!isEmpty };
   }
 
   _ensureReviveRig() {
@@ -2863,14 +2925,79 @@ class WeaponSystem {
       }
     }
 
-    // Reload progress & per-weapon unique reload animations
+    // Step AAA 6-DOF second-order weapon spring every frame
+    this._stepWeaponSpring(dt);
+
+    // Reload progress & AAA staged procedural interruptible reload animations
     let reloadPosOffset = { x: 0, y: 0, z: 0 };
     let reloadRotOffset = { x: 0, y: 0, z: 0 };
 
     if (this.isReloading) {
       this.reloadTimer -= dt;
+      this._reloadResumeBlend = Math.min(1.0, (this._reloadResumeBlend || 0) + dt * 9.5);
       const p = THREE.MathUtils.clamp(1 - (this.reloadTimer / this.reloadDuration), 0, 1);
       this._computeReloadPose(p, dt, reloadPosOffset, reloadRotOffset, player);
+
+      // Persist staged reload checkpoints directly onto weapon slot so interruptions (plating, grenades, medkits, swaps) resume from exact stage!
+      const stages = this._getReloadStages(this.reloadWeaponId, this.wasEmptyReload);
+      const slotObj = (player && player.getActiveWeaponSlot) ? player.getActiveWeaponSlot() : this.reloadSlotRef;
+      if (slotObj && slotObj.id === this.reloadWeaponId) {
+        if (this.reloadWeaponId === 'm870') {
+          if (this.wasEmptyReload && p >= stages.magInP && slotObj.mag > 0 && (slotObj.reloadStage || 0) < 2) {
+            slotObj.reloadStage = 2;
+            slotObj.reloadWasEmpty = true;
+          }
+        } else {
+          // Stage 0 -> 1: Spent magazine removed (or Mosin bolt opened)
+          if (p >= stages.magOutP && (slotObj.reloadStage || 0) < 1) {
+            slotObj.reloadStage = 1;
+            slotObj.reloadWasEmpty = !!this.wasEmptyReload;
+            if (!this._reloadImpulseFlags.magOut) {
+              this._reloadImpulseFlags.magOut = true;
+              this.addWeaponImpulse(-0.008, -0.020, 0.012, -0.06, 0.02, -0.08);
+            }
+          }
+          // Stage 1 -> 2: Fresh magazine seated & locked! Commit ammo immediately; advance to Stage 2 if bolt/slide rack remains!
+          if (p >= stages.magInP && !slotObj.reloadMagCommitted) {
+            if (player && player.commitReloadMag) player.commitReloadMag(slotObj);
+            else slotObj.reloadMagCommitted = true;
+            if (!this._reloadImpulseFlags.magIn) {
+              this._reloadImpulseFlags.magIn = true;
+              this.addWeaponImpulse(0.006, 0.032, -0.014, 0.11, -0.02, -0.06);
+            }
+            if (stages.needsChamber) {
+              slotObj.reloadStage = 2;
+              slotObj.reloadWasEmpty = !!this.wasEmptyReload;
+            } else {
+              // Tactical reload with chambered round is already live once mag clicks in!
+              slotObj.reloadStage = 0;
+              slotObj.reloadWasEmpty = false;
+              slotObj.reloadMagCommitted = false;
+            }
+          }
+        }
+      }
+      // Crisp mechanical spring punches on bolt lock & bolt rack / H&K slap!
+      if (this.reloadSfxFlags.boltLock && !this._reloadImpulseFlags.boltLock) {
+        this._reloadImpulseFlags.boltLock = true;
+        this.addWeaponImpulse(-0.006, 0.010, 0.014, 0.04, -0.02, 0.07);
+      }
+      if (this.reloadSfxFlags.rack && !this._reloadImpulseFlags.rack) {
+        this._reloadImpulseFlags.rack = true;
+        this.addWeaponImpulse(0.010, -0.024, -0.020, -0.095, -0.03, 0.09);
+      }
+
+      // Procedural resume entry easing + subtle live breathing/stride momentum coupled into the reload pose!
+      const resBlend = this._reloadResumeBlend * this._reloadResumeBlend * (3 - 2 * this._reloadResumeBlend);
+      const rSpd = player ? Math.hypot(player.velocity.x, player.velocity.z) : 0;
+      const rMove = Math.min(1, rSpd / 6.0);
+      const rBreath = Math.sin(this.bobTimer * 1.15) * (0.003 + rMove * 0.006);
+      reloadPosOffset.x = reloadPosOffset.x * resBlend + Math.cos(this.bobTimer) * rMove * 0.006;
+      reloadPosOffset.y = reloadPosOffset.y * resBlend + rBreath;
+      reloadPosOffset.z = reloadPosOffset.z * resBlend;
+      reloadRotOffset.x = reloadRotOffset.x * resBlend + rBreath * 1.4;
+      reloadRotOffset.y = reloadRotOffset.y * resBlend;
+      reloadRotOffset.z = reloadRotOffset.z * resBlend + Math.sin(this.bobTimer) * rMove * 0.022;
 
       // Unique, steady ADS-reload posture: keeps sights/optic shouldered & aimed downrange per weapon!
       if (player && player.isADS && !this.wallBlocked) {
@@ -2913,6 +3040,7 @@ class WeaponSystem {
 
       if (this.reloadTimer <= 0) {
         this.isReloading = false;
+        this.reloadSlotRef = null;
         this._resetReloadParts();
         player.finishReload();
       }
@@ -3286,11 +3414,29 @@ class WeaponSystem {
       }
     }
 
-    if (!this.isReloading && !this.isInspecting && this.boltMesh && !(weaponDef && weaponDef.boltAction && this.boltActionTimer > 0)) {
-      const slotObj = player.getActiveWeaponSlot();
-      const lockOpen = weaponDef && weaponDef.slot === 'secondary' && slotObj && slotObj.mag === 0;
-      const offset = lockOpen ? 0.052 : (weaponDef && weaponDef.id === 'm870' ? pumpOffset : this.boltKick);
-      this.boltMesh.position.z = this.boltRestPos.z + offset;
+    if (!this.isReloading && !this.isInspecting) {
+      const slotObj = player.getActiveWeaponSlot ? player.getActiveWeaponSlot() : null;
+      const stg = (slotObj && slotObj.reloadStage) || 0;
+      // Keep physical weapon visuals 100% truthful during interrupted staged reloads!
+      if (this.magMesh && weaponDef && weaponDef.id !== 'm870' && weaponDef.id !== 'mosin9130') {
+        this.magMesh.visible = (stg !== 1);
+      }
+      if (this.boltMesh && !(weaponDef && weaponDef.boltAction && this.boltActionTimer > 0)) {
+        if (weaponDef && weaponDef.id === 'mp5k' && stg >= 1) {
+          this.boltMesh.position.z = this.boltRestPos.z + 0.068;
+          this.boltMesh.position.y = this.boltRestPos.y + 0.016;
+          this.boltMesh.rotation.z = 0.55;
+        } else if (weaponDef && weaponDef.id === 'mosin9130' && stg >= 1) {
+          this.boltMesh.position.z = this.boltRestPos.z + 0.095;
+          this.boltMesh.rotation.z = 0.80;
+        } else {
+          const lockOpen = weaponDef && weaponDef.slot === 'secondary' && slotObj && (slotObj.mag === 0 || (stg >= 1 && slotObj.reloadWasEmpty));
+          const offset = lockOpen ? 0.052 : (weaponDef && weaponDef.id === 'm870' ? pumpOffset : this.boltKick);
+          this.boltMesh.position.z = this.boltRestPos.z + offset;
+          this.boltMesh.position.y = this.boltRestPos.y;
+          this.boltMesh.rotation.z = this.boltRestRot.z;
+        }
+      }
     }
 
     // === IMMERSIVE WALL-COLLISION & CORNER-LEAN GUN HANDLING (Fast box-only wallMeshes @ ~30Hz for high FPS!) ===
@@ -3336,32 +3482,70 @@ class WeaponSystem {
     this.wallPush = THREE.MathUtils.lerp(this.wallPush, targetWallPush, Math.min(1, dt * wallRate));
     this.wallBlocked = this.wallPush > 0.76;
 
-    // Viewmodel positioning (Hipfire vs ADS + Wall Pullback/Tuck + Corner-Lean Alignment + Tactical Sprint)
+    // AAA Momentum-Based First-Person Locomotion Phases, Jump/Land Spring & Start/Stop Inertia!
     const speed = Math.hypot(player.velocity.x, player.velocity.z);
-    const moving = speed > 0.6 && player.onGround;
-    if (moving) {
-      const cadence = player.isTacSprinting ? 10.6 : (player.isSprinting ? 8.4 : (player.isCrouching ? 4.2 : 5.6));
-      this.bobTimer += dt * cadence;
-    } else {
-      this.bobTimer += dt * 1.1; // Gentle idle breathing
-    }
+    const moving = speed > 0.55 && player.onGround;
 
-    const moveFactor = moving ? Math.min(1, speed / 4.5) : 0.15;
+    // Jump takeoff & weighty landing impact thud via second-order spring
+    if (!player.onGround) {
+      if (this._prevOnGround && player.velocity.y > 1.5) {
+        this.addWeaponImpulse(0, -0.022, 0.012, 0.075, 0, -0.03);
+      }
+      this._airTime = Math.min(2.0, (this._airTime || 0) + dt);
+    } else {
+      if (!this._prevOnGround && this._airTime > 0.10) {
+        const imp = THREE.MathUtils.clamp(this._airTime * 1.65, 0.30, 1.0);
+        this.addWeaponImpulse(0, -0.058 * imp, 0.016 * imp, -0.15 * imp, 0.02 * imp, -0.065 * imp);
+      }
+      this._airTime = 0;
+    }
+    this._prevOnGround = !!player.onGround;
+
+    // Detect crisp sprint-start hoist & hard-stop braking settle impulses
+    if (player.onGround) {
+      if (this._prevLocoSpeed > 4.8 && speed < 0.9) {
+        this.addWeaponImpulse(0.008, -0.014, -0.016, -0.048, 0.024, 0.036);
+      } else if (this._prevLocoSpeed < 1.2 && speed > 5.0) {
+        this.addWeaponImpulse(-0.006, 0.010, 0.012, 0.040, -0.020, -0.030);
+      }
+    }
+    this._prevLocoSpeed = THREE.MathUtils.lerp(this._prevLocoSpeed || 0, speed, Math.min(1, dt * 10));
+
     // Allow maintaining ADS while sliding AND while reloading!
     const isAdsActive = player.isADS && !this.wallBlocked && !this.isInspecting && !this.isPlating && !this.isHealing;
     const tacSprintingHip = player.isTacSprinting && !isAdsActive && !this.isReloading && !this.isPlating && !this.isHealing;
     const sprintingHip = player.isSprinting && !tacSprintingHip && !isAdsActive && !this.isReloading && !this.isPlating && !this.isHealing;
 
-    const ampX = isAdsActive ? 0.0012 : (tacSprintingHip ? 0.032 : (sprintingHip ? 0.022 : 0.011));
-    const ampY = isAdsActive ? 0.0014 : (tacSprintingHip ? 0.034 : (sprintingHip ? 0.026 : 0.013));
+    // Smoothly blend distinct 1P locomotion phases (Walk / Run / Tac-Sprint)
+    const fpPhaseLerp = Math.min(1, dt * 9.5);
+    this._fpPhaseTac = THREE.MathUtils.lerp(this._fpPhaseTac || 0, (moving && tacSprintingHip) ? 1 : 0, fpPhaseLerp);
+    this._fpPhaseRun = THREE.MathUtils.lerp(this._fpPhaseRun || 0, (moving && sprintingHip) ? 1 : 0, fpPhaseLerp);
+    this._fpPhaseWalk = THREE.MathUtils.lerp(this._fpPhaseWalk || 0, (moving && !tacSprintingHip && !sprintingHip) ? 1 : 0, fpPhaseLerp);
+
+    if (moving) {
+      const walkCad = player.isCrouching ? 4.4 : (5.4 + Math.min(speed, 5.4) * 0.45);
+      const runCad = 8.8;
+      const tacCad = 11.4;
+      const pTot = Math.max(0.001, this._fpPhaseWalk + this._fpPhaseRun + this._fpPhaseTac);
+      const cadence = (walkCad * this._fpPhaseWalk + runCad * this._fpPhaseRun + tacCad * this._fpPhaseTac) / pTot;
+      this.bobTimer += dt * cadence;
+    } else {
+      this.bobTimer += dt * 1.15; // Gentle organic idle breathing
+    }
+
+    const moveFactor = moving ? Math.min(1.15, speed / 4.8) : 0.16;
+    const airDriftY = !player.onGround ? THREE.MathUtils.clamp(-player.velocity.y * 0.0045, -0.028, 0.028) : 0;
+
+    const ampX = isAdsActive ? 0.0012 : (0.011 * this._fpPhaseWalk + 0.023 * this._fpPhaseRun + 0.034 * this._fpPhaseTac + (!moving ? 0.004 : 0));
+    const ampY = isAdsActive ? 0.0014 : (0.013 * this._fpPhaseWalk + 0.027 * this._fpPhaseRun + 0.036 * this._fpPhaseTac + (!moving ? 0.006 : 0));
     const bobX = Math.sin(this.bobTimer) * ampX * moveFactor;
-    const bobY = Math.pow(Math.abs(Math.sin(this.bobTimer)), 1.6) * ampY * moveFactor;
+    const bobY = Math.pow(Math.abs(Math.sin(this.bobTimer)), 1.55) * ampY * moveFactor;
 
     const swayRotZ = (moving && !isAdsActive && !this.isReloading && !this.isInspecting && !this.isPlating && !this.isHealing)
-      ? Math.cos(this.bobTimer) * (tacSprintingHip ? 0.11 : (sprintingHip ? 0.065 : 0.024)) * moveFactor
+      ? Math.cos(this.bobTimer) * (0.024 * this._fpPhaseWalk + 0.068 * this._fpPhaseRun + 0.115 * this._fpPhaseTac) * moveFactor
       : 0;
     const swayRotX = (moving && !isAdsActive && !this.isReloading && !this.isInspecting && !this.isPlating && !this.isHealing)
-      ? -Math.sin(this.bobTimer * 2) * (tacSprintingHip ? 0.065 : (sprintingHip ? 0.045 : 0.016)) * moveFactor
+      ? -Math.sin(this.bobTimer * 2) * (0.016 * this._fpPhaseWalk + 0.048 * this._fpPhaseRun + 0.070 * this._fpPhaseTac) * moveFactor
       : 0;
 
     const activePosOff = this.isReloading ? reloadPosOffset : (this.isPlating ? platePosOffset : (this.isHealing ? healPosOffset : inspectPosOffset));
@@ -3419,7 +3603,7 @@ class WeaponSystem {
     this.lookSwayRotX = THREE.MathUtils.lerp(this.lookSwayRotX, THREE.MathUtils.clamp(clampedDP * 1.05 * swayMult, -0.12, 0.12), swayLerpIn);
     this.lookSwayRotZ = THREE.MathUtils.lerp(this.lookSwayRotZ, THREE.MathUtils.clamp(-clampedDY * 1.15 * swayMult, -0.14, 0.14), swayLerpIn);
 
-    // Sprint tilt, DMZ Tactical Sprint high-port skyward carry, tactical slide cant, wall tuck, progressive corner-lean cant (even while ADS!), recoil kick, MW19 ADS snap-cant & grab cant
+    // Sprint tilt, DMZ Tactical Sprint high-port skyward carry, tactical slide cant, wall tuck, progressive corner-lean cant (even while ADS!), recoil kick, MW19 ADS snap-cant, grab cant & 6-DOF spring!
     this._adsBlend = THREE.MathUtils.lerp(this._adsBlend || 0, isAdsActive ? 1 : 0, Math.min(1, dt * 19));
     const adsSnapArc = (!customRot && !this.isFistsMode) ? Math.sin(this._adsBlend * Math.PI) : 0;
     const adsSnapRotZ = -0.072 * adsSnapArc;
@@ -3429,6 +3613,7 @@ class WeaponSystem {
     const grabPosY = 0.010 * grabCantActive;
     const grabRotX = 0.065 * grabCantActive;
     const grabRotZ = -0.14 * grabCantActive;
+    const sprScale = isAdsActive ? 0.38 : 1.0;
 
     const slideCantZ = (!customRot && !this.isFistsMode && player.isSliding) ? (isAdsActive ? -0.10 : -0.32) : 0;
     const slideCantY = (!customRot && !this.isFistsMode && player.isSliding) ? (isAdsActive ? 0.0 : 0.18) : 0;
@@ -3436,9 +3621,9 @@ class WeaponSystem {
     const sprintRotY = this.isFistsMode ? 0 : (tacSprintingHip ? 0.16 : (sprintingHip ? 0.22 : 0));
     const sprintRotZ = this.isFistsMode ? 0 : (tacSprintingHip ? -0.14 : (sprintingHip ? 0.08 : 0));
     const leanRotZ = isAdsActive ? (-player.lean * 0.13) : (-player.lean * 0.22);
-    const targetRotX = (customRot && !this.isFistsMode ? activeRotOff.x : (sprintRotX + swayRotX + this.recoilPitch + this.lookSwayRotX + wallRotX + grabRotX)) + drawRot.x;
-    const targetRotY = (customRot && !this.isFistsMode ? activeRotOff.y : (sprintRotY + slideCantY + this.recoilYaw + this.lookSwayRotY + wallRotY + leanCantY)) + drawRot.y;
-    const targetRotZ = (customRot && !this.isFistsMode ? activeRotOff.z : (sprintRotZ + swayRotZ + slideCantZ + boltActionRoll + this.recoilRoll + this.lookSwayRotZ + wallRotZ + leanRotZ + adsSnapRotZ + grabRotZ)) + drawRot.z;
+    const targetRotX = (customRot && !this.isFistsMode ? activeRotOff.x : (sprintRotX + swayRotX + this.recoilPitch + this.lookSwayRotX + wallRotX + grabRotX)) + drawRot.x + this._sprRot.x * sprScale;
+    const targetRotY = (customRot && !this.isFistsMode ? activeRotOff.y : (sprintRotY + slideCantY + this.recoilYaw + this.lookSwayRotY + wallRotY + leanCantY)) + drawRot.y + this._sprRot.y * sprScale;
+    const targetRotZ = (customRot && !this.isFistsMode ? activeRotOff.z : (sprintRotZ + swayRotZ + slideCantZ + boltActionRoll + this.recoilRoll + this.lookSwayRotZ + wallRotZ + leanRotZ + adsSnapRotZ + grabRotZ)) + drawRot.z + this._sprRot.z * sprScale;
 
     // MW2/DMZ One-Handed High-Port Tactical Sprint: weapon held UP in right hand, left fist pumping apart!
     // When in Fists mode, center the viewmodel horizontally so both hands come evenly from bottom-left & bottom-right!
@@ -3448,9 +3633,9 @@ class WeaponSystem {
     const basePosY = this.isFistsMode ? -0.16 : (isAdsActive ? (-this.sightHeight + adsPivotY) : (tacSprintingHip ? -0.14 : (sprintingHip ? -0.235 : -0.20)));
     const basePosZ = this.isFistsMode ? -0.38 : (isAdsActive ? this.adsZ : (tacSprintingHip ? -0.34 : (sprintingHip ? -0.40 : -0.42)));
 
-    const targetX = basePosX + this.recoilX + this.lookSwayX + activePosOff.x + wallPosX + leanAlignX + drawPos.x + grabPosX;
-    const targetY = basePosY + this.lookSwayY + activePosOff.y + wallPosY + drawPos.y + adsSnapY + grabPosY;
-    const targetZ = basePosZ + this.recoilZ + activePosOff.z + wallPosZ + drawPos.z;
+    const targetX = basePosX + this.recoilX + this.lookSwayX + activePosOff.x + wallPosX + leanAlignX + drawPos.x + grabPosX + this._sprPos.x * sprScale;
+    const targetY = basePosY + this.lookSwayY + activePosOff.y + wallPosY + drawPos.y + adsSnapY + grabPosY + airDriftY + this._sprPos.y * sprScale;
+    const targetZ = basePosZ + this.recoilZ + activePosOff.z + wallPosZ + drawPos.z + this._sprPos.z * sprScale;
 
     const adsSnapping = isAdsActive || adsSnapArc > 0.08;
     const lerpRate = this.isReloading ? 28 : ((this.isPlating || this.isHealing) ? 16 : (this.isInspecting ? 9 : (this.drawTimer > 0 ? 24 : (adsSnapping ? 20 : 14))));
@@ -4658,6 +4843,7 @@ class WeaponSystem {
       if (pt > 0.82 && plateIdx > this.lastPlateInsertedIdx) {
         this.lastPlateInsertedIdx = plateIdx;
         if (player) player.insertSinglePlate();
+        this.addWeaponImpulse(0, -0.032, 0.012, -0.085, 0, -0.045);
       }
 
       // Tactile Warzone/DMZ body thud as SAPI ceramic plate slams home into carrier
@@ -4776,7 +4962,9 @@ class WeaponSystem {
   }
 
   startPlating(platesToInsert = 1) {
-    if (this.isReloading || this.isPlating || this.isHealing) return false;
+    if (this.isPlating || this.isHealing) return false;
+    // Interrupt active reload while preserving its staged checkpoint (e.g. mag already removed!)
+    if (this.isReloading) this.cancelReload();
     this.cancelInspect();
     this.isPlating = true;
     this.platesToInsert = Math.max(1, platesToInsert);
@@ -5099,7 +5287,9 @@ class WeaponSystem {
   }
 
   startMedkit() {
-    if (this.isReloading || this.isPlating || this.isHealing) return false;
+    if (this.isPlating || this.isHealing) return false;
+    // Interrupt active reload while preserving its staged checkpoint!
+    if (this.isReloading) this.cancelReload();
     this.cancelInspect();
     this.isHealing = true;
     this.healDuration = 6.4;
@@ -5153,15 +5343,20 @@ class WeaponSystem {
     this._resetReloadParts();
   }
 
-  startReload(weaponDef, isEmpty = false, shellsToLoad = 1) {
+  startReload(weaponDef, isEmpty = false, shellsToLoad = 1, slotObj = null) {
     if (this.isReloading || !weaponDef) return;
     this.cancelInspect();
     this.cancelPlating();
     this.cancelMedkit();
     this.isReloading = true;
-    this.wasEmptyReload = isEmpty;
+    this.reloadSlotRef = slotObj || null;
+    const savedStage = (slotObj && slotObj.reloadStage) ? slotObj.reloadStage : 0;
+    if (savedStage > 0 && slotObj && slotObj.reloadWasEmpty !== undefined) {
+      isEmpty = !!slotObj.reloadWasEmpty;
+    }
+    this.wasEmptyReload = !!isEmpty;
     this.reloadWeaponId = weaponDef.id;
-    this.reloadShellCount = Math.max(1, shellsToLoad);
+    this.reloadShellCount = Math.max(1, shellsToLoad || 1);
     this.lastShellSoundIdx = -1;
     this.lastShellLoadedIdx = -1;
     this.pumpDelayTimer = 0;
@@ -5169,17 +5364,42 @@ class WeaponSystem {
     this.boltActionDelayTimer = 0;
     this.boltActionTimer = 0;
     if (weaponDef.id === 'm870') {
-      this.reloadDuration = 0.55 + this.reloadShellCount * 0.52 + (isEmpty ? 0.50 : 0);
+      this.reloadDuration = 0.55 + this.reloadShellCount * 0.52 + (this.wasEmptyReload ? 0.50 : 0);
     } else {
-      this.reloadDuration = weaponDef.reloadTime + (isEmpty ? 0.45 : 0);
+      this.reloadDuration = weaponDef.reloadTime + (this.wasEmptyReload ? 0.45 : 0);
     }
-    this.reloadTimer = this.reloadDuration;
-    this.reloadSfxFlags = { magOut: false, magIn: false, rack: false, boltLock: false };
+
+    // Resume from persisted staged checkpoint (Stage 1 = insert fresh mag; Stage 2 = rack bolt/slide/H&K slap!)
+    const stages = this._getReloadStages(weaponDef.id, this.wasEmptyReload);
+    let startP = 0.0;
+    if (weaponDef.id === 'm870') {
+      if (savedStage >= 2 && this.wasEmptyReload) startP = stages.magInP;
+    } else {
+      if (savedStage === 1) startP = stages.magOutP;
+      else if (savedStage >= 2) startP = stages.magInP;
+    }
+
+    this.reloadTimer = this.reloadDuration * Math.max(0.08, 1.0 - startP);
+    this._reloadResumeBlend = startP > 0 ? 0.0 : 1.0;
+    this.reloadSfxFlags = {
+      boltLock: startP >= stages.magOutP,
+      magOut: startP >= stages.magOutP,
+      magIn: startP >= stages.magInP,
+      rack: false
+    };
+    this._reloadImpulseFlags = {
+      boltLock: startP >= stages.magOutP,
+      magOut: startP >= stages.magOutP,
+      magIn: startP >= stages.magInP,
+      rack: false
+    };
   }
 
   cancelReload() {
     this.isReloading = false;
     this.reloadTimer = 0;
+    this.reloadSlotRef = null;
+    this._reloadResumeBlend = 1.0;
     this.pumpDelayTimer = 0;
     this.pumpTimer = 0;
     this.boltActionDelayTimer = 0;
@@ -5204,9 +5424,32 @@ class WeaponSystem {
     }
     if (this.fireTimer > 0 || this.wallBlocked) return false;
 
+    // Staged Reload Check:
+    //  - Stage 2 (fresh mag in, bolt/slide NOT racked yet): pulling trigger resumes straight at Stage 2 (bolt rack)!
+    //  - Stage 1 (mag removed): if empty, resume at Stage 1 (insert mag); if tactical (+1 chambered round!), fire that 1 emergency round!
+    const stg = weaponSlotState.reloadStage || 0;
+    if (stg >= 2) {
+      if (player.startReload) player.startReload();
+      return false;
+    }
+    let firedChamberedEmergency = false;
+    if (stg === 1) {
+      if (weaponSlotState.reloadWasEmpty || weaponSlotState.mag <= 0) {
+        const reserve = player.getReserveAmmo ? player.getReserveAmmo(def.ammoType) : 0;
+        if ((reserve > 0 || window.DEV_MODE) && player.startReload) {
+          player.startReload();
+          return false;
+        }
+        this.fireTimer = 0.25;
+        window.soundEngine.playEmptyClick();
+        return false;
+      }
+      firedChamberedEmergency = true;
+    }
+
     if (weaponSlotState.mag <= 0) {
       const reserve = player.getReserveAmmo ? player.getReserveAmmo(def.ammoType) : 0;
-      if (reserve > 0 && player.startReload) {
+      if ((reserve > 0 || window.DEV_MODE) && player.startReload) {
         player.startReload();
         return false;
       }
@@ -5215,12 +5458,18 @@ class WeaponSystem {
       return false;
     }
 
-    weaponSlotState.mag -= 1;
+    if (firedChamberedEmergency) {
+      // Emergency +1 chambered round fired with mag removed! Gun is now truly empty at Stage 1 (needs mag-in + bolt rack)!
+      weaponSlotState.mag = 0;
+      weaponSlotState.reloadWasEmpty = true;
+    } else {
+      weaponSlotState.mag -= 1;
+    }
     this.fireTimer = def.fireRate;
     const kickScale = player.isADS ? 0.58 : 1.0;
     const hRec = def.horizRecoil != null ? def.horizRecoil : (def.recoil * 0.48);
     const hSign = Math.random() < 0.56 ? 1 : -1;
-    // Physical rearward shoulder kick + controlled muzzle flip + horizontal recoil bounce
+    // Physical rearward shoulder kick + controlled muzzle flip + horizontal recoil bounce + 6-DOF spring punch
     this.recoilOffset = Math.min(0.06, this.recoilOffset + 0.022 * kickScale);
     const baseZKick = def.id === 'm870' ? 0.036 : ((def.id === 'm24' || def.id === 'awm338' || def.id === 'mosin9130') ? 0.034 : (def.slot === 'secondary' ? 0.018 : 0.022));
     this.recoilZ = Math.min(0.056, this.recoilZ + baseZKick * kickScale);
@@ -5228,6 +5477,14 @@ class WeaponSystem {
     this.recoilYaw = THREE.MathUtils.clamp(this.recoilYaw + hSign * hRec * 1.35 * kickScale, -0.045, 0.045);
     this.recoilRoll = THREE.MathUtils.clamp(this.recoilRoll + (Math.random() - 0.5) * 0.062 * kickScale, -0.055, 0.055);
     this.recoilX = THREE.MathUtils.clamp(this.recoilX + hSign * hRec * 0.32 * kickScale, -0.012, 0.012);
+    this.addWeaponImpulse(
+      hSign * hRec * 0.14 * kickScale,
+      0.008 * kickScale,
+      baseZKick * 0.52 * kickScale,
+      def.recoil * 0.48 * kickScale,
+      hSign * hRec * 0.34 * kickScale,
+      (Math.random() - 0.5) * 0.065 * kickScale
+    );
     if (def.slot === 'secondary' || def.id === 'mp5k' || def.id === 'ak74m') {
       this.boltCycleDuration = def.id === 'ak74m' ? 0.085 : 0.075;
       this.boltCycleTimer = this.boltCycleDuration;

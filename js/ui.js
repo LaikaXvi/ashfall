@@ -6239,8 +6239,12 @@ class GameUI {
       document.getElementById('hud-mag').textContent = '—';
       document.getElementById('hud-reserve').textContent = mDef ? 'MELEE' : 'UNARMED';
     } else if (wDef && wSlot) {
-      document.getElementById('hud-weapon-name').textContent = wDef.name.toUpperCase();
-      document.getElementById('hud-mag').textContent = wSlot.mag;
+      const stg = wSlot.reloadStage || 0;
+      const stgTag = (!weaponSystem || !weaponSystem.isReloading)
+        ? (stg === 1 ? '  [MAG OUT]' : (stg >= 2 ? '  [RACK BOLT]' : ''))
+        : '';
+      document.getElementById('hud-weapon-name').textContent = wDef.name.toUpperCase() + stgTag;
+      document.getElementById('hud-mag').textContent = (stg === 1 && !wSlot.reloadWasEmpty && wSlot.mag > 0) ? '1' : (stg === 1 ? '0' : wSlot.mag);
       document.getElementById('hud-reserve').textContent = player.getReserveAmmo(wDef.ammoType);
     } else {
       document.getElementById('hud-weapon-name').textContent = 'BARE FISTS';
