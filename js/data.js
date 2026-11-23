@@ -3,11 +3,11 @@
 // Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
 // With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'Alpha RC 0.2.66',
+  VERSION: 'Alpha RC 0.2.67',
   VERSION_INFO: {
     major: 0,
     minor: 2,
-    patch: 66,
+    patch: 67,
     channel: 'Alpha', // Alpha | Beta — never blank while major === 0
     stage: 'RC',     // RC = Release Candidate
     get semver() { return `${this.major}.${this.minor}.${this.patch}`; },

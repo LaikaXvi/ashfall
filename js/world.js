@@ -27,16 +27,21 @@ class WastelandWorld {
     this.fogLayers = [];
 
     // Realistic hydrography: NE river -> south -> SW into lake -> SE river -> southern beach -> SE ocean peninsula
-    this.RIVER_A = [
-      [600, -620], [500, -440], [430, -260], [330, -110], [240, 40], [150, 180], [150, 272]
+    this.RIVER_A_CTRL = [
+      [595, -620], [515, -455], [440, -280], [395, -120], [255, -45], [198, 95], [164, 215], [160, 330]
     ];
-    this.RIVER_B = [
-      [172, 458], [186, 535], [212, 620]
+    this.RIVER_B_CTRL = [
+      [212, 442], [250, 500], [298, 558], [348, 620]
     ];
-    this.LAKE = { x: 170, z: 375, rx: 115, rz: 85, feather: 42 };
-    this.RIVER_WATER_Y = 0.5;
+    this.LAKE = { x: 165, z: 390, rx: 96, rz: 68, feather: 34 };
+    this.RIVER_A_START_Y = 4.0;
     this.LAKE_WATER_Y = 0.42;
     this.OCEAN_WATER_Y = 0.12;
+    this.RIVER_WATER_Y = 0.5;
+    this._riverA = this._buildSmoothRiverData(this.RIVER_A_CTRL, 6);
+    this._riverB = this._buildSmoothRiverData(this.RIVER_B_CTRL, 6);
+    this.RIVER_A = this._riverA.pts;
+    this.RIVER_B = this._riverB.pts;
     this.waterMeshes = [];
 
     // Pre-registered flat terrain pads for every POI & extraction zone (smoothly leveled into the hills!)
@@ -160,6 +165,73 @@ class WastelandWorld {
     return this._evalAnalyticalTerrainHeight(x, z);
   }
 
+  _buildSmoothRiverData(ctrlPts, subdiv = 6) {
+    const pts = [];
+    const n = ctrlPts.length;
+    const catmull = (p0, p1, p2, p3, t) => {
+      const t2 = t * t;
+      const t3 = t2 * t;
+      return [
+        0.5 * ((2 * p1[0]) + (-p0[0] + p2[0]) * t + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3),
+        0.5 * ((2 * p1[1]) + (-p0[1] + p2[1]) * t + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3)
+      ];
+    };
+    for (let i = 0; i < n - 1; i++) {
+      const p0 = ctrlPts[Math.max(0, i - 1)];
+      const p1 = ctrlPts[i];
+      const p2 = ctrlPts[i + 1];
+      const p3 = ctrlPts[Math.min(n - 1, i + 2)];
+      const steps = i === n - 2 ? subdiv : subdiv;
+      for (let s = 0; s < steps; s++) {
+        pts.push(catmull(p0, p1, p2, p3, s / steps));
+      }
+    }
+    pts.push([ctrlPts[n - 1][0], ctrlPts[n - 1][1]]);
+    const cumLen = [0];
+    let total = 0;
+    for (let i = 1; i < pts.length; i++) {
+      total += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+      cumLen.push(total);
+    }
+    return { pts, cumLen, totalLen: Math.max(1, total) };
+  }
+
+  _projectOntoRiver(x, z, riverData) {
+    const pts = riverData.pts;
+    const cum = riverData.cumLen;
+    const total = riverData.totalLen;
+    let bestDistSq = Infinity;
+    let bestS = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const ax = pts[i][0], az = pts[i][1];
+      const bx = pts[i + 1][0], bz = pts[i + 1][1];
+      const dx = bx - ax, dz = bz - az;
+      const lenSq = dx * dx + dz * dz || 1;
+      let t = ((x - ax) * dx + (z - az) * dz) / lenSq;
+      if (t < 0) t = 0;
+      else if (t > 1) t = 1;
+      const px = ax + dx * t - x;
+      const pz = az + dz * t - z;
+      const dSq = px * px + pz * pz;
+      if (dSq < bestDistSq) {
+        bestDistSq = dSq;
+        const segLen = cum[i + 1] - cum[i];
+        bestS = (cum[i] + t * segLen) / total;
+      }
+    }
+    return { dist: Math.sqrt(bestDistSq), s: bestS };
+  }
+
+  _riverWaterYA(s) {
+    const c = Math.max(0, Math.min(1, s));
+    return this.LAKE_WATER_Y + (this.RIVER_A_START_Y - this.LAKE_WATER_Y) * Math.pow(1 - c, 1.15);
+  }
+
+  _riverWaterYB(s) {
+    const c = Math.max(0, Math.min(1, s));
+    return this.LAKE_WATER_Y + (this.OCEAN_WATER_Y - this.LAKE_WATER_Y) * c;
+  }
+
   _distToPolyline(x, z, pts) {
     let best = Infinity;
     for (let i = 0; i < pts.length - 1; i++) {
@@ -176,60 +248,105 @@ class WastelandWorld {
     return best;
   }
 
-  _oceanFactor(x, z) {
-    // Southern beach line sloping gently + eastern sea wrapping the SE peninsula
-    const beachZ = 525 - (x - 170) * 0.05;
-    const south = (z - beachZ) / 110;
-    let east = -Infinity;
-    if (z > 180) {
-      const zRamp = Math.max(0, Math.min(1, (z - 180) / 120));
-      east = ((x - 470) / 130) * (0.35 + 0.65 * zRamp);
+  _oceanDist(x, z) {
+    // Signed distance offshore in meters (>0 = ocean water, 0 = shoreline, <0 = dry beach/inland)
+    const beachZ = 562 - (x - 160) * 0.075 + Math.sin(x * 0.012) * 10;
+    const southDist = z - beachZ;
+    let eastDist = -999;
+    if (z > 150) {
+      const pt = Math.max(0, Math.min(1, (z - 165) / 155));
+      const ps = pt * pt * (3 - 2 * pt);
+      const eastShoreX = 650 - ps * 182 + Math.sin(z * 0.016) * 8;
+      eastDist = x - eastShoreX;
     }
-    return Math.max(south, east);
+    return Math.max(southDist, eastDist);
+  }
+
+  _oceanFactor(x, z) {
+    return this._oceanDist(x, z) / 110;
   }
 
   _evalAnalyticalTerrainHeight(x, z) {
     // Broad rolling wasteland hills & elevated northern ridge
     const ridgeN = Math.max(0, (-z - 140) / 480) * 9.5;
-    const h1 = Math.sin(x * 0.0068 + 0.4) * Math.cos(z * 0.0062 - 0.3) * 7.8;
+    const h1 = Math.sin(x * 0.0068 + 0.4) * mathCosZ(z) * 7.8;
     const h2 = Math.sin((x + z) * 0.0115) * 3.4 + Math.cos((x - z * 1.1) * 0.014) * 2.2;
     const h3 = Math.sin(x * 0.029) * Math.sin(z * 0.027) * 0.85;
 
+    function mathCosZ(zv) {
+      return Math.cos(zv * 0.0062 - 0.3);
+    }
+
     let h = 2.4 + ridgeN + h1 + h2 + h3;
 
-    // NE river cutting south, bending SW into the lake
-    const dA = this._distToPolyline(x, z, this.RIVER_A);
-    if (dA < 34) {
-      const t = Math.max(0, 1 - dA / 34);
-      const prof = t * t * (3 - 2 * t);
-      h -= prof * 5.4;
-    }
-    // Lake basin (elliptical bowl)
+    // 1. Lake basin FIRST (strictly bounded [0..1] elliptical bowl + smooth shoreline feather — zero spikes!)
     const L = this.LAKE;
     const ex = (x - L.x) / (L.rx + L.feather);
     const ez = (z - L.z) / (L.rz + L.feather);
     const eDist = Math.hypot(ex, ez);
+    const innerLake = Math.hypot((x - L.x) / L.rx, (z - L.z) / L.rz);
     if (eDist < 1) {
-      const ix = (x - L.x) / L.rx;
-      const iz = (z - L.z) / L.rz;
-      const inner = Math.hypot(ix, iz);
-      const depth = inner <= 1 ? 1 : Math.max(0, 1 - (eDist - inner) / Math.max(0.001, 1 - inner));
-      const prof = depth * depth * (3 - 2 * depth);
-      h -= prof * 7.6;
+      if (innerLake <= 1) {
+        const bowl = 1 - innerLake * innerLake;
+        h = Math.min(h, this.LAKE_WATER_Y - 0.35 - bowl * 1.95);
+      } else {
+        const innerAtOuter = eDist / innerLake;
+        const u = Math.max(0, Math.min(1, (eDist - innerAtOuter) / Math.max(0.02, 1 - innerAtOuter)));
+        const prof = u * u * (3 - 2 * u);
+        const shoreRim = Math.max(this.LAKE_WATER_Y + 0.58, h);
+        h = (this.LAKE_WATER_Y - 0.35) * (1 - prof) + shoreRim * prof;
+      }
     }
-    // Lake outlet river running SE out the bottom of the map
-    const dB = this._distToPolyline(x, z, this.RIVER_B);
-    if (dB < 32) {
-      const t = Math.max(0, 1 - dB / 32);
-      const prof = t * t * (3 - 2 * t);
-      h -= prof * 5.0;
+
+    // 2. Southern sandy beach gradient & SE ocean peninsula seabed
+    const oDist = this._oceanDist(x, z);
+    if (oDist > -44) {
+      if (oDist <= 0) {
+        const u = Math.max(0, Math.min(1, (oDist + 44) / 44));
+        const prof = u * u * (3 - 2 * u);
+        const beachTarget = this.OCEAN_WATER_Y + 0.06;
+        h = h * (1 - prof) + beachTarget * prof;
+      } else {
+        const sub = Math.min(1, oDist / 95);
+        const seaBed = this.OCEAN_WATER_Y - 0.16 - sub * (1.75 + sub * 2.35);
+        h = Math.min(h, seaBed);
+      }
     }
-    // Southern beach gradient running into the SE ocean peninsula
-    const of = this._oceanFactor(x, z);
-    if (of > -0.25) {
-      const k = Math.max(0, Math.min(1, (of + 0.25) / 1.25));
-      const prof = k * k * (3 - 2 * k);
-      h -= prof * 10.5;
+
+    // 3. NE river valley & submerged channel cutting cleanly through hills & lakeshore rim into the lake!
+    const rA = this._projectOntoRiver(x, z, this._riverA);
+    if (rA.dist < 42) {
+      const wY = this._riverWaterYA(rA.s);
+      const chanW = 12.5;
+      if (rA.dist <= chanW) {
+        const edgeFrac = rA.dist / chanW;
+        const bedY = wY - (1.32 - 0.85 * edgeFrac * edgeFrac);
+        h = innerLake <= 1 ? Math.min(h, bedY) : bedY;
+      } else {
+        const u = Math.max(0, Math.min(1, (rA.dist - chanW) / (42 - chanW)));
+        const prof = u * u * (3 - 2 * u);
+        const rimBase = Math.max(wY + 0.55, h);
+        const bankY = (wY - 0.47) * (1 - prof) + rimBase * prof;
+        h = innerLake <= 1.05 ? Math.min(h, bankY) : bankY;
+      }
+    }
+
+    // 4. Lake SE outlet river channel cutting cleanly from the lake across the beach into the ocean!
+    const rB = this._projectOntoRiver(x, z, this._riverB);
+    if (rB.dist < 36) {
+      const wY = this._riverWaterYB(rB.s);
+      const chanW = 12.0;
+      if (rB.dist <= chanW) {
+        const edgeFrac = rB.dist / chanW;
+        const bedY = wY - (1.18 - 0.78 * edgeFrac * edgeFrac);
+        h = Math.min(h, bedY);
+      } else {
+        const u = Math.max(0, Math.min(1, (rB.dist - chanW) / (36 - chanW)));
+        const prof = u * u * (3 - 2 * u);
+        const rimBase = Math.max(wY + 0.45, h);
+        const bankY = (wY - 0.40) * (1 - prof) + rimBase * prof;
+        h = (innerLake <= 1.05 || oDist > -4) ? Math.min(h, bankY) : bankY;
+      }
     }
 
     // Smoothly blend toward flat pads around POIs & Extraction Zones
@@ -912,7 +1029,7 @@ class WastelandWorld {
   _buildEnvironment() {
     // Subdivided Varying Wasteland Terrain Mesh (84x84 = 14k tris for crisp rolling hills at 60+ FPS!)
     const terrainSize = 2100;
-    const segs = 84;
+    const segs = 192;
     const groundGeo = new THREE.PlaneGeometry(terrainSize, terrainSize, segs, segs);
     groundGeo.rotateX(-Math.PI / 2);
 
@@ -952,18 +1069,22 @@ class WastelandWorld {
         tmpCol.lerp(colSlope, THREE.MathUtils.clamp((slope - 0.16) * 2.6, 0, 0.78));
       }
       // Southern beach sand + submerged riverbed / lakebed / ocean floor tinting
-      const of = this._oceanFactor(vx, vz);
-      if (of > -0.12 && vy < 2.2) {
-        const sandK = Math.max(0, Math.min(1, (of + 0.12) / 0.38));
-        tmpCol.lerp(colSand, sandK * 0.9);
+      const oDist = this._oceanDist(vx, vz);
+      if (oDist > -38 && vy < 2.6) {
+        const sandK = Math.max(0, Math.min(1, (oDist + 38) / 36));
+        tmpCol.lerp(colSand, sandK * 0.92);
       }
-      if (vy < 0.55) {
-        tmpCol.lerp(colWet, 0.45);
-      }
-      if (vy < 0.1) {
-        const dk = Math.max(0, Math.min(1, (0.1 - vy) / 3.5));
-        tmpCol.lerp(colShallow, Math.min(0.85, 0.35 + dk * 0.5));
-        if (vy < -1.6) tmpCol.lerp(colDeep, Math.min(0.9, (-1.6 - vy) / 3.0));
+      const wSurf = this.getWaterSurfaceY(vx, vz);
+      if (wSurf !== null) {
+        const subDepth = wSurf - vy;
+        if (subDepth > -0.35) {
+          tmpCol.lerp(colWet, 0.48);
+        }
+        if (subDepth > 0.02) {
+          const dk = Math.max(0, Math.min(1, subDepth / 2.2));
+          tmpCol.lerp(colShallow, Math.min(0.85, 0.35 + dk * 0.5));
+          if (subDepth > 1.35) tmpCol.lerp(colDeep, Math.min(0.9, (subDepth - 1.35) / 2.4));
+        }
       }
       colors[i * 3] = tmpCol.r;
       colors[i * 3 + 1] = tmpCol.g;
@@ -981,9 +1102,10 @@ class WastelandWorld {
     this.shootableMeshes.push(ground);
 
     // Terrain-conforming segmented asphalt/dirt highways connecting POIs across the 1240m sector
+    // Automatically arches bridge decks cleanly above rivers so highways never dip underwater!
     const addTerrainRoad = (x1, z1, x2, z2, width = 10) => {
       const len = Math.hypot(x2 - x1, z2 - z1);
-      const steps = Math.max(12, Math.round(len / 14));
+      const steps = Math.max(16, Math.round(len / 9));
       const geo = new THREE.PlaneGeometry(width, len, 2, steps);
       geo.rotateX(-Math.PI / 2);
       const angle = Math.atan2(x2 - x1, z2 - z1);
@@ -997,7 +1119,19 @@ class WastelandWorld {
         const lz = pa.getZ(i);
         const wx = cx + lx * cosA + lz * sinA;
         const wz = cz - lx * sinA + lz * cosA;
-        const wy = this.getTerrainHeight(wx, wz) + 0.08;
+        let wy = this.getTerrainHeight(wx, wz) + 0.09;
+        const rA = this._projectOntoRiver(wx, wz, this._riverA);
+        if (rA.dist < 24) {
+          const bridgeK = Math.cos((rA.dist / 24) * Math.PI * 0.5);
+          const bridgeY = this._riverWaterYA(rA.s) + 0.72;
+          wy = Math.max(wy, wy * (1 - bridgeK) + bridgeY * bridgeK);
+        }
+        const rB = this._projectOntoRiver(wx, wz, this._riverB);
+        if (rB.dist < 22) {
+          const bridgeK = Math.cos((rB.dist / 22) * Math.PI * 0.5);
+          const bridgeY = this._riverWaterYB(rB.s) + 0.72;
+          wy = Math.max(wy, wy * (1 - bridgeK) + bridgeY * bridgeK);
+        }
         pa.setXYZ(i, wx, wy, wz);
       }
       geo.computeVertexNormals();
@@ -1012,36 +1146,51 @@ class WastelandWorld {
       const mesh = new THREE.Mesh(geo, this._materials.road);
       mesh.receiveShadow = true;
       this.scene.add(mesh);
+      this.shootableMeshes.push(mesh);
     };
 
     // Main N-S and E-W cross-sector highways + perimeter connector roads between POIs
-    // (N-S highway bridges over the lake outlet river via terrain-following deck — no ford needed!)
     addTerrainRoad(0, -560, 0, 560, 11);
     addTerrainRoad(-560, 20, 560, 20, 11);
     addTerrainRoad(-320, -240, -60, -340, 8);
     addTerrainRoad(-60, -340, 310, -270, 8);
     addTerrainRoad(310, -270, 340, 20, 8);
     addTerrainRoad(340, 20, 270, 290, 8);
-    addTerrainRoad(270, 290, -260, 310, 8);
+    addTerrainRoad(270, 290, 0, 312, 8);
+    addTerrainRoad(0, 312, -260, 310, 8);
     addTerrainRoad(-260, 310, -370, 50, 8);
     addTerrainRoad(-370, 50, -320, -240, 8);
 
     this._buildWater();
   }
 
-  getWaterDepth(x, z) {
-    const t = this._evalAnalyticalTerrainHeight(x, z);
-    const of = this._oceanFactor(x, z);
+  getWaterSurfaceY(x, z) {
     let level = -Infinity;
-    if (of > 0.02) level = Math.max(level, this.OCEAN_WATER_Y);
-    const dA = this._distToPolyline(x, z, this.RIVER_A);
-    const dB = this._distToPolyline(x, z, this.RIVER_B);
-    if (Math.min(dA, dB) < 17) level = Math.max(level, this.RIVER_WATER_Y);
+    const oDist = this._oceanDist(x, z);
+    if (oDist > -2) {
+      level = Math.max(level, this.OCEAN_WATER_Y);
+    }
     const L = this.LAKE;
-    const ex = (x - L.x) / (L.rx + 12);
-    const ez = (z - L.z) / (L.rz + 12);
-    if (Math.hypot(ex, ez) < 1) level = Math.max(level, this.LAKE_WATER_Y);
-    if (level === -Infinity) return 0;
+    const ex = (x - L.x) / (L.rx + 8);
+    const ez = (z - L.z) / (L.rz + 8);
+    if (Math.hypot(ex, ez) < 1) {
+      level = Math.max(level, this.LAKE_WATER_Y);
+    }
+    const rA = this._projectOntoRiver(x, z, this._riverA);
+    if (rA.dist < 15.5) {
+      level = Math.max(level, this._riverWaterYA(rA.s));
+    }
+    const rB = this._projectOntoRiver(x, z, this._riverB);
+    if (rB.dist < 14.5) {
+      level = Math.max(level, this._riverWaterYB(rB.s));
+    }
+    return level === -Infinity ? null : level;
+  }
+
+  getWaterDepth(x, z) {
+    const level = this.getWaterSurfaceY(x, z);
+    if (level === null) return 0;
+    const t = this.getTerrainHeight(x, z);
     return Math.max(0, level - t);
   }
 
@@ -1051,26 +1200,41 @@ class WastelandWorld {
 
   _buildWater() {
     const mkWater = (color, opacity) => new THREE.MeshBasicMaterial({
-      color, transparent: true, opacity, depthWrite: false
+      color,
+      transparent: true,
+      opacity,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -2
     });
-    const riverMat = mkWater(0x3f6f7a, 0.78);
-    const lakeMat = mkWater(0x39606e, 0.80);
-    const oceanMat = mkWater(0x274b5c, 0.86);
+    const riverMat = mkWater(0x3b7282, 0.80);
+    const lakeMat = mkWater(0x336273, 0.83);
+    const oceanMat = mkWater(0x254f63, 0.88);
 
-    // Ribbon mesh following a river polyline at fixed water level
-    const buildRibbon = (pts, halfW, y, mat) => {
+    // Smooth sloped river ribbon mesh matching exact downstream water surface profile!
+    const buildSlopedRibbon = (riverData, halfW, evalYFn, mat) => {
+      const pts = riverData.pts;
+      const cum = riverData.cumLen;
+      const total = riverData.totalLen;
       const verts = [];
       const idx = [];
       for (let i = 0; i < pts.length; i++) {
         const p = pts[i];
         const q = pts[Math.min(pts.length - 1, i + 1)];
         const o = pts[Math.max(0, i - 1)];
-        let dx = q[0] - o[0], dz = q[1] - o[1];
+        let dx = q[0] - o[0];
+        let dz = q[1] - o[1];
         const len = Math.hypot(dx, dz) || 1;
-        dx /= len; dz /= len;
-        const nx = -dz, nz = dx;
-        verts.push(p[0] - nx * halfW, y, p[1] - nz * halfW);
-        verts.push(p[0] + nx * halfW, y, p[1] + nz * halfW);
+        dx /= len;
+        dz /= len;
+        const nx = -dz;
+        const nz = dx;
+        const s = cum[i] / total;
+        const wy = evalYFn(s);
+        verts.push(p[0] - nx * halfW, wy, p[1] - nz * halfW);
+        verts.push(p[0] + nx * halfW, wy, p[1] + nz * halfW);
         if (i > 0) {
           const b = i * 2;
           idx.push(b - 2, b - 1, b, b - 1, b + 1, b);
@@ -1087,35 +1251,41 @@ class WastelandWorld {
       return m;
     };
 
-    buildRibbon(this.RIVER_A, 11, this.RIVER_WATER_Y, riverMat);
-    buildRibbon(this.RIVER_B, 12, this.RIVER_WATER_Y, riverMat);
+    buildSlopedRibbon(this._riverA, 14.5, (s) => this._riverWaterYA(s), riverMat);
+    buildSlopedRibbon(this._riverB, 14.0, (s) => this._riverWaterYB(s), riverMat);
 
-    // Lake disc (elliptical)
-    const lakeGeo = new THREE.CircleGeometry(1, 40);
+    // Elliptical Lake surface mesh
+    const lakeGeo = new THREE.CircleGeometry(1, 56);
     lakeGeo.rotateX(-Math.PI / 2);
-    lakeGeo.scale(this.LAKE.rx + 8, 1, this.LAKE.rz + 8);
+    lakeGeo.scale(this.LAKE.rx + 5, 1, this.LAKE.rz + 5);
     const lakeMesh = new THREE.Mesh(lakeGeo, lakeMat);
     lakeMesh.position.set(this.LAKE.x, this.LAKE_WATER_Y, this.LAKE.z);
     lakeMesh.renderOrder = 2;
     this.scene.add(lakeMesh);
     this.waterMeshes.push(lakeMesh);
 
-    // Southern ocean + eastern sea wrapping the SE peninsula
-    const oceanGeoS = new THREE.PlaneGeometry(2100, 420);
-    oceanGeoS.rotateX(-Math.PI / 2);
-    const oceanS = new THREE.Mesh(oceanGeoS, oceanMat);
-    oceanS.position.set(0, this.OCEAN_WATER_Y, 660);
-    oceanS.renderOrder = 2;
-    this.scene.add(oceanS);
-    this.waterMeshes.push(oceanS);
-
-    const oceanGeoE = new THREE.PlaneGeometry(480, 1100);
-    oceanGeoE.rotateX(-Math.PI / 2);
-    const oceanE = new THREE.Mesh(oceanGeoE, oceanMat);
-    oceanE.position.set(700, this.OCEAN_WATER_Y, 250);
-    oceanE.renderOrder = 2;
-    this.scene.add(oceanE);
-    this.waterMeshes.push(oceanE);
+    // Contoured Coastal Ocean Mesh (flat at OCEAN_WATER_Y offshore, tucked 3.5m underground inland so it NEVER pokes through valleys!)
+    const oxMin = -820, oxMax = 820, ozMin = 120, ozMax = 820;
+    const oSegX = 96, oSegZ = 48;
+    const oceanGeo = new THREE.PlaneGeometry(oxMax - oxMin, ozMax - ozMin, oSegX, oSegZ);
+    oceanGeo.rotateX(-Math.PI / 2);
+    const oPos = oceanGeo.attributes.position;
+    const ocx = (oxMin + oxMax) * 0.5;
+    const ocz = (ozMin + ozMax) * 0.5;
+    for (let i = 0; i < oPos.count; i++) {
+      const wx = oPos.getX(i) + ocx;
+      const wz = oPos.getZ(i) + ocz;
+      const oDist = this._oceanDist(wx, wz);
+      const wy = oDist > -12
+        ? this.OCEAN_WATER_Y
+        : (this.getTerrainHeight(wx, wz) - 3.5);
+      oPos.setXYZ(i, wx, wy, wz);
+    }
+    oceanGeo.computeVertexNormals();
+    const oceanMesh = new THREE.Mesh(oceanGeo, oceanMat);
+    oceanMesh.renderOrder = 2;
+    this.scene.add(oceanMesh);
+    this.waterMeshes.push(oceanMesh);
   }
 
   _buildForestAndFoliage() {
@@ -3137,20 +3307,41 @@ class WastelandWorld {
     this.operatorSpawns = [];
     const ringR = 485;
     const ringCount = 12;
+    const ensureDrySpawn = (sx, sz) => {
+      let cx = sx;
+      let cz = sz;
+      for (let step = 0; step < 18; step++) {
+        if (this.getWaterDepth(cx, cz) <= 0.03) break;
+        const dist = Math.hypot(cx, cz) || 1;
+        // Nudge radially inward (or away from lake center if near lake) onto dry ground
+        const dlx = cx - this.LAKE.x;
+        const dlz = cz - this.LAKE.z;
+        const dLake = Math.hypot(dlx / (this.LAKE.rx + 18), dlz / (this.LAKE.rz + 18));
+        if (dLake < 1.08) {
+          const dlLen = Math.hypot(dlx, dlz) || 1;
+          cx += (dlx / dlLen) * 18;
+          cz += (dlz / dlLen) * 18;
+        } else {
+          cx -= (cx / dist) * 18;
+          cz -= (cz / dist) * 18;
+        }
+      }
+      return new THREE.Vector3(Math.round(cx), this.getTerrainHeight(cx, cz), Math.round(cz));
+    };
     for (let i = 1; i < ringCount; i++) {
       const ang = Math.PI / 2 + (i * Math.PI * 2) / ringCount;
       const sx = Math.round(Math.cos(ang) * ringR);
       const sz = Math.round(Math.sin(ang) * ringR);
-      this.operatorSpawns.push(new THREE.Vector3(sx, this.getTerrainHeight(sx, sz), sz));
+      this.operatorSpawns.push(ensureDrySpawn(sx, sz));
     }
     // Intermittent interior spawns at low-threat POIs (Police/Fire outskirts, Radio Outpost outskirts, Warehouse south ridge)
     const lowThreatInteriorSpawns = [
       [-225, 295],  // Near Police/Fire (low threat)
-      [235, 275],   // Near Radio Outpost (low threat)
+      [255, 255],   // Near Radio Outpost north bluff (dry, low threat)
       [32, 34]      // Near Central Warehouse outskirts (low threat)
     ];
     for (const [ix, iz] of lowThreatInteriorSpawns) {
-      this.operatorSpawns.push(new THREE.Vector3(ix, this.getTerrainHeight(ix, iz), iz));
+      this.operatorSpawns.push(ensureDrySpawn(ix, iz));
     }
 
     // === GENERAL PATROL / SPAWN POINTS ACROSS ALL SECTORS ===

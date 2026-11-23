@@ -6653,14 +6653,53 @@ class GameUI {
     ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
     ctx.restore();
 
-    // Hydrography: rivers, lake & SE ocean (player-centered minimap)
+    // Hydrography & Roads on Player-Centered Minimap (strictly clipped inside playable sector)
     if (world.RIVER_A && world.LAKE) {
       ctx.save();
+      ctx.beginPath();
+      ctx.rect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+      ctx.clip();
+
+      // Southern beach + SE ocean peninsula contour (leaves NE sector z < 165 completely dry!)
+      const traceCoast = () => {
+        ctx.beginPath();
+        const firstZ = 562 - (-halfSize - 160) * 0.075 + Math.sin(-halfSize * 0.012) * 10;
+        const p0 = toMap(-halfSize, firstZ);
+        ctx.moveTo(p0.x, p0.y);
+        for (let x = -halfSize + 25; x <= 468; x += 25) {
+          const bz = 562 - (x - 160) * 0.075 + Math.sin(x * 0.012) * 10;
+          const p = toMap(x, bz);
+          ctx.lineTo(p.x, p.y);
+        }
+        for (let z = 538; z >= 165; z -= 24) {
+          const pt = Math.max(0, Math.min(1, (z - 165) / 155));
+          const ps = pt * pt * (3 - 2 * pt);
+          const ex = 650 - ps * 182 + Math.sin(z * 0.016) * 8;
+          const p = toMap(ex, z);
+          ctx.lineTo(p.x, p.y);
+        }
+        const seTop = toMap(halfSize + 40, 165);
+        const seBot = toMap(halfSize + 40, halfSize + 40);
+        const swBot = toMap(-halfSize - 40, halfSize + 40);
+        ctx.lineTo(seTop.x, seTop.y);
+        ctx.lineTo(seBot.x, seBot.y);
+        ctx.lineTo(swBot.x, swBot.y);
+        ctx.closePath();
+      };
+      traceCoast();
+      ctx.strokeStyle = 'rgba(194, 178, 128, 0.45)';
+      ctx.lineWidth = Math.max(2, 18 * scale);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(43, 94, 114, 0.88)';
+      ctx.fill();
+
+      // Rivers
       ctx.strokeStyle = '#3f7f96';
-      ctx.lineWidth = 3;
+      ctx.lineWidth = Math.max(2.5, 24 * scale);
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       for (const line of [world.RIVER_A, world.RIVER_B]) {
+        if (!line || !line.length) continue;
         ctx.beginPath();
         line.forEach(([wx, wz], i) => {
           const p = toMap(wx, wz);
@@ -6669,14 +6708,32 @@ class GameUI {
         });
         ctx.stroke();
       }
+
+      // Lake
       const lp = toMap(world.LAKE.x, world.LAKE.z);
-      ctx.fillStyle = '#3f7f96';
+      ctx.fillStyle = '#387287';
       ctx.beginPath();
       ctx.ellipse(lp.x, lp.y, world.LAKE.rx * scale, world.LAKE.rz * scale, 0, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = 'rgba(63,127,150,0.85)';
-      ctx.fillRect(0, toMap(0, 525).y, W, H);
-      ctx.fillRect(toMap(470, 0).x, 0, W, H);
+
+      // Main highways & connector roads on minimap
+      ctx.strokeStyle = 'rgba(148, 156, 150, 0.34)';
+      const drawMiniRoad = (x1, z1, x2, z2, rw) => {
+        const a = toMap(x1, z1);
+        const b = toMap(x2, z2);
+        ctx.lineWidth = Math.max(1.2, rw * scale);
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      };
+      drawMiniRoad(0, -560, 0, 560, 11);
+      drawMiniRoad(-560, 20, 560, 20, 11);
+      drawMiniRoad(-320, -240, -60, -340, 8);
+      drawMiniRoad(-60, -340, 310, -270, 8);
+      drawMiniRoad(310, -270, 340, 20, 8);
+      drawMiniRoad(340, 20, 270, 290, 8);
+      drawMiniRoad(270, 290, 0, 312, 8);
+      drawMiniRoad(0, 312, -260, 310, 8);
+      drawMiniRoad(-260, 310, -370, 50, 8);
+      drawMiniRoad(-370, 50, -320, -240, 8);
       ctx.restore();
     }
 
@@ -6845,11 +6902,17 @@ class GameUI {
     ctx.fillStyle = '#121815';
     ctx.fillRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
 
-    // Tactical coordinate grid inside playable sector
+    // Clip all interior terrain, water, grid & road layers strictly inside the ±620m playable sector!
     ctx.save();
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+    ctx.beginPath();
+    ctx.rect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+    ctx.clip();
+
+    // Tactical 100m coordinate grid across the full 1240m x 1240m playable sector
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.055)';
     ctx.lineWidth = 1;
-    for (let g = -160; g <= 160; g += 40) {
+    const gridStep = 100;
+    for (let g = -Math.floor(halfSize / gridStep) * gridStep; g <= halfSize; g += gridStep) {
       const p1 = toMap(g, -halfSize);
       const p2 = toMap(g, halfSize);
       ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
@@ -6857,53 +6920,59 @@ class GameUI {
       const q2 = toMap(halfSize, g);
       ctx.beginPath(); ctx.moveTo(q1.x, q1.y); ctx.lineTo(q2.x, q2.y); ctx.stroke();
     }
-    ctx.restore();
 
-    // 3. Highway & Ring Road Network
-    ctx.save();
-    ctx.strokeStyle = 'rgba(130, 138, 132, 0.34)';
-    const drawRoad = (x1, z1, x2, z2, lw) => {
-      const a = toMap(x1, z1);
-      const b = toMap(x2, z2);
-      ctx.lineWidth = lw;
-      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-    };
-    drawRoad(0, -halfSize, 0, halfSize, 11 * scale);
-    drawRoad(-halfSize, -12, halfSize, -12, 11 * scale);
-    drawRoad(-120, -108, 120, -108, 7 * scale);
-    drawRoad(-120, 86, 120, 86, 7 * scale);
-    drawRoad(-112, -112, -112, 88, 7 * scale);
-    drawRoad(112, -112, 112, 88, 7 * scale);
-    ctx.restore();
-
-    // 3b. Hydrography: NE river -> lake -> SE outlet river -> southern beach -> SE ocean peninsula
+    // 3a. Hydrography: NE river -> lake -> SE outlet river -> southern sandy beach -> SE ocean peninsula
     if (world.RIVER_A && world.LAKE) {
-      ctx.save();
-      // Ocean wash over southern beach + eastern sea
-      ctx.fillStyle = '#1d3a46';
-      ctx.beginPath();
-      ctx.moveTo(0, H);
-      for (let x = -halfSize; x <= halfSize + 200; x += 20) {
-        const bz = 525 - (x - 170) * 0.05;
-        const p = toMap(x, bz);
-        ctx.lineTo(p.x, p.y);
-      }
-      ctx.lineTo(W, H);
-      ctx.closePath();
+      const traceCoastFull = () => {
+        ctx.beginPath();
+        const firstZ = 562 - (-halfSize - 160) * 0.075 + Math.sin(-halfSize * 0.012) * 10;
+        const p0 = toMap(-halfSize, firstZ);
+        ctx.moveTo(p0.x, p0.y);
+        for (let x = -halfSize + 18; x <= 468; x += 18) {
+          const bz = 562 - (x - 160) * 0.075 + Math.sin(x * 0.012) * 10;
+          const p = toMap(x, bz);
+          ctx.lineTo(p.x, p.y);
+        }
+        for (let z = 538; z >= 165; z -= 18) {
+          const pt = Math.max(0, Math.min(1, (z - 165) / 155));
+          const ps = pt * pt * (3 - 2 * pt);
+          const ex = 650 - ps * 182 + Math.sin(z * 0.016) * 8;
+          const p = toMap(ex, z);
+          ctx.lineTo(p.x, p.y);
+        }
+        const seTop = toMap(halfSize + 40, 165);
+        const seBot = toMap(halfSize + 40, halfSize + 40);
+        const swBot = toMap(-halfSize - 40, halfSize + 40);
+        ctx.lineTo(seTop.x, seTop.y);
+        ctx.lineTo(seBot.x, seBot.y);
+        ctx.lineTo(swBot.x, swBot.y);
+        ctx.closePath();
+      };
+      // Golden sandy shoreline band + deep coastal sea fill
+      traceCoastFull();
+      ctx.strokeStyle = 'rgba(194, 178, 128, 0.42)';
+      ctx.lineWidth = Math.max(2.5, 22 * scale);
+      ctx.stroke();
+      ctx.fillStyle = '#1d4152';
       ctx.fill();
-      ctx.fillRect(toMap(470, 0).x, 0, W, H);
-      // Lake
-      const lp = toMap(world.LAKE.x, world.LAKE.z);
-      ctx.fillStyle = '#2c5462';
-      ctx.beginPath();
-      ctx.ellipse(lp.x, lp.y, world.LAKE.rx * scale, world.LAKE.rz * scale, 0, 0, Math.PI * 2);
-      ctx.fill();
-      // Rivers
-      ctx.strokeStyle = '#2c5462';
+
+      // Rivers (with subtle wet bank trim)
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
       for (const line of [world.RIVER_A, world.RIVER_B]) {
-        ctx.lineWidth = Math.max(2, 15 * scale);
+        if (!line || !line.length) continue;
+        ctx.strokeStyle = 'rgba(145, 138, 98, 0.28)';
+        ctx.lineWidth = Math.max(3.2, 34 * scale);
+        ctx.beginPath();
+        line.forEach(([wx, wz], i) => {
+          const p = toMap(wx, wz);
+          if (i === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        });
+        ctx.stroke();
+
+        ctx.strokeStyle = '#2d667a';
+        ctx.lineWidth = Math.max(2.2, 24 * scale);
         ctx.beginPath();
         line.forEach(([wx, wz], i) => {
           const p = toMap(wx, wz);
@@ -6912,8 +6981,38 @@ class GameUI {
         });
         ctx.stroke();
       }
-      ctx.restore();
+
+      // Lake basin + sandy rim
+      const lp = toMap(world.LAKE.x, world.LAKE.z);
+      ctx.strokeStyle = 'rgba(166, 155, 112, 0.32)';
+      ctx.lineWidth = Math.max(2, 12 * scale);
+      ctx.fillStyle = '#295b6e';
+      ctx.beginPath();
+      ctx.ellipse(lp.x, lp.y, world.LAKE.rx * scale, world.LAKE.rz * scale, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fill();
     }
+
+    // 3b. Actual 1240m Highway & Connector Road Network (drawn ABOVE water so highway bridges show clearly!)
+    ctx.strokeStyle = 'rgba(155, 164, 158, 0.42)';
+    ctx.lineCap = 'round';
+    const drawRoad = (x1, z1, x2, z2, rw) => {
+      const a = toMap(x1, z1);
+      const b = toMap(x2, z2);
+      ctx.lineWidth = Math.max(1.5, rw * scale);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    };
+    drawRoad(0, -560, 0, 560, 11);
+    drawRoad(-560, 20, 560, 20, 11);
+    drawRoad(-320, -240, -60, -340, 8);
+    drawRoad(-60, -340, 310, -270, 8);
+    drawRoad(310, -270, 340, 20, 8);
+    drawRoad(340, 20, 270, 290, 8);
+    drawRoad(270, 290, 0, 312, 8);
+    drawRoad(0, 312, -260, 310, 8);
+    drawRoad(-260, 310, -370, 50, 8);
+    drawRoad(-370, 50, -320, -240, 8);
+    ctx.restore();
 
     // 4. Crisp Crimson Red Zone Boundary Border & Labels
     ctx.save();
@@ -9492,23 +9591,21 @@ class GameUI {
   openTacMapRadial(nx, ny, world = null, source = 'mouse') {
     const radEl = document.getElementById('tacmap-ping-radial');
     if (!radEl) return;
-    const cNx = THREE.MathUtils.clamp(nx, 0.02, 0.98);
-    const cNy = THREE.MathUtils.clamp(ny, 0.02, 0.98);
+    const cNx = THREE.MathUtils.clamp(nx, 0.01, 0.99);
+    const cNy = THREE.MathUtils.clamp(ny, 0.01, 0.99);
     const { wx, wz } = this.tacMapCanvasToWorld(cNx, cNy, world);
-    const visNx = THREE.MathUtils.clamp(cNx, 0.16, 0.84);
-    const visNy = THREE.MathUtils.clamp(cNy, 0.16, 0.84);
     this.tacMapRadial = {
       open: true,
-      nx: visNx,
-      ny: visNy,
+      nx: cNx,
+      ny: cNy,
       wx,
       wz,
       choice: 'cancel',
       source,
       openedAt: performance.now()
     };
-    radEl.style.left = `${(visNx * 100).toFixed(2)}%`;
-    radEl.style.top = `${(visNy * 100).toFixed(2)}%`;
+    radEl.style.left = `${(cNx * 100).toFixed(2)}%`;
+    radEl.style.top = `${(cNy * 100).toFixed(2)}%`;
     radEl.classList.remove('hidden');
     this._applyTacMapRadialChoice('cancel');
   }

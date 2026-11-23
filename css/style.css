@@ -7449,11 +7449,25 @@ input[type="range"].gp-focus {
 }
 
 /* ==================== v2.64 TAC-MAP ZOOM/RADIAL, ITEM PING ICONS & SCOPED BLURRED TEXT CHAT ==================== */
+.tacmap-card {
+  width: fit-content;
+  align-items: center;
+}
+
+.tacmap-card .tacmap-header {
+  width: min(540px, 72vh);
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+
 .tacmap-stage {
   position: relative;
-  display: inline-block;
-  overflow: hidden;
+  width: min(540px, 72vh);
+  height: min(540px, 72vh);
+  display: block;
+  overflow: visible;
   user-select: none;
+  flex-shrink: 0;
 }
 
 .tacmap-header-right {

@@ -1984,6 +1984,14 @@
     });
   }
 
+  function _getMapPingWorldPos(wx, wz) {
+    if (!world) return new THREE.Vector3(wx, 0.15, wz);
+    const gy = world.getTerrainHeight ? world.getTerrainHeight(wx, wz) : 0;
+    const ws = world.getWaterSurfaceY ? world.getWaterSurfaceY(wx, wz) : null;
+    const sy = ws !== null ? Math.max(gy, ws) : gy;
+    return new THREE.Vector3(wx, sy + 0.15, wz);
+  }
+
   function tapTacMapPosition(nx, ny) {
     if (!inRaid || !world || !ui.isTacMapOpen) return;
     const hitPing = ui.findTacMapPingAt ? ui.findTacMapPingAt(nx, ny, world) : null;
@@ -1993,8 +2001,8 @@
     }
     const { wx, wz } = ui.tacMapCanvasToWorld
       ? ui.tacMapCanvasToWorld(nx, ny, world)
-      : { wx: (nx - 0.5) * ((world.mapHalfSize || 190) + 48) * 2, wz: (ny - 0.5) * ((world.mapHalfSize || 190) + 48) * 2 };
-    _placePing('location', new THREE.Vector3(wx, 0.1, wz), null, true);
+      : { wx: (nx - 0.5) * ((world.mapHalfSize || 620) + 48) * 2, wz: (ny - 0.5) * ((world.mapHalfSize || 620) + 48) * 2 };
+    _placePing('location', _getMapPingWorldPos(wx, wz), null, true);
   }
 
   function confirmTacMapRadialSelection(forcedChoice = null) {
@@ -2004,7 +2012,7 @@
     const wz = ui.tacMapRadial.wz || 0;
     if (ui.closeTacMapRadial) ui.closeTacMapRadial();
     if (inRaid && world && choice && choice !== 'cancel') {
-      _placePing(choice, new THREE.Vector3(wx, 0.1, wz), null, true);
+      _placePing(choice, _getMapPingWorldPos(wx, wz), null, true);
     }
   }
 
