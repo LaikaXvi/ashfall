@@ -1858,7 +1858,8 @@ class WeaponSystem {
       this.boltRestPos.copy(boltHandle.position);
 
       this.rightHand = this._createHand(true, 'grip');
-      this.rightHand.position.set(0.0, -0.064, 0.142);
+      this.rightHand.position.set(0.0, -0.068, 0.142);
+      this.rightHand.rotation.x = 0.24;
       this.leftHand = this._createHand(false, 'supportRifle');
       this.leftHand.position.set(0.0, -0.022, -0.22);
       this.leftHandRestPos.copy(this.leftHand.position);
@@ -3491,16 +3492,16 @@ class WeaponSystem {
         window.soundEngine.playRechamber(this.reloadWeaponId || 'ak74m');
       }
 
-      // Helper: lock left palm OUTSIDE the left face of the AK banana mag with proper IK wrist basis (no twisted legacy Z-roll!)
+      // Helper: lock left palm squarely on the curved AK banana mag body (curves forward along -Z as Y drops!)
       const gripSpareAkMag = (mag) => {
         if (!mag) return;
         const mr = mag.rotation.x;
-        const localY = -0.056;
-        const localZ = 0.016;
-        const gx = mag.position.x - 0.010;
+        const localY = -0.072;
+        const localZ = -0.022;
+        const gx = mag.position.x - 0.008;
         const gy = mag.position.y + (localY * Math.cos(mr) - localZ * Math.sin(mr));
         const gz = mag.position.z + (localY * Math.sin(mr) + localZ * Math.cos(mr));
-        moveLeftHand(gx, gy, gz, mr * 0.80, 0.14, 0.06, 'akMagGrip');
+        moveLeftHand(gx, gy, gz, mr * 0.75, 0.16, 0.04, 'akMagGrip');
         if (this.leftHand && this.leftHand.userData && this.leftHand.userData.thumbGroup) {
           this.leftHand.userData.thumbGroup.rotation.set(0.14, -0.35, 0.20);
         }
@@ -3605,7 +3606,7 @@ class WeaponSystem {
         rot.z = THREE.MathUtils.lerp(-0.40, 0.36, pose);
         if (this.boltMesh) {
           this.boltMesh.position.z = this.boltRestPos.z + pull * 0.085;
-          moveRightHand(this.boltMesh.position.x + 0.018, this.boltMesh.position.y - 0.008, this.boltMesh.position.z + 0.018, 0.18, -0.22, -0.16, 'boltPinch');
+          moveRightHand(this.boltMesh.position.x + 0.022, this.boltMesh.position.y + 0.004, this.boltMesh.position.z + 0.014, 0.10, -0.16, -0.10, 'boltPinch');
         }
       } else {
         const startP = this.wasEmptyReload ? 0.90 : 0.60;

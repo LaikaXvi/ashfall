@@ -710,7 +710,7 @@ class Player {
 
   toggleThirdPerson() {
     this.isThirdPerson = !this.isThirdPerson;
-    if (this.avatarGroup) this.avatarGroup.visible = !this.dead && !(this.isDowned && !this.isThirdPerson);
+    if (this.avatarGroup) this.avatarGroup.visible = !this.dead && !(this.isDowned && !this.isThirdPerson) && !(this.isProne && !this.isThirdPerson);
     if (this.avatarParts && this.avatarParts.skin && typeof this.avatarParts.skin.setFirstPersonBodyMode === 'function') {
       this.avatarParts.skin.setFirstPersonBodyMode(!this.isThirdPerson);
     }
@@ -723,7 +723,7 @@ class Player {
   _updateThirdPersonModel(dt) {
     if (!this.avatarGroup || !this.avatarParts) return;
     const isFP = !this.isThirdPerson;
-    const showBody = !this.dead && !(this.isDowned && isFP);
+    const showBody = !this.dead && !(this.isDowned && isFP) && !(this.isProne && isFP);
     this.avatarGroup.visible = showBody;
     if (!showBody) return;
 
