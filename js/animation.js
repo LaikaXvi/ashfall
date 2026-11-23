@@ -447,6 +447,7 @@
       this.rig = rig;
       this.walkPhase = Math.random() * Math.PI * 2;
       this.idleTime = Math.random() * 10.0;
+      this.crouchWalkBlend = 0;
       this.recoilImpulse = 0;
       this.flinchImpulse = 0;
       this.flinchDir = 1;
@@ -641,15 +642,40 @@
         this._rPole.set(0.85, -0.10, 0.55); // Elbows rest down/out on ground!
         this._lPole.set(-0.85, -0.10, 0.55);
       } else if (isCrouch) {
-        // === MW2 TACTICAL CROUCH & CROUCH-WALK (Forward-swinging leg bends knee, stance leg pulls body forward!) ===
-        const cAmp = moving ? 0.42 : 0;
-        lHipX = 0.90 + stride * cAmp; lHipZ = -0.07; lKneeX = -1.36 - (moving ? Math.max(0, strideCos) * 0.32 : 0); lAnkX = -(lHipX + lKneeX) * 0.72;
-        rHipX = 0.76 - stride * cAmp; rHipZ = 0.09; rKneeX = -1.24 - (moving ? Math.max(0, -strideCos) * 0.32 : 0); rAnkX = -(rHipX + rKneeX) * 0.72;
-        pelvisY = 0.64;
-        pelvisYaw = moving ? stride * 0.10 : 0.20;
+        // === MW2 TACTICAL KNEELING CROUCH & CROUCH-WALK ===
+        // Stationary crouch: right knee tucked down under the operator (matching slide tuck knee) with left knee UP forward bracing (matching slide lead leg)!
+        // Crouch-walking: smoothly lifts into a low stealth stalking stride, dropping back onto the tucked right knee when stopping.
+        this.crouchWalkBlend = THREE.MathUtils.lerp(this.crouchWalkBlend || 0, moving ? 1 : 0, Math.min(1, cDt * 10));
+        const cw = this.crouchWalkBlend;
+
+        // Kneeling-brace stationary targets (left bracing knee up in front, right knee tucked under operator)
+        const lHipIdle = 1.38, lHipZIdle = -0.10, lKneeIdle = -1.46, lAnkIdle = 0.08;
+        const rHipIdle = 0.24, rHipZIdle = 0.14,  rKneeIdle = -1.94, rAnkIdle = 1.08;
+
+        // Low asymmetric stealth crouch-walk gait
+        const cAmp = 0.44;
+        const lHipWalk = 1.04 + stride * cAmp;
+        const lKneeWalk = -1.42 - Math.max(0, strideCos) * 0.34;
+        const lAnkWalk = -(lHipWalk + lKneeWalk) * 0.72;
+        const rHipWalk = 0.68 - stride * cAmp;
+        const rKneeWalk = -1.36 - Math.max(0, -strideCos) * 0.34;
+        const rAnkWalk = -(rHipWalk + rKneeWalk) * 0.72;
+
+        lHipX = THREE.MathUtils.lerp(lHipIdle, lHipWalk, cw);
+        lHipZ = THREE.MathUtils.lerp(lHipZIdle, -0.08, cw);
+        lKneeX = THREE.MathUtils.lerp(lKneeIdle, lKneeWalk, cw);
+        lAnkX = THREE.MathUtils.lerp(lAnkIdle, lAnkWalk, cw);
+
+        rHipX = THREE.MathUtils.lerp(rHipIdle, rHipWalk, cw);
+        rHipZ = THREE.MathUtils.lerp(rHipZIdle, 0.10, cw);
+        rKneeX = THREE.MathUtils.lerp(rKneeIdle, rKneeWalk, cw);
+        rAnkX = THREE.MathUtils.lerp(rAnkIdle, rAnkWalk, cw);
+
+        pelvisY = THREE.MathUtils.lerp(0.54, 0.62 - Math.abs(stride) * 0.03, cw);
+        pelvisYaw = THREE.MathUtils.lerp(0.24, stride * 0.10, cw);
         spineYaw = -pelvisYaw * 0.65;
         torsoYaw = -pelvisYaw * 0.35;
-        spinePitch = -0.10;
+        spinePitch = THREE.MathUtils.lerp(-0.12, -0.10, cw);
         torsoPitch = (isADS ? -0.14 : -0.10) + breath * 0.015;
         this._rPole.set(0.75, -0.55, 0.35);
         this._lPole.set(-0.75, -0.55, 0.30);
@@ -768,12 +794,12 @@
             elbX: THREE.MathUtils.lerp(0.75, 1.56, stab)
           };
         } else {
-          // 3P Combat Med-Syringe Teammate Revive: kneel down over ally, sling rifle, brace with left hand & inject syringe with right!
+          // 3P Combat Med-Syringe Teammate Revive: kneel down over ally (right knee tucked under, left knee bracing), sling rifle & inject syringe!
           rightIKWeight = 0.0;
           leftIKWeight = 0.0;
-          pelvisY = 0.56;
-          lHipX = 1.12; lKneeX = -1.62; lAnkX = 0.45;
-          rHipX = 0.28; rKneeX = -1.52; rAnkX = 0.35;
+          pelvisY = 0.54;
+          lHipX = 1.38; lHipZ = -0.10; lKneeX = -1.46; lAnkX = 0.08;
+          rHipX = 0.24; rHipZ = 0.14;  rKneeX = -1.94; rAnkX = 1.08;
           spinePitch = -0.18;
           torsoPitch = -0.34;
           headPitch = -0.36;
