@@ -480,10 +480,42 @@
       }
     };
 
-    const applyContainerItems = (cid, remoteItems) => {
-      if (!world || !Array.isArray(world.lootContainers) || !Array.isArray(remoteItems)) return;
+    const applyContainerItems = (cid, remoteItems, remoteEq = null) => {
+      if (!cid || !Array.isArray(remoteItems)) return;
+      if (cid.startsWith('corpse_')) {
+        const eIdx = parseInt(cid.slice(7), 10);
+        const e = (enemyManager && enemyManager.enemies && Number.isFinite(eIdx)) ? enemyManager.enemies[eIdx] : null;
+        if (!e) return;
+        if (!Array.isArray(e.lootItems)) e.lootItems = [];
+        e.lootItems.length = 0;
+        for (const it of remoteItems) {
+          if (it && it.id) {
+            e.lootItems.push({
+              id: it.id,
+              qty: it.qty || 1,
+              mods: it.mods || null,
+              mag: it.mag,
+              rarityOverride: it.rarityOverride || null,
+              revealed: it.revealed !== false
+            });
+          }
+        }
+        if (remoteEq && typeof remoteEq === 'object') {
+          if (!e.operatorEquipment) e.operatorEquipment = {};
+          const prevRev = e.operatorEquipment.revealedSlots || {};
+          Object.assign(e.operatorEquipment, remoteEq);
+          e.operatorEquipment.revealedSlots = { ...prevRev, ...(remoteEq.revealedSlots || {}) };
+        }
+        if (ui && ui.activeLootSource && ui.activeLootSource.containerId === cid && player) {
+          ui.renderLootModal(player);
+        }
+        return;
+      }
+      if (!world || !Array.isArray(world.lootContainers)) return;
       const c = world.lootContainers.find(ct => ct.id === cid);
       if (!c || !Array.isArray(c.items)) return;
+      if (world.openContainer) world.openContainer(c);
+      c.opened = true;
       c.items.length = 0;
       for (const it of remoteItems) {
         if (it && it.id) {
@@ -654,8 +686,10 @@
             if (Array.isArray(pkt.items)) {
               applyContainerItems(pkt.id, pkt.items);
             }
-          } else if (pkt.type === 'container_sync' && world && pkt.cid && Array.isArray(pkt.items)) {
-            applyContainerItems(pkt.cid, pkt.items);
+          } else if (pkt.type === 'container_sync' && pkt.cid && Array.isArray(pkt.items)) {
+            applyContainerItems(pkt.cid, pkt.items, pkt.eq || null);
+          } else if (pkt.type === 'corpse_sync' && pkt.cid && Array.isArray(pkt.items)) {
+            applyContainerItems(pkt.cid, pkt.items, pkt.eq || null);
           } else if (pkt.type === 'pvp_toggle') {
             window.SQUAD_PVP = !!pkt.enabled;
             if (window.SQUAD_PVP) {
@@ -854,19 +888,45 @@
         });
       }
     };
-    ui.onContainerChanged = (cid, items) => {
+    const serializeSyncItems = (items) => (items || []).map(it => it ? {
+      id: it.id,
+      qty: it.qty || 1,
+      mods: it.mods || null,
+      mag: it.mag,
+      rarityOverride: it.rarityOverride || null,
+      revealed: it.revealed !== false
+    } : null).filter(Boolean);
+
+    ui.onContainerChanged = (cid, items, eq = null) => {
       if (mpSession && mpSession.active && cid) {
+        const isCorpse = String(cid).startsWith('corpse_');
+        mpSession.sendEvent({
+          type: isCorpse ? 'corpse_sync' : 'container_sync',
+          cid,
+          items: serializeSyncItems(items),
+          ...(eq ? { eq: { ...eq } } : {})
+        });
+      }
+    };
+    window.onHostContainerChanged = (cid, items) => {
+      if (mpSession && mpSession.active && isMatchHost && cid) {
         mpSession.sendEvent({
           type: 'container_sync',
           cid,
-          items: (items || []).map(it => it ? {
-            id: it.id,
-            qty: it.qty || 1,
-            mods: it.mods || null,
-            mag: it.mag,
-            rarityOverride: it.rarityOverride || null,
-            revealed: it.revealed !== false
-          } : null).filter(Boolean)
+          items: serializeSyncItems(items)
+        });
+      }
+    };
+    window.onHostCorpseSync = (enemy) => {
+      if (!enemy || !enemyManager || !Array.isArray(enemyManager.enemies)) return;
+      const eIdx = enemyManager.enemies.indexOf(enemy);
+      if (eIdx < 0) return;
+      if (mpSession && mpSession.active && isMatchHost) {
+        mpSession.sendEvent({
+          type: 'corpse_sync',
+          cid: 'corpse_' + eIdx,
+          items: serializeSyncItems(enemy.lootItems || []),
+          eq: enemy.operatorEquipment ? { ...enemy.operatorEquipment } : null
         });
       }
     };
@@ -883,6 +943,8 @@
 
   function endRaid(extracted, opts = {}) {
     window.onHostSpawnGroundItem = null;
+    window.onHostContainerChanged = null;
+    window.onHostCorpseSync = null;
     if (ui) ui.onContainerChanged = null;
     if (mpSession) mpSession.stop();
     if (window.soundEngine && window.soundEngine.stopAmbient) {
@@ -1551,7 +1613,8 @@
     const worldPos = (nearbyInteractable.container && nearbyInteractable.container.position)
       || nearbyInteractable.worldPos
       || null;
-    ui.openLootModal(player, nearbyInteractable.label, nearbyInteractable.items, nearbyInteractable.operatorEquipment || null, worldPos, camera, c ? c.id : null);
+    const lootId = c ? c.id : (nearbyInteractable.corpseId || null);
+    ui.openLootModal(player, nearbyInteractable.label, nearbyInteractable.items, nearbyInteractable.operatorEquipment || null, worldPos, camera, lootId);
     return true;
   }
 
@@ -3327,8 +3390,9 @@
     }
 
     // Only Operator corpses are lootable (non-operators drop their gear physically & despawn after 60s)
-    for (const e of enemyManager.enemies) {
-      if (!e.dead || !e.isOperator) continue;
+    for (let eIdx = 0; eIdx < enemyManager.enemies.length; eIdx++) {
+      const e = enemyManager.enemies[eIdx];
+      if (!e || !e.dead || !e.isOperator) continue;
       const d = Math.hypot(player.position.x - e.position.x, player.position.z - e.position.z);
       const corpseY = (world && world.getTerrainHeight)
         ? Math.max(e.position.y, world.getTerrainHeight(e.position.x, e.position.z)) + 0.52
@@ -3338,6 +3402,7 @@
         bestDist = d;
         nearbyInteractable = {
           type: 'corpse',
+          corpseId: 'corpse_' + eIdx,
           label: `${e.name} (Operator)`,
           items: e.lootItems,
           operatorEquipment: e.operatorEquipment || null,
@@ -3415,8 +3480,15 @@
           textEl.textContent = `Pick up ${nearbyInteractable.label}`;
         }
       } else {
-        const locked = nearbyInteractable.container && nearbyInteractable.container.requiresKey && !nearbyInteractable.container.unlocked;
-        textEl.textContent = locked ? `Unlock ${nearbyInteractable.label} [BOSS KEY]` : `Search ${nearbyInteractable.label}`;
+        const c = nearbyInteractable.container;
+        const locked = c && c.requiresKey && !c.unlocked;
+        const isOpened = !!(c && (c.opened || (c.lid && c.lid.opened)));
+        const isEmpty = isOpened && (!nearbyInteractable.items || nearbyInteractable.items.length === 0);
+        textEl.textContent = locked
+          ? `Unlock ${nearbyInteractable.label} [BOSS KEY]`
+          : (isEmpty
+            ? `Open ${nearbyInteractable.label} [EMPTY]`
+            : (isOpened ? `Open ${nearbyInteractable.label} [OPENED]` : `Search ${nearbyInteractable.label}`));
       }
       promptEl.classList.remove('hidden');
     } else {
@@ -3816,8 +3888,9 @@
       if (viewmodelCamera) {
         viewmodelCamera.position.copy(camera.position);
         viewmodelCamera.quaternion.copy(camera.quaternion);
-        if (Math.abs(viewmodelCamera.fov - camera.fov) > 0.01) {
-          viewmodelCamera.fov = camera.fov;
+        const targetVmFov = (player && player.isADS) ? 64 : 72;
+        if (Math.abs(viewmodelCamera.fov - targetVmFov) > 0.05) {
+          viewmodelCamera.fov = THREE.MathUtils.lerp(viewmodelCamera.fov, targetVmFov, Math.min(1, dt * 14));
           viewmodelCamera.updateProjectionMatrix();
         }
         viewmodelCamera.updateMatrixWorld();

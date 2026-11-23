@@ -251,7 +251,7 @@ class MultiplayerSession {
       pkt.type === 'state' || pkt.type === 'shot' || pkt.type === 'ping' ||
       pkt.type === 'enemy_hit' || pkt.type === 'enemies_sync' || pkt.type === 'enemy_shot' ||
       pkt.type === 'ground_drop' || pkt.type === 'ground_pickup' ||
-      pkt.type === 'container_open' || pkt.type === 'container_sync' ||
+      pkt.type === 'container_open' || pkt.type === 'container_sync' || pkt.type === 'corpse_sync' ||
       pkt.type === 'pvp_hit' || pkt.type === 'pvp_toggle' || pkt.type === 'revive_ping' ||
       pkt.type === 'revive_progress' || pkt.type === 'revive_complete' ||
       pkt.type === 'killstreak' || pkt.type === 'field_upgrade' || pkt.type === 'raid_timer'

@@ -8579,15 +8579,66 @@ class GameUI {
         const eq = this.activeLootSource.operatorEquipment;
         const firstUnrevealed = items.findIndex(it => it && it.revealed === false);
 
-        // When looting an eliminated operator, accurately match the slot count of their equipped backpack!
+        // When looting an eliminated operator, accurately match the slot count & weapon-slot layout of their equipped backpack!
         let totalSlots = items.length;
+        let enemyHasWeaponBag = false;
         if (eq) {
           const eBagDef = eq.backpack ? GAME_DATA.ITEMS[eq.backpack] : null;
+          enemyHasWeaponBag = !!(eBagDef && eBagDef.weaponSlot);
+          // Enforce weapon-pack rule: non-weapon-pack operators NEVER hold weapons in their backpack,
+          // and weapon-pack operators ALWAYS hold stowed weapons in the top-leftmost dedicated weapon slot!
+          for (let wi = items.length - 1; wi >= 0; wi--) {
+            const it = items[wi];
+            const d = it && GAME_DATA.ITEMS[it.id];
+            if (d && d.type === 'weapon') {
+              if (enemyHasWeaponBag && !eq.backpackWeapon) {
+                eq.backpackWeapon = it.id;
+                eq.backpackWeaponMods = it.mods || {};
+                eq.backpackWeaponRarity = it.rarityOverride || null;
+              }
+              items.splice(wi, 1);
+            }
+          }
+          if (!enemyHasWeaponBag && eq.backpackWeapon) {
+            eq.backpackWeapon = null;
+            eq.backpackWeaponMods = null;
+            eq.backpackWeaponRarity = null;
+          }
           const bagSlots = (eBagDef && (eBagDef.bagSlots || eBagDef.slots)) || 8;
           totalSlots = Math.max(bagSlots, items.length);
         }
 
-        if (totalSlots === 0) {
+        // Top-leftmost dedicated double-wide weapon slot for Weapon Pack operators (identical to player backpack!)
+        if (eq && enemyHasWeaponBag) {
+          const ewSlot = document.createElement('div');
+          ewSlot.dataset.context = 'container_wpn';
+          if (eq.backpackWeapon && GAME_DATA.ITEMS[eq.backpackWeapon]) {
+            const bwDef = GAME_DATA.ITEMS[eq.backpackWeapon];
+            const bwItem = { id: eq.backpackWeapon, qty: 1, mods: eq.backpackWeaponMods || {}, rarityOverride: eq.backpackWeaponRarity || null };
+            const bwRar = this._resolveItemRarity(bwItem, bwDef);
+            ewSlot.className = `inv-slot weapon-slot-wide backpack-weapon-slot rarity-${bwRar}`;
+            ewSlot.innerHTML = this._renderInvSlotInner(bwItem, bwDef, { wide: true });
+            ewSlot.title = `STOWED WEAPON: ${bwDef.name} — Click to Equip / Swap`;
+            ewSlot.addEventListener('click', (e) => {
+              e.stopPropagation();
+              this.openRaidWeaponStaging(player, bwItem, {
+                sourceLabel: 'OPERATOR PACK WEAPON',
+                onComplete: (res) => {
+                  eq.backpackWeapon = res.prevId || null;
+                  eq.backpackWeaponMods = (res.prevSlotObj && res.prevSlotObj.mods) || {};
+                  eq.backpackWeaponRarity = (res.prevSlotObj && res.prevSlotObj.rarityOverride) || null;
+                  this._syncActiveContainerToNet();
+                }
+              });
+            });
+          } else {
+            ewSlot.className = 'inv-slot weapon-slot-wide backpack-weapon-slot empty-slot';
+            ewSlot.innerHTML = `<span class="slot-qty" style="opacity:0.55;left:8px;right:auto;">WPN</span><span class="slot-val" style="opacity:0.45;">EMPTY WEAPON SLOT</span>`;
+          }
+          cList.appendChild(ewSlot);
+        }
+
+        if (totalSlots === 0 && !(eq && enemyHasWeaponBag)) {
           cList.innerHTML = '<p class="hint" style="padding:10px;grid-column:1/-1;">Backpack / Container is empty.</p>';
         } else {
           for (let idx = 0; idx < totalSlots; idx++) {

@@ -781,8 +781,13 @@ class ItemIconRenderer {
       return g;
     }
 
-    // 4. ARMOR PLATE (Front-facing charcoal SAPI ceramic plate with white upper stencil!)
+    // 4. ARMOR PLATE (Unified sculpted SAPI ceramic plate matching first-person plating rig!)
     if (id === 'armor_plate') {
+      if (typeof window.buildArmorPlateMesh === 'function') {
+        const bp = window.buildArmorPlateMesh({ forIcon: true });
+        bp.rotation.set(0.06, -0.08, 0.0);
+        return bp;
+      }
       const shape = new THREE.Shape();
       shape.moveTo(-0.23, -0.30);
       shape.lineTo(0.23, -0.30);

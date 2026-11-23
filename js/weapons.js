@@ -2244,25 +2244,20 @@ class WeaponSystem {
       }
       plateHand.scale.setScalar(1.22);
 
-      // Ceramic armor plate parented directly to plateHand so it moves 100% locked to the hand!
-      const plateGroup = new THREE.Group();
-      const plateBody = new THREE.Mesh(
-        new THREE.BoxGeometry(0.138, 0.168, 0.022),
-        new THREE.MeshLambertMaterial({ color: 0x222c36 })
-      );
-      const plateTop = new THREE.Mesh(
-        new THREE.BoxGeometry(0.088, 0.028, 0.023),
-        new THREE.MeshLambertMaterial({ color: 0x364859 })
-      );
-      plateTop.position.set(0, 0.094, 0);
-      const plateStripe = new THREE.Mesh(
-        new THREE.BoxGeometry(0.118, 0.016, 0.024),
-        new THREE.MeshBasicMaterial({ color: 0x4a90e2 })
-      );
-      plateStripe.position.set(0, 0.032, 0);
-      plateGroup.add(plateBody, plateTop, plateStripe);
+      // Sculpted SAPI ceramic armor plate (same model as Inventory Icon!) parented directly to plateHand
+      let plateGroup;
+      if (typeof window.buildArmorPlateMesh === 'function') {
+        plateGroup = window.buildArmorPlateMesh({ forIcon: false });
+      } else {
+        plateGroup = new THREE.Group();
+        const plateBody = new THREE.Mesh(
+          new THREE.BoxGeometry(0.138, 0.168, 0.022),
+          new THREE.MeshLambertMaterial({ color: 0x383f48 })
+        );
+        plateGroup.add(plateBody);
+      }
       // Seated cleanly underneath the top-pinch grip with zero finger clipping behind the plate
-      plateGroup.position.set(0.0, -0.098, -0.004);
+      plateGroup.position.set(0.0, -0.105, -0.004);
       plateGroup.visible = false;
       plateHand.add(plateGroup);
       this.plateMesh = plateGroup;
@@ -2411,6 +2406,12 @@ class WeaponSystem {
       if (this.leftHand) this.leftHand.visible = false;
       this.rightArm.visible = false;
       this.leftArm.visible = false;
+    }
+
+    if (withHands) {
+      const vmScale = (weaponDef && weaponDef.slot === 'secondary') ? 0.84 : 0.78;
+      g.scale.setScalar(vmScale);
+      this.sightHeight = (this.sightHeight || 0.04) * vmScale;
     }
 
     this.currentMesh = g;
@@ -3043,8 +3044,8 @@ class WeaponSystem {
     const adsPivotX = (isAdsActive && !customRot) ? (Math.sin(targetRotZ) * this.sightHeight) : 0;
     const adsPivotY = (isAdsActive && !customRot) ? ((1 - Math.cos(targetRotZ)) * this.sightHeight) : 0;
     const basePosX = this.isFistsMode ? 0.0 : (isAdsActive ? adsPivotX : (tacSprintingHip ? 0.24 : (sprintingHip ? 0.19 : 0.22)));
-    const basePosY = this.isFistsMode ? -0.16 : (isAdsActive ? (-this.sightHeight + adsPivotY) : (tacSprintingHip ? -0.14 : (sprintingHip ? -0.235 : -0.20)));
-    const basePosZ = this.isFistsMode ? -0.38 : (isAdsActive ? this.adsZ : (tacSprintingHip ? -0.34 : (sprintingHip ? -0.40 : -0.42)));
+    const basePosY = this.isFistsMode ? -0.16 : (isAdsActive ? (-this.sightHeight + adsPivotY) : (tacSprintingHip ? -0.15 : (sprintingHip ? -0.23 : -0.195)));
+    const basePosZ = this.isFistsMode ? -0.38 : (isAdsActive ? (this.adsZ - 0.055) : (tacSprintingHip ? -0.38 : (sprintingHip ? -0.44 : -0.46)));
 
     const targetX = basePosX + this.recoilX + this.lookSwayX + activePosOff.x + wallPosX + leanAlignX + drawPos.x;
     const targetY = basePosY + this.lookSwayY + activePosOff.y + wallPosY + drawPos.y;
@@ -3134,9 +3135,9 @@ class WeaponSystem {
         const pump = Math.sin(this.bobTimer + Math.PI);
         const pumpCos = Math.cos(this.bobTimer + Math.PI);
         const fistPos = new THREE.Vector3(
-          -0.38 + pumpCos * 0.026,
-          -0.01 + pump * 0.058,
-          -0.14 + pump * 0.075
+          -0.34 + pumpCos * 0.024,
+          -0.08 + pump * 0.050,
+          -0.18 + pump * 0.065
         );
         this.leftHand.visible = false;
         if (this.leftHand.userData) this.leftHand.userData.activeStyle = 'leftFist';
@@ -3144,9 +3145,9 @@ class WeaponSystem {
           this.leftFist.visible = true;
           if (this.leftFist.userData) this.leftFist.userData.activeStyle = 'leftFist';
           this.leftFist.position.lerp(fistPos, Math.min(1, dt * 18));
-          this.leftFist.rotation.x = THREE.MathUtils.lerp(this.leftFist.rotation.x, -0.78 + pump * 0.22, Math.min(1, dt * 18));
-          this.leftFist.rotation.y = THREE.MathUtils.lerp(this.leftFist.rotation.y, 0.28, Math.min(1, dt * 18));
-          this.leftFist.rotation.z = THREE.MathUtils.lerp(this.leftFist.rotation.z, -0.18, Math.min(1, dt * 18));
+          this.leftFist.rotation.x = THREE.MathUtils.lerp(this.leftFist.rotation.x, -0.46 + pump * 0.14, Math.min(1, dt * 18));
+          this.leftFist.rotation.y = THREE.MathUtils.lerp(this.leftFist.rotation.y, 0.34, Math.min(1, dt * 18));
+          this.leftFist.rotation.z = THREE.MathUtils.lerp(this.leftFist.rotation.z, -0.14, Math.min(1, dt * 18));
         }
         this.leftHand.position.copy(this.leftFist ? this.leftFist.position : fistPos);
       } else {
@@ -3336,7 +3337,7 @@ class WeaponSystem {
     const handOnMag = (extraDist = 0.03, styleName = 'magGrip') => {
       if (!this.magMesh || !this.leftHand) return;
       const target = this.magMesh.position.clone().addScaledVector(alongMag, extraDist);
-      target.x -= 0.014;
+      target.x -= 0.004;
       this.leftHand.position.lerp(target, handRate);
       lerpHandRot(this.leftHand, this.magMesh.rotation.x * 0.85, 0.14, 0.08);
       setLeftStyle(styleName);
@@ -3493,7 +3494,7 @@ class WeaponSystem {
         const mr = mag.rotation.x;
         const localY = -0.056;
         const localZ = 0.016;
-        const gx = mag.position.x - 0.022;
+        const gx = mag.position.x - 0.010;
         const gy = mag.position.y + (localY * Math.cos(mr) - localZ * Math.sin(mr));
         const gz = mag.position.z + (localY * Math.sin(mr) + localZ * Math.cos(mr));
         moveLeftHand(gx, gy, gz, mr * 0.80, 0.14, 0.06, 'akMagGrip');

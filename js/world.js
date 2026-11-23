@@ -2071,7 +2071,7 @@ class WastelandWorld {
       handle.position.set(w * 0.88, 0, 0.025);
       lidPivot.add(doorMesh, handle);
       this.scene.add(lidPivot);
-      lid = { pivot: lidPivot, axis: 'y', angle: 0, target: 0, openAngle: -0.55, opened: false };
+      lid = { pivot: lidPivot, axis: 'y', angle: 0, target: 0, openAngle: -1.35, opened: false };
     } else {
       // Top-opening crate / case / vault with statically batched lower body & hinged lid
       const bodyH = h * 0.86;
@@ -2089,7 +2089,7 @@ class WastelandWorld {
       latch.position.set(0, lidH * 0.25, d + 0.015);
       lidPivot.add(lidMesh, latch);
       this.scene.add(lidPivot);
-      lid = { pivot: lidPivot, axis: 'x', angle: 0, target: 0, openAngle: -0.40, opened: false };
+      lid = { pivot: lidPivot, axis: 'x', angle: 0, target: 0, openAngle: -1.25, opened: false };
     }
 
     this.lootContainers.push({

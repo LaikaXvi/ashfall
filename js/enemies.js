@@ -161,6 +161,9 @@ class Enemy {
         plates: 1 + Math.floor(Math.random() * 4),
         headgear: Math.random() < 0.35 ? 'gas_mask' : (Math.random() < 0.16 ? 'nvg_goggles' : null),
         backpack: bags[Math.floor(Math.random() * bags.length)],
+        backpackWeapon: null,
+        backpackWeaponMods: null,
+        backpackWeaponRarity: null,
         tactical: Math.random() < 0.6 ? 'smoke_grenade' : 'concussion_grenade',
         lethal: Math.random() < 0.65 ? 'frag_grenade' : 'throwing_knife',
         fieldUpgrade: fus[Math.floor(Math.random() * fus.length)],
@@ -168,6 +171,18 @@ class Enemy {
         selfRevive: Math.random() < 0.35 ? 'self_revive' : null,
         revealedSlots: {}
       };
+      // Only Weapon Pack operators can spawn with a stowed weapon in their top-left backpack weapon slot!
+      if (this.operatorEquipment.backpack === 'bag_weapon' && Math.random() < 0.65) {
+        const bwPool = ['mp5k', 'ak74m', 'm870', 'm24', 'g17'];
+        const bwId = bwPool[Math.floor(Math.random() * bwPool.length)];
+        const bwDef = GAME_DATA.ITEMS[bwId];
+        const bwRoll = GAME_DATA.rollRandomAttachmentsForRarity
+          ? GAME_DATA.rollRandomAttachmentsForRarity(bwId, (bwDef && bwDef.rarity) || 'rare')
+          : { mods: {}, rarity: (bwDef && bwDef.rarity) || 'rare' };
+        this.operatorEquipment.backpackWeapon = bwId;
+        this.operatorEquipment.backpackWeaponMods = bwRoll.mods;
+        this.operatorEquipment.backpackWeaponRarity = bwRoll.rarity;
+      }
       // Real vest armor + player-identical health/tourniquet/self-revive/backpack capacity state!
       const vestDef = GAME_DATA.ITEMS[this.operatorEquipment.armor];
       const bagDef = GAME_DATA.ITEMS[this.operatorEquipment.backpack];
@@ -819,6 +834,8 @@ class Enemy {
       }
     } else if (!this.isOperator && this.weaponMeshGroup) {
       this.weaponMeshGroup.visible = false;
+    } else if (this.isOperator && !this.isRemoteReplicated && typeof window.onHostCorpseSync === 'function') {
+      window.onHostCorpseSync(this);
     }
   }
 
@@ -1992,11 +2009,29 @@ class Enemy {
                   let takenCount = 0;
                   for (let i = 0; i < ct.items.length && takenCount < 2; ) {
                     const candidate = ct.items[i];
-                    if (candidate && this._addOrTradeLoot(candidate.id, candidate.qty || 1)) {
+                    const candDef = candidate && GAME_DATA.ITEMS[candidate.id];
+                    if (candDef && candDef.type === 'weapon') {
+                      // Only Weapon Pack operators can stow a weapon in their top-left backpack weapon slot!
+                      if (this.operatorEquipment && this.operatorEquipment.backpack === 'bag_weapon' && !this.operatorEquipment.backpackWeapon) {
+                        this.operatorEquipment.backpackWeapon = candidate.id;
+                        this.operatorEquipment.backpackWeaponMods = candidate.mods || {};
+                        this.operatorEquipment.backpackWeaponRarity = candidate.rarityOverride || null;
+                        ct.items.splice(i, 1);
+                        takenCount++;
+                      } else {
+                        i++;
+                      }
+                    } else if (candidate && this._addOrTradeLoot(candidate.id, candidate.qty || 1)) {
                       ct.items.splice(i, 1);
                       takenCount++;
                     } else {
                       i++;
+                    }
+                  }
+                  if (takenCount > 0) {
+                    if (this.world && this.world.openContainer) this.world.openContainer(ct);
+                    if (typeof window.onHostContainerChanged === 'function') {
+                      window.onHostContainerChanged(ct.id, ct.items);
                     }
                   }
                 }

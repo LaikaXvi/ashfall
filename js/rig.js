@@ -823,6 +823,7 @@
         const wtArr = skinWt.array;
         const idxStride = skinIdx.itemSize || 4;
         const wtStride = skinWt.itemSize || 4;
+        const posAttr = geom.attributes.position;
         const fpMaskArr = new Float32Array(vCount);
         for (let i = 0; i < vCount; i++) {
           let hSum = 0;
@@ -832,7 +833,9 @@
             const bi = idxArr[iBase + k] | 0;
             if (isHiddenBone[bi]) hSum += wtArr[wBase + k];
           }
-          fpMaskArr[i] = hSum > 0.35 ? 1.0 : 0.0;
+          // Discard head, neck, collar, shoulders, and both arms cleanly below collarbone so nothing clips the FP camera
+          const aboveChest = posAttr ? (posAttr.getZ(i) > 145.5) : false;
+          fpMaskArr[i] = (hSum > 0.05 || aboveChest) ? 1.0 : 0.0;
         }
         geom.setAttribute('fpMask', new THREE.BufferAttribute(fpMaskArr, 1));
 
@@ -1175,23 +1178,23 @@
     }
   };
 
-  // ==================== FIRST-PERSON RIGGED ARMS (v2.45) ====================
+  // ==================== FIRST-PERSON RIGGED ARMS (v2.46) ====================
   const FP_HAND_STYLES = {
-    grip:          { f: new THREE.Vector3(-0.22, -0.08, -0.97), back: new THREE.Vector3( 0.97,  0.08, -0.22), palmOffset: new THREE.Vector3( 0.018,  0.000, 0.004), curl: [1.05, 1.15, 0.75], thumb: 0.65 },
-    rightFist:     { f: new THREE.Vector3(-0.14,  0.04, -0.99), back: new THREE.Vector3( 0.99,  0.04, -0.14), palmOffset: new THREE.Vector3( 0.005,  0.000, 0.002), curl: [1.62, 1.78, 1.38], thumb: 1.42 },
-    leftFist:      { f: new THREE.Vector3( 0.14,  0.04, -0.99), back: new THREE.Vector3(-0.99,  0.04, -0.14), palmOffset: new THREE.Vector3(-0.005,  0.000, 0.002), curl: [1.62, 1.78, 1.38], thumb: 1.42 },
-    supportPistol: { f: new THREE.Vector3( 0.40,  0.05, -0.91), back: new THREE.Vector3(-0.88, -0.22, -0.42), palmOffset: new THREE.Vector3(-0.014, -0.008, 0.004), curl: [0.88, 0.96, 0.65], thumb: 0.40 },
-    foregrip:      { f: new THREE.Vector3( 0.24,  0.00, -0.97), back: new THREE.Vector3(-0.97,  0.00, -0.24), palmOffset: new THREE.Vector3(-0.018,  0.000, 0.004), curl: [1.05, 1.15, 0.75], thumb: 0.65 },
-    supportRifle:  { f: new THREE.Vector3( 0.38,  0.18, -0.91), back: new THREE.Vector3(-0.32, -0.93, -0.18), palmOffset: new THREE.Vector3(-0.008, -0.020, 0.004), curl: [0.72, 0.82, 0.55], thumb: 0.35 },
-    plate:         { f: new THREE.Vector3( 0.00, -0.25, -0.97), back: new THREE.Vector3( 0.00,  0.97, -0.25), palmOffset: new THREE.Vector3( 0.000,  0.012, 0.006), curl: [0.55, 0.65, 0.45], thumb: 0.55 },
-    // Dedicated reload IK grip styles
-    magGrip:       { f: new THREE.Vector3( 0.42, -0.16, -0.89), back: new THREE.Vector3(-0.90,  0.06, -0.43), palmOffset: new THREE.Vector3(-0.016,  0.000, 0.004), curl: [1.18, 1.28, 0.92], thumb: 0.88 },
-    akMagGrip:     { f: new THREE.Vector3( 0.48, -0.10, -0.87), back: new THREE.Vector3(-0.87,  0.08, -0.48), palmOffset: new THREE.Vector3(-0.018,  0.000, 0.004), curl: [1.22, 1.32, 0.96], thumb: 0.92 },
-    boltPinch:     { f: new THREE.Vector3(-0.28,  0.08, -0.96), back: new THREE.Vector3( 0.78,  0.58, -0.22), palmOffset: new THREE.Vector3( 0.010,  0.006, 0.004), curl: [1.32, 1.42, 1.05], thumb: 1.15 },
-    leftBoltPinch: { f: new THREE.Vector3( 0.36,  0.08, -0.93), back: new THREE.Vector3(-0.82,  0.48, -0.32), palmOffset: new THREE.Vector3(-0.012,  0.006, 0.004), curl: [1.28, 1.38, 1.00], thumb: 1.10 },
-    slapOpen:      { f: new THREE.Vector3( 0.32, -0.15, -0.94), back: new THREE.Vector3(-0.25,  0.96, -0.12), palmOffset: new THREE.Vector3(-0.006,  0.014, 0.004), curl: [0.16, 0.18, 0.12], thumb: 0.28 },
-    shellFeed:     { f: new THREE.Vector3( 0.28,  0.35, -0.89), back: new THREE.Vector3(-0.30, -0.88, -0.36), palmOffset: new THREE.Vector3(-0.008, -0.016, 0.004), curl: [0.92, 1.02, 0.72], thumb: 0.85 },
-    slideGrab:     { f: new THREE.Vector3( 0.45, -0.18, -0.87), back: new THREE.Vector3(-0.35,  0.91, -0.22), palmOffset: new THREE.Vector3(-0.010,  0.012, 0.004), curl: [1.10, 1.20, 0.85], thumb: 0.90 }
+    grip:          { f: new THREE.Vector3(-0.22, -0.08, -0.97), back: new THREE.Vector3( 0.97,  0.08, -0.22), palmOffset: new THREE.Vector3( 0.014,  0.000, 0.004), curl: [1.10, 1.22, 0.85], thumb: 0.72 },
+    rightFist:     { f: new THREE.Vector3(-0.24,  0.14, -0.96), back: new THREE.Vector3( 0.84,  0.48, -0.24), palmOffset: new THREE.Vector3( 0.004,  0.000, 0.002), curl: [1.68, 1.84, 1.48], thumb: 1.52 },
+    leftFist:      { f: new THREE.Vector3( 0.28,  0.16, -0.95), back: new THREE.Vector3(-0.82,  0.52, -0.22), palmOffset: new THREE.Vector3(-0.004,  0.000, 0.002), curl: [1.68, 1.84, 1.48], thumb: 1.52 },
+    supportPistol: { f: new THREE.Vector3( 0.40,  0.05, -0.91), back: new THREE.Vector3(-0.88, -0.22, -0.42), palmOffset: new THREE.Vector3(-0.012, -0.006, 0.004), curl: [0.92, 1.02, 0.72], thumb: 0.48 },
+    foregrip:      { f: new THREE.Vector3( 0.24,  0.00, -0.97), back: new THREE.Vector3(-0.97,  0.00, -0.24), palmOffset: new THREE.Vector3(-0.014,  0.000, 0.004), curl: [1.12, 1.24, 0.85], thumb: 0.75 },
+    supportRifle:  { f: new THREE.Vector3( 0.36,  0.18, -0.92), back: new THREE.Vector3(-0.34, -0.92, -0.18), palmOffset: new THREE.Vector3(-0.006, -0.016, 0.004), curl: [0.76, 0.86, 0.58], thumb: 0.42 },
+    plate:         { f: new THREE.Vector3( 0.06, -0.22, -0.97), back: new THREE.Vector3(-0.18,  0.96, -0.20), palmOffset: new THREE.Vector3( 0.000,  0.010, 0.004), curl: [0.68, 0.78, 0.55], thumb: 0.65 },
+    // Dedicated reload IK grip styles (flush palm contact with magazines & bolts!)
+    magGrip:       { f: new THREE.Vector3( 0.44, -0.12, -0.89), back: new THREE.Vector3(-0.89,  0.10, -0.44), palmOffset: new THREE.Vector3(-0.006,  0.000, 0.002), curl: [1.28, 1.40, 1.04], thumb: 1.05 },
+    akMagGrip:     { f: new THREE.Vector3( 0.50, -0.08, -0.86), back: new THREE.Vector3(-0.86,  0.12, -0.50), palmOffset: new THREE.Vector3(-0.008,  0.000, 0.002), curl: [1.32, 1.44, 1.08], thumb: 1.12 },
+    boltPinch:     { f: new THREE.Vector3(-0.30,  0.06, -0.95), back: new THREE.Vector3( 0.80,  0.54, -0.24), palmOffset: new THREE.Vector3( 0.006,  0.004, 0.002), curl: [1.38, 1.48, 1.12], thumb: 1.22 },
+    leftBoltPinch: { f: new THREE.Vector3( 0.38,  0.08, -0.92), back: new THREE.Vector3(-0.84,  0.46, -0.28), palmOffset: new THREE.Vector3(-0.008,  0.004, 0.002), curl: [1.35, 1.45, 1.08], thumb: 1.18 },
+    slapOpen:      { f: new THREE.Vector3( 0.32, -0.15, -0.94), back: new THREE.Vector3(-0.25,  0.96, -0.12), palmOffset: new THREE.Vector3(-0.004,  0.012, 0.004), curl: [0.16, 0.18, 0.12], thumb: 0.28 },
+    shellFeed:     { f: new THREE.Vector3( 0.28,  0.35, -0.89), back: new THREE.Vector3(-0.30, -0.88, -0.36), palmOffset: new THREE.Vector3(-0.006, -0.012, 0.002), curl: [1.02, 1.12, 0.82], thumb: 0.95 },
+    slideGrab:     { f: new THREE.Vector3( 0.45, -0.16, -0.88), back: new THREE.Vector3(-0.36,  0.90, -0.24), palmOffset: new THREE.Vector3(-0.006,  0.010, 0.002), curl: [1.18, 1.28, 0.92], thumb: 1.00 }
   };
 
   function isEffectivelyVisible(obj, stopAt) {
@@ -1462,6 +1465,44 @@
             this.bindLocal && this.bindLocal[side + 'forearm']
           );
 
+          // 1. Clamp wrist flexion/extension to natural anatomical range (<= 42 deg from forearm axis)
+          bFore.updateMatrixWorld(true);
+          const forePosW = bFore.getWorldPosition(new THREE.Vector3());
+          const handPosW = bHand.getWorldPosition(new THREE.Vector3());
+          const foreDir = handPosW.sub(forePosW);
+          if (foreDir.lengthSq() > 1e-6) {
+            foreDir.normalize();
+            const dotF = THREE.MathUtils.clamp(fW.dot(foreDir), -1, 1);
+            const bendAng = Math.acos(dotF);
+            const maxBend = 0.73; // ~42 degrees max natural wrist bend
+            if (bendAng > maxBend) {
+              const perp = fW.clone().addScaledVector(foreDir, -dotF);
+              if (perp.lengthSq() > 1e-6) {
+                perp.normalize();
+                fW.copy(foreDir).multiplyScalar(Math.cos(maxBend)).addScaledVector(perp, Math.sin(maxBend)).normalize();
+              } else {
+                fW.copy(foreDir);
+              }
+            }
+
+            // 2. Forearm pronation/supination twist alignment (eliminates candy-wrapper broken wrist!)
+            const foreWQ = bFore.getWorldQuaternion(new THREE.Quaternion());
+            const hb = this.handBasis[side];
+            const foreBackW = hb.bLocal.clone().applyQuaternion(foreWQ);
+            const fbProj = foreBackW.addScaledVector(foreDir, -foreBackW.dot(foreDir));
+            const hbProj = backW.clone().addScaledVector(foreDir, -backW.dot(foreDir));
+            if (fbProj.lengthSq() > 1e-5 && hbProj.lengthSq() > 1e-5) {
+              fbProj.normalize();
+              hbProj.normalize();
+              const sinA = new THREE.Vector3().crossVectors(fbProj, hbProj).dot(foreDir);
+              const cosA = THREE.MathUtils.clamp(fbProj.dot(hbProj), -1, 1);
+              const rollAng = Math.atan2(sinA, cosA);
+              const qRoll = new THREE.Quaternion().setFromAxisAngle(foreDir, rollAng * 0.72);
+              RigIK.setWorldQuat(bFore, qRoll.multiply(foreWQ));
+              bFore.updateMatrixWorld(true);
+            }
+          }
+
           const qHand = RigIK.handBasisQuat(this.handBasis[side], fW, backW, new THREE.Quaternion());
           RigIK.setWorldQuat(bHand, qHand);
           RigIK.applyFingerCurl(this.fingerCurls[side], style.curl, style.thumb);
@@ -1483,10 +1524,66 @@
     }
   }
 
+  // ============================================================================
+  // UNIFIED SCULPTED SAPI ARMOR PLATE BUILDER (v2.46)
+  // Shared between Inventory Icon (icons.js) and First-Person Plating Rig (weapons.js)!
+  // ============================================================================
+  function buildArmorPlateMesh(opts = {}) {
+    const forIcon = !!opts.forIcon;
+    const g = new THREE.Group();
+    const shape = new THREE.Shape();
+    // Authentic shooter's-cut SAPI ballistic ceramic plate silhouette
+    shape.moveTo(-0.23, -0.30);
+    shape.lineTo( 0.23, -0.30);
+    shape.lineTo( 0.23,  0.16);
+    shape.lineTo( 0.11,  0.30);
+    shape.lineTo(-0.11,  0.30);
+    shape.lineTo(-0.23,  0.16);
+    shape.closePath();
+
+    const plateMat = forIcon
+      ? new THREE.MeshPhongMaterial({ color: 0x3d444d, specular: 0x7b8896, shininess: 38 })
+      : new THREE.MeshPhongMaterial({ color: 0x383f48, specular: 0x5c6876, shininess: 28 });
+    const trimMat = forIcon
+      ? new THREE.MeshPhongMaterial({ color: 0x262b31, specular: 0x454e58, shininess: 22 })
+      : new THREE.MeshLambertMaterial({ color: 0x24292f });
+    const stencilMat = forIcon
+      ? new THREE.MeshPhongMaterial({ color: 0xdce6f0, emissive: 0x1a2633, shininess: 55 })
+      : new THREE.MeshLambertMaterial({ color: 0xd8e2ec });
+
+    const plateGeo = new THREE.ExtrudeGeometry(shape, {
+      depth: 0.048,
+      bevelEnabled: true,
+      bevelThickness: 0.012,
+      bevelSize: 0.012,
+      bevelSegments: 2
+    });
+    const plate = new THREE.Mesh(plateGeo, plateMat);
+    plate.position.z = -0.024;
+    g.add(plate);
+
+    // Upper white ballistic NIJ-IV stencil stripe + secondary sub-markings matching icon
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.032, 0.068), stencilMat);
+    stripe.position.set(0, 0.10, 0.004);
+    const subMark = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.012, 0.066), stencilMat);
+    subMark.position.set(0, 0.056, 0.004);
+    // Subtle dark Cordura edge-seal lip along bottom rim
+    const bottomRim = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.026, 0.070), trimMat);
+    bottomRim.position.set(0, -0.285, 0.0);
+    g.add(stripe, subMark, bottomRim);
+
+    if (!forIcon) {
+      // Scale from icon units (~0.46 x 0.60) down to realistic physical SAPI plate size (~0.24m x 0.30m)
+      g.scale.setScalar(0.46);
+    }
+    return g;
+  }
+
   window.RigAssets = RigAssets;
   window.RigIK = RigIK;
   window.RiggedCharacter = RiggedCharacter;
   window.RigRegistry = RigRegistry;
   window.RiggedFPArms = RiggedFPArms;
   window.buildTacticalBackpackMesh = buildTacticalBackpackMesh;
+  window.buildArmorPlateMesh = buildArmorPlateMesh;
 })();

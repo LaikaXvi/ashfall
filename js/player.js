@@ -753,7 +753,7 @@ class Player {
     let bodyY = feetY;
     let bodyZ = this.position.z;
     if (isFP) {
-      const backDist = this.isSliding ? -0.02 : (this.isProne ? 0.22 : 0.16);
+      const backDist = this.isSliding ? 0.04 : (this.isProne ? 0.34 : (this.stance === 'crouch' ? 0.28 : 0.25));
       bodyX += Math.sin(this.yaw) * backDist;
       bodyZ += Math.cos(this.yaw) * backDist;
       if (this.isSliding) bodyY += 0.04;
@@ -768,21 +768,23 @@ class Player {
       const ws = this.weaponSystem;
       if (p.handMag) p.handMag.visible = false;
       if (p.handShell) p.handShell.visible = false;
+      if (p.plateProp && isFP) p.plateProp.visible = false;
       if (p.inventoryTablet) p.inventoryTablet.visible = !isFP && !!this.isInventoryOpen && !this.isDowned && !this.dead;
       if (p.weaponMount) p.weaponMount.visible = !isFP && !this.isDowned && !this.dead && !this.mantleState && !this.ledgeState && !this.isInventoryOpen;
 
       // Sync 3rd-person weapon bolt blowback
-      if (ws && this.tpWeapon && this.tpWeapon.boltMesh && !ws.isReloading) {
+      if (!isFP && ws && this.tpWeapon && this.tpWeapon.boltMesh && !ws.isReloading) {
         this.tpWeapon.boltMesh.position.z = this.tpWeapon.boltRestPos.z + (ws.boltKick || 0);
       }
 
-      const plateProg = (ws && ws.isPlating && ws.plateDuration > 0)
+      const plateProg = (!isFP && ws && ws.isPlating && ws.plateDuration > 0)
         ? THREE.MathUtils.clamp(1 - (ws.plateTimer / ws.plateDuration), 0, 1)
         : 0;
-      const reloadProg = (ws && ws.isReloading && ws.reloadDuration > 0)
+      const reloadProg = (!isFP && ws && ws.isReloading && ws.reloadDuration > 0)
         ? THREE.MathUtils.clamp(1 - (ws.reloadTimer / ws.reloadDuration), 0, 1)
         : 0;
 
+      // In First Person, suppress 3P upper-body actions (reload/plate/heal/ADS/aimPitch) so only clean torso & legs locomotion + slide render!
       this.mw2Anim.update(dt, {
         speed: this.onGround ? horizSpeed : 0,
         moveRight: strafeInput,
@@ -791,25 +793,30 @@ class Player {
         isTacSprinting: this.isTacSprinting,
         isSliding: this.isSliding,
         slideProgress: this.slideDuration > 0 ? (1 - this.slideTimer / this.slideDuration) : 0.5,
-        isADS: this.isADS,
+        isADS: isFP ? false : this.isADS,
         onGround: this.onGround,
-        aimPitch: this.pitch || 0,
-        lean: this.lean || 0,
+        aimPitch: isFP ? 0 : (this.pitch || 0),
+        lean: isFP ? (this.lean || 0) * 0.4 : (this.lean || 0),
         isDowned: this.isDowned,
         dead: this.dead,
-        isPlating: !!(ws && ws.isPlating),
+        isPlating: isFP ? false : !!(ws && ws.isPlating),
         plateProgress: plateProg,
-        isReloading: !!(ws && ws.isReloading),
+        isReloading: isFP ? false : !!(ws && ws.isReloading),
         reloadProgress: reloadProg,
-        isHealing: !!(ws && ws.isHealing),
+        isHealing: isFP ? false : !!(ws && ws.isHealing),
         stanceTrans: this.stanceTrans,
-        recoilKick: ws ? (ws.recoilZ || ws.recoilOffset || 0) : 0,
+        recoilKick: isFP ? 0 : (ws ? (ws.recoilZ || ws.recoilOffset || 0) : 0),
         isPistol: !!(this.tpWeapon && this.tpWeapon.isPistol),
         world: this.world,
         worldPos: this.position,
         worldYaw: this.yaw,
         feetY: feetY
       });
+      if (isFP) {
+        if (p.plateProp) p.plateProp.visible = false;
+        if (p.handMag) p.handMag.visible = false;
+        if (p.handShell) p.handShell.visible = false;
+      }
       return;
     }
 
