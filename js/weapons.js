@@ -200,7 +200,7 @@ class WeaponSystem {
       return { magOutP: 0.42, magInP: 0.72, needsChamber: true };
     }
     if (weaponId === 'ak74m') {
-      return { magOutP: 0.38, magInP: 0.62, needsChamber: !!isEmpty };
+      return { magOutP: 0.34, magInP: 0.64, needsChamber: !!isEmpty };
     }
     if (weaponId === 'mosin9130') {
       return { magOutP: 0.22, magInP: 0.68, needsChamber: true };
@@ -4090,8 +4090,9 @@ class WeaponSystem {
     }
 
     if (id === 'ak74m') {
-      // AK-74M: New mag (spareMagMesh) strikes paddle release & flicks old mag (magMesh) forward out of seat, then rocks into lock!
-      if (p > 0.22 && !this.reloadSfxFlags.magOut) {
+      // AK-74M (v2.53 MW2019 Rock-Out -> Rock-In -> Right-Hand Charging Handle Rack):
+      // Calibrated rigid hand-to-magazine lock on the curved 5.45mm bakelite mag + authentic forward (+X) rock-out/rock-in!
+      if (p > 0.13 && !this.reloadSfxFlags.magOut) {
         this.reloadSfxFlags.magOut = true;
         window.soundEngine.playMagOut(this.reloadWeaponId);
       }
@@ -4099,141 +4100,191 @@ class WeaponSystem {
         this.reloadSfxFlags.magIn = true;
         window.soundEngine.playMagIn(this.reloadWeaponId);
       }
-      if (this.wasEmptyReload && p > 0.68 && !this.reloadSfxFlags.rack) {
+      if (this.wasEmptyReload && p > 0.70 && !this.reloadSfxFlags.rack) {
         this.reloadSfxFlags.rack = true;
         window.soundEngine.playRechamber(this.reloadWeaponId || 'ak74m');
       }
 
-      // Helper: lock left palm squarely on the curved AK banana mag body (curves forward along -Z as Y drops!)
-      const gripSpareAkMag = (mag) => {
-        if (!mag) return;
+      if (this.spareMagMesh) this.spareMagMesh.visible = false;
+
+      // Exact mid-lower centerline of the curved AK bakelite mag (rotated strictly by mag.rotation.x)
+      const akMagHandTarget = (mag) => {
         const mr = mag.rotation.x;
-        const localY = -0.072;
-        const localZ = -0.022;
-        const gx = mag.position.x - 0.008;
-        const gy = mag.position.y + (localY * Math.cos(mr) - localZ * Math.sin(mr));
-        const gz = mag.position.z + (localY * Math.sin(mr) + localZ * Math.cos(mr));
-        moveLeftHand(gx, gy, gz, mr * 0.75, 0.16, 0.04, 'akMagGrip');
-        if (this.leftHand && this.leftHand.userData && this.leftHand.userData.thumbGroup) {
-          this.leftHand.userData.thumbGroup.rotation.set(0.14, -0.35, 0.20);
-        }
+        const localY = -0.068;
+        const localZ = -0.0375;
+        const cosM = Math.cos(mr);
+        const sinM = Math.sin(mr);
+        return {
+          x: mag.position.x,
+          y: mag.position.y + (localY * cosM - localZ * sinM),
+          z: mag.position.z + (localY * sinM + localZ * cosM),
+          rx: mr * 0.85 + 0.22,
+          ry: 0.0,
+          rz: 0.02
+        };
       };
-      const releaseAkThumb = () => {
-        if (this.leftHand && this.leftHand.userData && this.leftHand.userData.thumbGroup) {
-          this.leftHand.userData.thumbGroup.rotation.set(0, 0, 0);
+      const blendLeftWithAkMag = (mag, blendT, styleAt = 0.25) => {
+        if (!mag || !this.leftHand) return;
+        const tgt = akMagHandTarget(mag);
+        const k = THREE.MathUtils.clamp(blendT, 0, 1);
+        this.leftHand.position.set(
+          THREE.MathUtils.lerp(this.leftHandRestPos.x, tgt.x, k),
+          THREE.MathUtils.lerp(this.leftHandRestPos.y, tgt.y, k),
+          THREE.MathUtils.lerp(this.leftHandRestPos.z, tgt.z, k)
+        );
+        this.leftHand.rotation.set(
+          THREE.MathUtils.lerp(this.leftHandRestRot.x, tgt.rx, k),
+          THREE.MathUtils.lerp(this.leftHandRestRot.y, tgt.ry, k),
+          THREE.MathUtils.lerp(this.leftHandRestRot.z, tgt.rz, k)
+        );
+        setLeftStyle(k >= styleAt ? 'akMagGrip' : null);
+      };
+      const lockLeftOnAkMag = (mag) => {
+        if (!mag || !this.leftHand) return;
+        // If resuming straight into Stage 1 from an interrupted reload, blend smoothly onto the rising mag
+        if (this._reloadResumeBlend < 0.99) {
+          blendLeftWithAkMag(mag, smooth(Math.min(1, this._reloadResumeBlend * 1.45)), 0.15);
+          return;
         }
+        const tgt = akMagHandTarget(mag);
+        this.leftHand.position.set(tgt.x, tgt.y, tgt.z);
+        this.leftHand.rotation.set(tgt.rx, tgt.ry, tgt.rz);
+        setLeftStyle('akMagGrip');
       };
 
-      if (p < 0.22) {
-        // 1. Bring fresh mag up behind old mag's paddle release (hand firmly gripping lower-mid mag body)
-        const t = smooth(p / 0.22);
+      if (p < 0.11) {
+        // 1. Cant AK into chest workspace & reach left hand smoothly from wood handguard onto seated bakelite mag
+        const t = smooth(p / 0.11);
         restRightHand();
-        pos.x = -0.12 * t; pos.y = 0.13 * t; pos.z = -0.02 * t;
-        rot.x = 0.28 * t; rot.y = 0.34 * t; rot.z = -0.40 * t;
+        pos.x = -0.09 * t; pos.y = 0.10 * t; pos.z = 0.03 * t;
+        rot.x = 0.18 * t; rot.y = 0.12 * t; rot.z = -0.34 * t;
 
         if (this.magMesh) {
           this.magMesh.visible = true;
           this.magMesh.position.copy(this.magRestPos);
           this.magMesh.rotation.copy(this.magRestRot);
+          blendLeftWithAkMag(this.magMesh, t, 0.25);
         }
-        if (this.spareMagMesh) {
-          this.spareMagMesh.visible = p > 0.04;
-          this.spareMagMesh.position.set(
-            THREE.MathUtils.lerp(-0.06, -0.01, t),
-            THREE.MathUtils.lerp(this.magRestPos.y - 0.16, this.magRestPos.y - 0.05, t),
-            THREE.MathUtils.lerp(this.magRestPos.z + 0.12, this.magRestPos.z + 0.08, t)
-          );
-          this.spareMagMesh.rotation.x = THREE.MathUtils.lerp(-0.35, -0.45, t);
-          gripSpareAkMag(this.spareMagMesh);
-        }
-      } else if (p < 0.38) {
-        // 2. Strike paddle & flick old mag forward and out of its seat!
-        const t = smooth((p - 0.22) / 0.16);
+      } else if (p < 0.34) {
+        // 2. Depress paddle release, rock bottom of mag FORWARD (+X rotation, clearing trigger guard!) & pull down-left out!
+        const rawT = (p - 0.11) / 0.23;
+        const rockT = smooth(THREE.MathUtils.clamp(rawT / 0.42, 0, 1));
+        const pullT = smooth(THREE.MathUtils.clamp((rawT - 0.34) / 0.66, 0, 1));
+        const unseatJolt = Math.sin(Math.min(1, rawT * 2.2) * Math.PI) * 0.014;
         restRightHand();
-        const flickJolt = Math.sin(t * Math.PI) * 0.018;
-        pos.x = -0.12; pos.y = 0.13 + flickJolt; pos.z = -0.02;
-        rot.x = 0.28 + flickJolt * 2; rot.y = 0.34; rot.z = -0.40;
+        pos.x = -0.09; pos.y = 0.10 - unseatJolt * 0.6; pos.z = 0.03;
+        rot.x = 0.18 - unseatJolt * 1.4; rot.y = 0.12; rot.z = -0.34;
 
-        if (this.spareMagMesh) {
-          this.spareMagMesh.visible = true;
-          const strike = Math.sin(Math.min(1, t * 1.4) * Math.PI);
-          this.spareMagMesh.position.set(
-            -0.01,
-            this.magRestPos.y - 0.05 - t * 0.04,
-            this.magRestPos.z + 0.08 - strike * 0.055
-          );
-          this.spareMagMesh.rotation.x = THREE.MathUtils.lerp(-0.45, -0.74, t);
-          gripSpareAkMag(this.spareMagMesh);
-        }
         if (this.magMesh) {
-          this.magMesh.visible = t < 0.88;
-          this.magMesh.rotation.x = THREE.MathUtils.lerp(this.magRestRot.x, -1.35, t);
+          this.magMesh.visible = pullT < 0.88;
           this.magMesh.position.set(
-            this.magRestPos.x,
-            this.magRestPos.y - t * t * 0.22,
-            this.magRestPos.z - t * 0.16
+            this.magRestPos.x - pullT * 0.055,
+            this.magRestPos.y - rockT * 0.014 - pullT * 0.19,
+            this.magRestPos.z - rockT * 0.015 + pullT * 0.035
           );
+          this.magMesh.rotation.set(rockT * 0.52 + pullT * 0.06, 0, 0);
+          lockLeftOnAkMag(this.magMesh);
         }
-      } else if (p < 0.62) {
-        // 3. Hook front lug of new mag (spareMagMesh) & rock backward tightly into lock with left hand gripping mag body!
-        const rawT = (p - 0.38) / 0.24;
-        const jolt = rawT > 0.78 ? Math.sin(((rawT - 0.78) / 0.22) * Math.PI) : 0;
+      } else if (p < 0.64) {
+        // 3. Bring fresh bakelite mag up rigidly gripped, hook front lug (+0.48 rad) & rock backward tightly into lock!
+        const rawT = (p - 0.34) / 0.30;
+        const upT = smooth(THREE.MathUtils.clamp(rawT / 0.52, 0, 1));
+        const rockInT = smooth(THREE.MathUtils.clamp((rawT - 0.48) / 0.36, 0, 1));
+        const jolt = rawT > 0.74 ? Math.sin(Math.min(1, (rawT - 0.74) / 0.20) * Math.PI) : 0;
         restRightHand();
-        pos.x = -0.12; pos.y = 0.13 + jolt * 0.024; pos.z = -0.02;
-        rot.x = 0.28 + jolt * 0.09; rot.y = 0.34; rot.z = -0.40;
-        if (this.magMesh) this.magMesh.visible = false;
+        pos.x = -0.09; pos.y = 0.10 + jolt * 0.022; pos.z = 0.03;
+        rot.x = 0.18 + jolt * 0.075; rot.y = 0.12; rot.z = -0.34;
 
-        if (this.spareMagMesh) {
-          this.spareMagMesh.visible = true;
-          const upT = smooth(THREE.MathUtils.clamp(rawT / 0.42, 0, 1));
-          const rockInT = smooth(THREE.MathUtils.clamp((rawT - 0.36) / 0.48, 0, 1));
-          this.spareMagMesh.position.set(
-            THREE.MathUtils.lerp(-0.01, this.magRestPos.x, upT),
-            THREE.MathUtils.lerp(this.magRestPos.y - 0.09, this.magRestPos.y, upT),
-            THREE.MathUtils.lerp(this.magRestPos.z + 0.02, this.magRestPos.z, rockInT)
+        if (this.magMesh) {
+          this.magMesh.visible = rawT > 0.04;
+          this.magMesh.position.set(
+            THREE.MathUtils.lerp(this.magRestPos.x - 0.055, this.magRestPos.x, upT),
+            THREE.MathUtils.lerp(this.magRestPos.y - 0.19, this.magRestPos.y - 0.014, upT) + rockInT * 0.014,
+            THREE.MathUtils.lerp(this.magRestPos.z + 0.020, this.magRestPos.z - 0.016, upT) + rockInT * 0.016
           );
-          this.spareMagMesh.rotation.x = THREE.MathUtils.lerp(-0.74, this.magRestRot.x, rockInT);
-          gripSpareAkMag(this.spareMagMesh);
-          // Brief firm seating press upward as the rear locking lug clicks into place
-          if (rawT > 0.84 && this.leftHand) {
-            const releaseT = smooth((rawT - 0.84) / 0.16);
-            this.leftHand.position.lerp(this.leftHandRestPos, releaseT * 0.35);
+          this.magMesh.rotation.set(THREE.MathUtils.lerp(0.54, 0.48, upT) * (1 - rockInT), 0, 0);
+          if (rawT < 0.85) {
+            lockLeftOnAkMag(this.magMesh);
+          } else {
+            const relT = smooth((rawT - 0.85) / 0.15);
+            blendLeftWithAkMag(this.magMesh, 1 - relT, 0.55);
           }
         }
       } else if (this.wasEmptyReload && p < 0.90) {
-        const rawT = (p - 0.62) / 0.28;
-        const t = smooth(rawT);
-        if (this.spareMagMesh) this.spareMagMesh.visible = false;
-        if (this.magMesh) { this.magMesh.visible = true; this.magMesh.position.copy(this.magRestPos); this.magMesh.rotation.copy(this.magRestRot); }
-        releaseAkThumb();
+        // 4. Empty reload: left hand supports handguard, rifle rolls left & right hand hooks charging handle knob cleanly!
+        const rawT = (p - 0.64) / 0.26;
+        const rollPose = smooth(THREE.MathUtils.clamp(rawT / 0.28, 0, 1));
+        if (this.magMesh) {
+          this.magMesh.visible = true;
+          this.magMesh.position.copy(this.magRestPos);
+          this.magMesh.rotation.copy(this.magRestRot);
+        }
         restLeftHand();
 
-        const pose = Math.sin(Math.min(1, rawT * 1.2) * Math.PI * 0.5);
-        const pull = rawT > 0.18 && rawT < 0.60 ? smooth((rawT - 0.18) / 0.42) : (rawT >= 0.60 && rawT < 0.86 ? 1 - smooth((rawT - 0.60) / 0.26) : 0);
-        pos.x = THREE.MathUtils.lerp(-0.12, -0.06, t);
-        pos.y = THREE.MathUtils.lerp(0.13, 0.06, t) - pull * 0.015;
-        pos.z = -0.02 + pull * 0.02;
-        rot.x = THREE.MathUtils.lerp(0.28, 0.10, t) + pull * 0.08;
-        rot.y = THREE.MathUtils.lerp(0.34, 0.32, pose);
-        rot.z = THREE.MathUtils.lerp(-0.40, 0.36, pose);
+        const pull = rawT > 0.22 && rawT < 0.58
+          ? smooth((rawT - 0.22) / 0.36)
+          : (rawT >= 0.58 && rawT < 0.78 ? 1 - smooth((rawT - 0.58) / 0.20) : 0);
+        pos.x = THREE.MathUtils.lerp(-0.09, -0.05, rollPose);
+        pos.y = THREE.MathUtils.lerp(0.10, 0.06, rollPose) - pull * 0.014;
+        pos.z = THREE.MathUtils.lerp(0.03, 0.02, rollPose) + pull * 0.022;
+        rot.x = THREE.MathUtils.lerp(0.18, 0.10, rollPose) + pull * 0.075;
+        rot.y = THREE.MathUtils.lerp(0.12, 0.26, rollPose);
+        rot.z = THREE.MathUtils.lerp(-0.34, 0.32, rollPose);
+
         if (this.boltMesh) {
           this.boltMesh.position.z = this.boltRestPos.z + pull * 0.085;
-          moveRightHand(this.boltMesh.position.x + 0.022, this.boltMesh.position.y + 0.004, this.boltMesh.position.z + 0.014, 0.10, -0.16, -0.10, 'boltPinch');
+          if (this.rightHand) {
+            const bx = this.boltMesh.position.x + 0.028;
+            const by = this.boltMesh.position.y + 0.002;
+            const bz = this.boltMesh.position.z + 0.034;
+            const brx = 0.08, bry = -0.12, brz = -0.06;
+            if (rawT < 0.22) {
+              const appT = smooth(rawT / 0.22);
+              this.rightHand.position.set(
+                THREE.MathUtils.lerp(this.rightHandRestPos.x, bx, appT),
+                THREE.MathUtils.lerp(this.rightHandRestPos.y, by, appT),
+                THREE.MathUtils.lerp(this.rightHandRestPos.z, bz, appT)
+              );
+              this.rightHand.rotation.set(
+                THREE.MathUtils.lerp(this.rightHandRestRot.x, brx, appT),
+                THREE.MathUtils.lerp(this.rightHandRestRot.y, bry, appT),
+                THREE.MathUtils.lerp(this.rightHandRestRot.z, brz, appT)
+              );
+              setRightStyle(appT >= 0.25 ? 'boltPinch' : null);
+            } else if (rawT < 0.78) {
+              // Zero-lag rigid hook on AK right-side charging handle knob throughout stroke
+              this.rightHand.position.set(bx, by, bz);
+              this.rightHand.rotation.set(brx, bry, brz);
+              setRightStyle('boltPinch');
+            } else {
+              const retT = smooth((rawT - 0.78) / 0.22);
+              this.rightHand.position.set(
+                THREE.MathUtils.lerp(bx, this.rightHandRestPos.x, retT),
+                THREE.MathUtils.lerp(by, this.rightHandRestPos.y, retT),
+                THREE.MathUtils.lerp(bz, this.rightHandRestPos.z, retT)
+              );
+              this.rightHand.rotation.set(
+                THREE.MathUtils.lerp(brx, this.rightHandRestRot.x, retT),
+                THREE.MathUtils.lerp(bry, this.rightHandRestRot.y, retT),
+                THREE.MathUtils.lerp(brz, this.rightHandRestRot.z, retT)
+              );
+              setRightStyle(retT < 0.35 ? 'boltPinch' : null);
+            }
+          }
         }
       } else {
-        const startP = this.wasEmptyReload ? 0.90 : 0.60;
-        const t = smooth((p - startP) / (1 - startP));
-        if (this.spareMagMesh) this.spareMagMesh.visible = false;
+        const startP = this.wasEmptyReload ? 0.90 : 0.64;
+        const t = smooth(THREE.MathUtils.clamp((p - startP) / (1 - startP), 0, 1));
         if (this.magMesh) { this.magMesh.visible = true; this.magMesh.position.copy(this.magRestPos); this.magMesh.rotation.copy(this.magRestRot); }
         if (this.boltMesh) { this.boltMesh.position.copy(this.boltRestPos); }
-        releaseAkThumb();
         restLeftHand();
         restRightHand();
-        pos.x = THREE.MathUtils.lerp(this.wasEmptyReload ? -0.06 : -0.12, 0, t);
-        pos.y = THREE.MathUtils.lerp(this.wasEmptyReload ? 0.06 : 0.13, 0, t);
-        rot.x = THREE.MathUtils.lerp(this.wasEmptyReload ? 0.10 : 0.28, 0, t);
-        rot.y = THREE.MathUtils.lerp(this.wasEmptyReload ? 0.32 : 0.34, 0, t);
-        rot.z = THREE.MathUtils.lerp(this.wasEmptyReload ? 0.36 : -0.40, 0, t);
+        pos.x = THREE.MathUtils.lerp(this.wasEmptyReload ? -0.05 : -0.09, 0, t);
+        pos.y = THREE.MathUtils.lerp(this.wasEmptyReload ? 0.06 : 0.10, 0, t);
+        pos.z = THREE.MathUtils.lerp(this.wasEmptyReload ? 0.02 : 0.03, 0, t);
+        rot.x = THREE.MathUtils.lerp(this.wasEmptyReload ? 0.10 : 0.18, 0, t);
+        rot.y = THREE.MathUtils.lerp(this.wasEmptyReload ? 0.26 : 0.12, 0, t);
+        rot.z = THREE.MathUtils.lerp(this.wasEmptyReload ? 0.32 : -0.34, 0, t);
       }
       return;
     }

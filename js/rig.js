@@ -1193,9 +1193,9 @@
     foregrip:      { f: new THREE.Vector3( 0.24,  0.00, -0.97), back: new THREE.Vector3(-0.97,  0.00, -0.24), palmOffset: new THREE.Vector3(-0.020,  0.000, 0.005), curl: [1.18, 1.28, 0.85], thumb: 0.75 },
     supportRifle:  { f: new THREE.Vector3( 0.36,  0.18, -0.92), back: new THREE.Vector3(-0.34, -0.92, -0.18), palmOffset: new THREE.Vector3(-0.008, -0.024, 0.005), curl: [0.80, 0.90, 0.62], thumb: 0.45 },
     plate:         { f: new THREE.Vector3( 0.06, -0.22, -0.97), back: new THREE.Vector3(-0.18,  0.96, -0.20), palmOffset: new THREE.Vector3( 0.000,  0.012, 0.004), curl: [0.68, 0.78, 0.55], thumb: 0.55 },
-    // Dedicated reload & plating IK grip styles (calibrated to 8.9cm anatomical palm!)
-    magGrip:       { f: new THREE.Vector3( 0.44, -0.12, -0.89), back: new THREE.Vector3(-0.89,  0.10, -0.44), palmOffset: new THREE.Vector3(-0.014,  0.000, 0.004), curl: [1.26, 1.38, 0.88], thumb: 0.88 },
-    akMagGrip:     { f: new THREE.Vector3( 0.50, -0.08, -0.86), back: new THREE.Vector3(-0.86,  0.12, -0.50), palmOffset: new THREE.Vector3(-0.016,  0.000, 0.004), curl: [1.30, 1.42, 0.90], thumb: 0.90 },
+    // Dedicated reload & plating IK grip styles (calibrated to sculpted 8.9cm anatomical glove palm!)
+    magGrip:       { f: new THREE.Vector3( 0.30, -0.12, -0.95), back: new THREE.Vector3(-0.95,  0.06, -0.30), palmOffset: new THREE.Vector3(-0.024,  0.002, 0.008), curl: [1.22, 1.32, 0.86], thumb: 0.72 },
+    akMagGrip:     { f: new THREE.Vector3( 0.08, -0.02, -0.996), back: new THREE.Vector3(-0.996,  0.04, -0.08), palmOffset: new THREE.Vector3(-0.027,  0.004, 0.009), curl: [1.06, 1.12, 0.78], thumb: 0.70 },
     boltPinch:     { f: new THREE.Vector3(-0.30,  0.06, -0.95), back: new THREE.Vector3( 0.80,  0.54, -0.24), palmOffset: new THREE.Vector3( 0.014,  0.004, 0.004), curl: [1.36, 1.48, 0.92], thumb: 0.92 },
     leftBoltPinch: { f: new THREE.Vector3( 0.32, -0.12, -0.94), back: new THREE.Vector3(-0.22,  0.96, -0.18), palmOffset: new THREE.Vector3(-0.012,  0.008, 0.004), curl: [1.24, 1.36, 0.86], thumb: 0.88 },
     slapOpen:      { f: new THREE.Vector3( 0.32, -0.15, -0.94), back: new THREE.Vector3(-0.25,  0.96, -0.12), palmOffset: new THREE.Vector3(-0.006,  0.014, 0.004), curl: [0.16, 0.18, 0.12], thumb: 0.28 },
