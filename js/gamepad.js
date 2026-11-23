@@ -212,7 +212,10 @@ class GamepadController {
 
   update(dt, ctx) {
     const pad = this._getPad();
-    if (!pad) return;
+    if (!pad) {
+      if (ctx && ctx.player) ctx.player.padReviveHeld = false;
+      return;
+    }
 
     const { player, weaponSystem, throwableSystem, ui, actions } = ctx;
     const lsDz = (typeof window.CONTROLLER_LS_DEADZONE === 'number') ? window.CONTROLLER_LS_DEADZONE : this.deadzone;
@@ -245,6 +248,7 @@ class GamepadController {
     const bJump = gb.jump ?? 0;
     const bCrouch = gb.crouch ?? 1;
     const bInteract = gb.interactReload ?? 2;
+    const bRevive = gb.revive ?? 2; // Square (PS) / X (Xbox) default for reviving, self-revive & tourniquet
     const bSwap = gb.swapPlates ?? 3;
     const bTactical = gb.tactical ?? 4;
     const bLethal = gb.lethal ?? 5;
@@ -252,6 +256,10 @@ class GamepadController {
     const bMedkit = gb.medkit ?? 12;
     const bInspect = gb.inspect ?? 14;
     const bKillstreak = gb.killstreak ?? 15;
+
+    if (player) {
+      player.padReviveHeld = !ctx.isModalOpen && !ctx.isPaused && !!this._isDown(pad, bRevive);
+    }
 
     // Clear any button release latches once the player physically releases the button
     if (this._lockUntilRelease && this._lockUntilRelease.size > 0) {
@@ -519,9 +527,12 @@ class GamepadController {
       }
     }
 
-    // === X / SQUARE: LOOT / INTERACT OR RELOAD ===
+    // === X / SQUARE: LOOT / INTERACT / REVIVE OR RELOAD ===
     if (this._justPressed(pad, bInteract)) {
-      if (actions.interact && actions.interact()) {
+      const reviveSharesBtn = (bInteract === bRevive);
+      if (reviveSharesBtn && (player.isDowned || player.dead || (actions.hasRevivableAlly && actions.hasRevivableAlly()))) {
+        // Holding Square/X while downed (Self-Revive / Tourniquet) or near a downed ally (Revive) takes priority over Reload!
+      } else if (actions.interact && actions.interact()) {
         // interacted with nearby crate/corpse
       } else {
         player.startReload();

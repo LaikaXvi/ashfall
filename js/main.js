@@ -3086,10 +3086,10 @@
       player.beingDragged = false;
       player._remoteReviveExpire = 0;
     }
-    // Self-Revive Kit OR Tourniquet Self-Revive (sacrifices 25 max HP into disabled red segment):
+    // Self-Revive Kit FIRST, then Tourniquet (only if NOT already wounded from a prior tourniquet!):
     if (player && player.isDowned && !player.dead) {
       const canSelfRevive = !player.beingRevivedBy || player.beingRevivedBy === 'SELF-REVIVE' || player.beingRevivedBy === 'TOURNIQUET';
-      const holdingInteract = !isModalOpen && !(devConsole && devConsole.isOpen) && player.keys[interactKey];
+      const holdingInteract = !isModalOpen && !(devConsole && devConsole.isOpen) && !!(player.keys[interactKey] || player.padReviveHeld);
       if (player.selfRevive && holdingInteract && canSelfRevive) {
         if (!player._selfReviveSfx) {
           player._selfReviveSfx = true;
@@ -3110,7 +3110,7 @@
           ui.showCenterToast('SELF-REVIVE COMPLETE', '#69f0ae');
           ui.addFeedMessage('Used Self-Revive Kit', '#69f0ae');
         }
-      } else if (!player.selfRevive && holdingInteract && canSelfRevive && (player.disabledHp || 0) < (player.maxHp - 25)) {
+      } else if (!player.selfRevive && holdingInteract && canSelfRevive && (player.disabledHp || 0) <= 0) {
         if (!player._selfReviveSfx) {
           player._selfReviveSfx = true;
           if (window.soundEngine && window.soundEngine.playReviveStart) {
@@ -3126,8 +3126,8 @@
             try { window.soundEngine.playReviveComplete(); } catch (e) {}
           }
           if (mpSession && mpSession.active && mpSession.sendStateNow) mpSession.sendStateNow(player);
-          ui.showCenterToast('TOURNIQUET APPLIED — MAX HP REDUCED', '#ffca28');
-          ui.addFeedMessage('Applied Tourniquet (-25 Max HP) — Use Medkit to restore permanently', '#ffca28');
+          ui.showCenterToast('TOURNIQUET APPLIED — WOUNDED (-25 MAX HP)', '#ffca28');
+          ui.addFeedMessage('Applied Tourniquet (-25 Max HP) — Cannot tourniquet again while wounded (Heal with Medkit)', '#ffca28');
         }
       } else if (player.beingRevivedBy === 'SELF-REVIVE' || player.beingRevivedBy === 'TOURNIQUET') {
         player.beingRevivedBy = null;
@@ -3137,7 +3137,7 @@
       return;
     }
 
-    const holdingRevive = !!(player && !player.isDowned && !player.dead && !isModalOpen && !(devConsole && devConsole.isOpen) && player.keys[interactKey]);
+    const holdingRevive = !!(player && !player.isDowned && !player.dead && !isModalOpen && !(devConsole && devConsole.isOpen) && (player.keys[interactKey] || player.padReviveHeld));
     const candidate = activeReviveAlly || findRevivableAlly();
 
     if (holdingRevive && candidate && (candidate.isDowned || candidate.dead)) {
@@ -3360,9 +3360,14 @@
     // Priority: Revive downed or fallen ally
     const revAlly = findRevivableAlly();
     if (revAlly) {
+      const isGp = window._lastInputMode === 'gamepad';
+      const revBind = (window.GAMEPAD_BINDS && window.GAMEPAD_BINDS.revive != null) ? window.GAMEPAD_BINDS.revive : 2;
+      const revBtn = isGp
+        ? `[${ui && ui._formatGamepadButton ? ui._formatGamepadButton(revBind) : 'X / Square'}]`
+        : `[${ui && ui._formatKeyCode ? ui._formatKeyCode((window.KEYBINDS && window.KEYBINDS.interact) || 'KeyE') : 'E'}]`;
       textEl.textContent = revAlly.dead
-        ? `Hold [E] Revive Fallen ${revAlly.name} (Slow)`
-        : `Hold [E] Revive ${revAlly.name} (Move to Drag)`;
+        ? `Hold ${revBtn} Revive Fallen ${revAlly.name} (Slow)`
+        : `Hold ${revBtn} Revive ${revAlly.name} (Move to Drag)`;
       promptEl.classList.remove('hidden');
       return;
     }
@@ -3593,6 +3598,7 @@
           closeModal: () => closeLootAndResume(),
           fire: () => firePlayerWeapon(),
           onThrowableHit,
+          hasRevivableAlly: () => !!findRevivableAlly(),
           interact: () => openNearbyInteractable(),
           activateFieldUpgrade: () => {
             const fuMsg = player.activateFieldUpgrade ? player.activateFieldUpgrade() : null;

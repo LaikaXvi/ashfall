@@ -1634,33 +1634,29 @@ class WeaponSystem {
   }
 
   _ensureLedgeHands() {
-    if (this.ledgeHandsGroup || !this.scene) return;
-    // Anchored in WORLD SPACE on the actual ledge lip so looking around only rotates the head!
+    if (this.ledgeHandsGroup || !this.vmCamera) return;
+    // Mounted in vmCamera so RiggedFPArms drives the actual sculpted character model arms & gloved hands,
+    // while update() transforms the world-space ledge lip into vmCamera space so hands stay anchored on the ledge!
     const root = new THREE.Group();
 
     const makeArm = (isRight) => {
       const side = isRight ? 1 : -1;
-      const g = new THREE.Group();
-      this._buildVisibleHands = true;
-      const hand = this._createHand(isRight, 'grip');
-      hand.scale.setScalar(1.18);
-      hand.position.set(0, 0.025, -0.04);
-      hand.rotation.set(-0.22, side * -0.06, side * 0.04);
-      g.add(hand);
-      g.position.set(side * 0.24, 0, 0);
+      const styleName = isRight ? 'ledgeGrabR' : 'ledgeGrabL';
+      const hand = this._createHand(isRight, styleName);
+      hand.userData.handStyle = styleName;
+      hand.position.set(side * 0.21, 0.020, -0.025);
+      hand.rotation.set(-0.18, side * -0.06, side * 0.04);
 
-      // Reuse exact cylindrical tactical forearm from _createForearm(), aimed from shoulder -> wrist!
       const forearm = this._createForearm();
-      this._buildVisibleHands = false;
-      forearm.scale.set(1.15, 1.15, 1.0);
-      root.add(g, forearm);
-      return { group: g, hand, forearm, side };
+      forearm.userData.fpSide = isRight ? 'right' : 'left';
+      root.add(hand, forearm);
+      return { hand, forearm, side, styleName };
     };
 
     const leftArm = makeArm(false);
     const rightArm = makeArm(true);
     root.visible = false;
-    this.scene.add(root);
+    this.vmCamera.add(root);
     this.ledgeHandsGroup = root;
     this.ledgeHandsParts = { leftArm, rightArm };
   }
@@ -3214,36 +3210,47 @@ class WeaponSystem {
     } else {
       if (this.downedLegsGroup) this.downedLegsGroup.visible = false;
       if (player.ledgeState) {
-        // Two-handed progressive ledge-grab: stow weapon & show both gloved hands gripping & hoisting over the ledge!
+        // Two-handed progressive ledge-grab: stow weapon & drive the sculpted character model arms via RiggedFPArms!
         this.viewmodelGroup.visible = false;
         if (this.plateRig) this.plateRig.visible = false;
         if (this.medRig) this.medRig.visible = false;
         if (this.tacFistRig) this.tacFistRig.visible = false;
         if (this.reviveRig) this.reviveRig.visible = false;
-        if (this.ledgeHandsGroup && this.ledgeHandsParts) {
+        if (this.ledgeHandsGroup && this.ledgeHandsParts && this.vmCamera && this.camera) {
           this.ledgeHandsGroup.visible = !player.isThirdPerson;
           const ls = player.ledgeState;
           const edge = ls.edgePos || ls.hangPos;
-          // Anchor directly to the world-space ledge lip & ledge orientation (independent of player's head look!)
-          this.ledgeHandsGroup.rotation.set(0, ls.ledgeYaw || 0, 0);
           const grabOffset = ls.phase === 'grabbing' ? (1 - Math.pow(1 - ls.grabT, 2)) : 1;
-          this.ledgeHandsGroup.position.set(
+          const ledgeWorldPos = new THREE.Vector3(
             edge.x - (ls.inwardX || 0) * THREE.MathUtils.lerp(0.18, 0.02, grabOffset),
             edge.y + THREE.MathUtils.lerp(-0.28, 0.0, grabOffset),
             edge.z - (ls.inwardZ || 0) * THREE.MathUtils.lerp(0.18, 0.02, grabOffset)
           );
-          // Aim each circular forearm cleanly from the player's torso shoulders (in ledge-local space) straight to the anchored wrists!
+          const ledgeWorldQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, ls.ledgeYaw || 0, 0));
+
+          // Sync vmCamera to live camera transform & place ledgeHandsGroup in vmCamera space anchored to the world ledge lip
+          this.camera.updateMatrixWorld(true);
+          this.vmCamera.position.copy(this.camera.position);
+          this.vmCamera.quaternion.copy(this.camera.quaternion);
+          this.vmCamera.updateMatrixWorld(true);
+          const camQInv = this.vmCamera.quaternion.clone().invert();
+          this.ledgeHandsGroup.position.copy(this.vmCamera.worldToLocal(ledgeWorldPos));
+          this.ledgeHandsGroup.quaternion.copy(camQInv).multiply(ledgeWorldQuat);
+
+          // Aim sculpted character forearms from torso shoulders straight to the ledge-anchored gloved wrists
           const p = ls.pullProgress || 0;
           const pEase = p * p * (3 - 2 * p);
-          const shY = THREE.MathUtils.lerp(-0.36, 0.42, pEase);
-          const shZ = THREE.MathUtils.lerp(0.46, 0.14, pEase);
-          const strain = ls.phase === 'pulling' ? Math.sin(p * Math.PI * 3) * 0.015 : 0;
+          const shY = THREE.MathUtils.lerp(-0.34, 0.34, pEase);
+          const shZ = THREE.MathUtils.lerp(0.42, 0.16, pEase);
+          const strain = ls.phase === 'pulling' ? Math.sin(p * Math.PI * 3) * 0.014 : 0;
           for (const arm of [this.ledgeHandsParts.leftArm, this.ledgeHandsParts.rightArm]) {
-            const shoulderLocal = new THREE.Vector3(arm.side * 0.27, shY + (arm.side * strain), shZ);
-            const wristLocal = new THREE.Vector3(arm.side * 0.24, 0.01, 0.0);
+            arm.hand.position.set(arm.side * 0.21, 0.020 + arm.side * strain * 0.5, -0.025);
+            arm.hand.rotation.set(-0.18 - pEase * 0.14, arm.side * -0.06, arm.side * 0.04);
+            if (arm.hand.userData) arm.hand.userData.activeStyle = arm.styleName;
+            const shoulderLocal = new THREE.Vector3(arm.side * 0.25, shY + (arm.side * strain), shZ);
+            const wristLocal = new THREE.Vector3(arm.side * 0.21, 0.012, 0.015);
+            this._currentAimHand = arm.hand;
             this._aimArm(arm.forearm, shoulderLocal, wristLocal);
-            arm.forearm.scale.x = 1.15;
-            arm.forearm.scale.y = 1.15;
           }
         }
         return;

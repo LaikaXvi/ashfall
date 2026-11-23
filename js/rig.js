@@ -1210,7 +1210,9 @@
     syringePlunge:  { f: new THREE.Vector3(-0.32, -0.24, -0.91), back: new THREE.Vector3( 0.91,  0.24, -0.32), palmOffset: new THREE.Vector3( 0.016,  0.000, 0.004), curl: [1.34, 1.46, 0.92], thumb: 1.00 },
     syringeCapPull: { f: new THREE.Vector3( 0.46,  0.06, -0.88), back: new THREE.Vector3(-0.60,  0.72, -0.35), palmOffset: new THREE.Vector3(-0.012,  0.004, 0.004), curl: [1.18, 1.30, 0.84], thumb: 0.82 },
     grabReach:      { f: new THREE.Vector3( 0.28, -0.26, -0.92), back: new THREE.Vector3(-0.36,  0.88, -0.30), palmOffset: new THREE.Vector3(-0.008,  0.010, 0.004), curl: [0.24, 0.28, 0.20], thumb: 0.30 },
-    grabClose:      { f: new THREE.Vector3( 0.32, -0.18, -0.93), back: new THREE.Vector3(-0.46,  0.82, -0.34), palmOffset: new THREE.Vector3(-0.010,  0.006, 0.004), curl: [1.28, 1.40, 0.90], thumb: 0.88 }
+    grabClose:      { f: new THREE.Vector3( 0.32, -0.18, -0.93), back: new THREE.Vector3(-0.46,  0.82, -0.34), palmOffset: new THREE.Vector3(-0.010,  0.006, 0.004), curl: [1.28, 1.40, 0.90], thumb: 0.88 },
+    ledgeGrabL:     { f: new THREE.Vector3( 0.08, -0.32, -0.94), back: new THREE.Vector3(-0.14,  0.94, -0.31), palmOffset: new THREE.Vector3(-0.008,  0.012, 0.004), curl: [1.14, 1.26, 0.82], thumb: 0.68 },
+    ledgeGrabR:     { f: new THREE.Vector3(-0.08, -0.32, -0.94), back: new THREE.Vector3( 0.14,  0.94, -0.31), palmOffset: new THREE.Vector3( 0.008,  0.012, 0.004), curl: [1.14, 1.26, 0.82], thumb: 0.68 }
   };
 
   function isEffectivelyVisible(obj, stopAt) {

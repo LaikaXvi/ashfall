@@ -198,6 +198,10 @@ class Enemy {
       this.healingKind = null;
       this.selfReviveTimer = 0;
       this.tourniquetTimer = 0;
+      this.tourniquetUsed = false;          // Enemy operators strictly get ONE tourniquet usage
+      this.proneDecisionCooldown = 0;       // Prevents re-rolling prone on every single bullet in a burst
+      this.reviveInterruptCooldown = 0;     // Cooldown after taking damage interrupts an active revive
+      this._revivingMate = null;
       this.platingTimer = 0;
       this.tacStamina = 100;
       this.isTacSprinting = false;
@@ -593,12 +597,30 @@ class Enemy {
 
     if (this.isDowned) {
       if (attackerInfo) this.downedBy = attackerInfo;
+      // Taking damage interrupts any in-progress self-revive, tourniquet, or squadmate revive!
+      this.selfReviveTimer = 0;
+      this.tourniquetTimer = 0;
+      this.reviveProgress = 0;
+      this.beingRevivedBy = null;
+      this.reviveInterruptCooldown = 2.6;
       this.downedHp -= amount;
       if (this.downedHp <= 0) {
         this.die();
         return true;
       }
       return false;
+    }
+
+    // Taking damage immediately interrupts an enemy operator reviving a downed/fallen squadmate!
+    if (this.isOperator && (this._isRevivingAlly || this._revivingMate)) {
+      if (this._revivingMate && this._revivingMate.beingRevivedBy === this.name) {
+        this._revivingMate.beingRevivedBy = null;
+        this._revivingMate.reviveProgress = 0;
+      }
+      this._revivingMate = null;
+      this._isRevivingAlly = false;
+      this._reviveProgress = 0;
+      this.reviveInterruptCooldown = 3.5;
     }
 
     // Operators & Armored Boss Guards absorb incoming fire with their vest armor just like players!
@@ -626,7 +648,7 @@ class Enemy {
         this.fireTimer = 0.32;
         this._showAlertIndicator('!', 2.2);
       }
-      // Immediately turn toward the attacker damaging them & seek cover (or drop prone if no cover exists!)
+      // Immediately turn toward the attacker damaging them & seek cover (percentage chance to go prone ONLY if no cover exists!)
       const dxA = attackerPos.x - this.position.x;
       const dzA = attackerPos.z - this.position.z;
       if (this.group && (dxA * dxA + dzA * dzA) > 0.01) {
@@ -638,10 +660,13 @@ class Enemy {
           this.coverSpot = cov;
           this.isPeeking = false;
           this.isProne = false;
-        } else {
-          // No nearby cover: drop prone immediately and fight back!
-          this.isProne = true;
-          this.proneTimer = 4.5;
+        } else if (!this.isProne && (this.proneDecisionCooldown || 0) <= 0) {
+          // No nearby cover available: roll a 30% chance to drop prone (with cooldown so rapid fire doesn't re-roll every bullet!)
+          this.proneDecisionCooldown = 5.0;
+          if (Math.random() < 0.30) {
+            this.isProne = true;
+            this.proneTimer = 3.8 + Math.random() * 1.4;
+          }
         }
       }
     }
@@ -679,6 +704,16 @@ class Enemy {
 
   die() {
     if (this.dead) return;
+    if (this._revivingMate) {
+      if (this._revivingMate.beingRevivedBy === this.name) {
+        this._revivingMate.beingRevivedBy = null;
+        this._revivingMate.reviveProgress = 0;
+      }
+      this._revivingMate = null;
+    }
+    this._isRevivingAlly = false;
+    this.selfReviveTimer = 0;
+    this.tourniquetTimer = 0;
     this.dead = true;
     this.isDowned = false;
     this.state = 'DEAD';
@@ -2109,10 +2144,13 @@ class Enemy {
     }
 
     // Downed operator: pauses bleedout while being revived/dragged by a squadmate; never shows revive icons to player
+    if (this.proneDecisionCooldown > 0) this.proneDecisionCooldown = Math.max(0, this.proneDecisionCooldown - dt);
+    if (this.reviveInterruptCooldown > 0) this.reviveInterruptCooldown = Math.max(0, this.reviveInterruptCooldown - dt);
     if (this.isDowned) {
       if (this.bleedSprite) this.bleedSprite.visible = false;
       if (!this.beingRevivedBy) {
-        // Player-identical Self-Revive & Tourniquet self-recovery for downed AI Operators!
+        const hasSelfRevive = !!(this.operatorEquipment && this.operatorEquipment.selfRevive === 'self_revive');
+        // Player-identical Self-Revive & Single-Use Tourniquet self-recovery for downed AI Operators!
         if (this.isOperator && this.selfReviveTimer > 0) {
           this.selfReviveTimer -= dt;
           this.updateVisualAnim(dt, false, 0);
@@ -2128,8 +2166,9 @@ class Enemy {
           this.updateVisualAnim(dt, false, 0);
           if (this.tourniquetTimer <= 0) {
             this.tourniquetTimer = 0;
-            // Tourniquet sacrifices 35 max HP into disabledHp (identical to player!)
-            this.disabledHp = Math.min(60, (this.disabledHp || 0) + 35);
+            // Enemy operators only get ONE tourniquet usage; sacrifices 25 max HP into disabledHp (wounded)!
+            this.tourniquetUsed = true;
+            this.disabledHp = Math.min(this.maxHp - 25, (this.disabledHp || 0) + 25);
             this.revive(this.getEffectiveMaxHp());
           }
           return;
@@ -2137,13 +2176,17 @@ class Enemy {
 
         this.downedBleedTimer -= dt;
         const timeDown = this.downedBleedMax - this.downedBleedTimer;
-        if (this.isOperator && this.operatorEquipment && this.operatorEquipment.selfRevive === 'self_revive' && timeDown >= 1.2) {
-          this.selfReviveTimer = 4.0;
-          return;
-        }
-        if (this.isOperator && timeDown >= 5.2 && (this.disabledHp || 0) < 60) {
-          this.tourniquetTimer = 3.2;
-          return;
+        if (this.isOperator && (this.reviveInterruptCooldown || 0) <= 0) {
+          if (hasSelfRevive && timeDown >= 1.2) {
+            // Always use Self-Revive Kit BEFORE a tourniquet!
+            this.selfReviveTimer = 4.0;
+            return;
+          }
+          if (!hasSelfRevive && !this.tourniquetUsed && (this.disabledHp || 0) <= 0 && timeDown >= 4.2) {
+            // Single tourniquet usage only — never allowed again once already used or wounded!
+            this.tourniquetTimer = 3.2;
+            return;
+          }
         }
 
         const threat = this.lastKnownPlayerPos || (player && !player.invisible && player.position);
@@ -2252,10 +2295,12 @@ class Enemy {
       }
 
       // 1. Revive downed/dead ally whenever NO visible threat is found (or if already within 2.4m completing a revive!)
+      //    Cannot revive while recently interrupted by incoming damage!
       const alreadyReviving = reviveMate && reviveMate.beingRevivedBy === this.name && this.position.distanceTo(reviveMate.position) < 2.6;
-      if (reviveMate && (!target || alreadyReviving)) {
+      if (reviveMate && (this.reviveInterruptCooldown || 0) <= 0 && (!target || alreadyReviving)) {
         const dMate = Math.hypot(reviveMate.position.x - this.position.x, reviveMate.position.z - this.position.z);
         if (dMate > 2.1) {
+          this._revivingMate = null;
           // Pop smoke on approach if exposed and carrying smoke!
           if (this.smokeLeft > 0 && this.grenadeCooldown <= 0 && dMate < 18) {
             this.smokeLeft -= 1;
@@ -2266,6 +2311,7 @@ class Enemy {
           return;
         }
         const reviveDur = reviveMate.dead ? 7.5 : 4.0;
+        this._revivingMate = reviveMate;
         reviveMate.beingRevivedBy = this.name;
         reviveMate.reviveProgress = Math.min(1, (reviveMate.reviveProgress || 0) + dt / reviveDur);
         this.group.rotation.y = Math.atan2(reviveMate.position.x - this.position.x, reviveMate.position.z - this.position.z);
@@ -2297,9 +2343,16 @@ class Enemy {
           this.updateVisualAnim(dt, false, 0);
         }
         if (reviveMate.reviveProgress >= 1) {
+          this._revivingMate = null;
           reviveMate.revive(reviveMate.dead ? 55 : 65, true);
         }
         return;
+      } else if (this._revivingMate) {
+        if (this._revivingMate.beingRevivedBy === this.name) {
+          this._revivingMate.beingRevivedBy = null;
+          this._revivingMate.reviveProgress = 0;
+        }
+        this._revivingMate = null;
       }
 
       // 2. Team Support (when no immediate firefight): Drop Medkits for injured allies & Share Armor Plates with unplated allies!

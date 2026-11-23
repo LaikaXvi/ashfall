@@ -110,6 +110,7 @@ window.DEFAULT_GAMEPAD_BINDS = {
   jump: 0,
   crouch: 1,
   interactReload: 2,
+  revive: 2,
   swapPlates: 3,
   tactical: 4,
   lethal: 5,
@@ -4206,6 +4207,7 @@ class GameUI {
       ['jump', 'Jump / Stand / Slide-Cancel'],
       ['crouch', 'Crouch / Slide / Hold Prone'],
       ['interactReload', 'Loot / Interact / Reload'],
+      ['revive', 'Hold: Revive / Self-Revive / Tourniquet'],
       ['swapPlates', 'Tap: Swap Weapon · Hold: Armor Plates'],
       ['lethal', 'Lethal Throwable (LB+RB: Field Upgrade)'],
       ['tactical', 'Tactical Throwable (LB+RB: Field Upgrade)'],
@@ -5899,6 +5901,13 @@ class GameUI {
     const fillEl = document.getElementById('revive-bar-fill');
     const subEl = document.getElementById('revive-sub');
 
+    const isGp = window._lastInputMode === 'gamepad';
+    const revBind = (window.GAMEPAD_BINDS && window.GAMEPAD_BINDS.revive != null) ? window.GAMEPAD_BINDS.revive : 2;
+    const revKeyLabel = isGp
+      ? `[${this._formatGamepadButton(revBind)}]`
+      : `[${this._formatKeyCode((window.KEYBINDS && window.KEYBINDS.interact) || 'KeyE')}]`;
+    const moveLabel = isGp ? 'Left Stick' : 'WASD';
+
     if (revivingAlly) {
       banner.classList.remove('hidden');
       banner.classList.add('reviving');
@@ -5910,8 +5919,8 @@ class GameUI {
       timerEl.textContent = `${pct}%`;
       fillEl.style.width = `${pct}%`;
       subEl.textContent = isSlow
-        ? 'Hold [E] — Reviving eliminated teammate takes longer'
-        : 'Hold [E] — Move with WASD to drag teammate into cover';
+        ? `Hold ${revKeyLabel} — Reviving eliminated teammate takes longer`
+        : `Hold ${revKeyLabel} — Move with ${moveLabel} to drag teammate into cover`;
       return;
     }
 
@@ -5923,7 +5932,7 @@ class GameUI {
         const pct = Math.round((player.reviveProgress || 0) * 100);
         if (player.beingRevivedBy === 'TOURNIQUET') {
           titleEl.textContent = 'APPLYING TOURNIQUET (-25 MAX HP)';
-          subEl.textContent = 'Hold [E] — Sacrifices 25 Max HP (use Medkit to restore permanently)';
+          subEl.textContent = `Hold ${revKeyLabel} — Sacrifices 25 Max HP (use Medkit to restore permanently)`;
         } else {
           titleEl.textContent = player.beingDragged
             ? `DRAGGED TO COVER BY ${player.beingRevivedBy}`
@@ -5937,12 +5946,12 @@ class GameUI {
         titleEl.textContent = 'DOWNED — CRAWL TO COVER';
         timerEl.textContent = `${Math.max(0, player.downedBleedTimer).toFixed(1)}s`;
         fillEl.style.width = `${pct}%`;
-        const canTourniquet = (player.disabledHp || 0) < (player.maxHp - 25);
+        const canTourniquet = (player.disabledHp || 0) <= 0;
         subEl.textContent = player.selfRevive
-          ? 'Hold [E] to Self-Revive · WASD to crawl to cover'
+          ? `Hold ${revKeyLabel} to Self-Revive · ${moveLabel} to crawl to cover`
           : (canTourniquet
-            ? 'Hold [E] Apply Tourniquet (-25 Max HP) · WASD to crawl to cover'
-            : 'Use WASD to crawl · Ally must revive before bleedout expires');
+            ? `Hold ${revKeyLabel} Apply Tourniquet (-25 Max HP) · ${moveLabel} to crawl to cover`
+            : `Wounded from Tourniquet · Ally must revive (${moveLabel} to crawl to cover)`);
       }
       return;
     }

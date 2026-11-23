@@ -1646,17 +1646,20 @@ class Player {
     const reserve = this.getReserveAmmo(def.ammoType);
     // Allow resuming an interrupted staged reload (Stage 1: insert mag; Stage 2: rack bolt even if mag is full / 0 reserve!)
     if (stage >= 2) {
+      this.isTacSprinting = false;
       this.weaponSystem.startReload(def, true, 0, slotObj);
       return;
     }
     if (stage === 1) {
       if (reserve <= 0 && !window.DEV_MODE) return;
+      this.isTacSprinting = false;
       const shellsToLoad = Math.min(Math.max(1, def.magSize - slotObj.mag), Math.max(1, reserve));
       this.weaponSystem.startReload(def, !!slotObj.reloadWasEmpty || slotObj.mag === 0, shellsToLoad, slotObj);
       return;
     }
     if (slotObj.mag >= def.magSize) return;
     if (reserve <= 0 && !window.DEV_MODE) return;
+    this.isTacSprinting = false;
     const shellsToLoad = Math.min(def.magSize - slotObj.mag, window.DEV_MODE ? (def.magSize - slotObj.mag) : reserve);
     this.weaponSystem.startReload(def, slotObj.mag === 0, shellsToLoad, slotObj);
   }
@@ -1790,6 +1793,8 @@ class Player {
 
   applyTourniquet() {
     if (!this.isDowned || this.dead) return false;
+    // Once tourniqueted & wounded (disabledHp > 0), an operator may not tourniquet again until healed with a Medkit!
+    if ((this.disabledHp || 0) > 0) return false;
     // Sacrifice 25 max HP (disabled red health bar section) to get back up immediately!
     this.disabledHp = Math.min(this.maxHp - 25, (this.disabledHp || 0) + 25);
     this.tempHealthRestored = Math.min(this.tempHealthRestored || 0, this.disabledHp);
@@ -2276,10 +2281,13 @@ class Player {
     const isDoubleTap = (now - this.lastShiftPressTime) < 380;
     this.lastShiftPressTime = now;
 
-    // Double-tap Shift (or tap Shift while already sprinting) triggers DMZ Tactical Sprint!
+    // Double-tap Shift (or tap Shift while already sprinting) triggers DMZ Tactical Sprint & interrupts reloads!
     if ((isDoubleTap || this.isSprinting) && !this.isADS && !this.isSliding && this.stamina >= 12) {
       this.stance = 'stand';
       this.isTacSprinting = true;
+      if (this.weaponSystem && this.weaponSystem.isReloading) {
+        this.weaponSystem.cancelReload();
+      }
     }
   }
 
@@ -2570,7 +2578,7 @@ class Player {
       this.stance = 'stand';
     }
 
-    const busyHands = !!(this.weaponSystem && (this.weaponSystem.isReloading || this.weaponSystem.isPlating || this.weaponSystem.isHealing));
+    const busyHands = !!(this.weaponSystem && (this.weaponSystem.isPlating || this.weaponSystem.isHealing));
 
     // Dead (eliminated, awaiting slow ally revive): corpse frozen on terrain; camera spectates living ally in main.js!
     if (this.dead) {
@@ -2670,8 +2678,11 @@ class Player {
       const wantsSprint = !!(wantsSprintInput && this.stance === 'stand');
       if (wantsSprint) {
         this.isSprinting = true;
-        // DMZ Tactical Sprint drains dedicated Tac-Sprint stamina; drops smoothly to infinite normal sprint at 0
+        // DMZ Tactical Sprint drains dedicated Tac-Sprint stamina & interrupts active reloads (preserving staged progress!)
         if (this.isTacSprinting && !busyHands && this.stamina > 0) {
+          if (this.weaponSystem && this.weaponSystem.isReloading) {
+            this.weaponSystem.cancelReload();
+          }
           this.stamina = Math.max(0, this.stamina - 32 * dt);
           this.tacSprintRegenDelay = 0.85;
           if (this.stamina <= 0) {
