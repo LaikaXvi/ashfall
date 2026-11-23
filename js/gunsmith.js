@@ -453,6 +453,12 @@ class GunsmithController {
     const effRecoilCtrl = Math.round((1 - Math.min(0.08, eff.recoil) / 0.09) * 100);
     const baseAcc = Math.round((1 - Math.min(0.06, base.spread) / 0.07) * 100);
     const effAcc = Math.round((1 - Math.min(0.06, eff.spread) / 0.07) * 100);
+    const baseSway = base.idleSway != null ? base.idleSway : 1.0;
+    const effSway = eff.idleSway != null ? eff.idleSway : baseSway;
+    const baseStab = Math.round(THREE.MathUtils.clamp((1.95 - baseSway) / 1.55, 0.12, 0.98) * 100);
+    const effStab = Math.round(THREE.MathUtils.clamp((1.95 - effSway) / 1.55, 0.12, 0.98) * 100);
+    const adsMs = Math.round((eff.adsTime || base.adsTime || 0.24) * 1000);
+    const stfMs = Math.round((eff.sprintToFire || base.sprintToFire || 0.16) * 1000);
 
     const makeBar = (label, valText, pct, delta = 0) => {
       const deltaHtml = delta !== 0
@@ -469,11 +475,14 @@ class GunsmithController {
     container.innerHTML =
       makeBar('DAMAGE', `${totalDmg}`, (totalDmg / 180) * 100) +
       makeBar('RECOIL CONTROL', `${effRecoilCtrl}`, effRecoilCtrl, effRecoilCtrl - baseRecoilCtrl) +
+      makeBar('AIMING STABILITY', `${effStab}`, effStab, effStab - baseStab) +
       makeBar('HIPFIRE ACCURACY', `${effAcc}`, effAcc, effAcc - baseAcc) +
       makeBar('MAGAZINE CAPACITY', `${eff.magSize}`, (eff.magSize / 45) * 100, eff.magSize - base.magSize) +
       `<div class="gs-tags">
         <span class="ammo-chip">${eff.suppressed ? 'SUPPRESSED' : 'UNSUPPRESSED'}</span>
         <span class="ammo-chip">${eff.hasLaser ? 'PEQ-15 LASER' : 'NO LASER'}</span>
+        <span class="ammo-chip">ADS: ${adsMs}ms</span>
+        <span class="ammo-chip">STF: ${stfMs}ms</span>
         <span class="ammo-chip">ZOOM: ${(eff.adsZoom || 1.25).toFixed(eff.adsZoom >= 2 ? 1 : 2).replace(/\.0$/, '')}x</span>
         <span class="ammo-chip">ADS FOV: ${eff.adsFov}°</span>
       </div>`;

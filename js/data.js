@@ -1,7 +1,7 @@
 // Game Item Database, 5-Tier Loot Rarity, Logical POI Tables, Workbench & Attachments
 // IMPORTANT: Update GAME_DATA.VERSION (and ?v= cache-busters in index.html) with EVERY new commit!
 window.GAME_DATA = {
-  VERSION: 'v2.56',
+  VERSION: 'v2.57',
   OPERATOR_STATS: {
     maxHp: 75,
     plateArmor: 35,
@@ -46,6 +46,13 @@ window.GAME_DATA = {
       recoil: 0.025,
       adsFov: 60,
       adsZoom: 1.25,
+      adsTime: 0.145,
+      sprintToFire: 0.065,
+      tacSprintToFire: 0.115,
+      adsMoveMult: 0.88,
+      idleSway: 0.55,
+      gunKick: 0.75,
+      flinchRes: 0.85,
       range: 70,
       pellets: 1,
       color: 0x3b3f42,
@@ -70,6 +77,13 @@ window.GAME_DATA = {
       recoil: 0.022,
       adsFov: 58,
       adsZoom: 1.25,
+      adsTime: 0.155,
+      sprintToFire: 0.075,
+      tacSprintToFire: 0.125,
+      adsMoveMult: 0.86,
+      idleSway: 0.52,
+      gunKick: 0.72,
+      flinchRes: 0.88,
       range: 80,
       pellets: 1,
       color: 0x222528,
@@ -96,6 +110,13 @@ window.GAME_DATA = {
       recoil: 0.018,
       adsFov: 54,
       adsZoom: 1.35,
+      adsTime: 0.195,
+      sprintToFire: 0.110,
+      tacSprintToFire: 0.190,
+      adsMoveMult: 0.78,
+      idleSway: 0.72,
+      gunKick: 0.82,
+      flinchRes: 0.92,
       range: 85,
       pellets: 1,
       color: 0x26292c,
@@ -120,6 +141,13 @@ window.GAME_DATA = {
       recoil: 0.028,
       adsFov: 50,
       adsZoom: 1.45,
+      adsTime: 0.260,
+      sprintToFire: 0.185,
+      tacSprintToFire: 0.285,
+      adsMoveMult: 0.62,
+      idleSway: 1.00,
+      gunKick: 1.05,
+      flinchRes: 1.00,
       range: 140,
       pellets: 1,
       color: 0x3b2f26,
@@ -144,6 +172,13 @@ window.GAME_DATA = {
       recoil: 0.065,
       adsFov: 56,
       adsZoom: 1.30,
+      adsTime: 0.245,
+      sprintToFire: 0.145,
+      tacSprintToFire: 0.235,
+      adsMoveMult: 0.68,
+      idleSway: 0.85,
+      gunKick: 1.35,
+      flinchRes: 1.05,
       range: 42,
       pellets: 8,
       color: 0x3a322c,
@@ -169,6 +204,13 @@ window.GAME_DATA = {
       recoil: 0.075,
       adsFov: 22,
       adsZoom: 4.0,
+      adsTime: 0.430,
+      sprintToFire: 0.255,
+      tacSprintToFire: 0.380,
+      adsMoveMult: 0.48,
+      idleSway: 1.45,
+      gunKick: 1.48,
+      flinchRes: 0.82,
       range: 950,
       pellets: 1,
       color: 0x454a3a,
@@ -195,6 +237,13 @@ window.GAME_DATA = {
       recoil: 0.082,
       adsFov: 44,
       adsZoom: 1.65,
+      adsTime: 0.340,
+      sprintToFire: 0.220,
+      tacSprintToFire: 0.330,
+      adsMoveMult: 0.54,
+      idleSway: 1.28,
+      gunKick: 1.40,
+      flinchRes: 0.88,
       range: 900,
       pellets: 1,
       color: 0x6b4122,
@@ -220,6 +269,13 @@ window.GAME_DATA = {
       recoil: 0.095,
       adsFov: 15,
       adsZoom: 6.0,
+      adsTime: 0.520,
+      sprintToFire: 0.295,
+      tacSprintToFire: 0.440,
+      adsMoveMult: 0.44,
+      idleSway: 1.65,
+      gunKick: 1.68,
+      flinchRes: 0.78,
       range: 1250,
       pellets: 1,
       color: 0x3b4834,
@@ -862,32 +918,32 @@ window.GAME_DATA = {
 
   ATTACHMENTS: {
     optic: {
-      none: { id: 'none', name: 'Factory Sights', price: 0, recoilMult: 1.0, spreadMult: 1.0, adsSpreadMult: 1.0, zoom: null, adsFovOverride: null, desc: 'Standard factory iron sights / default optic.' },
-      red_dot: { id: 'red_dot', name: 'Cobra Reflex Red Dot', price: 2200, recoilMult: 1.0, spreadMult: 1.0, adsSpreadMult: 0.72, zoom: 1.25, adsFovOverride: 62, desc: '1.25x slim open reflex sight. -28% ADS spread.' },
-      holo: { id: 'holo', name: 'EXPS3 Holographic', price: 2800, recoilMult: 0.98, spreadMult: 1.0, adsSpreadMult: 0.66, zoom: 1.35, adsFovOverride: 58, desc: '1.35x hooded circle-dot holographic sight. -34% ADS spread.' },
-      acog_2x: { id: 'acog_2x', name: 'TA-31 3x Prism Scope', price: 4200, recoilMult: 1.0, spreadMult: 1.0, adsSpreadMult: 0.54, zoom: 3.0, adsFovOverride: 29, desc: '3x cylindrical prism optic with BDC reticle. -46% ADS spread.' },
-      lpvo_4x: { id: 'lpvo_4x', name: 'Vortex 1-4x LPVO', price: 5600, recoilMult: 1.0, spreadMult: 1.0, adsSpreadMult: 0.44, zoom: 4.0, adsFovOverride: 22, desc: '4x variable tactical tube optic. -56% ADS spread.' },
-      sniper_8x: { id: 'sniper_8x', name: 'Mk5 8x Long-Range', price: 7800, recoilMult: 1.0, spreadMult: 1.0, adsSpreadMult: 0.30, zoom: 8.0, adsFovOverride: 11, desc: '8x precision sniper optic with mil-dot stadia. -70% ADS spread.' }
+      none: { id: 'none', name: 'Factory Sights', price: 0, recoilMult: 1.0, spreadMult: 1.0, adsSpreadMult: 1.0, adsAdd: 0.0, idleSwayMult: 1.0, zoom: null, adsFovOverride: null, desc: 'Standard factory iron sights / default optic.' },
+      red_dot: { id: 'red_dot', name: 'Cobra Reflex Red Dot', price: 2200, recoilMult: 1.0, spreadMult: 1.0, adsSpreadMult: 0.72, adsAdd: 0.008, idleSwayMult: 0.98, zoom: 1.25, adsFovOverride: 62, desc: '1.25x slim open reflex sight (+8ms ADS, -28% ADS spread).' },
+      holo: { id: 'holo', name: 'EXPS3 Holographic', price: 2800, recoilMult: 0.98, spreadMult: 1.0, adsSpreadMult: 0.66, adsAdd: 0.015, idleSwayMult: 0.96, zoom: 1.35, adsFovOverride: 58, desc: '1.35x hooded circle-dot holographic sight (+15ms ADS, -34% ADS spread).' },
+      acog_2x: { id: 'acog_2x', name: 'TA-31 3x Prism Scope', price: 4200, recoilMult: 1.0, spreadMult: 1.0, adsSpreadMult: 0.54, adsAdd: 0.028, idleSwayMult: 1.02, zoom: 3.0, adsFovOverride: 29, desc: '3x cylindrical prism optic with BDC reticle (+28ms ADS, -46% ADS spread).' },
+      lpvo_4x: { id: 'lpvo_4x', name: 'Vortex 1-4x LPVO', price: 5600, recoilMult: 1.0, spreadMult: 1.0, adsSpreadMult: 0.44, adsAdd: 0.042, idleSwayMult: 1.06, zoom: 4.0, adsFovOverride: 22, desc: '4x variable tactical tube optic (+42ms ADS, -56% ADS spread).' },
+      sniper_8x: { id: 'sniper_8x', name: 'Mk5 8x Long-Range', price: 7800, recoilMult: 1.0, spreadMult: 1.0, adsSpreadMult: 0.30, adsAdd: 0.068, idleSwayMult: 1.12, zoom: 8.0, adsFovOverride: 11, desc: '8x precision sniper optic with mil-dot stadia (+68ms ADS, -70% ADS spread).' }
     },
     muzzle: {
-      none: { id: 'none', name: 'Factory Muzzle', price: 0, recoilMult: 1.0, spreadMult: 1.0, suppressed: false, desc: 'Standard barrel crown.' },
-      compensator: { id: 'compensator', name: 'Tactical Compensator', price: 1800, recoilMult: 0.72, spreadMult: 0.92, suppressed: false, desc: 'Ported brake. -28% recoil.' },
-      suppressor: { id: 'suppressor', name: 'PBS Tactical Suppressor', price: 3800, recoilMult: 0.82, spreadMult: 0.95, suppressed: true, desc: 'Muffles gunfire & halves enemy alert radius (-18% recoil).' }
+      none: { id: 'none', name: 'Factory Muzzle', price: 0, recoilMult: 1.0, gunKickMult: 1.0, spreadMult: 1.0, adsAdd: 0.0, idleSwayMult: 1.0, suppressed: false, desc: 'Standard barrel crown.' },
+      compensator: { id: 'compensator', name: 'Tactical Compensator', price: 1800, recoilMult: 0.72, gunKickMult: 0.76, spreadMult: 0.92, adsAdd: 0.014, idleSwayMult: 0.98, suppressed: false, desc: 'Ported brake (-28% recoil, -24% gun kick, +14ms ADS).' },
+      suppressor: { id: 'suppressor', name: 'PBS Tactical Suppressor', price: 3800, recoilMult: 0.82, gunKickMult: 0.86, spreadMult: 0.95, adsAdd: 0.024, idleSwayMult: 1.06, suppressed: true, desc: 'Muffles gunfire & halves alert radius (-18% recoil, +24ms ADS).' }
     },
     underbarrel: {
-      none: { id: 'none', name: 'Standard Rail', price: 0, recoilMult: 1.0, spreadMult: 1.0, laser: false, desc: 'No underbarrel attachment.' },
-      vert_grip: { id: 'vert_grip', name: 'RK-1 Vertical Grip', price: 1600, recoilMult: 0.78, spreadMult: 0.85, laser: false, desc: '-22% recoil, -15% hipfire spread.' },
-      laser: { id: 'laser', name: 'PEQ-15 Tactical Laser', price: 2400, recoilMult: 0.94, spreadMult: 0.62, laser: true, desc: 'Visible aiming laser. -38% hipfire spread.' }
+      none: { id: 'none', name: 'Standard Rail', price: 0, recoilMult: 1.0, gunKickMult: 1.0, spreadMult: 1.0, adsAdd: 0.0, stfMult: 1.0, idleSwayMult: 1.0, laser: false, desc: 'No underbarrel attachment.' },
+      vert_grip: { id: 'vert_grip', name: 'RK-1 Vertical Grip', price: 1600, recoilMult: 0.78, gunKickMult: 0.80, spreadMult: 0.85, adsAdd: 0.018, stfMult: 1.04, idleSwayMult: 0.72, laser: false, desc: '-28% ADS idle sway, -22% recoil, -20% gun kick (+18ms ADS).' },
+      laser: { id: 'laser', name: 'PEQ-15 Tactical Laser', price: 2400, recoilMult: 0.94, gunKickMult: 0.96, spreadMult: 0.62, adsAdd: -0.026, stfMult: 0.78, idleSwayMult: 0.68, laser: true, desc: '-26ms ADS, -22% Sprint-to-Fire, -32% ADS idle sway & tight Tac-Stance.' }
     },
     magazine: {
-      none: { id: 'none', name: 'Standard Mag', price: 0, magMult: 1.0, desc: 'Factory magazine capacity.' },
-      ext_mag: { id: 'ext_mag', name: 'Extended Magazine', price: 2600, magMult: 1.35, desc: '+35% magazine capacity.' }
+      none: { id: 'none', name: 'Standard Mag', price: 0, magMult: 1.0, adsAdd: 0.0, stfMult: 1.0, desc: 'Factory magazine capacity.' },
+      ext_mag: { id: 'ext_mag', name: 'Extended Magazine', price: 2600, magMult: 1.35, adsAdd: 0.022, stfMult: 1.08, desc: '+35% mag capacity (+22ms ADS, +8% Sprint-to-Fire).' }
     },
     stock: {
-      none: { id: 'none', name: 'Factory Stock', price: 0, recoilMult: 1.0, spreadMult: 1.0, adsSpreadMult: 1.0, desc: 'Standard factory buttstock / endplate.' },
-      collapsed: { id: 'collapsed', name: 'PDW Wire Stock', price: 1600, recoilMult: 0.88, spreadMult: 0.92, adsSpreadMult: 0.94, desc: 'Lightweight telescoping wire rails. -12% recoil, -8% hip spread.' },
-      tactical: { id: 'tactical', name: 'CTR Tactical Stock', price: 2800, recoilMult: 0.76, spreadMult: 0.95, adsSpreadMult: 0.82, desc: 'Ergonomic carbine stock with rubber buttpad. -24% recoil, -18% ADS spread.' },
-      heavy_marksman: { id: 'heavy_marksman', name: 'PRS Marksman Stock', price: 4400, recoilMult: 0.66, spreadMult: 0.96, adsSpreadMult: 0.72, desc: 'Heavy reinforced stock with cheek riser. -34% recoil, -28% ADS spread.' }
+      none: { id: 'none', name: 'Factory Stock', price: 0, recoilMult: 1.0, gunKickMult: 1.0, spreadMult: 1.0, adsSpreadMult: 1.0, adsAdd: 0.0, stfMult: 1.0, adsMoveMult: 1.0, idleSwayMult: 1.0, flinchMult: 1.0, desc: 'Standard factory buttstock / endplate.' },
+      collapsed: { id: 'collapsed', name: 'PDW Wire Stock', price: 1600, recoilMult: 0.88, gunKickMult: 1.12, spreadMult: 0.92, adsSpreadMult: 0.94, adsAdd: -0.034, stfMult: 0.80, adsMoveMult: 1.14, idleSwayMult: 1.22, flinchMult: 1.10, desc: '-34ms ADS, -20% Sprint-to-Fire, +14% ADS Strafe (+22% idle sway).' },
+      tactical: { id: 'tactical', name: 'CTR Tactical Stock', price: 2800, recoilMult: 0.76, gunKickMult: 0.84, spreadMult: 0.95, adsSpreadMult: 0.82, adsAdd: -0.010, stfMult: 0.94, adsMoveMult: 1.08, idleSwayMult: 0.76, flinchMult: 0.88, desc: '-24% ADS idle sway, -10ms ADS, +8% ADS Strafe, -24% recoil.' },
+      heavy_marksman: { id: 'heavy_marksman', name: 'PRS Marksman Stock', price: 4400, recoilMult: 0.66, gunKickMult: 0.70, spreadMult: 0.96, adsSpreadMult: 0.72, adsAdd: 0.036, stfMult: 1.10, adsMoveMult: 0.90, idleSwayMult: 0.52, flinchMult: 0.68, desc: '-48% ADS idle sway, -32% hit flinch, -34% recoil (+36ms ADS).' }
     }
   },
 
@@ -922,10 +978,15 @@ window.GAME_DATA = {
     };
   },
 
-  computeAdsFov(baseFov = 75, zoom = 1.25) {
+  computeAdsFov(baseFov = 75, zoom = 1.25, adsFovMode = null) {
     const bf = Math.max(40, Math.min(130, Number(baseFov) || 75));
     const z = Math.max(1.0, Number(zoom) || 1.0);
-    const halfRad = (bf * 0.5) * (Math.PI / 180);
+    const mode = adsFovMode || ((typeof window !== 'undefined' && window.ADS_FOV_MODE === 'independent') ? 'independent' : 'affected');
+    // MW4 DMZ ADS Field of View:
+    //  - Affected: scales dynamically from chosen baseFov (wider periphery, significantly lower perceived visual recoil)
+    //  - Independent: low-zoom optics (<2.5x) lock onto MW4's standardized 80° baseline (larger distant targets, stronger visual bounce)
+    const refFov = (mode === 'independent' && z < 2.5) ? Math.min(bf, 80) : bf;
+    const halfRad = (refFov * 0.5) * (Math.PI / 180);
     const adsRad = 2 * Math.atan(Math.tan(halfRad) / z);
     return Math.max(6.0, Math.min(bf, adsRad * (180 / Math.PI)));
   },
@@ -951,12 +1012,25 @@ window.GAME_DATA = {
     const liveBaseFov = (typeof window !== 'undefined' && window.BASE_FOV) ? window.BASE_FOV : 75;
     const computedAdsFov = Math.round(this.computeAdsFov(liveBaseFov, adsZoom));
 
+    const adsAddSum = (opt.adsAdd || 0) + (muz.adsAdd || 0) + (und.adsAdd || 0) + (mag.adsAdd || 0) + (stk.adsAdd || 0);
+    const stfMult = (und.stfMult || 1.0) * (mag.stfMult || 1.0) * (stk.stfMult || 1.0);
+    const idleSwayMult = (opt.idleSwayMult || 1.0) * (muz.idleSwayMult || 1.0) * (und.idleSwayMult || 1.0) * (stk.idleSwayMult || 1.0);
+    const gunKickMult = (muz.gunKickMult || 1.0) * (und.gunKickMult || 1.0) * (stk.gunKickMult || 1.0);
+    const flinchMult = stk.flinchMult || 1.0;
+
     return {
       ...base,
       recoil: base.recoil * muz.recoilMult * und.recoilMult * stk.recoilMult,
       horizRecoil: (base.horizRecoil != null ? base.horizRecoil : base.recoil * 0.48) * muz.recoilMult * und.recoilMult * stk.recoilMult,
+      gunKick: (base.gunKick || 1.0) * gunKickMult,
       spread: base.spread * muz.spreadMult * und.spreadMult * stk.spreadMult,
       adsSpread: base.adsSpread * opt.adsSpreadMult * stk.adsSpreadMult,
+      adsTime: Math.max(0.085, (base.adsTime || 0.24) + adsAddSum),
+      sprintToFire: Math.max(0.045, (base.sprintToFire || 0.16) * stfMult),
+      tacSprintToFire: Math.max(0.080, (base.tacSprintToFire || 0.25) * stfMult),
+      adsMoveMult: Math.min(0.96, Math.max(0.35, (base.adsMoveMult || 0.65) * (stk.adsMoveMult || 1.0))),
+      idleSway: Math.max(0.18, (base.idleSway || 1.0) * idleSwayMult),
+      flinchRes: (base.flinchRes || 1.0) / flinchMult,
       adsZoom,
       adsFov: computedAdsFov,
       magSize: Math.ceil(base.magSize * mag.magMult),

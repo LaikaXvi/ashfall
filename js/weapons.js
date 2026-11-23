@@ -128,6 +128,15 @@ class WeaponSystem {
     this.grabDuration = 0.34;
     this.grabKind = 'item';
     this._adsBlend = 0;
+    this._tacStanceBlend = 0;
+    this.sprintOutTimer = 0;
+    this._idleSwayPhase = Math.random() * Math.PI * 2;
+    this.idleSwayYaw = 0;
+    this.idleSwayPitch = 0;
+    this._flinchPitch = 0;
+    this._flinchYaw = 0;
+    this._flinchRoll = 0;
+    this._wasCheekWelded = false;
     this.isThirdPerson = false;
     this.isMeleeMode = false;
     this.meleeMesh = null;
@@ -173,6 +182,22 @@ class WeaponSystem {
     this._sprRotVel.x = THREE.MathUtils.clamp(this._sprRotVel.x + rx * 14, -5.5, 5.5);
     this._sprRotVel.y = THREE.MathUtils.clamp(this._sprRotVel.y + ry * 14, -5.5, 5.5);
     this._sprRotVel.z = THREE.MathUtils.clamp(this._sprRotVel.z + rz * 14, -5.5, 5.5);
+  }
+
+  triggerHitFlinch(damage = 25, weaponDef = null, isADS = false, isFocusing = false) {
+    const res = (weaponDef && weaponDef.flinchRes) ? weaponDef.flinchRes : 1.0;
+    const focusMit = isFocusing ? 0.62 : 1.0;
+    const mag = THREE.MathUtils.clamp((damage / 42) / Math.max(0.5, res), 0.25, 1.35) * focusMit;
+    const side = Math.random() < 0.5 ? 1 : -1;
+    const adsScale = isADS ? 0.72 : 1.0;
+    this._flinchPitch = THREE.MathUtils.clamp((this._flinchPitch || 0) + 0.026 * mag * adsScale, -0.075, 0.075);
+    this._flinchYaw = THREE.MathUtils.clamp((this._flinchYaw || 0) + side * 0.014 * mag * adsScale, -0.05, 0.05);
+    this._flinchRoll = THREE.MathUtils.clamp((this._flinchRoll || 0) - side * 0.038 * mag, -0.10, 0.10);
+    this.addWeaponImpulse(side * 0.008 * mag, -0.012 * mag, 0.018 * mag, 0.065 * mag, side * 0.03 * mag, -side * 0.06 * mag);
+    if (this.fpArms && this.fpArms.applyShoulderImpulse) {
+      this.fpArms.applyShoulderImpulse('right', side * 0.008 * mag, -0.010 * mag, 0.022 * mag, 0.35);
+      this.fpArms.applyShoulderImpulse('left', side * 0.006 * mag, -0.008 * mag, 0.014 * mag, 0.25);
+    }
   }
 
   _stepWeaponSpring(dt) {
@@ -3630,6 +3655,15 @@ class WeaponSystem {
     const tacSprintingHip = player.isTacSprinting && !isAdsActive && !this.isReloading && !this.isPlating && !this.isHealing;
     const sprintingHip = player.isSprinting && !tacSprintingHip && !isAdsActive && !this.isReloading && !this.isPlating && !this.isHealing;
 
+    // MW4 DMZ Sprint-to-Fire & Tac-Sprint-to-Fire timer (gates firing out of sprint by per-weapon ms!)
+    if (tacSprintingHip) {
+      this.sprintOutTimer = Math.max(this.sprintOutTimer || 0, (weaponDef && weaponDef.tacSprintToFire) || 0.24);
+    } else if (sprintingHip) {
+      this.sprintOutTimer = Math.max(this.sprintOutTimer || 0, (weaponDef && weaponDef.sprintToFire) || 0.16);
+    } else {
+      this.sprintOutTimer = Math.max(0, (this.sprintOutTimer || 0) - dt);
+    }
+
     // Smoothly blend distinct 1P locomotion phases (Walk / Run / Tac-Sprint)
     const fpPhaseLerp = Math.min(1, dt * 9.5);
     this._fpPhaseTac = THREE.MathUtils.lerp(this._fpPhaseTac || 0, (moving && tacSprintingHip) ? 1 : 0, fpPhaseLerp);
@@ -3650,8 +3684,8 @@ class WeaponSystem {
     const moveFactor = moving ? Math.min(1.15, speed / 4.8) : 0.16;
     const airDriftY = !player.onGround ? THREE.MathUtils.clamp(-player.velocity.y * 0.0045, -0.028, 0.028) : 0;
 
-    const ampX = isAdsActive ? 0.0012 : (0.011 * this._fpPhaseWalk + 0.023 * this._fpPhaseRun + 0.034 * this._fpPhaseTac + (!moving ? 0.004 : 0));
-    const ampY = isAdsActive ? 0.0014 : (0.013 * this._fpPhaseWalk + 0.027 * this._fpPhaseRun + 0.036 * this._fpPhaseTac + (!moving ? 0.006 : 0));
+    const ampX = isAdsActive ? (moving ? 0.0022 : 0.0008) : (0.011 * this._fpPhaseWalk + 0.023 * this._fpPhaseRun + 0.034 * this._fpPhaseTac + (!moving ? 0.004 : 0));
+    const ampY = isAdsActive ? (moving ? 0.0026 : 0.0010) : (0.013 * this._fpPhaseWalk + 0.027 * this._fpPhaseRun + 0.036 * this._fpPhaseTac + (!moving ? 0.006 : 0));
     const bobX = Math.sin(this.bobTimer) * ampX * moveFactor;
     const bobY = Math.pow(Math.abs(Math.sin(this.bobTimer)), 1.55) * ampY * moveFactor;
 
@@ -3683,13 +3717,16 @@ class WeaponSystem {
     const leanAlignX = (!customRot && !isAdsActive) ? (-player.lean * 0.095 * leanClear) : 0;
     const leanCantY = (!customRot && !isAdsActive) ? (-player.lean * 0.09 * leanClear) : 0;
 
-    // Smooth spring-damped physical weapon kick recovery (Z shoulder push, pitch, horizontal yaw/X & subtle roll)
+    // Smooth spring-damped physical weapon kick & hit-flinch recovery
     const recDecay = Math.min(1, dt * 15);
     this.recoilZ = THREE.MathUtils.lerp(this.recoilZ, 0, Math.min(1, dt * 18));
     this.recoilPitch = THREE.MathUtils.lerp(this.recoilPitch, 0, recDecay);
     this.recoilYaw = THREE.MathUtils.lerp(this.recoilYaw, 0, Math.min(1, dt * 14));
     this.recoilRoll = THREE.MathUtils.lerp(this.recoilRoll, 0, Math.min(1, dt * 14));
     this.recoilX = THREE.MathUtils.lerp(this.recoilX, 0, Math.min(1, dt * 16));
+    this._flinchPitch = THREE.MathUtils.lerp(this._flinchPitch || 0, 0, Math.min(1, dt * 13));
+    this._flinchYaw = THREE.MathUtils.lerp(this._flinchYaw || 0, 0, Math.min(1, dt * 13));
+    this._flinchRoll = THREE.MathUtils.lerp(this._flinchRoll || 0, 0, Math.min(1, dt * 12));
 
     // Weighty camera-turn rotational & positional weapon/arm inertia sway
     if (this._prevYaw === null) {
@@ -3719,8 +3756,46 @@ class WeaponSystem {
     this.lookSwayRotX = THREE.MathUtils.lerp(this.lookSwayRotX, THREE.MathUtils.clamp(clampedDP * 1.05 * swayMult, -0.12, 0.12), swayLerpIn);
     this.lookSwayRotZ = THREE.MathUtils.lerp(this.lookSwayRotZ, THREE.MathUtils.clamp(-clampedDY * 1.15 * swayMult, -0.14, 0.14), swayLerpIn);
 
-    // Sprint tilt, DMZ Tactical Sprint high-port skyward carry, tactical slide cant, wall tuck, progressive corner-lean cant (even while ADS!), recoil kick, MW19 ADS snap-cant, grab cant & 6-DOF spring!
-    this._adsBlend = THREE.MathUtils.lerp(this._adsBlend || 0, isAdsActive ? 1 : 0, Math.min(1, dt * 19));
+    // MW4 DMZ Millisecond-Accurate ADS Transition Curve + Cheek-Weld Kinetic Settle + 45° Tactical Stance!
+    const adsTimeSec = Math.max(0.085, (weaponDef && weaponDef.adsTime) ? weaponDef.adsTime : 0.24);
+    const prevAdsLin = this._adsLinear || 0;
+    this._adsLinear = THREE.MathUtils.clamp(prevAdsLin + (isAdsActive ? dt / adsTimeSec : -dt / (adsTimeSec * 0.85)), 0, 1);
+    this._adsBlend = this._adsLinear * this._adsLinear * (3 - 2 * this._adsLinear);
+    if (isAdsActive && this._adsLinear >= 0.86 && !this._wasCheekWelded && !customRot && !this.isFistsMode) {
+      this._wasCheekWelded = true;
+      this.addWeaponImpulse(0.002, -0.003, 0.005, -0.014, 0, -0.022);
+      if (this.fpArms && this.fpArms.applyShoulderImpulse) {
+        this.fpArms.applyShoulderImpulse('right', -0.004, 0.005, 0.008, 0.18);
+      }
+    } else if (!isAdsActive && this._adsLinear < 0.45) {
+      this._wasCheekWelded = false;
+    }
+
+    const wantTacStance = !!(isAdsActive && player.tacStance && !this.isFistsMode && !this.isMeleeMode);
+    this._tacStanceBlend = THREE.MathUtils.lerp(this._tacStanceBlend || 0, wantTacStance ? 1 : 0, Math.min(1, dt * 16));
+    const tsB = this._tacStanceBlend;
+
+    // MW4 DMZ Instant ADS Idle Sway (zero-delay dual-harmonic Lissajous figure-8, stabilized by Stance & Focus!)
+    if (this._adsBlend > 0.01 && !this.isFistsMode) {
+      const focusing = !!(player && player.isFocusing);
+      const exhausted = !!(player && player.focusExhausted);
+      const swayFreq = focusing ? 0.82 : (exhausted ? 2.35 : 1.72);
+      this._idleSwayPhase = (this._idleSwayPhase || 0) + dt * swayFreq;
+      const ph = this._idleSwayPhase;
+      const stanceSway = player.isProne ? 0.38 : (player.isCrouching ? 0.68 : 1.0);
+      const moveSway = moving ? 1.32 : 1.0;
+      const focusSway = focusing ? 0.15 : (exhausted ? 1.42 : 1.0);
+      const tacStSway = 1.0 - tsB * 0.35;
+      const swayStat = ((weaponDef && weaponDef.idleSway) || 1.0) * stanceSway * moveSway * focusSway * tacStSway * this._adsBlend;
+      const targetSwayYaw = (Math.sin(ph) * 0.0036 + Math.sin(ph * 2.3 + 1.1) * 0.0014) * swayStat;
+      const targetSwayPitch = (Math.sin(ph * 2.0 + 0.6) * 0.0028 + Math.cos(ph * 1.3) * 0.0011) * swayStat;
+      this.idleSwayYaw = THREE.MathUtils.lerp(this.idleSwayYaw || 0, targetSwayYaw, Math.min(1, dt * 12));
+      this.idleSwayPitch = THREE.MathUtils.lerp(this.idleSwayPitch || 0, targetSwayPitch, Math.min(1, dt * 12));
+    } else {
+      this.idleSwayYaw = THREE.MathUtils.lerp(this.idleSwayYaw || 0, 0, Math.min(1, dt * 14));
+      this.idleSwayPitch = THREE.MathUtils.lerp(this.idleSwayPitch || 0, 0, Math.min(1, dt * 14));
+    }
+
     const adsSnapArc = (!customRot && !this.isFistsMode) ? Math.sin(this._adsBlend * Math.PI) : 0;
     const adsSnapRotZ = -0.072 * adsSnapArc;
     const adsSnapY = -0.008 * adsSnapArc;
@@ -3731,9 +3806,9 @@ class WeaponSystem {
     const grabRotZ = -0.14 * grabCantActive;
     const sprScale = isAdsActive ? (0.38 * Math.max(0.22, zoomDamp)) : 1.0;
 
-    // Wide-aperture magnified scope eye-box toggle & dynamic optical eye-relief (stays active & slightly offset during ADS reload!)
+    // Wide-aperture magnified scope eye-box toggle & dynamic optical eye-relief (stays active & slightly offset during ADS reload; disabled in 45° Tac-Stance!)
     const isAdsReload = !!(isAdsActive && this.isReloading && !this.isInspecting && !this.isPlating && !this.isHealing && !(this.meleeSwingTimer > 0));
-    const allowScopeEyeBox = !!(isAdsActive && (!customRot || isAdsReload) && !this.wallBlocked && !this.isThirdPerson);
+    const allowScopeEyeBox = !!(isAdsActive && tsB < 0.35 && (!customRot || isAdsReload) && !this.wallBlocked && !this.isThirdPerson);
     let effectiveAdsZ = this.adsZ;
     let scopeEyeBoxActive = false;
     if (this.scopeOptic) {
@@ -3745,8 +3820,8 @@ class WeaponSystem {
       if (sc.shadowRing) {
         sc.shadowRing.visible = eyeBoxActive;
         if (eyeBoxActive) {
-          const shOffX = isAdsReload ? THREE.MathUtils.clamp(-reloadPosOffset.x * 0.28, -0.0025, 0.0025) : 0;
-          const shOffY = isAdsReload ? THREE.MathUtils.clamp(-reloadPosOffset.y * 0.28, -0.0025, 0.0025) : 0;
+          const shOffX = isAdsReload ? THREE.MathUtils.clamp(-reloadPosOffset.x * 0.28, -0.0025, 0.0025) : THREE.MathUtils.clamp(-this.idleSwayYaw * 0.35, -0.0018, 0.0018);
+          const shOffY = isAdsReload ? THREE.MathUtils.clamp(-reloadPosOffset.y * 0.28, -0.0025, 0.0025) : THREE.MathUtils.clamp(-this.idleSwayPitch * 0.35, -0.0018, 0.0018);
           sc.shadowRing.position.set(shOffX, (sc.scopeY || this.sightHeight) + shOffY, sc.rearZ + 0.0008);
           if (sc.shadowRing.material) {
             sc.shadowRing.material.opacity = THREE.MathUtils.lerp(sc.shadowRing.material.opacity, isAdsReload ? 0.48 : 0.34, Math.min(1, dt * 14));
@@ -3757,7 +3832,7 @@ class WeaponSystem {
       if (sc.retGroup) sc.retGroup.visible = eyeBoxActive || (allowScopeEyeBox && this._adsBlend > 0.25);
 
       if (allowScopeEyeBox && adsZoom >= 2.0) {
-        // Generous MW2019/Tarkov ocular aperture scaling with zoom: ~53% at 3x, ~59% at 4x, ~68% at 6x, ~74% at 8x
+        // Generous MW4/DMZ ocular aperture scaling with zoom: ~53% at 3x, ~59% at 4x, ~68% at 6x, ~74% at 8x
         const targetScreenFrac = THREE.MathUtils.clamp(0.30 + Math.log2(Math.max(1.5, adsZoom)) * 0.145, 0.46, 0.76);
         const baseFovNow = window.BASE_FOV || 75;
         const vmBaseNow = (window.WEAPON_FOV_MODE === 'independent') ? (window.VIEWMODEL_FOV || 75) : baseFovNow;
@@ -3774,36 +3849,59 @@ class WeaponSystem {
       this.muzzleMesh.material.depthTest = !scopeEyeBoxActive;
     }
 
+    // Sprint-out weapon readiness dip when coming directly out of Sprint / Tac-Sprint into fire
+    const stfFrac = (this.sprintOutTimer > 0 && !sprintingHip && !tacSprintingHip && !isAdsActive && !customRot)
+      ? THREE.MathUtils.clamp(this.sprintOutTimer / 0.28, 0, 1)
+      : 0;
+    const stfRotX = stfFrac * 0.18;
+    const stfRotY = stfFrac * 0.12;
+    const stfCantZ = -0.66 * tsB;
+    const stfCantY = 0.055 * tsB;
+
     const slideCantZ = (!customRot && !this.isFistsMode && player.isSliding) ? (isAdsActive ? -0.10 : -0.32) : 0;
     const slideCantY = (!customRot && !this.isFistsMode && player.isSliding) ? (isAdsActive ? 0.0 : 0.18) : 0;
-    const sprintRotX = this.isFistsMode ? 0 : (tacSprintingHip ? 0.86 : (sprintingHip ? -0.14 : 0));
-    const sprintRotY = this.isFistsMode ? 0 : (tacSprintingHip ? 0.16 : (sprintingHip ? 0.22 : 0));
+    const sprintRotX = this.isFistsMode ? 0 : (tacSprintingHip ? 0.86 : (sprintingHip ? -0.14 : stfRotX));
+    const sprintRotY = this.isFistsMode ? 0 : (tacSprintingHip ? 0.16 : (sprintingHip ? 0.22 : stfRotY));
     const sprintRotZ = this.isFistsMode ? 0 : (tacSprintingHip ? -0.14 : (sprintingHip ? 0.08 : 0));
     const leanRotZ = isAdsActive ? (-player.lean * 0.13) : (-player.lean * 0.22);
-    const targetRotX = (customRot && !this.isFistsMode ? activeRotOff.x : (sprintRotX + swayRotX + this.recoilPitch + this.lookSwayRotX + wallRotX + grabRotX)) + drawRot.x + this._sprRot.x * sprScale;
-    const targetRotY = (customRot && !this.isFistsMode ? activeRotOff.y : (sprintRotY + slideCantY + this.recoilYaw + this.lookSwayRotY + wallRotY + leanCantY)) + drawRot.y + this._sprRot.y * sprScale;
-    const targetRotZ = (customRot && !this.isFistsMode ? activeRotOff.z : (sprintRotZ + swayRotZ + slideCantZ + boltActionRoll + this.recoilRoll + this.lookSwayRotZ + wallRotZ + leanRotZ + adsSnapRotZ + grabRotZ)) + drawRot.z + this._sprRot.z * sprScale;
+    const swayPitchVisual = this.idleSwayPitch / Math.max(1.0, Math.sqrt(adsZoom));
+    const swayYawVisual = this.idleSwayYaw / Math.max(1.0, Math.sqrt(adsZoom));
+    const targetRotX = (customRot && !this.isFistsMode ? activeRotOff.x : (sprintRotX + swayRotX + this.recoilPitch + this._flinchPitch + swayPitchVisual + this.lookSwayRotX + wallRotX + grabRotX)) + drawRot.x + this._sprRot.x * sprScale;
+    const targetRotY = (customRot && !this.isFistsMode ? activeRotOff.y : (sprintRotY + slideCantY + stfCantY + this.recoilYaw + this._flinchYaw - swayYawVisual + this.lookSwayRotY + wallRotY + leanCantY)) + drawRot.y + this._sprRot.y * sprScale;
+    const targetRotZ = (customRot && !this.isFistsMode ? activeRotOff.z : (sprintRotZ + swayRotZ + slideCantZ + stfCantZ + boltActionRoll + this.recoilRoll + this._flinchRoll + this.lookSwayRotZ + wallRotZ + leanRotZ + adsSnapRotZ + grabRotZ)) + drawRot.z + this._sprRot.z * sprScale;
 
-    // MW2/DMZ One-Handed High-Port Tactical Sprint: weapon held UP in right hand, left fist pumping apart!
-    // When in Fists mode, center the viewmodel horizontally so both hands come evenly from bottom-left & bottom-right!
+    // MW4 Weapon Field of View Perspective Preset (Narrow / Default / Wide — scales hipfire framing without distorting scope eye-relief!)
+    const wfovScale = window.WEAPON_FOV_SCALE || 'default';
+    const hipScaleX = wfovScale === 'wide' ? 0.014 : (wfovScale === 'narrow' ? -0.012 : 0.0);
+    const hipScaleZ = wfovScale === 'wide' ? -0.046 : (wfovScale === 'narrow' ? 0.030 : 0.0);
+
+    // MW4/DMZ One-Handed High-Port Tactical Sprint + 45° Tactical Stance cant pivot!
     const adsPivotActive = isAdsActive && (!customRot || isAdsReload);
     const adsPivotX = adsPivotActive ? (Math.sin(targetRotZ) * this.sightHeight) : 0;
     const adsPivotY = adsPivotActive ? ((1 - Math.cos(targetRotZ)) * this.sightHeight) : 0;
-    const basePosX = this.isFistsMode ? 0.0 : (isAdsActive ? adsPivotX : (tacSprintingHip ? 0.24 : (sprintingHip ? 0.19 : 0.22)));
-    const basePosY = this.isFistsMode ? -0.16 : (isAdsActive ? (-this.sightHeight + adsPivotY) : (tacSprintingHip ? -0.14 : (sprintingHip ? -0.235 : -0.20)));
-    const basePosZ = this.isFistsMode ? -0.38 : (isAdsActive ? effectiveAdsZ : (tacSprintingHip ? -0.34 : (sprintingHip ? -0.40 : -0.42)));
+    const hipPosX = (tacSprintingHip ? 0.24 : (sprintingHip ? 0.19 : 0.22)) + hipScaleX;
+    const hipPosY = tacSprintingHip ? -0.14 : (sprintingHip ? -0.235 : -0.20);
+    const hipPosZ = (tacSprintingHip ? -0.34 : (sprintingHip ? -0.40 : -0.42)) + hipScaleZ;
+    const adsTargetX = adsPivotX + 0.056 * tsB;
+    const adsTargetY = -this.sightHeight + adsPivotY - 0.022 * tsB;
+    const adsTargetZ = THREE.MathUtils.lerp(effectiveAdsZ, this.adsZ - 0.045, tsB);
+
+    const basePosX = this.isFistsMode ? 0.0 : THREE.MathUtils.lerp(hipPosX, adsTargetX, this._adsBlend);
+    const basePosY = this.isFistsMode ? -0.16 : THREE.MathUtils.lerp(hipPosY, adsTargetY, this._adsBlend);
+    const basePosZ = this.isFistsMode ? -0.38 : THREE.MathUtils.lerp(hipPosZ, adsTargetZ, this._adsBlend);
 
     const targetX = basePosX + this.recoilX + this.lookSwayX + activePosOff.x + wallPosX + leanAlignX + drawPos.x + grabPosX + this._sprPos.x * sprScale;
     const targetY = basePosY + this.lookSwayY + activePosOff.y + wallPosY + drawPos.y + adsSnapY + grabPosY + airDriftY + this._sprPos.y * sprScale;
     const targetZ = basePosZ + this.recoilZ + activePosOff.z + wallPosZ + drawPos.z + this._sprPos.z * sprScale;
 
-    const adsSnapping = isAdsActive || adsSnapArc > 0.08;
-    const lerpRate = this.isReloading ? 28 : ((this.isPlating || this.isHealing) ? 16 : (this.isInspecting ? 9 : (this.drawTimer > 0 ? 24 : (adsSnapping ? 20 : 14))));
+    const adsSnapping = isAdsActive || this._adsLinear > 0.01;
+    const adsTrackRate = Math.max(18, Math.min(36, 4.2 / adsTimeSec));
+    const lerpRate = this.isReloading ? 28 : ((this.isPlating || this.isHealing) ? 16 : (this.isInspecting ? 9 : (this.drawTimer > 0 ? 24 : (adsSnapping ? adsTrackRate : 14))));
     this.viewmodelGroup.position.x = THREE.MathUtils.lerp(this.viewmodelGroup.position.x, targetX + bobX, Math.min(1, dt * lerpRate));
     this.viewmodelGroup.position.y = THREE.MathUtils.lerp(this.viewmodelGroup.position.y, targetY - bobY, Math.min(1, dt * lerpRate));
     this.viewmodelGroup.position.z = THREE.MathUtils.lerp(this.viewmodelGroup.position.z, targetZ, Math.min(1, dt * (lerpRate + 2)));
 
-    const rotRate = this.isReloading ? 26 : ((this.isPlating || this.isHealing) ? 14 : (this.isInspecting ? 8 : (adsSnapping ? 19 : 12)));
+    const rotRate = this.isReloading ? 26 : ((this.isPlating || this.isHealing) ? 14 : (this.isInspecting ? 8 : (adsSnapping ? adsTrackRate : 12)));
     this.viewmodelGroup.rotation.x = THREE.MathUtils.lerp(this.viewmodelGroup.rotation.x, targetRotX, Math.min(1, dt * rotRate));
     this.viewmodelGroup.rotation.y = THREE.MathUtils.lerp(this.viewmodelGroup.rotation.y, targetRotY, Math.min(1, dt * rotRate));
     this.viewmodelGroup.rotation.z = THREE.MathUtils.lerp(this.viewmodelGroup.rotation.z, targetRotZ, Math.min(1, dt * rotRate));
@@ -3957,10 +4055,17 @@ class WeaponSystem {
           if (this.leftHand.userData && (this.leftHand.userData.activeStyle === 'grabReach' || this.leftHand.userData.activeStyle === 'grabClose' || this.leftHand.userData.activeStyle === 'slapOpen')) {
             this.leftHand.userData.activeStyle = null;
           }
-          this.leftHand.position.lerp(this.leftHandRestPos, Math.min(1, dt * 18));
-          this.leftHand.rotation.x = THREE.MathUtils.lerp(this.leftHand.rotation.x, this.leftHandRestRot.x, Math.min(1, dt * 18));
-          this.leftHand.rotation.y = THREE.MathUtils.lerp(this.leftHand.rotation.y, this.leftHandRestRot.y, Math.min(1, dt * 18));
-          this.leftHand.rotation.z = THREE.MathUtils.lerp(this.leftHand.rotation.z, this.leftHandRestRot.z, Math.min(1, dt * 18));
+          // MW4 Kinetic Support-Hand Slide: conforms dynamically along handguard for 45° Tac-Stance C-clamp, CQB wall-tuck & Prone brace!
+          const proneSlideZ = player.isProne ? -0.010 : 0.0;
+          const dynLeftPos = new THREE.Vector3(
+            this.leftHandRestPos.x - 0.008 * tsB,
+            this.leftHandRestPos.y + 0.008 * tsB - 0.004 * wp,
+            this.leftHandRestPos.z - 0.014 * tsB + 0.014 * wp + proneSlideZ
+          );
+          this.leftHand.position.lerp(dynLeftPos, Math.min(1, dt * 18));
+          this.leftHand.rotation.x = THREE.MathUtils.lerp(this.leftHand.rotation.x, this.leftHandRestRot.x + 0.06 * tsB, Math.min(1, dt * 18));
+          this.leftHand.rotation.y = THREE.MathUtils.lerp(this.leftHand.rotation.y, this.leftHandRestRot.y + 0.08 * tsB, Math.min(1, dt * 18));
+          this.leftHand.rotation.z = THREE.MathUtils.lerp(this.leftHand.rotation.z, this.leftHandRestRot.z + 0.16 * tsB, Math.min(1, dt * 18));
         }
       }
     } else if (this.leftFist) {
@@ -3997,7 +4102,7 @@ class WeaponSystem {
       if (!customRot && !tacSprintingHip && !this.isFistsMode) {
         this.leftHand.rotation.z = THREE.MathUtils.lerp(
           this.leftHand.rotation.z,
-          this.leftHandRestRot.z - player.lean * 0.14 + this.lookSwayRotZ * 0.35 + this.recoilRoll * 0.5,
+          this.leftHandRestRot.z - player.lean * 0.14 + this.lookSwayRotZ * 0.35 + this.recoilRoll * 0.5 + 0.16 * tsB,
           Math.min(1, dt * 16)
         );
       }
@@ -4034,15 +4139,18 @@ class WeaponSystem {
       }
     }
 
-    // True optical zoom-scaled ADS FOV & subtle Tactical Sprint FOV burst (scales cleanly with Settings BASE_FOV & scope zoom!)
+    // MW4 DMZ Optical Zoom-Scaled ADS FOV (Affected vs Independent 80° baseline, 45° Tac-Stance 1.18x, Focus +4.5% zoom & per-gun ADS speed!)
     const baseFov = window.BASE_FOV || 75;
     const tacBoost = tacSprintingHip ? 5 : 0;
+    const focusZoomBoost = (isAdsActive && player.isFocusing) ? 1.045 : 1.0;
+    const effZoom = THREE.MathUtils.lerp(adsZoom, 1.18, tsB) * focusZoomBoost;
     const computedAdsFov = (window.GAME_DATA && window.GAME_DATA.computeAdsFov)
-      ? window.GAME_DATA.computeAdsFov(baseFov, adsZoom)
+      ? window.GAME_DATA.computeAdsFov(baseFov, effZoom)
       : (weaponDef ? Math.min(baseFov, weaponDef.adsFov || 55) : baseFov);
     const targetFov = (isAdsActive && weaponDef) ? computedAdsFov : (baseFov + tacBoost);
+    const fovRate = isAdsActive ? Math.max(11, Math.min(28, 3.6 / adsTimeSec)) : 16;
     if (Math.abs(this.camera.fov - targetFov) > 0.04) {
-      this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFov, Math.min(1, dt * 14));
+      this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFov, Math.min(1, dt * fovRate));
       this.camera.updateProjectionMatrix();
     }
 
@@ -5637,6 +5745,8 @@ class WeaponSystem {
       }
     }
     if (this.fireTimer > 0 || this.wallBlocked) return false;
+    // MW4 DMZ Sprint-to-Fire Gate: weapon must clear sprint-out recovery before firing (unless already deeply into ADS)
+    if ((this.sprintOutTimer || 0) > 0.015 && (this._adsBlend || 0) < 0.55) return false;
 
     // Staged Reload Check:
     //  - Stage 2 (fresh mag in, bolt/slide NOT racked yet): pulling trigger resumes straight at Stage 2 (bolt rack)!
@@ -5680,7 +5790,14 @@ class WeaponSystem {
       weaponSlotState.mag -= 1;
     }
     this.fireTimer = def.fireRate;
-    const kickScale = player.isADS ? 0.58 : 1.0;
+    // MW4 DMZ Separated Gun Kick vs Camera Recoil:
+    // Affected ADS FOV at wide camera FOV (> 80°) reduces perceived 3D visual bounce; Independent ADS FOV keeps full 80° baseline bounce.
+    const gKick = (def.gunKick != null) ? def.gunKick : 1.0;
+    const baseFovNow = window.BASE_FOV || 75;
+    const visualFovDamp = (player.isADS && window.ADS_FOV_MODE !== 'independent' && baseFovNow > 80)
+      ? Math.max(0.68, 80 / baseFovNow)
+      : 1.0;
+    const kickScale = (player.isADS ? 0.58 : 1.0) * gKick * visualFovDamp;
     const hRec = def.horizRecoil != null ? def.horizRecoil : (def.recoil * 0.48);
     const hSign = Math.random() < 0.56 ? 1 : -1;
     // Physical rearward shoulder kick + controlled muzzle flip + horizontal recoil bounce + 6-DOF spring punch
@@ -5699,6 +5816,11 @@ class WeaponSystem {
       hSign * hRec * 0.34 * kickScale,
       (Math.random() - 0.5) * 0.065 * kickScale
     );
+    // Kinetic IK Clavicle/Shoulder Compliance Impulse + Recoil-Reactive Finger Grip Tension
+    if (this.fpArms && this.fpArms.applyShoulderImpulse) {
+      this.fpArms.applyShoulderImpulse('right', hSign * hRec * 0.16 * gKick, 0.008 * gKick, baseZKick * 0.72 * gKick, 0.32);
+      this.fpArms.applyShoulderImpulse('left', hSign * hRec * 0.08 * gKick, 0.004 * gKick, baseZKick * 0.36 * gKick, 0.20);
+    }
     if (def.slot === 'secondary' || def.id === 'mp5k' || def.id === 'ak74m') {
       this.boltCycleDuration = def.id === 'ak74m' ? 0.085 : 0.075;
       this.boltCycleTimer = this.boltCycleDuration;
@@ -5715,19 +5837,27 @@ class WeaponSystem {
 
     window.soundEngine.playGunshot(def.id, 0, !!def.suppressed);
 
-    // Reduced visual camera recoil + authentic vertical & horizontal recoil kick
+    // Reduced visual camera recoil + authentic vertical & horizontal recoil kick (with post-burst recentering in Player)
     const camRecScale = player.isADS ? 0.48 : 0.62;
     const vertKick = def.recoil * camRecScale;
     const horizKick = (Math.random() - 0.44) * hRec * 1.15 * camRecScale;
     player.applyRecoil(vertKick, horizKick);
     this.fireBloom = Math.min(0.055, this.fireBloom + def.recoil * 0.42);
 
-    // Raycast pellets — hipfire accuracy directly matches live crosshair size unless using a laser
+    // Raycast pellets — hipfire accuracy directly matches live crosshair size unless using a laser or 45° Tactical Stance
     let totalSpread;
     if (player.isADS) {
       const stanceMult = player.isProne ? 0.55 : (player.isCrouching ? 0.75 : 1.0);
-      const moveAdd = Math.hypot(player.velocity.x, player.velocity.z) > 0.8 ? 0.005 : 0;
-      totalSpread = (def.adsSpread + moveAdd) * stanceMult;
+      const tacB = this._tacStanceBlend || 0;
+      if (tacB > 0.35) {
+        const baseCantSpread = def.hasLaser
+          ? (def.adsSpread * 1.45)
+          : THREE.MathUtils.lerp(def.adsSpread, this.currentSpread, 0.26);
+        totalSpread = baseCantSpread * stanceMult;
+      } else {
+        const moveAdd = Math.hypot(player.velocity.x, player.velocity.z) > 0.8 ? 0.005 : 0;
+        totalSpread = (def.adsSpread + moveAdd) * stanceMult;
+      }
     } else if (def.hasLaser) {
       // Tactical laser overrides wide hipfire cone with tight laser-guided accuracy
       const stanceMult = player.isProne ? 0.60 : (player.isCrouching ? 0.78 : 1.0);
@@ -5763,8 +5893,18 @@ class WeaponSystem {
     // Effective flat-drop zero distance (meters before noticeable drop)
     const zeroDist = def.id === 'awm338' ? 140 : (def.id === 'm24' || def.id === 'mosin9130' ? 115 : (def.id === 'ak74m' ? 75 : 40));
 
-    // Find crosshair aim convergence point so bullets physically spawn from muzzleWorld and converge cleanly onto sight zero!
-    const camFwd = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion).normalize();
+    // MW4 DMZ Sight-Aligned Aiming: align aim convergence ray with live physical sight sway & hit flinch during ADS!
+    const camFwd = new THREE.Vector3(0, 0, -1);
+    if (player.isADS) {
+      const zoomSqrt = Math.max(1.0, Math.sqrt(def.adsZoom || 1.25));
+      const alignWeight = THREE.MathUtils.clamp(1.0 - (this._tacStanceBlend || 0) * 0.45, 0.45, 1.0);
+      const swayPitch = (((this.idleSwayPitch || 0) / zoomSqrt) + (this._flinchPitch || 0) * 0.55) * alignWeight;
+      const swayYaw = (-((this.idleSwayYaw || 0) / zoomSqrt) + (this._flinchYaw || 0) * 0.55) * alignWeight;
+      if (Math.abs(swayPitch) > 0.00001 || Math.abs(swayYaw) > 0.00001) {
+        camFwd.applyEuler(new THREE.Euler(swayPitch, swayYaw, 0, 'YXZ'));
+      }
+    }
+    camFwd.applyQuaternion(this.camera.quaternion).normalize();
     const aimRay = new THREE.Raycaster(origin, camFwd, 0.25, def.range);
     const enemyMeshes = enemyManager.getHitboxMeshes();
     const allyMeshes = (window.SQUAD_PVP && squadManager && squadManager.getHitboxMeshes) ? squadManager.getHitboxMeshes() : [];

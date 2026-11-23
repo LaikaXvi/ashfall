@@ -1391,6 +1391,14 @@
     }
     else if (e.code === (kb.reload || 'KeyR')) player.startReload();
     else if (e.code === (kb.inspect || 'KeyI')) player.startInspect();
+    else if (e.code === (kb.tacStance || 'KeyB')) {
+      if (!e.repeat && player && !player.isDowned && !player.dead && player.toggleTacStance) {
+        const on = player.toggleTacStance();
+        if (ui && ui.addFeedMessage) {
+          ui.addFeedMessage(on ? 'Tactical Stance: ON (45° Canted ADS)' : 'Tactical Stance: OFF', on ? '#69f0ae' : '#b0bec5');
+        }
+      }
+    }
     else if (e.code === (kb.medkit || 'KeyH')) {
       if (player.startMedkit()) ui.addFeedMessage('Applying Field Medkit...', '#69f0ae');
     } else if (e.code === (kb.plates || 'KeyG') || e.code === 'Digit4') {
@@ -3927,6 +3935,12 @@
           } else {
             targetVmFov = vmBase;
           }
+        }
+        // MW4 Weapon Field of View Scale (Narrow / Default / Wide): widens or tightens hipfire weapon perspective without altering magnified scope zoom!
+        const wfovDelta = window.WEAPON_FOV_SCALE === 'wide' ? 8 : (window.WEAPON_FOV_SCALE === 'narrow' ? -6 : 0);
+        if (wfovDelta !== 0) {
+          const hipWeight = 1 - (weaponSystem ? (weaponSystem._adsBlend || 0) : 0);
+          targetVmFov = THREE.MathUtils.clamp(targetVmFov + wfovDelta * hipWeight, 12, 128);
         }
         if (Math.abs(viewmodelCamera.fov - targetVmFov) > 0.01) {
           viewmodelCamera.fov = targetVmFov;

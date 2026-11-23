@@ -1100,18 +1100,61 @@
         );
 
         const wrQ = armProxy.wrist.getWorldQuaternion(new THREE.Quaternion());
-        const fW = new THREE.Vector3(0, -1, 0).applyQuaternion(wrQ);
+        const fW = new THREE.Vector3(0, -1, 0).applyQuaternion(wrQ).normalize();
         const backLocal = side === 'right'
           ? new THREE.Vector3(0.75, 0, 0.65)
           : new THREE.Vector3(-0.35, 0, 0.94);
-        const backW = backLocal.applyQuaternion(wrQ);
+        const backW = backLocal.applyQuaternion(wrQ).normalize();
+
+        // MW4 Kinetic 3P Arm IK: 42° anatomical wrist clamp + 72% forearm pronation/supination twist alignment!
+        bForeSafeTwist: {
+          bLow.updateMatrixWorld(true);
+          const forePosW = bLow.getWorldPosition(new THREE.Vector3());
+          const handPosW = bHand.getWorldPosition(new THREE.Vector3());
+          const foreDir = handPosW.sub(forePosW);
+          if (foreDir.lengthSq() < 1e-6) break bForeSafeTwist;
+          foreDir.normalize();
+          const dotF = THREE.MathUtils.clamp(fW.dot(foreDir), -1, 1);
+          const bendAng = Math.acos(dotF);
+          const maxBend = 0.73;
+          if (bendAng > maxBend) {
+            const perp = fW.clone().addScaledVector(foreDir, -dotF);
+            if (perp.lengthSq() > 1e-6) {
+              perp.normalize();
+              fW.copy(foreDir).multiplyScalar(Math.cos(maxBend)).addScaledVector(perp, Math.sin(maxBend)).normalize();
+            } else {
+              fW.copy(foreDir);
+            }
+          }
+          const foreWQ = bLow.getWorldQuaternion(new THREE.Quaternion());
+          const hb = this.handBasis[side];
+          if (hb) {
+            const foreBackW = hb.bLocal.clone().applyQuaternion(foreWQ);
+            const fbProj = foreBackW.addScaledVector(foreDir, -foreBackW.dot(foreDir));
+            const hbProj = backW.clone().addScaledVector(foreDir, -backW.dot(foreDir));
+            if (fbProj.lengthSq() > 1e-5 && hbProj.lengthSq() > 1e-5) {
+              fbProj.normalize();
+              hbProj.normalize();
+              const sinA = new THREE.Vector3().crossVectors(fbProj, hbProj).dot(foreDir);
+              const cosA = THREE.MathUtils.clamp(fbProj.dot(hbProj), -1, 1);
+              const rollAng = Math.atan2(sinA, cosA);
+              const qRoll = new THREE.Quaternion().setFromAxisAngle(foreDir, rollAng * 0.72);
+              RigIK.setWorldQuat(bLow, qRoll.multiply(foreWQ));
+              bLow.updateMatrixWorld(true);
+            }
+          }
+        }
+
         const handQ = RigIK.handBasisQuat(this.handBasis[side], fW, backW, _q3);
         RigIK.setWorldQuat(bHand, handQ);
 
         if (s.dead || s.isDowned) {
           RigIK.applyFingerCurl(this.fingerCurls[side], [0.25, 0.25, 0.2], 0.2);
+        } else if (s.isTacSprinting && side === 'left') {
+          RigIK.applyFingerCurl(this.fingerCurls[side], [1.56, 1.78, 1.12], 1.0);
         } else {
-          RigIK.applyFingerCurl(this.fingerCurls[side], [0.9, 1.0, 0.6], 0.5);
+          const adsTight = s.isADS ? 0.06 : 0;
+          RigIK.applyFingerCurl(this.fingerCurls[side], [0.98 + adsTight, 1.08 + adsTight, 0.68 + adsTight], 0.60);
         }
       };
       solveArm('left');
@@ -1239,6 +1282,10 @@
       this._curStyleF = { left: FP_HAND_STYLES.supportRifle.f.clone(), right: FP_HAND_STYLES.grip.f.clone() };
       this._curStyleBack = { left: FP_HAND_STYLES.supportRifle.back.clone(), right: FP_HAND_STYLES.grip.back.clone() };
       this._curStylePalm = { left: FP_HAND_STYLES.supportRifle.palmOffset.clone(), right: FP_HAND_STYLES.grip.palmOffset.clone() };
+      // MW4 DMZ Weapon-First Kinetic IK: 2nd-order damped clavicle/shoulder pocket compliance springs + grip tension
+      this._shOff = { left: new THREE.Vector3(), right: new THREE.Vector3() };
+      this._shVel = { left: new THREE.Vector3(), right: new THREE.Vector3() };
+      this._gripTension = 0;
 
       const cloned = RigAssets.cloneSoldier();
       if (!cloned || !cloned.body || !cloned.bones.leftarm || !cloned.bones.rightarm) {
@@ -1394,6 +1441,16 @@
       }
     }
 
+    applyShoulderImpulse(side, x, y, z, gripBump = 0.25) {
+      const s = side === 'left' ? 'left' : 'right';
+      const v = this._shVel && this._shVel[s];
+      if (!v) return;
+      v.x = THREE.MathUtils.clamp(v.x + x * 14, -1.8, 1.8);
+      v.y = THREE.MathUtils.clamp(v.y + y * 14, -1.8, 1.8);
+      v.z = THREE.MathUtils.clamp(v.z + z * 14, -1.8, 1.8);
+      this._gripTension = Math.min(1.0, (this._gripTension || 0) + gripBump);
+    }
+
     recordArmPose(armGroup, shoulderLocal, wristLocal, handObj) {
       if (this.disabled || !armGroup || !armGroup.parent) return;
       const side = armGroup.userData && armGroup.userData.fpSide;
@@ -1451,7 +1508,7 @@
           const styleKey = (handObj && handObj.userData && (handObj.userData.activeStyle || handObj.userData.handStyle)) || 'grip';
           const style = FP_HAND_STYLES[styleKey] || FP_HAND_STYLES.grip;
 
-          // Smooth MW19/DMZ finger & wrist-basis interpolation (snap immediately when arm newly enters frame)
+          // Smooth MW4 DMZ finger & wrist-basis interpolation (snap immediately when arm newly enters frame)
           const wasVis = this._wasVisible[side];
           const stepDt = Math.min(0.05, Math.max(0.001, dt || 0.016));
           const styleLerp = wasVis ? Math.min(1, stepDt * 22) : 1.0;
@@ -1487,8 +1544,29 @@
             wristTarget = palmTargetW.addScaledVector(fW, -this.palmCenterDist);
           }
 
+          // MW4 DMZ Kinetic Clavicle / Shoulder Pocket Compliance Spring + ADS Cheek-Weld & CQB Tuck
           const sideSign = side === 'left' ? -1 : 1;
-          const camSh = cam.localToWorld(new THREE.Vector3(sideSign * 0.22, -0.29, 0.14));
+          const adsB = THREE.MathUtils.clamp((ws && ws._adsBlend) || 0, 0, 1);
+          const wp = THREE.MathUtils.clamp((ws && ws.wallPush) || 0, 0, 1);
+          const vmRoll = (ws && ws.viewmodelGroup && ws.viewmodelGroup.rotation) ? ws.viewmodelGroup.rotation.z : 0;
+
+          const shOff = this._shOff[side];
+          const shVel = this._shVel[side];
+          const ks = 195.0, cs = 18.0;
+          shVel.x += (-ks * shOff.x - cs * shVel.x) * stepDt;
+          shVel.y += (-ks * shOff.y - cs * shVel.y) * stepDt;
+          shVel.z += (-ks * shOff.z - cs * shVel.z) * stepDt;
+          shOff.x = THREE.MathUtils.clamp(shOff.x + shVel.x * stepDt, -0.045, 0.045);
+          shOff.y = THREE.MathUtils.clamp(shOff.y + shVel.y * stepDt, -0.045, 0.045);
+          shOff.z = THREE.MathUtils.clamp(shOff.z + shVel.z * stepDt, -0.055, 0.055);
+
+          // Right shoulder pockets inward/upward during ADS cheek-weld; left clavicle protracting slightly forward for C-clamp support
+          const shCamLocal = new THREE.Vector3(
+            sideSign * (0.22 - (side === 'right' ? adsB * 0.038 : adsB * 0.015)) + shOff.x,
+            -0.29 + (side === 'right' ? adsB * 0.024 : adsB * 0.014) - wp * 0.020 + shOff.y,
+            0.14 + (side === 'left' ? -adsB * 0.022 : adsB * 0.012) + wp * 0.035 + shOff.z
+          );
+          const camSh = cam.localToWorld(shCamLocal);
           const anchor = shoulderW.clone().lerp(camSh, 0.50);
 
           const dist = anchor.distanceTo(wristTarget);
@@ -1503,10 +1581,15 @@
             bArm.updateMatrixWorld(true);
           }
 
+          // MW4 Kinetic Dynamic Elbow Pole: tucks ribs cleanly on ADS, 45° Tactical Stance cant, Corner Lean & CQB Wall Push!
+          const cantTuck = THREE.MathUtils.clamp(-vmRoll * sideSign * 0.22, -0.14, 0.16);
+          const poleOut = sideSign * (0.42 - adsB * 0.09 - wp * 0.08) - cantTuck;
+          const poleDown = 0.48 + adsB * 0.06 + wp * 0.10 + Math.abs(vmRoll) * 0.08;
+          const poleBack = 0.04 + wp * 0.14 + (side === 'right' ? adsB * 0.04 : -adsB * 0.02);
           const pole = anchor.clone()
-            .addScaledVector(camRight, sideSign * 0.42)
-            .addScaledVector(camDown, 0.48)
-            .addScaledVector(camBack, 0.04);
+            .addScaledVector(camRight, poleOut)
+            .addScaledVector(camDown, poleDown)
+            .addScaledVector(camBack, poleBack);
 
           RigIK.solveTwoBone(
             bArm, bFore, bHand, wristTarget, pole,
@@ -1554,9 +1637,17 @@
 
           const qHand = RigIK.handBasisQuat(this.handBasis[side], fW, backW, new THREE.Quaternion());
           RigIK.setWorldQuat(bHand, qHand);
-          RigIK.applyFingerCurl(this.fingerCurls[side], curCurl, this._curThumb[side]);
+
+          // Kinetic grip tension subtly tightens finger curl during active recoil kick & focused ADS!
+          const tension = (this._gripTension || 0) * 0.08 + adsB * 0.03;
+          const liveCurl = (curCurl[0] > 0.5 && curCurl[0] < 1.40)
+            ? [curCurl[0] + tension, curCurl[1] + tension, curCurl[2] + tension * 0.7]
+            : curCurl;
+          RigIK.applyFingerCurl(this.fingerCurls[side], liveCurl, Math.min(1.0, this._curThumb[side] + tension * 0.5));
           return true;
         };
+
+        this._gripTension = Math.max(0, (this._gripTension || 0) - Math.min(0.05, dt || 0.016) * 5.5);
 
         this._uShowL.value = applySide('left', poseL) ? 1.0 : 0.0;
         this._uShowR.value = applySide('right', poseR) ? 1.0 : 0.0;

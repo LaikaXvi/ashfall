@@ -213,7 +213,10 @@ class GamepadController {
   update(dt, ctx) {
     const pad = this._getPad();
     if (!pad) {
-      if (ctx && ctx.player) ctx.player.padReviveHeld = false;
+      if (ctx && ctx.player) {
+        ctx.player.padReviveHeld = false;
+        ctx.player.padFocusHeld = false;
+      }
       return;
     }
 
@@ -259,6 +262,7 @@ class GamepadController {
 
     if (player) {
       player.padReviveHeld = !ctx.isModalOpen && !ctx.isPaused && !!this._isDown(pad, bRevive);
+      player.padFocusHeld = !ctx.isModalOpen && !ctx.isPaused && !!player.isADS && !player.tacStance && !!this._isDown(pad, bSprint);
     }
 
     // Clear any button release latches once the player physically releases the button
@@ -604,12 +608,19 @@ class GamepadController {
       }
     }
 
-    // === D-PAD: MEDKIT, INSPECT, KILLSTREAK ===
+    // === D-PAD: MEDKIT, INSPECT / TAC-STANCE (LT + D-PAD LEFT), KILLSTREAK ===
     if (this._justPressed(pad, bMedkit)) {
       if (player.startMedkit() && ui) ui.addFeedMessage('Applying Field Medkit...', '#69f0ae');
     }
     if (this._justPressed(pad, bInspect)) {
-      player.startInspect();
+      if (ltDown && player.toggleTacStance) {
+        const on = player.toggleTacStance();
+        if (ui && ui.addFeedMessage) {
+          ui.addFeedMessage(on ? 'Tactical Stance: ON (45° Canted ADS)' : 'Tactical Stance: OFF', on ? '#69f0ae' : '#b0bec5');
+        }
+      } else {
+        player.startInspect();
+      }
     }
     if (this._justPressed(pad, bKillstreak)) {
       if (actions.activateKillstreak) actions.activateKillstreak();

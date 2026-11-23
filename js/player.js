@@ -273,6 +273,13 @@ class Player {
     // Input flags
     this.keys = {};
     this.isADS = false;
+    this.tacStance = false;
+    this.isFocusing = false;
+    this.focusBreath = 100;
+    this.focusExhausted = false;
+    this._recoilDebtPitch = 0;
+    this._recoilDebtYaw = 0;
+    this._recoilIdleTimer = 0;
     this.isSprinting = false;
     this.isTacSprinting = false;
     this.tacSprintRegenDelay = 0;
@@ -1832,6 +1839,11 @@ class Player {
     }
     this.hp = Math.max(window.DEV_MODE ? 1 : 0, this.hp - amount);
     window.soundEngine.playDamage();
+    // MW4 DMZ Kinetic Hit Flinch: physical weapon & shoulder-pocket flinch impulse mitigated by stock stability & Focus!
+    if (this.weaponSystem && this.weaponSystem.triggerHitFlinch && this.hp > 0) {
+      const wDef = this.getActiveWeaponDef ? this.getActiveWeaponDef() : null;
+      this.weaponSystem.triggerHitFlinch(amount, wDef, !!this.isADS, !!this.isFocusing);
+    }
     if (!window.DEV_MODE && this.hp <= 0) {
       this.isDowned = true;
       this.downedHp = 55;
@@ -1883,9 +1895,22 @@ class Player {
     return true;
   }
 
+  toggleTacStance() {
+    if (this.isDowned || this.dead) return false;
+    this.tacStance = !this.tacStance;
+    if (window.soundEngine && window.soundEngine.playMagIn) {
+      try { window.soundEngine.playMagIn(); } catch (e) {}
+    }
+    return this.tacStance;
+  }
+
   applyRecoil(pitchKick, yawKick) {
     this.pitch = Math.min(Math.PI / 2 - 0.08, this.pitch + pitchKick);
     this.yaw += yawKick;
+    // Track recent burst climb for subtle MW4 post-fire center recovery (~45% settle when trigger released)
+    this._recoilDebtPitch = Math.min(0.18, (this._recoilDebtPitch || 0) + Math.max(0, pitchKick) * 0.45);
+    this._recoilDebtYaw = THREE.MathUtils.clamp((this._recoilDebtYaw || 0) + yawKick * 0.40, -0.10, 0.10);
+    this._recoilIdleTimer = 0.14;
   }
 
   getBackpackWeight() {
@@ -2708,13 +2733,52 @@ class Player {
         }
       }
 
+      // MW4 DMZ Focus (Hold Breath via [Shift] / [L3] while ADS): stabilizes Instant ADS Idle Sway by -85%
+      const sprintKeyCode = (kb && kb.sprint) || 'ShiftLeft';
+      const wantsFocus = !!(this.isADS && !this.isSliding && !this.tacStance && (this.keys[sprintKeyCode] || this.keys['ShiftLeft'] || this.padFocusHeld));
+      if (wantsFocus && !this.focusExhausted && this.focusBreath > 0) {
+        this.isFocusing = true;
+        this.focusBreath = Math.max(0, this.focusBreath - 22.5 * dt);
+        if (this.focusBreath <= 0) {
+          this.focusExhausted = true;
+          this.isFocusing = false;
+        }
+      } else {
+        this.isFocusing = false;
+        this.focusBreath = Math.min(100, (this.focusBreath == null ? 100 : this.focusBreath) + 28 * dt);
+        if (this.focusBreath >= 35) this.focusExhausted = false;
+      }
+
+      // Smooth MW4 post-burst camera recoil center settle
+      if (!this.isFiring && (this._recoilDebtPitch > 0.0002 || Math.abs(this._recoilDebtYaw) > 0.0002)) {
+        if ((this._recoilIdleTimer || 0) > 0) {
+          this._recoilIdleTimer = Math.max(0, this._recoilIdleTimer - dt);
+        } else {
+          const settleP = this._recoilDebtPitch * Math.min(1, dt * 8.0);
+          const settleY = this._recoilDebtYaw * Math.min(1, dt * 8.0);
+          this.pitch = Math.max(-Math.PI / 2 + 0.08, this.pitch - settleP);
+          this.yaw -= settleY;
+          this._recoilDebtPitch -= settleP;
+          this._recoilDebtYaw -= settleY;
+        }
+      }
+
       const opStats = GAME_DATA.OPERATOR_STATS || {};
-      let speed = opStats.walkSpeed || 6.8;
+      const activeDef = this.getActiveWeaponDef ? this.getActiveWeaponDef() : null;
+      const walkBase = opStats.walkSpeed || 6.8;
+      let speed = walkBase;
       if (this.isTacSprinting) speed = opStats.tacSprintSpeed || 12.4;
       else if (this.isSprinting) speed = opStats.sprintSpeed || 9.6;
       else if (this.stance === 'prone') speed = opStats.proneSpeed || opStats.downedSpeed || 1.9;
-      else if (this.stance === 'crouch') speed = opStats.crouchSpeed || 3.9;
-      else if (this.isADS) speed = opStats.adsSpeed || 4.3;
+      else if (this.stance === 'crouch') {
+        speed = opStats.crouchSpeed || 3.9;
+        if (this.isADS) speed *= this.tacStance ? 0.96 : 0.85;
+      } else if (this.isADS) {
+        const wAdsMult = (activeDef && activeDef.adsMoveMult) ? activeDef.adsMoveMult : 0.64;
+        speed = walkBase * wAdsMult;
+        if (this.tacStance) speed = Math.min(walkBase * 0.95, speed * 1.28);
+        if (this.isFocusing) speed *= 0.82;
+      }
 
       // Dedicated melee weapon gives a slight movement & sprint speed boost (+12%, not while prone)
       if (this.activeSlot === 'melee' && this.stance !== 'prone') {

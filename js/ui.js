@@ -36,6 +36,8 @@ window.GFX_SETTINGS = (() => {
   return { lod: 3, lighting: 3, shadows: 3, textures: 3, pixel: 2 };
 })();
 window.BASE_FOV = (typeof _savedUserSettings.baseFov === 'number' && Number.isFinite(_savedUserSettings.baseFov)) ? _savedUserSettings.baseFov : 75;
+window.ADS_FOV_MODE = (_savedUserSettings.adsFovMode === 'independent') ? 'independent' : 'affected';
+window.WEAPON_FOV_SCALE = (['narrow', 'default', 'wide'].includes(_savedUserSettings.weaponFovScale)) ? _savedUserSettings.weaponFovScale : 'default';
 window.WEAPON_FOV_MODE = (_savedUserSettings.weaponFovMode === 'independent') ? 'independent' : 'effected';
 window.VIEWMODEL_FOV = (typeof _savedUserSettings.viewmodelFov === 'number' && Number.isFinite(_savedUserSettings.viewmodelFov)) ? _savedUserSettings.viewmodelFov : 75;
 window._SAVED_AUDIO_SETTINGS = _savedUserSettings.audio || null;
@@ -48,6 +50,8 @@ window.saveAllUserSettings = function saveAllUserSettings() {
     } : window._SAVED_AUDIO_SETTINGS;
     const payload = {
       baseFov: window.BASE_FOV || 75,
+      adsFovMode: window.ADS_FOV_MODE === 'independent' ? 'independent' : 'affected',
+      weaponFovScale: (['narrow', 'default', 'wide'].includes(window.WEAPON_FOV_SCALE)) ? window.WEAPON_FOV_SCALE : 'default',
       weaponFovMode: window.WEAPON_FOV_MODE === 'independent' ? 'independent' : 'effected',
       viewmodelFov: window.VIEWMODEL_FOV || 75,
       mouseSens: window.MOUSE_SENS || 1.0,
@@ -87,6 +91,7 @@ window.DEFAULT_KEYBINDS = {
   jump: 'Space',
   reload: 'KeyR',
   inspect: 'KeyI',
+  tacStance: 'KeyB',
   plates: 'KeyG',
   medkit: 'KeyH',
   lethal: 'KeyF',
@@ -2853,6 +2858,25 @@ class GameUI {
         const el = document.getElementById(id);
         if (el) el.textContent = `${fov}°`;
       });
+      const adsFovMode = window.ADS_FOV_MODE === 'independent' ? 'independent' : 'affected';
+      const btnAdsAff = document.getElementById('btn-adsfov-affected');
+      const btnAdsInd = document.getElementById('btn-adsfov-independent');
+      if (btnAdsAff) {
+        btnAdsAff.style.borderColor = adsFovMode === 'affected' ? '#69f0ae' : '';
+        btnAdsAff.style.color = adsFovMode === 'affected' ? '#69f0ae' : '';
+      }
+      if (btnAdsInd) {
+        btnAdsInd.style.borderColor = adsFovMode === 'independent' ? '#69f0ae' : '';
+        btnAdsInd.style.color = adsFovMode === 'independent' ? '#69f0ae' : '';
+      }
+      const wScale = (['narrow', 'default', 'wide'].includes(window.WEAPON_FOV_SCALE)) ? window.WEAPON_FOV_SCALE : 'default';
+      [['narrow', 'btn-wscale-narrow'], ['default', 'btn-wscale-default'], ['wide', 'btn-wscale-wide']].forEach(([k, id]) => {
+        const b = document.getElementById(id);
+        if (b) {
+          b.style.borderColor = wScale === k ? '#69f0ae' : '';
+          b.style.color = wScale === k ? '#69f0ae' : '';
+        }
+      });
       const wfovMode = window.WEAPON_FOV_MODE === 'independent' ? 'independent' : 'effected';
       const vmFov = window.VIEWMODEL_FOV || 75;
       const btnEff = document.getElementById('btn-wfov-effected');
@@ -2968,6 +2992,34 @@ class GameUI {
       if (el) {
         el.addEventListener('input', () => {
           window.BASE_FOV = parseInt(el.value, 10) || 75;
+          if (window.saveAllUserSettings) window.saveAllUserSettings();
+          syncSettingsUI();
+        });
+      }
+    });
+    const btnAdsFovAff = document.getElementById('btn-adsfov-affected');
+    if (btnAdsFovAff) {
+      btnAdsFovAff.addEventListener('click', () => {
+        window.ADS_FOV_MODE = 'affected';
+        if (window.saveAllUserSettings) window.saveAllUserSettings();
+        if (window.gunsmith && window.gunsmith.isOpen) window.gunsmith.renderStats();
+        syncSettingsUI();
+      });
+    }
+    const btnAdsFovInd = document.getElementById('btn-adsfov-independent');
+    if (btnAdsFovInd) {
+      btnAdsFovInd.addEventListener('click', () => {
+        window.ADS_FOV_MODE = 'independent';
+        if (window.saveAllUserSettings) window.saveAllUserSettings();
+        if (window.gunsmith && window.gunsmith.isOpen) window.gunsmith.renderStats();
+        syncSettingsUI();
+      });
+    }
+    [['narrow', 'btn-wscale-narrow'], ['default', 'btn-wscale-default'], ['wide', 'btn-wscale-wide']].forEach(([k, id]) => {
+      const btnWs = document.getElementById(id);
+      if (btnWs) {
+        btnWs.addEventListener('click', () => {
+          window.WEAPON_FOV_SCALE = k;
           if (window.saveAllUserSettings) window.saveAllUserSettings();
           syncSettingsUI();
         });
@@ -4118,6 +4170,7 @@ class GameUI {
       ['jump', 'Jump / Stand / Slide-Cancel'],
       ['reload', 'Reload Weapon'],
       ['inspect', 'Inspect Weapon'],
+      ['tacStance', 'Toggle Tactical Stance (45° Canted ADS)'],
       ['plates', 'Insert Armor Plates'],
       ['medkit', 'Use Field Medkit'],
       ['lethal', 'Lethal Throwable'],
@@ -4203,7 +4256,7 @@ class GameUI {
     const gpLabels = [
       ['fire', 'Fire Weapon'],
       ['ads', 'Aim Down Sights / Cancel Throw'],
-      ['sprint', 'Sprint / 2x Tactical Sprint'],
+      ['sprint', 'Sprint / 2x Tac-Sprint (ADS Hold: Focus)'],
       ['jump', 'Jump / Stand / Slide-Cancel'],
       ['crouch', 'Crouch / Slide / Hold Prone'],
       ['interactReload', 'Loot / Interact / Reload'],
@@ -4214,7 +4267,7 @@ class GameUI {
       ['melee', 'Tap: Quick Melee · Hold: Equip Melee'],
       ['medkit', 'Use Field Medkit'],
       ['backpack', 'Open Backpack (Hold: Stow Ground Weapon)'],
-      ['inspect', 'Inspect Weapon'],
+      ['inspect', 'Inspect Weapon (LT + Tap: Tac-Stance)'],
       ['killstreak', 'Activate Killstreak'],
       ['map', 'Toggle Full-Size Tactical Map'],
       ['pause', 'Pause Menu']
@@ -6265,26 +6318,94 @@ class GameUI {
     const xpEl = document.getElementById('hud-xp-val');
     if (xpEl) xpEl.textContent = `${raidXp || 0} XP`;
 
-    // Dynamic Crosshair (size matches exact live bullet spread cone; pulses when cooking a frag grenade!) & ADS vignette
+    // Dynamic Crosshair (size matches exact live bullet spread cone; 45° canted in Tactical Stance; pulses when cooking a frag grenade!) & ADS vignette
     const chEl = document.getElementById('crosshair');
+    const tacCant = !!(player.isADS && weaponSystem && (weaponSystem._tacStanceBlend || 0) > 0.35);
     if (chEl) {
       const cookingFrag = !!(throwableSystem && throwableSystem.state === 'prep' && throwableSystem.activeItemId === 'frag_grenade');
       const cookPulse = throwableSystem ? (throwableSystem.cookPulse || 0) : 0;
       const isThrowingKnife = !!(throwableSystem && throwableSystem.state === 'prep' && throwableSystem.activeItemId === 'throwing_knife');
-      chEl.style.opacity = (player.isADS && !cookingFrag && !isThrowingKnife) ? '0' : '1';
+      chEl.style.opacity = (player.isADS && !tacCant && !cookingFrag && !isThrowingKnife) ? '0' : '1';
+      chEl.style.transform = (tacCant && !cookingFrag && !isThrowingKnife)
+        ? 'translate(-50%, -50%) rotate(45deg)'
+        : 'translate(-50%, -50%)';
       const hasLaser = !!(wDef && wDef.hasLaser);
-      chEl.classList.toggle('laser-active', hasLaser && !cookingFrag);
+      chEl.classList.toggle('laser-active', (hasLaser || tacCant) && !cookingFrag);
       chEl.classList.toggle('cook-pulse', cookPulse > 0.15);
       const fovRad = ((weaponSystem.camera ? weaponSystem.camera.fov : 75) * Math.PI) / 180;
-      const spreadPx = (Math.tan(weaponSystem.currentSpread || 0.02) / Math.tan(fovRad / 2)) * (window.innerHeight * 0.5);
-      const baseGap = isThrowingKnife ? 6 : THREE.MathUtils.clamp(spreadPx, 5, 92);
+      let liveCone = weaponSystem.currentSpread || 0.02;
+      if (tacCant && wDef) {
+        const stMult = player.isProne ? 0.55 : (player.isCrouching ? 0.75 : 1.0);
+        const baseCant = hasLaser
+          ? ((wDef.adsSpread || 0.004) * 1.45)
+          : THREE.MathUtils.lerp(wDef.adsSpread || 0.004, liveCone, 0.26);
+        liveCone = baseCant * stMult;
+      }
+      const spreadPx = (Math.tan(liveCone) / Math.tan(fovRad / 2)) * (window.innerHeight * 0.5);
+      const baseGap = isThrowingKnife ? 6 : THREE.MathUtils.clamp(spreadPx, 4, 92);
       const gapPx = baseGap + cookPulse * 18;
       chEl.style.setProperty('--ch-gap', `${gapPx.toFixed(1)}px`);
     }
+
+    // MW4 DMZ ADS Focus / Hold-Breath Indicator + Breath Meter
+    let focusPill = document.getElementById('hud-focus-pill');
+    if (!focusPill && chEl && chEl.parentElement) {
+      focusPill = document.createElement('div');
+      focusPill.id = 'hud-focus-pill';
+      focusPill.style.cssText = 'position:absolute;left:50%;top:68%;transform:translate(-50%,0);display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none;opacity:0;transition:opacity 0.14s ease;z-index:18;';
+      focusPill.innerHTML =
+        '<div id="hud-focus-label" style="font-size:10px;font-weight:700;letter-spacing:1.2px;padding:2px 8px;border-radius:3px;background:rgba(10,14,18,0.68);border:1px solid rgba(255,255,255,0.18);color:#d7e0e8;text-shadow:0 1px 2px rgba(0,0,0,0.85);">[SHIFT] FOCUS</div>' +
+        '<div style="width:84px;height:3px;border-radius:2px;background:rgba(255,255,255,0.16);overflow:hidden;">' +
+        '<div id="hud-focus-bar" style="width:100%;height:100%;background:#69f0ae;transition:width 0.06s linear;"></div>' +
+        '</div>';
+      chEl.parentElement.appendChild(focusPill);
+    }
+    if (focusPill) {
+      const showFocus = !!(
+        typeof player.focusBreath === 'number' &&
+        player.isADS &&
+        !tacCant &&
+        !player.isDowned &&
+        !player.dead &&
+        wDef &&
+        wDef.type === 'weapon' &&
+        (!weaponSystem || !weaponSystem.isReloading)
+      );
+      focusPill.style.opacity = showFocus ? '1' : '0';
+      if (showFocus) {
+        const lbl = document.getElementById('hud-focus-label');
+        const bar = document.getElementById('hud-focus-bar');
+        const breathPct = THREE.MathUtils.clamp(player.focusBreath, 0, 100);
+        const isGp = window._lastInputMode === 'gamepad';
+        const keyHint = isGp
+          ? this._formatGamepadButton((window.GAMEPAD_BINDS && window.GAMEPAD_BINDS.sprint) ?? 10)
+          : this._formatKeyCode((window.KEYBINDS && window.KEYBINDS.sprint) || 'ShiftLeft');
+        if (lbl) {
+          if (player.focusExhausted) {
+            lbl.textContent = 'RECOVERING BREATH';
+            lbl.style.color = '#ff6b6b';
+            lbl.style.borderColor = 'rgba(255,107,107,0.45)';
+          } else if (player.isFocusing) {
+            lbl.textContent = 'FOCUSING';
+            lbl.style.color = '#69f0ae';
+            lbl.style.borderColor = 'rgba(105,240,174,0.55)';
+          } else {
+            lbl.textContent = `[${keyHint}] HOLD FOCUS`;
+            lbl.style.color = '#d7e0e8';
+            lbl.style.borderColor = 'rgba(255,255,255,0.18)';
+          }
+        }
+        if (bar) {
+          bar.style.width = `${breathPct.toFixed(1)}%`;
+          bar.style.background = player.focusExhausted ? '#ff6b6b' : (breathPct < 28 ? '#f5a623' : '#69f0ae');
+        }
+      }
+    }
+
     const adsVig = document.getElementById('ads-vignette');
     if (adsVig) {
-      adsVig.style.opacity = player.isADS ? '1' : '0';
-      if (player.isADS) {
+      adsVig.style.opacity = (player.isADS && !tacCant) ? '1' : '0';
+      if (player.isADS && !tacCant) {
         const z = (wDef && wDef.adsZoom) ? wDef.adsZoom : 1.25;
         if (z >= 6.0) {
           adsVig.style.background = 'radial-gradient(circle, transparent 48%, rgba(0, 0, 0, 0.80) 94%)';
