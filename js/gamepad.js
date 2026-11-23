@@ -284,9 +284,93 @@ class GamepadController {
       this._snapshot(pad);
       return;
     }
-    // B (1): Close Full-Size Tactical Map if open
-    if (ui && ui.isTacMapOpen && !ctx.isModalOpen && this._justPressed(pad, 1) && actions.toggleTacMap) {
-      actions.toggleTacMap(false);
+    // B (1): Cancel Tac-Map Radial first, or Close Full-Size Tactical Map if open
+    if (ui && ui.isTacMapOpen && !ctx.isModalOpen) {
+      if (this._justPressed(pad, 1)) {
+        this._lockUntilRelease.add(1);
+        if (ui.tacMapRadial && ui.tacMapRadial.open && ui.closeTacMapRadial) {
+          ui.closeTacMapRadial();
+        } else if (actions.toggleTacMap) {
+          actions.toggleTacMap(false);
+        }
+        this._snapshot(pad);
+        return;
+      }
+
+      if (player) {
+        player.padMoveX = 0;
+        player.padMoveY = 0;
+      }
+      if (!ui.tacMapCursor) ui.tacMapCursor = { nx: 0.5, ny: 0.5, active: true };
+      ui.tacMapCursor.active = true;
+
+      // RB (5) = Zoom OUT, LB (4) = Zoom IN on Tactical Map
+      const rbZoomOut = this._isDown(pad, 5);
+      const lbZoomIn = this._isDown(pad, 4);
+      if (rbZoomOut && !lbZoomIn && ui.zoomTacMap) {
+        ui.zoomTacMap(Math.pow(0.42, dt), ui.tacMapCursor.nx, ui.tacMapCursor.ny, ctx.world);
+      } else if (lbZoomIn && !rbZoomOut && ui.zoomTacMap) {
+        ui.zoomTacMap(Math.pow(2.38, dt), ui.tacMapCursor.nx, ui.tacMapCursor.ny, ctx.world);
+      }
+
+      const radialOpen = !!(ui.tacMapRadial && ui.tacMapRadial.open);
+      if (radialOpen) {
+        const useStick = (rs.mag > ls.mag) ? rs : ls;
+        if (ui.updateTacMapRadialFromStick) {
+          ui.updateTacMapRadialFromStick(useStick.x, useStick.y);
+        }
+      } else {
+        if (ls.mag > 0.08) {
+          const curSpeed = 0.72;
+          const prevNx = ui.tacMapCursor.nx;
+          const prevNy = ui.tacMapCursor.ny;
+          ui.tacMapCursor.nx = THREE.MathUtils.clamp(prevNx + ls.x * curSpeed * dt, 0.03, 0.97);
+          ui.tacMapCursor.ny = THREE.MathUtils.clamp(prevNy + ls.y * curSpeed * dt, 0.03, 0.97);
+          // Edge-push pan when zoomed in
+          if ((ui.tacMapZoom || 1) > 1.01 && ui.panTacMap && ctx.world) {
+            const ext = ui.getTacMapViewExtent ? ui.getTacMapViewExtent(ctx.world).viewExtent : 200;
+            let panX = 0;
+            let panZ = 0;
+            if ((ui.tacMapCursor.nx <= 0.035 && ls.x < -0.2) || (ui.tacMapCursor.nx >= 0.965 && ls.x > 0.2)) {
+              panX = ls.x * ext * 1.15 * dt;
+            }
+            if ((ui.tacMapCursor.ny <= 0.035 && ls.y < -0.2) || (ui.tacMapCursor.ny >= 0.965 && ls.y > 0.2)) {
+              panZ = ls.y * ext * 1.15 * dt;
+            }
+            if (panX !== 0 || panZ !== 0) ui.panTacMap(panX, panZ, ctx.world);
+          }
+        }
+        if (rs.mag > 0.12 && (ui.tacMapZoom || 1) > 1.01 && ui.panTacMap && ctx.world) {
+          const ext = ui.getTacMapViewExtent ? ui.getTacMapViewExtent(ctx.world).viewExtent : 200;
+          ui.panTacMap(rs.x * ext * 1.45 * dt, rs.y * ext * 1.45 * dt, ctx.world);
+        }
+      }
+
+      // A (0): Quick-Tap = Place Ping or Remove Existing Ping under cursor; Hold (>=0.22s) = Open Ping Type Radial!
+      const aDownMap = this._isDown(pad, 0);
+      if (this._justPressed(pad, 0)) {
+        this._tacMapAHold = 0;
+        this._tacMapARadialOpened = false;
+      }
+      if (aDownMap) {
+        this._tacMapAHold = (this._tacMapAHold || 0) + dt;
+        if (!this._tacMapARadialOpened && this._tacMapAHold >= 0.22) {
+          this._tacMapARadialOpened = true;
+          if (ui.openTacMapRadial) {
+            ui.openTacMapRadial(ui.tacMapCursor.nx, ui.tacMapCursor.ny, ctx.world, 'gamepad');
+          }
+        }
+      } else if (this._justReleased(pad, 0)) {
+        this._lockUntilRelease.add(0);
+        if (this._tacMapARadialOpened) {
+          if (actions.confirmTacMapRadial) actions.confirmTacMapRadial();
+        } else if (actions.tapTacMapAt) {
+          actions.tapTacMapAt(ui.tacMapCursor.nx, ui.tacMapCursor.ny);
+        }
+        this._tacMapAHold = 0;
+        this._tacMapARadialOpened = false;
+      }
+
       this._snapshot(pad);
       return;
     }
@@ -400,9 +484,12 @@ class GamepadController {
           ui.activateSelectedElement({ inputMode: 'gamepad' });
         }
       }
-      // Y (3) / Triangle: Split Stack
-      if (this._justPressed(pad, 3) && ui && ui._hoveredSlot && !this._modalRtDragging) {
-        ui.handleSlotAction('split');
+      // Y (3) / Triangle: Ping hovered or selected item in Bag / Container / Corpse / Personal Inventory
+      if (this._justPressed(pad, 3) && ui && !this._modalRtDragging) {
+        this._lockUntilRelease.add(3);
+        if (ui.handleGamepadInventoryAction) {
+          ui.handleGamepadInventoryAction('y_ping_item');
+        }
       }
       // X (2) / Square: Quick-equip / swap item or weapon into an available slot
       if (this._justPressed(pad, 2) && ui && !this._modalRtDragging) {

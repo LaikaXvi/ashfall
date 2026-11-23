@@ -34,6 +34,9 @@ class DevConsole {
   }
 
   log(text, type = 'info') {
+    if (Array.isArray(this._chatCapture) && type !== 'cmd') {
+      this._chatCapture.push({ text, type });
+    }
     if (!this.logEl) return;
     const line = document.createElement('div');
     line.className = `dev-log-line dev-log-${type}`;
@@ -170,6 +173,18 @@ class DevConsole {
       if (matches.length === 1) this.inputEl.value = `/${cmd} ${matches[0]}`;
       else if (matches.length > 1) this.log('Targets: ' + matches.join('  '), 'info');
     }
+  }
+
+  executeFromChat(rawLine) {
+    const captured = [];
+    const prevCapture = this._chatCapture;
+    this._chatCapture = captured;
+    try {
+      this.execute(rawLine);
+    } finally {
+      this._chatCapture = prevCapture || null;
+    }
+    return captured;
   }
 
   execute(rawLine) {
@@ -573,6 +588,39 @@ class DevConsole {
         const filter = (args[0] || '').toLowerCase();
         const list = Object.keys(items).filter(k => !filter || k.toLowerCase().includes(filter) || (items[k].name || '').toLowerCase().includes(filter));
         this.log(`Items (${list.length}): ${list.join(', ')}`, 'info');
+      }
+    });
+
+    this.registerCommand('role', {
+      aliases: ['admin', 'dev'],
+      usage: '/role [admin|dev|player]',
+      desc: 'Inspect or set your local Developer / Admin privilege badge & chat command access.',
+      handler: (args) => {
+        const ui = this.ctx.getUI && this.ctx.getUI();
+        if (!ui || !ui.profile) return;
+        const next = (args[0] || '').toLowerCase();
+        if (!next) {
+          const cur = ui.getDeveloperRoleLabel ? (ui.getDeveloperRoleLabel() || 'PLAYER') : (window.DEV_MODE ? 'DEV' : 'PLAYER');
+          this.log(`Current privilege role: ${cur}`, 'info');
+          return;
+        }
+        if (next === 'admin' || next === 'administrator') {
+          ui.profile.role = 'admin';
+          ui.profile.isAdmin = true;
+        } else if (next === 'dev' || next === 'developer') {
+          ui.profile.role = 'dev';
+          ui.profile.isDeveloper = true;
+          if (!window.SQUAD_PVP) window.DEV_MODE = true;
+        } else {
+          ui.profile.role = 'player';
+          ui.profile.isAdmin = false;
+          ui.profile.isDeveloper = false;
+          window.DEV_MODE = false;
+        }
+        if (ui.saveProfile) ui.saveProfile();
+        if (ui.syncSettingsUI) ui.syncSettingsUI();
+        if (ui.refreshLobbyChatRoleBadge) ui.refreshLobbyChatRoleBadge();
+        this.log(`Updated role to ${(ui.profile.role || 'player').toUpperCase()}.`, 'ok');
       }
     });
   }

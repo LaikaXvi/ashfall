@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ASHFALL // 3D Extraction Looter-Shooter</title>
-  <link rel="stylesheet" href="css/style.css?v=260" />
+  <link rel="stylesheet" href="css/style.css?v=264" />
   <!-- Three.js r128 UMD for zero-build compatibility (works on both http:// and file://) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="js/vendor/GLTFLoader.js?v=240"></script>
@@ -45,6 +45,28 @@
   <div id="damage-indicator-container"></div>
   <div id="mission-ticker-stack" class="mission-ticker-stack" aria-live="polite"></div>
 
+  <!-- Right-Side Blurred-Background Lobby Text Chat (Strictly Scoped per Active Match or FOB + Dev/Admin Console Access) -->
+  <aside id="lobby-chat-panel" class="lobby-chat-panel" aria-label="Lobby Text Chat">
+    <div class="lc-header">
+      <div class="lc-title-wrap">
+        <span class="lc-dot"></span>
+        <span id="lobby-chat-scope" class="lc-scope">FOB LOBBY</span>
+        <span id="lobby-chat-role-badge" class="lc-role-badge hidden">DEV</span>
+      </div>
+      <div class="lc-head-actions">
+        <span class="lc-key-hint">[ENTER]</span>
+        <button id="btn-lobby-chat-min" class="lc-min-btn" type="button" title="Collapse / Expand Chat">—</button>
+      </div>
+    </div>
+    <div id="lobby-chat-body" class="lc-body">
+      <div id="lobby-chat-messages" class="lc-messages"></div>
+      <form id="lobby-chat-form" class="lc-input-row" autocomplete="off">
+        <input id="lobby-chat-input" class="lc-input" type="text" maxlength="220" autocomplete="off" spellcheck="false" placeholder="Press [Enter] to chat in lobby..." />
+        <button id="btn-lobby-chat-send" class="lc-send-btn" type="submit">SEND</button>
+      </form>
+    </div>
+  </aside>
+
   <!-- Global In-Raid Update Notifier (visible during raids; performs safe Dev Exfil & refresh) -->
   <button id="raid-update-badge" class="menu-update-badge raid-update-badge hidden" title="Safe Dev Exfil (keeps all found-in-raid items &amp; gear) and reload into the latest version">NEW VERSION — EXFIL &amp; UPDATE</button>
 
@@ -53,7 +75,7 @@
     <!-- IMPORTANT: Update version in GAME_DATA.VERSION (js/data.js) and here with EVERY new commit -->
     <div class="menu-version-stack">
       <button id="menu-update-badge" class="menu-update-badge hidden" title="Click to reload into the latest version">NEW VERSION AVAILABLE</button>
-      <div id="menu-version-badge" class="menu-version-badge">v2.63</div>
+      <div id="menu-version-badge" class="menu-version-badge">v2.64</div>
     </div>
     <!-- Minimal Sub-Menu Top Bar (Top-Left Back Button only — no redundant nav band) -->
     <header id="menu-topbar" class="hideout-header hidden">
@@ -945,9 +967,23 @@
       <div class="tacmap-card">
         <div class="tacmap-header">
           <span class="tacmap-title">TACTICAL SECTOR MAP // <span id="tacmap-zone-name">DUSTLINE OUTPOST</span></span>
-          <span class="tacmap-hint">CLICK TO PING · RIGHT-CLICK ENEMY PING · [M] / [BACK] TO CLOSE</span>
+          <div class="tacmap-header-right">
+            <span id="tacmap-zoom-badge" class="tacmap-zoom-badge" title="Click to reset zoom (Scroll or LB/RB)">1.0x</span>
+            <span class="tacmap-hint">CLICK PING/REMOVE · SCROLL OR [LB]/[RB] ZOOM · RIGHT-CLICK / HOLD [A] RADIAL · [M] CLOSE</span>
+          </div>
         </div>
-        <canvas id="hud-tacmap-canvas" width="560" height="560"></canvas>
+        <div id="tacmap-stage" class="tacmap-stage">
+          <canvas id="hud-tacmap-canvas" width="560" height="560"></canvas>
+          <div id="tacmap-ping-radial" class="tacmap-ping-radial hidden">
+            <button type="button" class="tm-rad-opt tm-rad-top" data-ping="enemy" style="border-color:rgba(255,61,61,0.55);color:#ff6b6b;"><b>⚠</b><span>ENEMY</span></button>
+            <button type="button" class="tm-rad-opt tm-rad-tr" data-ping="attack" style="border-color:rgba(255,112,67,0.55);color:#ff8a65;"><b>⚔</b><span>ATTACK</span></button>
+            <button type="button" class="tm-rad-opt tm-rad-br" data-ping="loot" style="border-color:rgba(105,240,174,0.55);color:#69f0ae;"><b>◆</b><span>LOOT</span></button>
+            <button type="button" class="tm-rad-opt tm-rad-bot" data-ping="regroup" style="border-color:rgba(206,147,216,0.55);color:#ce93d8;"><b>◎</b><span>REGROUP</span></button>
+            <button type="button" class="tm-rad-opt tm-rad-bl" data-ping="defend" style="border-color:rgba(66,165,245,0.55);color:#64b5f6;"><b>⛨</b><span>DEFEND</span></button>
+            <button type="button" class="tm-rad-opt tm-rad-tl" data-ping="location" style="border-color:rgba(245,166,35,0.55);color:#ffca28;"><b>◈</b><span>MARK</span></button>
+            <div id="tacmap-radial-center" class="tm-rad-center" data-ping="cancel">✕</div>
+          </div>
+        </div>
         <div class="tacmap-legend">
           <span><i class="lg-dot lg-you"></i>YOU</span>
           <span><i class="lg-dot lg-ally"></i>SQUAD</span>
@@ -1322,26 +1358,26 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION with every new commit) -->
-  <script src="js/data.js?v=263"></script>
-  <script src="js/rig.js?v=263"></script>
+  <script src="js/data.js?v=264"></script>
+  <script src="js/rig.js?v=264"></script>
   <script src="js/animation.js?v=263"></script>
   <script src="js/net.js?v=123"></script>
   <script src="js/sfx_samples.js?v=21"></script>
   <script src="js/audio.js?v=263"></script>
   <script src="js/world.js?v=260"></script>
-  <script src="js/weapons.js?v=263"></script>
+  <script src="js/weapons.js?v=264"></script>
   <script src="js/icons.js?v=246"></script>
   <script src="js/throwables.js?v=260"></script>
   <script src="js/enemies.js?v=260"></script>
   <script src="js/squad.js?v=262"></script>
-  <script src="js/multiplayer.js?v=250"></script>
-  <script src="js/player.js?v=263"></script>
-  <script src="js/gamepad.js?v=259"></script>
+  <script src="js/multiplayer.js?v=264"></script>
+  <script src="js/player.js?v=264"></script>
+  <script src="js/gamepad.js?v=264"></script>
   <script src="js/gunsmith.js?v=257"></script>
   <script src="js/matchmaking.js?v=240"></script>
   <script src="js/hideout.js?v=244"></script>
-  <script src="js/ui.js?v=258"></script>
-  <script src="js/console.js?v=226"></script>
-  <script src="js/main.js?v=260"></script>
+  <script src="js/ui.js?v=264"></script>
+  <script src="js/console.js?v=264"></script>
+  <script src="js/main.js?v=264"></script>
 </body>
 </html>

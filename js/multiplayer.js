@@ -248,7 +248,8 @@ class MultiplayerSession {
 
     // Fallback state / event packets over ntfy.sh / MQTT if WebRTC hasn't connected yet
     if (
-      pkt.type === 'state' || pkt.type === 'shot' || pkt.type === 'ping' ||
+      pkt.type === 'state' || pkt.type === 'shot' || pkt.type === 'ping' || pkt.type === 'ping_remove' ||
+      pkt.type === 'lobby_chat' ||
       pkt.type === 'enemy_hit' || pkt.type === 'enemies_sync' || pkt.type === 'enemy_shot' ||
       pkt.type === 'ground_drop' || pkt.type === 'ground_pickup' ||
       pkt.type === 'container_open' || pkt.type === 'container_sync' || pkt.type === 'corpse_sync' ||

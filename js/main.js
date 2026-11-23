@@ -322,7 +322,7 @@
     if (!inRaid && hideoutBunker && hideoutBunker.activeRoam) {
       if (document.pointerLockElement === canvas) {
         hideoutHadPointerLock = true;
-      } else if (hideoutHadPointerLock) {
+      } else if (hideoutHadPointerLock && !(ui && ui.isChatInputActive)) {
         exitHideoutRoam(true);
       }
     }
@@ -453,6 +453,34 @@
     }
     // Start real-time co-op multiplayer sync when deploying with party members into the SAME match!
     const activeMatchId = matchId || (ui.partyId + '_' + zoneId);
+    if (ui && ui.setChatRoomScope) {
+      ui.setChatRoomScope('match', activeMatchId, `MATCH // ${(zone.name || zoneId).toUpperCase()}`);
+    }
+    if (ui) {
+      ui.onSendMatchChat = (chatPkt) => {
+        if (mpSession && mpSession.active) mpSession.sendEvent(chatPkt);
+      };
+      ui.onInventoryPing = (info) => {
+        if (!inRaid || !info) return;
+        const qtyTxt = (info.qty && info.qty > 1) ? ` x${info.qty}` : '';
+        const srcSuffix = info.sourceKind === 'body'
+          ? ' (BODY)'
+          : (info.sourceKind === 'container' ? ' (CONTAINER)' : ` (${info.sourceTitle || getPlayerCallsign()})`);
+        const label = `${(info.itemName || 'ITEM').toUpperCase()}${qtyTxt}${srcSuffix}`;
+        let basePos = info.worldPos ? info.worldPos.clone() : (player ? player.position.clone() : new THREE.Vector3());
+        if (info.sourceKind === 'player' && player) {
+          basePos = new THREE.Vector3(player.position.x, (player.position.y - player.currentEyeHeight) + 2.15, player.position.z);
+        } else if (info.worldPos) {
+          basePos = new THREE.Vector3(info.worldPos.x, info.worldPos.y + (info.sourceKind === 'body' ? 0.65 : 0.75), info.worldPos.z);
+        }
+        _placePing('loot', basePos, null, false, null, {
+          customLabel: label,
+          itemId: info.itemId || null,
+          targetEntity: info.sourceKind === 'player' ? player : null,
+          targetClientId: info.sourceKind === 'player' ? ui._clientId : null
+        });
+      };
+    }
     const hasRemoteParty = (ui.partyMembers || []).some(m => !m.isSelf && m.isRemoteHuman);
     isMatchHost = !hasRemoteParty || (typeof ui.isPartyLeader === 'function' ? ui.isPartyLeader() : true);
     enemyManager = new EnemyManager(scene, world, zone, weaponSystem, hasRemoteParty && !isMatchHost);
@@ -563,7 +591,32 @@
               }
             }
           } else if (pkt.type === 'ping') {
-            _placePing(pkt.pingType || 'location', new THREE.Vector3(pkt.x || 0, pkt.y || 0.1, pkt.z || 0), null, false, pkt.fromName || 'SQUAD');
+            let remoteTarget = null;
+            if (pkt.targetClientId) {
+              if (pkt.targetClientId === ui._clientId) {
+                remoteTarget = player;
+              } else if (squadManager && squadManager.getAllyByClientId) {
+                remoteTarget = squadManager.getAllyByClientId(pkt.targetClientId);
+              }
+            }
+            _placePing(
+              pkt.pingType || 'location',
+              new THREE.Vector3(pkt.x || 0, pkt.y || 0.1, pkt.z || 0),
+              null,
+              false,
+              pkt.fromName || 'SQUAD',
+              {
+                id: pkt.pingId || null,
+                customLabel: pkt.customLabel || null,
+                itemId: pkt.itemId || null,
+                targetEntity: remoteTarget,
+                targetClientId: pkt.targetClientId || null
+              }
+            );
+          } else if (pkt.type === 'ping_remove') {
+            if (pkt.pingId) removePingById(pkt.pingId, false);
+          } else if (pkt.type === 'lobby_chat') {
+            if (ui && ui.receiveLobbyChatPacket) ui.receiveLobbyChatPacket(pkt);
           } else if (pkt.type === 'enemies_sync') {
             if (!isMatchHost && enemyManager && Array.isArray(pkt.list)) {
               enemyManager.applyHostSnapshot(pkt.list);
@@ -959,6 +1012,13 @@
     }
     inRaid = false;
     isModalOpen = false;
+    if (ui && ui.setChatRoomScope) {
+      const fobTitle = (ui.partyMembers && ui.partyMembers.length > 1)
+        ? `${ui.partyHost || 'HOST'}'S FOB`
+        : 'FOB LOBBY';
+      ui.setChatRoomScope('fob', ui.partyId || ('p_' + ui._clientId), fobTitle);
+    }
+    if (ui && ui.updateLobbyChatVisibility) ui.updateLobbyChatVisibility();
     if (document.pointerLockElement === canvas) {
       document.exitPointerLock();
     }
@@ -1079,7 +1139,7 @@
       player.isADS = false;
     }
     const suppressPause = performance.now() < escClosedUiUntil;
-    if (!locked && !suppressPause && !isModalOpen && !ui.isTacMapOpen && !(ui && ui.isInGameSettingsOpen) && !(devConsole && devConsole.isOpen)) {
+    if (!locked && !suppressPause && !isModalOpen && !ui.isTacMapOpen && !(ui && ui.isInGameSettingsOpen) && !(devConsole && devConsole.isOpen) && !(ui && ui.isChatInputActive)) {
       document.getElementById('pointer-lock-overlay').classList.remove('hidden');
     } else if (locked) {
       document.getElementById('pointer-lock-overlay').classList.add('hidden');
@@ -1216,19 +1276,11 @@
       } else {
         // If looking directly at one of our own ping markers, clicking Mouse3 removes it!
         if (hoveredOwnPing) {
-          const idx = activePings.indexOf(hoveredOwnPing);
-          if (idx !== -1) {
-            if (hoveredOwnPing.beamMesh && scene) scene.remove(hoveredOwnPing.beamMesh);
-            activePings.splice(idx, 1);
-            window.activePings = activePings;
-            hoveredOwnPing = null;
-            if (window.soundEngine && window.soundEngine.playClick) {
-              try { window.soundEngine.playClick(); } catch (err) {}
-            }
-          }
+          removePingById(hoveredOwnPing.id, true);
+          hoveredOwnPing = null;
           return;
         }
-        // Quick tap on Mouse3: live-mark enemy under crosshair, or double-tap for enemy ping, or single-tap location ping
+        // Quick tap on Mouse3: live-mark enemy under crosshair, double-tap for enemy ping, dead body -> default LOOT ping, else location ping
         const nowMs = performance.now();
         const isDouble = (nowMs - lastPingTapTime) < 340;
         lastPingTapTime = nowMs;
@@ -1238,10 +1290,14 @@
         } else if (isDouble) {
           // Upgrade quick first tap into an Enemy Ping!
           if (activePings.length > 0 && activePings[activePings.length - 1].age < 0.45) {
-            const prev = activePings.pop();
-            if (prev && prev.beamMesh && scene) scene.remove(prev.beamMesh);
+            removePingById(activePings[activePings.length - 1].id, true);
           }
           _placePing('enemy', hit.pos, null);
+        } else if (hit.corpse) {
+          const corpseName = (hit.corpse.name || 'CORPSE').toUpperCase();
+          _placePing('loot', hit.pos, null, false, null, {
+            customLabel: `LOOT — ${corpseName}`
+          });
         } else {
           _placePing('location', hit.pos, null);
         }
@@ -1738,7 +1794,47 @@
       }
       if (bestConeEnemy) {
         const ey = (world && world.getTerrainHeight) ? Math.max(bestConeEnemy.position.y, world.getTerrainHeight(bestConeEnemy.position.x, bestConeEnemy.position.z)) : bestConeEnemy.position.y;
-        return { pos: new THREE.Vector3(bestConeEnemy.position.x, ey + (bestConeEnemy.isDowned ? 1.15 : 2.25), bestConeEnemy.position.z), enemy: bestConeEnemy };
+        return { pos: new THREE.Vector3(bestConeEnemy.position.x, ey + (bestConeEnemy.isDowned ? 1.15 : 2.25), bestConeEnemy.position.z), enemy: bestConeEnemy, corpse: null };
+      }
+
+      // 1b. Check if crosshair is aimed at a dead body -> default to LOOT ping!
+      if (eHits.length > 0 && eHits[0].object && eHits[0].object.userData && eHits[0].object.userData.enemy) {
+        const deadE = eHits[0].object.userData.enemy;
+        if (deadE.dead && !deadE.extracted) {
+          const wHits = world && world.shootableMeshes ? ray.intersectObjects(world.shootableMeshes, true) : [];
+          if (wHits.length === 0 || wHits[0].distance >= eHits[0].distance - 0.8) {
+            const ey = (world && world.getTerrainHeight) ? Math.max(deadE.position.y, world.getTerrainHeight(deadE.position.x, deadE.position.z)) : deadE.position.y;
+            return { pos: new THREE.Vector3(deadE.position.x, ey + 0.65, deadE.position.z), enemy: null, corpse: deadE };
+          }
+        }
+      }
+
+      let bestCorpse = null;
+      let bestCorpseScore = Infinity;
+      const maxCorpseDist = 180;
+      for (let i = 0; i < enemies.length; i++) {
+        const e = enemies[i];
+        if (!e || !e.dead || e.extracted) continue;
+        const ey = (world && world.getTerrainHeight) ? Math.max(e.position.y, world.getTerrainHeight(e.position.x, e.position.z)) : e.position.y;
+        const center = new THREE.Vector3(e.position.x, ey + 0.35, e.position.z);
+        const toC = center.clone().sub(origin);
+        const along = toC.dot(dir);
+        if (along < 1.0 || along > maxCorpseDist) continue;
+        const perpDist = toC.clone().addScaledVector(dir, -along).length();
+        const allowedRadius = Math.max(1.65, along * 0.075);
+        if (perpDist > allowedRadius) continue;
+        const losRay = new THREE.Raycaster(origin, toC.clone().normalize(), 0.5, Math.max(0.6, along - 0.8));
+        const wHits = (world && world.shootableMeshes) ? losRay.intersectObjects(world.shootableMeshes, true) : [];
+        if (wHits.length > 0) continue;
+        const score = perpDist / allowedRadius;
+        if (score < bestCorpseScore) {
+          bestCorpseScore = score;
+          bestCorpse = e;
+        }
+      }
+      if (bestCorpse) {
+        const ey = (world && world.getTerrainHeight) ? Math.max(bestCorpse.position.y, world.getTerrainHeight(bestCorpse.position.x, bestCorpse.position.z)) : bestCorpse.position.y;
+        return { pos: new THREE.Vector3(bestCorpse.position.x, ey + 0.65, bestCorpse.position.z), enemy: null, corpse: bestCorpse };
       }
     }
 
@@ -1746,19 +1842,41 @@
     if (world && world.shootableMeshes) {
       const wHits = ray.intersectObjects(world.shootableMeshes, true);
       if (wHits.length > 0) {
-        return { pos: wHits[0].point.clone(), enemy: null };
+        return { pos: wHits[0].point.clone(), enemy: null, corpse: null };
       }
     }
     if (dir.y < -0.02) {
       const t = Math.min(260, Math.max(4, -origin.y / dir.y));
-      return { pos: new THREE.Vector3(origin.x + dir.x * t, 0.05, origin.z + dir.z * t), enemy: null };
+      return { pos: new THREE.Vector3(origin.x + dir.x * t, 0.05, origin.z + dir.z * t), enemy: null, corpse: null };
     }
-    return { pos: origin.clone().addScaledVector(dir, 80), enemy: null };
+    return { pos: origin.clone().addScaledVector(dir, 80), enemy: null, corpse: null };
   }
 
-  function _placePing(type = 'location', worldPos = new THREE.Vector3(), targetEnemy = null, fromMap = false, remoteCaller = null) {
+  function removePingById(pingId, broadcast = true) {
+    if (!pingId) return false;
+    const idx = activePings.findIndex(p => p && p.id === pingId);
+    if (idx === -1) return false;
+    const removed = activePings.splice(idx, 1)[0];
+    if (removed && removed.beamMesh && scene) {
+      scene.remove(removed.beamMesh);
+    }
+    window.activePings = activePings;
+    if (hoveredOwnPing && hoveredOwnPing.id === pingId) {
+      hoveredOwnPing = null;
+    }
+    if (window.soundEngine && window.soundEngine.playClick) {
+      try { window.soundEngine.playClick(); } catch (e) {}
+    }
+    if (broadcast && mpSession && mpSession.active) {
+      mpSession.sendEvent({ type: 'ping_remove', pingId });
+    }
+    return true;
+  }
+
+  function _placePing(type = 'location', worldPos = new THREE.Vector3(), targetEnemy = null, fromMap = false, remoteCaller = null, extraOpts = null) {
+    const opts = extraOpts || {};
     const cfg = PING_DEFS[type] || PING_DEFS.location;
-    // Cap simultaneous pings to 4 (oldest fades out) and avoid duplicate live markers on same enemy
+    // Cap simultaneous pings to 5 (oldest fades out) and avoid duplicate live markers on same enemy / entity item
     if (targetEnemy) {
       for (let i = activePings.length - 1; i >= 0; i--) {
         if (activePings[i].targetEnemy === targetEnemy) {
@@ -1766,14 +1884,21 @@
           activePings.splice(i, 1);
         }
       }
+    } else if (opts.id) {
+      for (let i = activePings.length - 1; i >= 0; i--) {
+        if (activePings[i].id === opts.id) {
+          if (activePings[i].beamMesh && scene) scene.remove(activePings[i].beamMesh);
+          activePings.splice(i, 1);
+        }
+      }
     }
-    while (activePings.length >= 4) {
+    while (activePings.length >= 5) {
       const old = activePings.shift();
       if (old && old.beamMesh && scene) scene.remove(old.beamMesh);
     }
 
     let beamMesh = null;
-    if (!targetEnemy && scene) {
+    if (!targetEnemy && !opts.targetEntity && scene) {
       const beam = new THREE.Mesh(
         new THREE.CylinderGeometry(0.08, 0.08, 22, 6),
         new THREE.MeshBasicMaterial({ color: cfg.color, transparent: true, opacity: 0.42 })
@@ -1783,18 +1908,24 @@
       beamMesh = beam;
     }
 
-    const label = targetEnemy
-      ? (targetEnemy.isOperator ? `LIVE: ${targetEnemy.name}` : `LIVE: ${targetEnemy.name || 'HOSTILE'}`)
-      : (fromMap && type === 'location' ? 'MAP MARKER' : cfg.label);
+    const label = opts.customLabel
+      ? opts.customLabel
+      : (targetEnemy
+        ? (targetEnemy.isOperator ? `LIVE: ${targetEnemy.name}` : `LIVE: ${targetEnemy.name || 'HOSTILE'}`)
+        : (fromMap && type === 'location' ? 'MAP MARKER' : cfg.label));
 
+    const pingId = opts.id || ('pg_' + Math.random().toString(36).slice(2, 8));
     const ping = {
-      id: 'pg_' + Math.random().toString(36).slice(2, 8),
+      id: pingId,
       type,
       label,
       color: cfg.color,
       symbol: cfg.symbol,
       position: worldPos.clone(),
       targetEnemy: targetEnemy || null,
+      targetEntity: opts.targetEntity || null,
+      targetClientId: opts.targetClientId || null,
+      itemId: opts.itemId || null,
       beamMesh,
       owner: remoteCaller || getPlayerCallsign(),
       isOwn: !remoteCaller,
@@ -1807,10 +1938,14 @@
     if (!remoteCaller && mpSession && mpSession.active) {
       mpSession.sendEvent({
         type: 'ping',
+        pingId,
         pingType: type,
         x: Math.round(worldPos.x * 10) / 10,
         y: Math.round(worldPos.y * 10) / 10,
-        z: Math.round(worldPos.z * 10) / 10
+        z: Math.round(worldPos.z * 10) / 10,
+        ...(opts.customLabel ? { customLabel: opts.customLabel } : {}),
+        ...(opts.itemId ? { itemId: opts.itemId } : {}),
+        ...(opts.targetClientId ? { targetClientId: opts.targetClientId } : {})
       });
     }
 
@@ -1849,26 +1984,156 @@
     });
   }
 
-  // Click / Right-Click directly on Full-Size Tactical Map Canvas to place live markers!
+  function tapTacMapPosition(nx, ny) {
+    if (!inRaid || !world || !ui.isTacMapOpen) return;
+    const hitPing = ui.findTacMapPingAt ? ui.findTacMapPingAt(nx, ny, world) : null;
+    if (hitPing) {
+      removePingById(hitPing.id, true);
+      return;
+    }
+    const { wx, wz } = ui.tacMapCanvasToWorld
+      ? ui.tacMapCanvasToWorld(nx, ny, world)
+      : { wx: (nx - 0.5) * ((world.mapHalfSize || 190) + 48) * 2, wz: (ny - 0.5) * ((world.mapHalfSize || 190) + 48) * 2 };
+    _placePing('location', new THREE.Vector3(wx, 0.1, wz), null, true);
+  }
+
+  function confirmTacMapRadialSelection(forcedChoice = null) {
+    if (!ui || !ui.tacMapRadial || !ui.tacMapRadial.open) return;
+    const choice = forcedChoice || ui.tacMapRadial.choice || 'cancel';
+    const wx = ui.tacMapRadial.wx || 0;
+    const wz = ui.tacMapRadial.wz || 0;
+    if (ui.closeTacMapRadial) ui.closeTacMapRadial();
+    if (inRaid && world && choice && choice !== 'cancel') {
+      _placePing(choice, new THREE.Vector3(wx, 0.1, wz), null, true);
+    }
+  }
+
+  // Click / Scroll-Zoom / Drag-Pan / Right-Click Radial on Full-Size Tactical Map Canvas!
   const tacMapCanvas = document.getElementById('hud-tacmap-canvas');
+  const tacMapZoomBadge = document.getElementById('tacmap-zoom-badge');
+  if (tacMapZoomBadge) {
+    tacMapZoomBadge.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (ui && ui.resetTacMapZoom) ui.resetTacMapZoom();
+    });
+  }
+  document.querySelectorAll('#tacmap-ping-radial .tm-rad-opt').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      confirmTacMapRadialSelection(btn.dataset.ping);
+    });
+  });
+  const tacMapRadCenter = document.getElementById('tacmap-radial-center');
+  if (tacMapRadCenter) {
+    tacMapRadCenter.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (ui && ui.closeTacMapRadial) ui.closeTacMapRadial();
+    });
+  }
   if (tacMapCanvas) {
-    const handleMapPingClick = (e, isEnemyPing) => {
+    let mapPanning = false;
+    let mapPanMoved = false;
+    let mapLastClientX = 0;
+    let mapLastClientY = 0;
+    let rmbRadialHold = false;
+
+    const getCanvasNorm = (e) => {
+      const rect = tacMapCanvas.getBoundingClientRect();
+      return {
+        nx: THREE.MathUtils.clamp((e.clientX - rect.left) / Math.max(1, rect.width), 0, 1),
+        ny: THREE.MathUtils.clamp((e.clientY - rect.top) / Math.max(1, rect.height), 0, 1),
+        rect
+      };
+    };
+
+    tacMapCanvas.addEventListener('wheel', (e) => {
       if (!inRaid || !world || !ui.isTacMapOpen) return;
       e.preventDefault();
       e.stopPropagation();
-      const rect = tacMapCanvas.getBoundingClientRect();
-      const nx = (e.clientX - rect.left) / rect.width;
-      const ny = (e.clientY - rect.top) / rect.height;
-      const halfSize = world.mapHalfSize || 190;
-      const viewExtent = halfSize + 48;
-      const wx = (nx - 0.5) * viewExtent * 2;
-      const wz = (ny - 0.5) * viewExtent * 2;
-      _placePing(isEnemyPing ? 'enemy' : 'location', new THREE.Vector3(wx, 0.1, wz), null, true);
-    };
-    tacMapCanvas.addEventListener('mousedown', (e) => {
-      if (e.button === 0) handleMapPingClick(e, false);
-      else if (e.button === 2) handleMapPingClick(e, true);
+      const { nx, ny } = getCanvasNorm(e);
+      if (ui.zoomTacMap) {
+        ui.zoomTacMap(e.deltaY < 0 ? 1.24 : (1 / 1.24), nx, ny, world);
+      }
+    }, { passive: false });
+
+    tacMapCanvas.addEventListener('mousemove', (e) => {
+      if (!inRaid || !world || !ui.isTacMapOpen) return;
+      const { nx, ny, rect } = getCanvasNorm(e);
+      ui.tacMapCursor = { nx, ny, active: false };
+      if (mapPanning && (ui.tacMapZoom || 1) > 1.01 && ui.panTacMap) {
+        const dxPx = e.clientX - mapLastClientX;
+        const dyPx = e.clientY - mapLastClientY;
+        if (Math.hypot(dxPx, dyPx) > 4) mapPanMoved = true;
+        if (mapPanMoved) {
+          const ext = ui.getTacMapViewExtent ? ui.getTacMapViewExtent(world).viewExtent : 238;
+          ui.panTacMap((-dxPx / Math.max(1, rect.width)) * ext * 2, (-dyPx / Math.max(1, rect.height)) * ext * 2, world);
+          mapLastClientX = e.clientX;
+          mapLastClientY = e.clientY;
+        }
+      }
     });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!inRaid || !ui || !ui.isTacMapOpen) return;
+      if (ui.tacMapRadial && ui.tacMapRadial.open && ui.tacMapRadial.source === 'mouse' && ui.updateTacMapRadialFromMouse) {
+        ui.updateTacMapRadialFromMouse(e.clientX, e.clientY);
+      }
+    });
+
+    tacMapCanvas.addEventListener('mousedown', (e) => {
+      if (!inRaid || !world || !ui.isTacMapOpen) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const { nx, ny } = getCanvasNorm(e);
+      ui.tacMapCursor = { nx, ny, active: false };
+      if (e.button === 0) {
+        mapPanning = true;
+        mapPanMoved = false;
+        mapLastClientX = e.clientX;
+        mapLastClientY = e.clientY;
+      } else if (e.button === 2) {
+        rmbRadialHold = true;
+        if (ui.openTacMapRadial) {
+          ui.openTacMapRadial(nx, ny, world, 'mouse');
+        }
+      }
+    });
+
+    window.addEventListener('mouseup', (e) => {
+      if (!ui || !ui.isTacMapOpen) {
+        mapPanning = false;
+        rmbRadialHold = false;
+        return;
+      }
+      if (e.button === 0 && mapPanning) {
+        const wasMoved = mapPanMoved;
+        mapPanning = false;
+        mapPanMoved = false;
+        if (!wasMoved && inRaid && world) {
+          if (ui.tacMapRadial && ui.tacMapRadial.open) {
+            if (ui.closeTacMapRadial) ui.closeTacMapRadial();
+          } else {
+            const { nx, ny } = getCanvasNorm(e);
+            tapTacMapPosition(nx, ny);
+          }
+        }
+      } else if (e.button === 2 && rmbRadialHold) {
+        rmbRadialHold = false;
+        if (ui.tacMapRadial && ui.tacMapRadial.open) {
+          // If dragged onto a ping type wedge, confirm immediately; if quick-right-clicked at center, leave radial open to click a wedge!
+          const heldMs = performance.now() - (ui.tacMapRadial.openedAt || 0);
+          if (ui.tacMapRadial.choice && ui.tacMapRadial.choice !== 'cancel') {
+            confirmTacMapRadialSelection();
+          } else if (heldMs > 360 && ui.closeTacMapRadial) {
+            ui.closeTacMapRadial();
+          }
+        }
+      }
+    });
+
     tacMapCanvas.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 
@@ -1897,6 +2162,26 @@
           ? Math.max(pg.targetEnemy.position.y, world.getTerrainHeight(pg.targetEnemy.position.x, pg.targetEnemy.position.z))
           : pg.targetEnemy.position.y;
         pg.position.set(pg.targetEnemy.position.x, ey + (pg.targetEnemy.isDowned ? 1.15 : 2.25), pg.targetEnemy.position.z);
+      } else if (pg.targetEntity || pg.targetClientId) {
+        // Re-resolve remote squadmate entity if needed & live-track player whose inventory item was marked!
+        if (!pg.targetEntity && pg.targetClientId && squadManager && squadManager.getAllyByClientId) {
+          pg.targetEntity = squadManager.getAllyByClientId(pg.targetClientId) || null;
+        }
+        const ent = pg.targetEntity;
+        if (ent && ent.position) {
+          if (ent.extracted) {
+            if (pg.beamMesh && scene) scene.remove(pg.beamMesh);
+            activePings.splice(i, 1);
+            continue;
+          }
+          const baseFeetY = (ent === player)
+            ? (player.position.y - (player.currentEyeHeight || 1.65))
+            : ent.position.y;
+          const ey = (world && world.getTerrainHeight)
+            ? Math.max(baseFeetY, world.getTerrainHeight(ent.position.x, ent.position.z))
+            : baseFeetY;
+          pg.position.set(ent.position.x, ey + 2.15, ent.position.z);
+        }
       }
       if (pg.age >= pg.duration) {
         if (pg.beamMesh && scene) scene.remove(pg.beamMesh);
@@ -1915,7 +2200,7 @@
 
     for (const pg of activePings) {
       const worldPt = pg.position.clone();
-      if (!pg.targetEnemy) worldPt.y += 1.4;
+      if (!pg.targetEnemy && !pg.targetEntity) worldPt.y += 1.4;
       const proj = worldPt.project(camera);
       if (proj.z > 1) continue; // behind camera
       const sx = (proj.x * 0.5 + 0.5) * W;
@@ -1937,9 +2222,14 @@
       const dist = Math.round(player.position.distanceTo(pg.position));
       const isLive = !!pg.targetEnemy;
       const showRemoveHint = (pg === hoveredOwnPing);
+      const itemIconUrl = (pg.itemId && window.itemIcons && typeof window.itemIcons.getIcon === 'function')
+        ? window.itemIcons.getIcon(pg.itemId)
+        : null;
+      const iconHtml = itemIconUrl ? `<img class="wp-item-thumb" src="${itemIconUrl}" alt="" />` : '';
       html += `
         <div class="world-ping-marker${isLive ? ' live-enemy' : ''}" style="left:${sx.toFixed(1)}px;top:${sy.toFixed(1)}px;">
           ${showRemoveHint ? `<div class="wp-remove-hint">[MMB] REMOVE</div>` : ''}
+          ${iconHtml}
           <div class="wp-tag" style="color:${pg.color};border:1px solid ${pg.color};">${pg.label} ${dist}m</div>
           <div class="wp-diamond" style="border-color:${pg.color};color:${pg.color};"><span>${pg.symbol}</span></div>
         </div>
@@ -3566,6 +3856,7 @@
 
       gamepad.update(dt, {
         player,
+        world,
         weaponSystem,
         throwableSystem,
         enemyManager,
@@ -3606,6 +3897,8 @@
           toggleTacMap: (forceState = null) => {
             if (!isModalOpen) toggleFullMapMode(forceState);
           },
+          tapTacMapAt: (nx, ny) => tapTacMapPosition(nx, ny),
+          confirmTacMapRadial: () => confirmTacMapRadialSelection(),
           closeModal: () => closeLootAndResume(),
           fire: () => firePlayerWeapon(),
           onThrowableHit,

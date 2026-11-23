@@ -7448,6 +7448,346 @@ input[type="range"].gp-focus {
   transform: translate(-50%, -50%) scale(calc(var(--ui-scale, 1) * 1.04));
 }
 
+/* ==================== v2.64 TAC-MAP ZOOM/RADIAL, ITEM PING ICONS & SCOPED BLURRED TEXT CHAT ==================== */
+.tacmap-stage {
+  position: relative;
+  display: inline-block;
+  overflow: hidden;
+  user-select: none;
+}
+
+.tacmap-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tacmap-zoom-badge {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  color: #69f0ae;
+  background: rgba(105, 240, 174, 0.10);
+  border: 1px solid rgba(105, 240, 174, 0.38);
+  padding: 2px 7px;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.tacmap-zoom-badge:hover {
+  background: rgba(105, 240, 174, 0.22);
+}
+
+.tacmap-ping-radial {
+  position: absolute;
+  width: 164px;
+  height: 164px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(10, 14, 13, 0.35) 26%, rgba(10, 15, 14, 0.92) 28%);
+  border: 1.5px solid rgba(255, 255, 255, 0.26);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.85);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  z-index: 6;
+  pointer-events: auto;
+}
+
+.tacmap-ping-radial .tm-rad-opt {
+  position: absolute;
+  width: 48px;
+  height: 36px;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  background: rgba(16, 22, 20, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 3px;
+  font-family: var(--font-mono);
+  color: #e6eeea;
+  cursor: pointer;
+  transition: transform 0.1s ease, border-color 0.1s ease, background 0.1s ease;
+  padding: 0;
+}
+
+.tacmap-ping-radial .tm-rad-opt b {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.tacmap-ping-radial .tm-rad-opt span {
+  font-size: 7.5px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+.tacmap-ping-radial .tm-rad-opt:hover,
+.tacmap-ping-radial .tm-rad-opt.active {
+  transform: translate(-50%, -50%) scale(1.10);
+  background: rgba(255, 255, 255, 0.18);
+  border-color: #ffffff;
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.28);
+}
+
+.tacmap-ping-radial .tm-rad-top { left: 50%; top: 15%; }
+.tacmap-ping-radial .tm-rad-tr  { left: 81%; top: 33%; }
+.tacmap-ping-radial .tm-rad-br  { left: 81%; top: 67%; }
+.tacmap-ping-radial .tm-rad-bot { left: 50%; top: 85%; }
+.tacmap-ping-radial .tm-rad-bl  { left: 19%; top: 67%; }
+.tacmap-ping-radial .tm-rad-tl  { left: 19%; top: 33%; }
+
+.tacmap-ping-radial .tm-rad-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(11, 16, 15, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  color: #dfe8e4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  cursor: pointer;
+}
+
+/* Floating World Item Ping Icon inside .world-ping-marker */
+.world-ping-marker .wp-item-thumb {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  background: rgba(10, 14, 13, 0.86);
+  border: 1px solid rgba(105, 240, 174, 0.65);
+  border-radius: 3px;
+  padding: 2px;
+  margin-bottom: 2px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.78);
+}
+
+/* Right-Side Blurred-Background Lobby Text Chat (Directly Below #mission-ticker-stack) */
+.lobby-chat-panel {
+  position: fixed;
+  right: 18px;
+  top: 34%;
+  width: 288px;
+  z-index: 945;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, rgba(14, 19, 23, 0.62) 0%, rgba(9, 13, 16, 0.76) 100%);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-left: 2.5px solid rgba(245, 166, 35, 0.75);
+  border-radius: 3px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.52);
+  transform: scale(var(--ui-scale, 1));
+  transform-origin: top right;
+  transition: opacity 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+  pointer-events: auto;
+}
+
+.lobby-chat-panel.in-raid-idle {
+  opacity: 0.58;
+}
+
+.lobby-chat-panel.in-raid-idle:hover,
+.lobby-chat-panel.chat-active,
+.lobby-chat-panel.tacmap-open {
+  opacity: 1;
+  border-color: rgba(255, 255, 255, 0.28);
+  background: linear-gradient(180deg, rgba(15, 21, 26, 0.76) 0%, rgba(9, 13, 17, 0.88) 100%);
+}
+
+.lobby-chat-panel.suppressed {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+.lobby-chat-panel .lc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 9px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+  font-family: var(--font-mono);
+}
+
+.lobby-chat-panel .lc-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.lobby-chat-panel .lc-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #69f0ae;
+  box-shadow: 0 0 6px rgba(105, 240, 174, 0.85);
+  flex-shrink: 0;
+}
+
+.lobby-chat-panel .lc-scope {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 1.1px;
+  color: #e9f1f5;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lobby-chat-panel .lc-role-badge {
+  font-size: 8.5px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  padding: 1px 5px;
+  border-radius: 2px;
+  color: #69f0ae;
+  border: 1px solid rgba(105, 240, 174, 0.55);
+  background: rgba(105, 240, 174, 0.12);
+}
+
+.lobby-chat-panel .lc-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lobby-chat-panel .lc-key-hint {
+  font-size: 8.5px;
+  color: rgba(196, 210, 220, 0.65);
+  letter-spacing: 0.6px;
+}
+
+.lobby-chat-panel .lc-min-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #dce6ec;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1;
+  width: 18px;
+  height: 16px;
+  padding: 0;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.lobby-chat-panel .lc-min-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: #ffffff;
+}
+
+.lobby-chat-panel.minimized .lc-body {
+  display: none;
+}
+
+.lobby-chat-panel .lc-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.lobby-chat-panel .lc-messages {
+  height: 148px;
+  overflow-y: auto;
+  padding: 7px 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.35;
+  scrollbar-width: thin;
+}
+
+.lobby-chat-panel .lc-msg {
+  word-break: break-word;
+  color: #e6eef2;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85);
+}
+
+.lobby-chat-panel .lc-msg .lc-sender {
+  font-weight: 800;
+  margin-right: 5px;
+}
+
+.lobby-chat-panel .lc-msg .lc-tag {
+  font-size: 8.5px;
+  font-weight: 800;
+  padding: 0 4px;
+  margin-right: 4px;
+  border-radius: 2px;
+  vertical-align: baseline;
+}
+
+.lobby-chat-panel .lc-msg.sys {
+  color: rgba(190, 208, 220, 0.78);
+  font-size: 9.5px;
+}
+
+.lobby-chat-panel .lc-msg.con-ok { color: #69f0ae; }
+.lobby-chat-panel .lc-msg.con-warn { color: #ffd54f; }
+.lobby-chat-panel .lc-msg.con-err { color: #ff6b6b; }
+.lobby-chat-panel .lc-msg.con-info { color: #90caf9; }
+
+.lobby-chat-panel .lc-input-row {
+  display: flex;
+  gap: 5px;
+  padding: 6px 8px 7px;
+  border-top: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(6, 9, 12, 0.42);
+}
+
+.lobby-chat-panel .lc-input {
+  flex: 1;
+  min-width: 0;
+  background: rgba(10, 14, 18, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 2px;
+  padding: 5px 7px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: #f2f7fa;
+  outline: none;
+}
+
+.lobby-chat-panel .lc-input:focus {
+  border-color: var(--accent-bright);
+  background: rgba(12, 18, 23, 0.92);
+}
+
+.lobby-chat-panel .lc-send-btn {
+  background: rgba(245, 166, 35, 0.18);
+  border: 1px solid rgba(245, 166, 35, 0.58);
+  color: #ffca28;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  padding: 0 8px;
+  border-radius: 2px;
+  cursor: pointer;
+}
+
+.lobby-chat-panel .lc-send-btn:hover {
+  background: rgba(245, 166, 35, 0.34);
+  color: #ffffff;
+}
+
 #gunsmith-screen .gs-hint {
   transform: translateX(-50%) scale(var(--ui-scale, 1));
   transform-origin: bottom center;

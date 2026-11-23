@@ -143,6 +143,13 @@ class GameUI {
     this._hoveredSlot = null; // { context, idx, item, el }
     this._searchRevealProgress = 0;
     this._partyReady = false;
+    this.tacMapZoom = 1.0;
+    this.tacMapPan = { x: 0, z: 0 };
+    this.tacMapCursor = { nx: 0.5, ny: 0.5, active: false };
+    this.tacMapRadial = { open: false, nx: 0.5, ny: 0.5, wx: 0, wz: 0, choice: 'cancel', source: 'mouse' };
+    this._chatScope = 'fob';
+    this._chatRoomId = null;
+    this._seenChatMsgIds = new Set();
 
     this.profile = this._loadProfile();
     this._normalizeStash();
@@ -150,6 +157,8 @@ class GameUI {
     window.GAMEPAD_BINDS = { ...window.DEFAULT_GAMEPAD_BINDS, ...(this.profile.gamepadBinds || {}) };
     this.keybindsTab = 'kbm';
     this._initSocial();
+    this._initLobbyChat();
+    this._initInventoryItemPingMouse();
     this._initLiveUpdateTracker();
     this._bindHideoutEvents();
     this._bindWeaponStagingModal();
@@ -1787,6 +1796,11 @@ class GameUI {
         return;
       }
 
+      if (msg.type === 'lobby_chat' && msg.msgId && msg.scope && msg.roomId) {
+        if (this.receiveLobbyChatPacket) this.receiveLobbyChatPacket(msg);
+        return;
+      }
+
       if (msg.type === 'deploy_raid' && msg.partyId && msg.partyId === this.partyId) {
         if (now - effectiveTs > 25000) return;
         if (this.matchmakingStage) this.matchmakingStage.stop();
@@ -2089,6 +2103,12 @@ class GameUI {
   }
 
   syncFobParty(joinedNewHost = false) {
+    if (this._chatScope === 'fob' && this.setChatRoomScope && this.partyId) {
+      const fobTitle = (this.partyMembers && this.partyMembers.length > 1)
+        ? `${this.partyHost || 'HOST'}'S FOB`
+        : 'FOB LOBBY';
+      this.setChatRoomScope('fob', this.partyId, fobTitle);
+    }
     if (!window.hideoutBunker || !window.hideoutBunker.syncPartyRoster) return;
     const isHost = this.isPartyLeader();
     const members = (this.partyMembers || []).slice(0, 3);
@@ -6538,6 +6558,12 @@ class GameUI {
     if (!ov) return false;
     this.isTacMapOpen = forceState !== null ? !!forceState : !this.isTacMapOpen;
     ov.classList.toggle('hidden', !this.isTacMapOpen);
+    if (!this.isTacMapOpen && this.closeTacMapRadial) {
+      this.closeTacMapRadial();
+    }
+    if (this.updateLobbyChatVisibility) {
+      this.updateLobbyChatVisibility();
+    }
     return this.isTacMapOpen;
   }
 
@@ -6744,13 +6770,17 @@ class GameUI {
     const ctx = canvas.getContext('2d');
     const W = canvas.width;
     const H = canvas.height;
-    const halfSize = world.mapHalfSize || 190;
-    const viewExtent = halfSize + 48; // show generous 48m Red Zone border on all 4 sides!
+    const { halfSize, viewExtent, zoom } = this.getTacMapViewExtent(world);
+    this._clampTacMapPan(world);
     const scale = W / (viewExtent * 2);
+    const panX = (this.tacMapPan && this.tacMapPan.x) || 0;
+    const panZ = (this.tacMapPan && this.tacMapPan.z) || 0;
     const toMap = (wx, wz) => ({
-      x: W * 0.5 + wx * scale,
-      y: H * 0.5 + wz * scale
+      x: W * 0.5 + (wx - panX) * scale,
+      y: H * 0.5 + (wz - panZ) * scale
     });
+    const zoomBadge = document.getElementById('tacmap-zoom-badge');
+    if (zoomBadge) zoomBadge.textContent = `${zoom.toFixed(1)}x`;
 
     // 1. Base Red Zone fill across entire canvas
     ctx.clearRect(0, 0, W, H);
@@ -6814,8 +6844,8 @@ class GameUI {
     ctx.font = 'bold 10px Consolas, monospace';
     ctx.fillStyle = '#ff6b6b';
     ctx.textAlign = 'center';
-    ctx.fillText('RED ZONE // OUT OF BOUNDS', W * 0.5, tl.y * 0.58);
-    ctx.fillText('RED ZONE // OUT OF BOUNDS', W * 0.5, br.y + (H - br.y) * 0.62);
+    if (tl.y > 14) ctx.fillText('RED ZONE // OUT OF BOUNDS', W * 0.5, tl.y * 0.58);
+    if (br.y < H - 14) ctx.fillText('RED ZONE // OUT OF BOUNDS', W * 0.5, br.y + (H - br.y) * 0.62);
     ctx.restore();
 
     // 5. Labeled POIs
@@ -6872,7 +6902,6 @@ class GameUI {
       const alpha = Math.max(0, 1 - pulsePhase);
       ctx.save();
       ctx.translate(pPos.x, pPos.y);
-      // Faint 150m outer coverage boundary
       ctx.strokeStyle = 'rgba(105, 240, 174, 0.16)';
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 4]);
@@ -6880,7 +6909,6 @@ class GameUI {
       ctx.arc(0, 0, maxMapR, 0, Math.PI * 2);
       ctx.stroke();
       ctx.setLineDash([]);
-      // Pulsing translucent circle radiating outwards & dissipating
       ctx.fillStyle = `rgba(105, 240, 174, ${(0.13 * alpha).toFixed(3)})`;
       ctx.beginPath();
       ctx.arc(0, 0, curR, 0, Math.PI * 2);
@@ -6919,24 +6947,39 @@ class GameUI {
       }
     }
 
-    // 8b. Active Tactical Pings on Full-Size Map
+    // 8b. Active Tactical Pings on Full-Size Map (with hover highlight for click-to-remove!)
     const pings = window.activePings || [];
+    const curPxX = this.tacMapCursor ? this.tacMapCursor.nx * W : -999;
+    const curPxY = this.tacMapCursor ? this.tacMapCursor.ny * H : -999;
+    const hoveredMapPing = this.findTacMapPingAt
+      ? this.findTacMapPingAt(this.tacMapCursor ? this.tacMapCursor.nx : -1, this.tacMapCursor ? this.tacMapCursor.ny : -1, world)
+      : null;
     for (const pg of pings) {
       const pp = toMap(pg.position.x, pg.position.z);
+      const isHovered = hoveredMapPing === pg;
+      if (isHovered) {
+        ctx.save();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.8;
+        ctx.beginPath();
+        ctx.arc(pp.x, pp.y, 12, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
       ctx.save();
       ctx.translate(pp.x, pp.y);
       ctx.rotate(Math.PI / 4);
       ctx.fillStyle = pg.color || '#f5a623';
-      ctx.fillRect(-5, -5, 10, 10);
-      ctx.strokeStyle = '#0a0d0c';
+      ctx.fillRect(-5.5, -5.5, 11, 11);
+      ctx.strokeStyle = isHovered ? '#ffffff' : '#0a0d0c';
       ctx.lineWidth = 1.6;
-      ctx.strokeRect(-5, -5, 10, 10);
+      ctx.strokeRect(-5.5, -5.5, 11, 11);
       ctx.restore();
       ctx.save();
       ctx.font = 'bold 9.5px Consolas, monospace';
-      ctx.fillStyle = pg.color || '#f5a623';
+      ctx.fillStyle = isHovered ? '#ffffff' : (pg.color || '#f5a623');
       ctx.textAlign = 'center';
-      ctx.fillText(pg.label || 'PING', pp.x, pp.y - 10);
+      ctx.fillText(isHovered ? `[REMOVE] ${pg.label || 'PING'}` : (pg.label || 'PING'), pp.x, pp.y - 11);
       ctx.restore();
     }
 
@@ -6960,6 +7003,24 @@ class GameUI {
     ctx.closePath();
     ctx.fill();
     ctx.restore();
+
+    // 10. Controller Tac-Map Reticle Cursor (when navigating map with Left Stick)
+    if (this.tacMapCursor && this.tacMapCursor.active && !(this.tacMapRadial && this.tacMapRadial.open)) {
+      ctx.save();
+      ctx.translate(curPxX, curPxY);
+      ctx.strokeStyle = hoveredMapPing ? '#ff6b6b' : '#ffffff';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(0, 0, 8, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-12, 0); ctx.lineTo(-5, 0);
+      ctx.moveTo(5, 0); ctx.lineTo(12, 0);
+      ctx.moveTo(0, -12); ctx.lineTo(0, -5);
+      ctx.moveTo(0, 5); ctx.lineTo(0, 12);
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   _getStanceSVG(stance) {
@@ -7417,6 +7478,11 @@ class GameUI {
     }
 
     if (!sel) return false;
+
+    // Y (Xbox) / Triangle (PlayStation): Ping hovered or selected item in Bag / Container / Body / Personal Inventory!
+    if (actionType === 'y_ping_item') {
+      return this.pingInventorySlot ? this.pingInventorySlot(sel) : false;
+    }
 
     const isPlayerOpCard = !!sel.closest('#inv-op-slots');
     const isEnemyOpCard = !!sel.closest('#loot-enemy-op-slots');
@@ -9254,5 +9320,674 @@ class GameUI {
         list.appendChild(row);
       }
     }
+  }
+
+  // ==================== v2.64 TAC-MAP ZOOM/PAN/RADIAL, INVENTORY ITEM PING & SCOPED BLURRED CHAT ====================
+  getTacMapViewExtent(world = null) {
+    const halfSize = (world && world.mapHalfSize) || 190;
+    const baseExtent = halfSize + 48;
+    const zoom = THREE.MathUtils.clamp(this.tacMapZoom || 1.0, 1.0, 4.5);
+    return { halfSize, baseExtent, zoom, viewExtent: baseExtent / zoom };
+  }
+
+  _clampTacMapPan(world = null) {
+    const { baseExtent, viewExtent } = this.getTacMapViewExtent(world);
+    const maxPan = Math.max(0, baseExtent - viewExtent);
+    if (!this.tacMapPan) this.tacMapPan = { x: 0, z: 0 };
+    this.tacMapPan.x = THREE.MathUtils.clamp(this.tacMapPan.x || 0, -maxPan, maxPan);
+    this.tacMapPan.z = THREE.MathUtils.clamp(this.tacMapPan.z || 0, -maxPan, maxPan);
+  }
+
+  tacMapWorldToCanvas(wx, wz, W, H, world = null) {
+    const { viewExtent } = this.getTacMapViewExtent(world);
+    this._clampTacMapPan(world);
+    const scaleX = W / (viewExtent * 2);
+    const scaleY = H / (viewExtent * 2);
+    return {
+      x: W * 0.5 + (wx - this.tacMapPan.x) * scaleX,
+      y: H * 0.5 + (wz - this.tacMapPan.z) * scaleY,
+      scale: scaleX
+    };
+  }
+
+  tacMapCanvasToWorld(nx, ny, world = null) {
+    const { viewExtent } = this.getTacMapViewExtent(world);
+    this._clampTacMapPan(world);
+    return {
+      wx: this.tacMapPan.x + (nx - 0.5) * viewExtent * 2,
+      wz: this.tacMapPan.z + (ny - 0.5) * viewExtent * 2
+    };
+  }
+
+  zoomTacMap(factor, anchorNx = 0.5, anchorNy = 0.5, world = null) {
+    const ax = THREE.MathUtils.clamp(anchorNx, 0, 1);
+    const ay = THREE.MathUtils.clamp(anchorNy, 0, 1);
+    const before = this.tacMapCanvasToWorld(ax, ay, world);
+    this.tacMapZoom = THREE.MathUtils.clamp((this.tacMapZoom || 1.0) * factor, 1.0, 4.5);
+    const { viewExtent } = this.getTacMapViewExtent(world);
+    if (!this.tacMapPan) this.tacMapPan = { x: 0, z: 0 };
+    this.tacMapPan.x = before.wx - (ax - 0.5) * viewExtent * 2;
+    this.tacMapPan.z = before.wz - (ay - 0.5) * viewExtent * 2;
+    this._clampTacMapPan(world);
+    const badge = document.getElementById('tacmap-zoom-badge');
+    if (badge) badge.textContent = `${this.tacMapZoom.toFixed(1)}x`;
+  }
+
+  panTacMap(dxWorld, dzWorld, world = null) {
+    if (!this.tacMapPan) this.tacMapPan = { x: 0, z: 0 };
+    this.tacMapPan.x += dxWorld;
+    this.tacMapPan.z += dzWorld;
+    this._clampTacMapPan(world);
+  }
+
+  resetTacMapZoom() {
+    this.tacMapZoom = 1.0;
+    this.tacMapPan = { x: 0, z: 0 };
+    const badge = document.getElementById('tacmap-zoom-badge');
+    if (badge) badge.textContent = '1.0x';
+  }
+
+  findTacMapPingAt(nx, ny, world = null) {
+    if (nx < 0 || nx > 1 || ny < 0 || ny > 1) return null;
+    const canvas = document.getElementById('hud-tacmap-canvas');
+    if (!canvas) return null;
+    const W = canvas.width || 560;
+    const H = canvas.height || 560;
+    const px = nx * W;
+    const py = ny * H;
+    const pings = window.activePings || [];
+    let best = null;
+    let bestDist = 17.5;
+    for (const pg of pings) {
+      if (!pg || !pg.position) continue;
+      const pt = this.tacMapWorldToCanvas(pg.position.x, pg.position.z, W, H, world);
+      const d = Math.hypot(pt.x - px, pt.y - py);
+      if (d <= bestDist) {
+        bestDist = d;
+        best = pg;
+      }
+    }
+    return best;
+  }
+
+  openTacMapRadial(nx, ny, world = null, source = 'mouse') {
+    const radEl = document.getElementById('tacmap-ping-radial');
+    if (!radEl) return;
+    const cNx = THREE.MathUtils.clamp(nx, 0.02, 0.98);
+    const cNy = THREE.MathUtils.clamp(ny, 0.02, 0.98);
+    const { wx, wz } = this.tacMapCanvasToWorld(cNx, cNy, world);
+    const visNx = THREE.MathUtils.clamp(cNx, 0.16, 0.84);
+    const visNy = THREE.MathUtils.clamp(cNy, 0.16, 0.84);
+    this.tacMapRadial = {
+      open: true,
+      nx: visNx,
+      ny: visNy,
+      wx,
+      wz,
+      choice: 'cancel',
+      source,
+      openedAt: performance.now()
+    };
+    radEl.style.left = `${(visNx * 100).toFixed(2)}%`;
+    radEl.style.top = `${(visNy * 100).toFixed(2)}%`;
+    radEl.classList.remove('hidden');
+    this._applyTacMapRadialChoice('cancel');
+  }
+
+  _applyTacMapRadialChoice(choice) {
+    if (!this.tacMapRadial) return;
+    this.tacMapRadial.choice = choice || 'cancel';
+    const centerEl = document.getElementById('tacmap-radial-center');
+    if (centerEl) {
+      centerEl.textContent = (!choice || choice === 'cancel') ? '✕' : choice.toUpperCase();
+    }
+    document.querySelectorAll('#tacmap-ping-radial .tm-rad-opt').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.ping === choice);
+    });
+  }
+
+  updateTacMapRadialFromStick(dx, dy) {
+    if (!this.tacMapRadial || !this.tacMapRadial.open) return;
+    const mag = Math.hypot(dx, dy);
+    if (mag < 0.26) {
+      this._applyTacMapRadialChoice('cancel');
+      return;
+    }
+    // Browser Gamepad API stick Y is negative when pushed UP (-Y = top of radial)
+    const screenDeg = ((Math.atan2(dx, -dy) * 180 / Math.PI) + 360) % 360;
+    let choice = 'cancel';
+    if (screenDeg >= 330 || screenDeg < 30) choice = 'enemy';
+    else if (screenDeg < 90) choice = 'attack';
+    else if (screenDeg < 150) choice = 'loot';
+    else if (screenDeg < 210) choice = 'regroup';
+    else if (screenDeg < 270) choice = 'defend';
+    else choice = 'location';
+    this._applyTacMapRadialChoice(choice);
+  }
+
+  updateTacMapRadialFromMouse(clientX, clientY) {
+    if (!this.tacMapRadial || !this.tacMapRadial.open) return;
+    const radEl = document.getElementById('tacmap-ping-radial');
+    if (!radEl) return;
+    const rect = radEl.getBoundingClientRect();
+    const cx = rect.left + rect.width * 0.5;
+    const cy = rect.top + rect.height * 0.5;
+    const dx = clientX - cx;
+    const dy = clientY - cy;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 20) {
+      this._applyTacMapRadialChoice('cancel');
+      return;
+    }
+    const deg = ((Math.atan2(dx, -dy) * 180 / Math.PI) + 360) % 360;
+    let choice = 'cancel';
+    if (deg >= 330 || deg < 30) choice = 'enemy';
+    else if (deg < 90) choice = 'attack';
+    else if (deg < 150) choice = 'loot';
+    else if (deg < 210) choice = 'regroup';
+    else if (deg < 270) choice = 'defend';
+    else choice = 'location';
+    this._applyTacMapRadialChoice(choice);
+  }
+
+  closeTacMapRadial() {
+    const radEl = document.getElementById('tacmap-ping-radial');
+    if (radEl) radEl.classList.add('hidden');
+    if (this.tacMapRadial) {
+      this.tacMapRadial.open = false;
+      this.tacMapRadial.choice = 'cancel';
+    }
+  }
+
+  // ==================== DEVELOPER / ADMIN PRIVILEGE & SCOPED MATCH / FOB TEXT CHAT ====================
+  isDeveloperOrAdmin() {
+    if (window.DEV_MODE || window.IS_ADMIN || window.IS_DEVELOPER) return true;
+    const p = this.profile || {};
+    if (p.isDeveloper || p.isAdmin || p.dev || p.admin) return true;
+    const role = String(p.role || (p.social && p.social.role) || '').toLowerCase();
+    return role === 'dev' || role === 'developer' || role === 'admin' || role === 'administrator' || role === 'owner';
+  }
+
+  getDeveloperRoleLabel() {
+    const p = this.profile || {};
+    const role = String(p.role || (p.social && p.social.role) || '').toLowerCase();
+    if (window.IS_ADMIN || p.isAdmin || p.admin || role === 'admin' || role === 'administrator' || role === 'owner') {
+      return 'ADMIN';
+    }
+    if (window.DEV_MODE || window.IS_DEVELOPER || p.isDeveloper || p.dev || role === 'dev' || role === 'developer') {
+      return 'DEV';
+    }
+    return '';
+  }
+
+  refreshLobbyChatRoleBadge() {
+    const badge = document.getElementById('lobby-chat-role-badge');
+    const input = document.getElementById('lobby-chat-input');
+    const roleLbl = this.getDeveloperRoleLabel();
+    if (badge) {
+      if (roleLbl) {
+        badge.textContent = roleLbl;
+        badge.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+      }
+    }
+    if (input) {
+      input.placeholder = roleLbl
+        ? 'Chat or /command (Dev/Admin)...'
+        : 'Press [Enter] to chat in lobby...';
+    }
+  }
+
+  updateLobbyChatVisibility() {
+    const panel = document.getElementById('lobby-chat-panel');
+    if (!panel) return;
+    const inRaidNow = typeof window.isInRaid === 'function' ? !!window.isInRaid() : false;
+    const lootMod = document.getElementById('loot-modal');
+    const lootOpen = !!(lootMod && !lootMod.classList.contains('hidden'));
+    const gs = document.getElementById('gunsmith-screen');
+    const gsOpen = !!(gs && gs.classList.contains('active'));
+    const sum = document.getElementById('summary-screen');
+    const sumOpen = !!(sum && sum.classList.contains('active'));
+    const igSet = document.getElementById('ingame-settings-overlay');
+    const igSetOpen = !!(igSet && !igSet.classList.contains('hidden'));
+    const fobEnter = document.getElementById('fob-enter-overlay');
+    const fobEnterOpen = !!(fobEnter && !fobEnter.classList.contains('hidden'));
+    const hideout = document.getElementById('hideout-screen');
+    const hideoutRoam = !!(hideout && hideout.classList.contains('hideout-roam-mode'));
+    const onSubMenu = !inRaidNow && !hideoutRoam && this.activeMenuTab !== 'home' && this.activeMenuTab !== 'matchmaking';
+
+    const shouldSuppress = lootOpen || gsOpen || sumOpen || igSetOpen || fobEnterOpen || onSubMenu;
+    panel.classList.toggle('suppressed', shouldSuppress);
+    panel.classList.toggle('tacmap-open', !!(inRaidNow && this.isTacMapOpen));
+    panel.classList.toggle('in-raid-idle', !!(inRaidNow && !this.isTacMapOpen && !this.isChatInputActive));
+    this.refreshLobbyChatRoleBadge();
+  }
+
+  _initLobbyChat() {
+    this.isChatInputActive = false;
+    const panel = document.getElementById('lobby-chat-panel');
+    const form = document.getElementById('lobby-chat-form');
+    const input = document.getElementById('lobby-chat-input');
+    const minBtn = document.getElementById('btn-lobby-chat-min');
+    if (!panel || !form || !input) return;
+
+    const initRoom = this.partyId || ('p_' + (this._clientId || 'local'));
+    const initTitle = (this.partyMembers && this.partyMembers.length > 1)
+      ? `${this.partyHost || 'HOST'}'S FOB`
+      : 'FOB LOBBY';
+    this.setChatRoomScope('fob', initRoom, initTitle);
+
+    if (minBtn) {
+      minBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const min = panel.classList.toggle('minimized');
+        minBtn.textContent = min ? '+' : '—';
+      });
+    }
+
+    input.addEventListener('focus', () => {
+      this.isChatInputActive = true;
+      panel.classList.add('chat-active');
+      panel.classList.remove('in-raid-idle');
+    });
+
+    input.addEventListener('blur', () => {
+      this.isChatInputActive = false;
+      panel.classList.remove('chat-active');
+      this.updateLobbyChatVisibility();
+    });
+
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.code === 'Escape') {
+        e.preventDefault();
+        input.blur();
+        this._relockGameplayPointerIfNeeded();
+      }
+    });
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const raw = input.value;
+      input.value = '';
+      if (raw && raw.trim()) {
+        this.submitLobbyChat(raw);
+      }
+      const inRaidNow = typeof window.isInRaid === 'function' ? !!window.isInRaid() : false;
+      const hideout = document.getElementById('hideout-screen');
+      const hideoutRoam = !!(hideout && hideout.classList.contains('hideout-roam-mode'));
+      if ((inRaidNow && !this.isTacMapOpen) || hideoutRoam) {
+        input.blur();
+        this._relockGameplayPointerIfNeeded();
+      }
+    });
+
+    // Global [Enter] shortcut to focus Lobby Chat when not already typing in another field
+    window.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter' || e.repeat) return;
+      if (window.devConsole && window.devConsole.isOpen) return;
+      const activeEl = document.activeElement;
+      const tag = (activeEl && activeEl.tagName) || '';
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'BUTTON') return;
+      this.updateLobbyChatVisibility();
+      if (panel.classList.contains('suppressed')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (panel.classList.contains('minimized')) {
+        panel.classList.remove('minimized');
+        if (minBtn) minBtn.textContent = '—';
+      }
+      this.isChatInputActive = true;
+      const gameCanvas = document.getElementById('game-canvas');
+      if (document.pointerLockElement === gameCanvas) {
+        try { document.exitPointerLock(); } catch (err) {}
+      }
+      input.focus();
+    });
+
+    // Keep visibility synced neatly across UI state transitions
+    this._chatVisTimer = setInterval(() => this.updateLobbyChatVisibility(), 350);
+    this.updateLobbyChatVisibility();
+  }
+
+  _relockGameplayPointerIfNeeded() {
+    const gameCanvas = document.getElementById('game-canvas');
+    if (!gameCanvas) return;
+    const inRaidNow = typeof window.isInRaid === 'function' ? !!window.isInRaid() : false;
+    const lootMod = document.getElementById('loot-modal');
+    const lootOpen = !!(lootMod && !lootMod.classList.contains('hidden'));
+    const pauseOv = document.getElementById('pointer-lock-overlay');
+    const pauseOpen = !!(pauseOv && !pauseOv.classList.contains('hidden'));
+    const hideout = document.getElementById('hideout-screen');
+    const hideoutRoam = !!(hideout && hideout.classList.contains('hideout-roam-mode'));
+    if (inRaidNow && !this.isTacMapOpen && !lootOpen && !pauseOpen && !this.isInGameSettingsOpen) {
+      try { gameCanvas.requestPointerLock(); } catch (e) {}
+    } else if (!inRaidNow && hideoutRoam) {
+      try { gameCanvas.requestPointerLock(); } catch (e) {}
+    }
+  }
+
+  setChatRoomScope(scope, roomId, roomTitle = '') {
+    const nextScope = scope === 'match' ? 'match' : 'fob';
+    const nextRoom = String(roomId || (this.partyId || ('p_' + (this._clientId || 'local'))));
+    const titleStr = roomTitle || (nextScope === 'match' ? 'MATCH LOBBY' : 'FOB LOBBY');
+    const scopeEl = document.getElementById('lobby-chat-scope');
+    if (scopeEl) scopeEl.textContent = titleStr;
+
+    if (this._chatScope !== nextScope || this._chatRoomId !== nextRoom) {
+      this._chatScope = nextScope;
+      this._chatRoomId = nextRoom;
+      const msgBox = document.getElementById('lobby-chat-messages');
+      if (msgBox) msgBox.innerHTML = '';
+      const scopeDesc = nextScope === 'match' ? 'match' : 'FOB';
+      const devHint = this.isDeveloperOrAdmin() ? ' · Slash commands (/help) enabled.' : '';
+      this.appendLobbyChatMessage({
+        system: true,
+        cls: 'sys',
+        text: `Connected to ${titleStr} (visible only to players in this ${scopeDesc})${devHint}`
+      });
+    }
+    this.refreshLobbyChatRoleBadge();
+    this.updateLobbyChatVisibility();
+  }
+
+  appendLobbyChatMessage(entry) {
+    const msgBox = document.getElementById('lobby-chat-messages');
+    if (!msgBox || !entry) return;
+    const row = document.createElement('div');
+    row.className = 'lc-msg' + (entry.cls ? ` ${entry.cls}` : '');
+
+    if (entry.system) {
+      row.textContent = entry.text || '';
+    } else {
+      if (entry.roleLabel) {
+        const rTag = document.createElement('span');
+        rTag.className = 'lc-tag';
+        rTag.style.background = 'rgba(105, 240, 174, 0.16)';
+        rTag.style.border = '1px solid rgba(105, 240, 174, 0.55)';
+        rTag.style.color = '#69f0ae';
+        rTag.textContent = entry.roleLabel;
+        row.appendChild(rTag);
+      }
+      if (entry.isPartyPeer) {
+        const pTag = document.createElement('span');
+        pTag.className = 'lc-tag';
+        pTag.style.background = 'rgba(79, 195, 247, 0.16)';
+        pTag.style.border = '1px solid rgba(79, 195, 247, 0.55)';
+        pTag.style.color = '#4fc3f7';
+        pTag.textContent = 'PARTY';
+        row.appendChild(pTag);
+      }
+      const senderSpan = document.createElement('span');
+      senderSpan.className = 'lc-sender';
+      senderSpan.style.color = entry.isSelf ? '#ffca28' : (entry.isPartyPeer ? '#4fc3f7' : '#e0e8ee');
+      senderSpan.textContent = `${entry.from || 'OPERATOR'}:`;
+      row.appendChild(senderSpan);
+
+      const bodySpan = document.createElement('span');
+      bodySpan.textContent = entry.text || '';
+      row.appendChild(bodySpan);
+    }
+
+    msgBox.appendChild(row);
+    while (msgBox.children.length > 80) {
+      msgBox.removeChild(msgBox.firstChild);
+    }
+    msgBox.scrollTop = msgBox.scrollHeight;
+  }
+
+  submitLobbyChat(rawText) {
+    const trimmed = String(rawText || '').trim();
+    if (!trimmed) return;
+
+    // Developer / Admin Console Command Execution Directly Through In-Game Chat
+    if (trimmed.startsWith('/')) {
+      if (!this.isDeveloperOrAdmin()) {
+        this.appendLobbyChatMessage({
+          system: true,
+          cls: 'con-err',
+          text: '[SYSTEM] Developer or Admin privileges required to run console commands.'
+        });
+        return;
+      }
+      this.appendLobbyChatMessage({ system: true, cls: 'sys', text: `> ${trimmed}` });
+      if (window.devConsole && typeof window.devConsole.executeFromChat === 'function') {
+        const out = window.devConsole.executeFromChat(trimmed) || [];
+        for (const line of out) {
+          const mapCls = line.type === 'ok'
+            ? 'con-ok'
+            : (line.type === 'err' ? 'con-err' : (line.type === 'warn' ? 'con-warn' : 'con-info'));
+          this.appendLobbyChatMessage({
+            system: true,
+            cls: mapCls,
+            text: `[CONSOLE] ${line.text}`
+          });
+        }
+        this.refreshLobbyChatRoleBadge();
+      } else {
+        this.appendLobbyChatMessage({
+          system: true,
+          cls: 'con-err',
+          text: '[CONSOLE] DevConsole not initialized.'
+        });
+      }
+      return;
+    }
+
+    if (!this._chatRoomId) {
+      this._chatRoomId = this.partyId || ('p_' + (this._clientId || 'local'));
+    }
+    const myCallsign = (this.profile && this.profile.social && this.profile.social.callsign) || 'OPERATOR';
+    const pkt = {
+      type: 'lobby_chat',
+      msgId: `${this._clientId}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      scope: this._chatScope || 'fob',
+      roomId: this._chatRoomId,
+      fromId: this._clientId,
+      from: myCallsign,
+      partyId: this.partyId || null,
+      roleLabel: this.getDeveloperRoleLabel(),
+      text: trimmed.slice(0, 220),
+      ts: Date.now()
+    };
+
+    this.receiveLobbyChatPacket(pkt);
+    if (this._sendSocialPacket) {
+      this._sendSocialPacket(pkt);
+    }
+    if (this._chatScope === 'match' && typeof this.onSendMatchChat === 'function') {
+      this.onSendMatchChat(pkt);
+    }
+  }
+
+  receiveLobbyChatPacket(msg) {
+    if (!msg || !msg.msgId || !msg.scope || !msg.roomId || typeof msg.text !== 'string') return;
+    if (!this._seenChatMsgIds) this._seenChatMsgIds = new Set();
+    if (this._seenChatMsgIds.has(msg.msgId)) return;
+    this._seenChatMsgIds.add(msg.msgId);
+    if (this._seenChatMsgIds.size > 240) {
+      const first = this._seenChatMsgIds.values().next().value;
+      this._seenChatMsgIds.delete(first);
+    }
+
+    // Strict Match / FOB Room Isolation: ONLY display messages from the exact active Match or exact active FOB!
+    const inRaidNow = typeof window.isInRaid === 'function' ? !!window.isInRaid() : (this._chatScope === 'match');
+    if (msg.scope === 'match' && !inRaidNow) return;
+    if (msg.scope === 'fob' && inRaidNow) return;
+    if (msg.scope !== this._chatScope || String(msg.roomId) !== String(this._chatRoomId)) return;
+
+    const isSelf = msg.fromId === this._clientId;
+    const isPartyPeer = !isSelf && !!(msg.partyId && this.partyId && msg.partyId === this.partyId);
+    this.appendLobbyChatMessage({
+      system: false,
+      isSelf,
+      isPartyPeer,
+      from: msg.from || 'OPERATOR',
+      roleLabel: msg.roleLabel || '',
+      text: msg.text
+    });
+  }
+
+  // ==================== INVENTORY / BAG / CONTAINER / BODY ITEM PINGING (MMB & CONTROLLER Y/TRIANGLE) ====================
+  _initInventoryItemPingMouse() {
+    const modal = document.getElementById('loot-modal');
+    if (!modal) return;
+    // Prevent browser autoscroll circle on Middle Mouse inside inventory & ping hovered/selected item!
+    modal.addEventListener('mousedown', (e) => {
+      if (e.button !== 1) return;
+      if (modal.classList.contains('hidden')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const slotEl = (e.target && e.target.closest)
+        ? e.target.closest('.inv-slot, .op-slot-card')
+        : null;
+      this.pingInventorySlot(slotEl);
+    }, true);
+    modal.addEventListener('auxclick', (e) => {
+      if (e.button === 1 && !modal.classList.contains('hidden')) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    }, true);
+  }
+
+  pingInventorySlot(slotEl = null) {
+    const modal = document.getElementById('loot-modal');
+    if (!modal || modal.classList.contains('hidden') || !this._lootPlayer) return false;
+    const player = this._lootPlayer;
+
+    const el = (slotEl && modal.contains(slotEl))
+      ? slotEl
+      : ((this._hoveredSlot && this._hoveredSlot.el && modal.contains(this._hoveredSlot.el))
+        ? this._hoveredSlot.el
+        : ((this._selectedEl && modal.contains(this._selectedEl)) ? this._selectedEl : null));
+    if (!el) return false;
+
+    const myCallsign = (this.profile && this.profile.social && this.profile.social.callsign) || 'OPERATOR';
+    const isCorpseSource = !!(
+      this.activeLootSource && (
+        String(this.activeLootSource.containerId || '').startsWith('corpse_') ||
+        this.activeLootSource.operatorEquipment
+      )
+    );
+
+    let itemId = null;
+    let itemName = null;
+    let qty = 1;
+    let sourceKind = 'player';
+    let worldPos = null;
+    let sourceTitle = myCallsign;
+
+    if (el.classList.contains('inv-slot')) {
+      const ctx = el.dataset ? el.dataset.context : '';
+      const idx = el.dataset ? parseInt(el.dataset.idx, 10) : -1;
+      if (ctx === 'container') {
+        if (!this.activeLootSource || !Array.isArray(this.activeLootSource.items)) return false;
+        const it = this.activeLootSource.items[idx];
+        if (!it || it.revealed === false || !GAME_DATA.ITEMS[it.id]) return false;
+        itemId = it.id;
+        itemName = GAME_DATA.ITEMS[it.id].name;
+        qty = it.qty || 1;
+        sourceKind = isCorpseSource ? 'body' : 'container';
+        worldPos = this.activeLootSource.worldPos || null;
+        sourceTitle = this.activeLootSource.title || (isCorpseSource ? 'BODY' : 'CONTAINER');
+      } else if (ctx === 'container_wpn') {
+        const eq = this.activeLootSource && this.activeLootSource.operatorEquipment;
+        if (!eq || !eq.backpackWeapon || !GAME_DATA.ITEMS[eq.backpackWeapon]) return false;
+        itemId = eq.backpackWeapon;
+        itemName = GAME_DATA.ITEMS[itemId].name;
+        qty = 1;
+        sourceKind = 'body';
+        worldPos = this.activeLootSource.worldPos || null;
+        sourceTitle = this.activeLootSource.title || 'BODY';
+      } else if (ctx === 'backpack_weapon') {
+        if (!player.backpackWeapon || !GAME_DATA.ITEMS[player.backpackWeapon.id]) return false;
+        itemId = player.backpackWeapon.id;
+        itemName = GAME_DATA.ITEMS[itemId].name;
+        qty = 1;
+        sourceKind = 'player';
+      } else if (ctx === 'backpack') {
+        const it = Array.isArray(player.backpack) ? player.backpack[idx] : null;
+        if (!it || !GAME_DATA.ITEMS[it.id]) return false;
+        itemId = it.id;
+        itemName = GAME_DATA.ITEMS[it.id].name;
+        qty = it.qty || 1;
+        sourceKind = 'player';
+      } else {
+        return false;
+      }
+    } else if (el.classList.contains('op-slot-card')) {
+      if (el.dataset && el.dataset.unrevealed === '1') return false;
+      const opKey = el.dataset ? (el.dataset.opKey || el.dataset.key) : '';
+      if (!opKey) return false;
+      const inEnemyOp = !!el.closest('#loot-enemy-op-slots');
+      if (inEnemyOp) {
+        const eq = this.activeLootSource && this.activeLootSource.operatorEquipment;
+        if (!eq) return false;
+        if (opKey === 'cash') {
+          if ((eq.cash || 0) <= 0) return false;
+          itemName = `CASH ₽${eq.cash.toLocaleString()}`;
+        } else if (opKey === 'plates') {
+          if ((eq.plates || 0) <= 0) return false;
+          itemId = 'armor_plate';
+          itemName = 'ARMOR PLATE';
+          qty = eq.plates;
+        } else if (opKey === 'dogtag') {
+          if (!eq.dogtag) return false;
+          itemId = 'dogtag';
+          itemName = eq.dogtagOwner ? `${eq.dogtagOwner} DOGTAG` : 'OPERATOR DOGTAG';
+        } else {
+          const eqId = eq[opKey];
+          if (!eqId || !GAME_DATA.ITEMS[eqId]) return false;
+          itemId = eqId;
+          itemName = GAME_DATA.ITEMS[eqId].name;
+        }
+        sourceKind = 'body';
+        worldPos = this.activeLootSource.worldPos || null;
+        sourceTitle = this.activeLootSource.title || 'BODY';
+      } else {
+        if (opKey === 'primary' || opKey === 'secondary') {
+          const wObj = player.slots && player.slots[opKey];
+          if (!wObj || !GAME_DATA.ITEMS[wObj.id]) return false;
+          itemId = wObj.id;
+          itemName = GAME_DATA.ITEMS[wObj.id].name;
+        } else if (opKey === 'cash') {
+          if ((player.cash || 0) <= 0) return false;
+          itemName = `CASH ₽${player.cash.toLocaleString()}`;
+        } else if (opKey === 'dogtag') {
+          itemId = 'dogtag';
+          itemName = `${myCallsign} DOGTAG`;
+        } else {
+          const slotIt = this._getPlayerOperatorSlotItem(player, opKey);
+          if (!slotIt || !GAME_DATA.ITEMS[slotIt.id]) return false;
+          itemId = slotIt.id;
+          itemName = GAME_DATA.ITEMS[slotIt.id].name;
+          qty = slotIt.qty || 1;
+        }
+        sourceKind = 'player';
+      }
+    } else {
+      return false;
+    }
+
+    if (!itemName) return false;
+    el.style.boxShadow = '0 0 0 2px #69f0ae, 0 0 14px rgba(105, 240, 174, 0.75)';
+    setTimeout(() => {
+      if (el && el.style) el.style.boxShadow = '';
+    }, 420);
+
+    if (typeof this.onInventoryPing === 'function') {
+      this.onInventoryPing({
+        itemId,
+        itemName,
+        qty,
+        sourceKind,
+        worldPos,
+        sourceTitle
+      });
+    }
+    return true;
   }
 }

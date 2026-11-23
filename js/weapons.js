@@ -4332,12 +4332,13 @@ class WeaponSystem {
     // MW4 DMZ Optical Zoom-Scaled ADS FOV (Affected vs Independent 80° baseline, 45° Tac-Stance 1.18x, Focus +4.5% zoom & per-gun ADS speed!)
     const baseFov = window.BASE_FOV || 75;
     const tacBoost = tacSprintingHip ? 5 : 0;
+    const slideBoost = (player.isSliding && !isAdsActive) ? 4.5 : 0;
     const focusZoomBoost = (isAdsActive && player.isFocusing) ? 1.045 : 1.0;
     const effZoom = THREE.MathUtils.lerp(adsZoom, 1.18, tsB) * focusZoomBoost;
     const computedAdsFov = (window.GAME_DATA && window.GAME_DATA.computeAdsFov)
       ? window.GAME_DATA.computeAdsFov(baseFov, effZoom)
       : (weaponDef ? Math.min(baseFov, weaponDef.adsFov || 55) : baseFov);
-    const targetFov = (isAdsActive && weaponDef) ? computedAdsFov : (baseFov + tacBoost);
+    const targetFov = (isAdsActive && weaponDef) ? computedAdsFov : (baseFov + Math.max(tacBoost, slideBoost));
     const fovRate = isAdsActive ? Math.max(11, Math.min(28, 3.6 / adsTimeSec)) : 16;
     if (Math.abs(this.camera.fov - targetFov) > 0.04) {
       this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFov, Math.min(1, dt * fovRate));
