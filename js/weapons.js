@@ -1081,6 +1081,7 @@ class WeaponSystem {
 
     // 3. Underbarrel
     this.hasVertGrip = false;
+    this.foregripAnchor = null;
     if (mods.underbarrel === 'vert_grip' && weaponDef.slot !== 'secondary') {
       this.hasVertGrip = true;
       const isTrenchGun = weaponDef.id === 'm870';
@@ -1102,12 +1103,16 @@ class WeaponSystem {
       shaft.position.set(0, -0.046, 0);
       const baseCap = new THREE.Mesh(new THREE.CylinderGeometry(0.0168, 0.0150, 0.010, 12), matSteel);
       baseCap.position.set(0, -0.088, 0);
-      vGripGroup.add(railClamp, clampBolt, shaft, baseCap);
+      // Exact geometric center anchor on the vertical foregrip shaft (moves automatically with M870 pump slide!)
+      const fgAnchor = new THREE.Object3D();
+      fgAnchor.position.set(0, -0.046, 0);
+      vGripGroup.add(railClamp, clampBolt, shaft, baseCap, fgAnchor);
       for (let r = 0; r < 3; r++) {
         const rib = new THREE.Mesh(new THREE.CylinderGeometry(0.0156, 0.0156, 0.005, 12), matSteel);
         rib.position.set(0, -0.030 - r * 0.018, 0);
         vGripGroup.add(rib);
       }
+      this.foregripAnchor = fgAnchor;
 
       if (isTrenchGun && this.boltMesh) {
         // Parent directly onto the M870 sliding pump so the vertical foregrip moves 1:1 when pumping the slide!
@@ -1118,11 +1123,11 @@ class WeaponSystem {
         g.add(vGripGroup);
       }
 
-      // Reposition & reshape operator's support hand to wrap solidly around the vertical foregrip shaft!
+      // Reposition & reshape operator's support hand to wrap solidly around the exact center of the vertical foregrip shaft!
       if (withHands && this.leftHand) {
         g.remove(this.leftHand);
         this.leftHand = this._createHand(false, 'foregrip');
-        this.leftHand.position.set(0.0, collarWorldY - 0.044, gripZ);
+        this.leftHand.position.set(0.0, collarWorldY - 0.046, gripZ);
         this.leftHand.rotation.set(0, 0, 0);
         this.leftHandRestPos.copy(this.leftHand.position);
         this.leftHandRestRot.copy(this.leftHand.rotation);
@@ -2995,6 +3000,7 @@ class WeaponSystem {
     const saved = {
       currentMesh: this.currentMesh,
       hasVertGrip: !!this.hasVertGrip,
+      foregripAnchor: this.foregripAnchor,
       magMesh: this.magMesh,
       magRestPos: this.magRestPos.clone(),
       magRestRot: this.magRestRot.clone(),
@@ -3028,6 +3034,7 @@ class WeaponSystem {
       weaponId: weaponDef.id,
       isPistol: weaponDef.slot === 'secondary',
       hasVertGrip: !!this.hasVertGrip,
+      foregripAnchor: this.foregripAnchor,
       muzzlePos: this.muzzleMesh.position.clone(),
       magMesh: this.magMesh,
       spareMagMesh: this.spareMagMesh,
@@ -3041,6 +3048,7 @@ class WeaponSystem {
     // Restore all 1st-person viewmodel references untouched
     this.currentMesh = saved.currentMesh;
     this.hasVertGrip = saved.hasVertGrip;
+    this.foregripAnchor = saved.foregripAnchor;
     this.magMesh = saved.magMesh;
     this.magRestPos.copy(saved.magRestPos);
     this.magRestRot.copy(saved.magRestRot);
@@ -4128,11 +4136,15 @@ class WeaponSystem {
             }
           }
           if (this.hasVertGrip) {
-            // Keep support hand wrapped solidly around the vertical foregrip shaft at all times!
-            this.leftHand.position.lerp(this.leftHandRestPos, Math.min(1, dt * 20));
-            this.leftHand.rotation.x = THREE.MathUtils.lerp(this.leftHand.rotation.x, this.leftHandRestRot.x, Math.min(1, dt * 18));
-            this.leftHand.rotation.y = THREE.MathUtils.lerp(this.leftHand.rotation.y, this.leftHandRestRot.y, Math.min(1, dt * 18));
-            this.leftHand.rotation.z = THREE.MathUtils.lerp(this.leftHand.rotation.z, this.leftHandRestRot.z, Math.min(1, dt * 18));
+            // Lock support hand directly onto the live geometric center of the vertical foregrip shaft (0.00cm offset!)
+            if (this.foregripAnchor && this.currentMesh) {
+              this.currentMesh.updateWorldMatrix(true, true);
+              const fgLocal = this.currentMesh.worldToLocal(this.foregripAnchor.getWorldPosition(new THREE.Vector3()));
+              this.leftHand.position.copy(fgLocal);
+            } else {
+              this.leftHand.position.copy(this.leftHandRestPos);
+            }
+            this.leftHand.rotation.set(0, 0, 0);
           } else {
             // MW4 Kinetic Support-Hand Slide: conforms dynamically along handguard for 45° Tac-Stance C-clamp, CQB wall-tuck & Prone brace!
             const proneSlideZ = player.isProne ? -0.010 : 0.0;

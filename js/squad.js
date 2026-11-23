@@ -185,6 +185,7 @@ class SquadMate {
         wObj = builtWpn.group;
         this.isPistol = !!builtWpn.isPistol;
         this.hasVertGrip = !!builtWpn.hasVertGrip;
+        this.tpForegripAnchor = builtWpn.foregripAnchor || null;
         wObj.scale.setScalar(builtWpn.isPistol ? 1.25 : 1.38);
         wObj.position.set(0, 0.01, builtWpn.isPistol ? -0.02 : -0.12);
       }

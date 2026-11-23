@@ -539,18 +539,26 @@
         stanceTrans: st.stanceTrans || null
       };
 
-      // Update grip anchors for pistol vs rifle (including vertical foregrips & live Trench Gun slide pump!)
+      // Update grip anchors for pistol vs rifle (using exact live 3P foregrip shaft anchor when equipped!)
       if (r.rearGripTarget && r.foregripTarget) {
         const pumpOff = st.pumpOffset || 0;
         if (isPistol) {
           r.rearGripTarget.position.set(0.01, -0.05, 0.02);
           r.foregripTarget.position.set(-0.02, -0.055, -0.01); // Two-handed weaver/isosceles pistol grip
+        } else if (st.foregripPivotPos) {
+          r.rearGripTarget.position.set(0.01, -0.055, 0.04);
+          // Shift wrist slightly left (-2.4cm) & back (+4.6cm wrist->palmCenter) so 3P palm & fingers wrap dead-center around the foregrip shaft!
+          r.foregripTarget.position.set(
+            st.foregripPivotPos.x - 0.024,
+            st.foregripPivotPos.y,
+            st.foregripPivotPos.z + 0.046
+          );
         } else if (st.hasVertGrip) {
           r.rearGripTarget.position.set(0.01, -0.055, 0.04);
-          r.foregripTarget.position.set(-0.01, -0.088, -0.24 + pumpOff); // Left hand wrapped around vertical foregrip!
+          r.foregripTarget.position.set(-0.024, -0.098, -0.375 + pumpOff * 1.38);
         } else {
           r.rearGripTarget.position.set(0.01, -0.055, 0.04);
-          r.foregripTarget.position.set(-0.01, -0.035, -0.25 + pumpOff); // Left hand on rifle handguard / shotgun pump
+          r.foregripTarget.position.set(-0.01, -0.035, -0.25 + pumpOff * 1.38); // Left hand on rifle handguard / shotgun pump
         }
       }
 

@@ -1281,7 +1281,7 @@
     rightFist:       { f: new THREE.Vector3(-0.22,  0.14, -0.96), back: new THREE.Vector3( 0.92,  0.34, -0.18), palmOffset: new THREE.Vector3( 0.005,  0.000,  0.002), curl: [1.56, 1.78, 1.12], thumb: 1.00 },
     leftFist:        { f: new THREE.Vector3( 0.22,  0.14, -0.96), back: new THREE.Vector3(-0.92,  0.34, -0.18), palmOffset: new THREE.Vector3(-0.005,  0.000,  0.002), curl: [1.56, 1.78, 1.12], thumb: 1.00 },
     supportPistol:   { f: new THREE.Vector3( 0.40,  0.05, -0.91), back: new THREE.Vector3(-0.88, -0.22, -0.42), palmOffset: new THREE.Vector3(-0.018, -0.012,  0.005), curl: [0.95, 1.05, 0.72], thumb: 0.50 },
-    foregrip:        { f: new THREE.Vector3( 0.46, -0.04, -0.89), back: new THREE.Vector3(-0.89, -0.06, -0.46), palmOffset: new THREE.Vector3(-0.023, -0.002, -0.010), curl: [1.26, 1.38, 0.92], thumb: 0.78 },
+    foregrip:        { f: new THREE.Vector3( 0.26,  0.02, -0.965), back: new THREE.Vector3(-0.965, 0.02, -0.26), palmOffset: new THREE.Vector3(-0.021,  0.002,  0.015), curl: [1.22, 1.32, 0.90], thumb: 0.78 },
     supportRifle:    { f: new THREE.Vector3( 0.36,  0.18, -0.92), back: new THREE.Vector3(-0.34, -0.92, -0.18), palmOffset: new THREE.Vector3(-0.008, -0.024,  0.005), curl: [0.80, 0.90, 0.62], thumb: 0.45 },
     plate:           { f: new THREE.Vector3( 0.42, -0.16, -0.89), back: new THREE.Vector3(-0.14,  0.96, -0.24), palmOffset: new THREE.Vector3(-0.004,  0.015,  0.004), curl: [1.06, 1.18, 0.78], thumb: 0.84 },
     // Dedicated reload & plating IK grip styles (calibrated to sculpted 8.9cm anatomical glove palm!)
@@ -1621,20 +1621,27 @@
           const camSh = cam.localToWorld(shCamLocal);
           const anchor = shoulderW.clone().lerp(camSh, 0.50);
 
-          const dist = anchor.distanceTo(wristTarget);
           const maxReach = this.reach * 0.985;
-          if (dist > maxReach && dist > 1e-5) {
-            anchor.addScaledVector(wristTarget.clone().sub(anchor).normalize(), dist - maxReach);
-          }
-
-          // Keep the severed upper-arm root strictly outside the camera frustum (behind near plane or >=11.5cm below bottom edge)
-          // so opening doors, opening containers, or plating can NEVER expose the back of the arm viewmodel!
+          // Alternating projection in vmCamera space: slides shoulder anchor forward strictly underneath the bottom frustum edge
+          // (>=8.5cm below screen bottom) so the severed arm stump is NEVER visible while wristTarget achieves 0.00cm offset on foregrips!
           const anchorCam = cam.worldToLocal(anchor.clone());
-          anchorCam.z = Math.max(-0.15, anchorCam.z);
-          if (anchorCam.z < 0.06) {
-            const halfTanY = Math.tan(THREE.MathUtils.degToRad((cam.fov || 75) * 0.5));
-            const maxSafeY = -Math.max(0, -anchorCam.z) * halfTanY - 0.115;
-            if (anchorCam.y > maxSafeY) anchorCam.y = maxSafeY;
+          const wristCam = cam.worldToLocal(wristTarget.clone());
+          const halfTanY = Math.tan(THREE.MathUtils.degToRad((cam.fov || 75) * 0.5));
+          for (let iter = 0; iter < 4; iter++) {
+            const dx = wristCam.x - anchorCam.x;
+            const dy = wristCam.y - anchorCam.y;
+            const dz = wristCam.z - anchorCam.z;
+            const d = Math.hypot(dx, dy, dz);
+            if (d > maxReach && d > 1e-5) {
+              const pull = (d - maxReach) / d;
+              anchorCam.x += dx * pull;
+              anchorCam.y += dy * pull;
+              anchorCam.z += dz * pull;
+            }
+            if (anchorCam.z < 0.06) {
+              const safeY = -Math.max(0, -anchorCam.z) * halfTanY - 0.085;
+              if (anchorCam.y > safeY) anchorCam.y = safeY;
+            }
           }
           anchor.copy(cam.localToWorld(anchorCam));
 

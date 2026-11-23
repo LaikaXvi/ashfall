@@ -800,6 +800,11 @@ class Player {
       if (!isFP && ws && this.tpWeapon && this.tpWeapon.boltMesh && !ws.isReloading) {
         this.tpWeapon.boltMesh.position.z = this.tpWeapon.boltRestPos.z + (this.tpWeapon.weaponId === 'm870' ? tpPumpOff : (ws.boltKick || 0));
       }
+      let tpFgPivotPos = null;
+      if (!isFP && this.tpWeapon && this.tpWeapon.hasVertGrip && this.tpWeapon.foregripAnchor && p.weaponPivot) {
+        p.weaponPivot.updateMatrixWorld(true);
+        tpFgPivotPos = p.weaponPivot.worldToLocal(this.tpWeapon.foregripAnchor.getWorldPosition(new THREE.Vector3()));
+      }
 
       const plateProg = (!isFP && ws && ws.isPlating && ws.plateDuration > 0)
         ? THREE.MathUtils.clamp(1 - (ws.plateTimer / ws.plateDuration), 0, 1)
@@ -842,6 +847,7 @@ class Player {
         recoilKick: isFP ? 0 : (ws ? (ws.recoilZ || ws.recoilOffset || 0) : 0),
         isPistol: !!(this.tpWeapon && this.tpWeapon.isPistol),
         hasVertGrip: !!(this.tpWeapon && this.tpWeapon.hasVertGrip),
+        foregripPivotPos: tpFgPivotPos,
         pumpOffset: tpPumpOff,
         world: this.world,
         worldPos: this.position,
