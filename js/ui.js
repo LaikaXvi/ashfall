@@ -6653,6 +6653,33 @@ class GameUI {
     ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
     ctx.restore();
 
+    // Hydrography: rivers, lake & SE ocean (player-centered minimap)
+    if (world.RIVER_A && world.LAKE) {
+      ctx.save();
+      ctx.strokeStyle = '#3f7f96';
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      for (const line of [world.RIVER_A, world.RIVER_B]) {
+        ctx.beginPath();
+        line.forEach(([wx, wz], i) => {
+          const p = toMap(wx, wz);
+          if (i === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        });
+        ctx.stroke();
+      }
+      const lp = toMap(world.LAKE.x, world.LAKE.z);
+      ctx.fillStyle = '#3f7f96';
+      ctx.beginPath();
+      ctx.ellipse(lp.x, lp.y, world.LAKE.rx * scale, world.LAKE.rz * scale, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(63,127,150,0.85)';
+      ctx.fillRect(0, toMap(0, 525).y, W, H);
+      ctx.fillRect(toMap(470, 0).x, 0, W, H);
+      ctx.restore();
+    }
+
     // POIs
     if (world.pois) {
       for (const poi of world.pois) {
@@ -6848,6 +6875,45 @@ class GameUI {
     drawRoad(-112, -112, -112, 88, 7 * scale);
     drawRoad(112, -112, 112, 88, 7 * scale);
     ctx.restore();
+
+    // 3b. Hydrography: NE river -> lake -> SE outlet river -> southern beach -> SE ocean peninsula
+    if (world.RIVER_A && world.LAKE) {
+      ctx.save();
+      // Ocean wash over southern beach + eastern sea
+      ctx.fillStyle = '#1d3a46';
+      ctx.beginPath();
+      ctx.moveTo(0, H);
+      for (let x = -halfSize; x <= halfSize + 200; x += 20) {
+        const bz = 525 - (x - 170) * 0.05;
+        const p = toMap(x, bz);
+        ctx.lineTo(p.x, p.y);
+      }
+      ctx.lineTo(W, H);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillRect(toMap(470, 0).x, 0, W, H);
+      // Lake
+      const lp = toMap(world.LAKE.x, world.LAKE.z);
+      ctx.fillStyle = '#2c5462';
+      ctx.beginPath();
+      ctx.ellipse(lp.x, lp.y, world.LAKE.rx * scale, world.LAKE.rz * scale, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Rivers
+      ctx.strokeStyle = '#2c5462';
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      for (const line of [world.RIVER_A, world.RIVER_B]) {
+        ctx.lineWidth = Math.max(2, 15 * scale);
+        ctx.beginPath();
+        line.forEach(([wx, wz], i) => {
+          const p = toMap(wx, wz);
+          if (i === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        });
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
 
     // 4. Crisp Crimson Red Zone Boundary Border & Labels
     ctx.save();
