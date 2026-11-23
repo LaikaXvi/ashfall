@@ -443,9 +443,14 @@ class GamepadController {
     // === ROTATIONAL AIM ASSIST + ADS SLOWDOWN ===
     const slowdown = this._applyRotationalAimAssist(dt, player, ctx.enemyManager, ls, rs, ctx.squadManager);
 
-    // === RIGHT STICK: ANALOG LOOK (YAW & PITCH) ===
+    // === RIGHT STICK: ANALOG LOOK (YAW & PITCH — ZOOM-SCALED ADS SENSITIVITY!) ===
     if (rs.mag > 0 && !player.dead) {
-      const lookSpeed = (player.isADS ? 1.55 : 2.95) * (window.CONTROLLER_SENS || 1.0) * slowdown;
+      const baseFov = window.BASE_FOV || 75;
+      const curFov = (weaponSystem && weaponSystem.camera) ? weaponSystem.camera.fov : baseFov;
+      const zoomMult = (window.GAME_DATA && window.GAME_DATA.getZoomSensitivityMultiplier)
+        ? window.GAME_DATA.getZoomSensitivityMultiplier(curFov, baseFov, !!player.isADS)
+        : (player.isADS ? 0.53 : 1.0);
+      const lookSpeed = 2.95 * zoomMult * (window.CONTROLLER_SENS || 1.0) * slowdown;
       player.yaw -= rs.x * lookSpeed * dt;
       player.pitch -= rs.y * lookSpeed * dt;
       player.pitch = THREE.MathUtils.clamp(player.pitch, -Math.PI / 2 + 0.08, Math.PI / 2 - 0.08);

@@ -6272,7 +6272,20 @@ class GameUI {
       const gapPx = baseGap + cookPulse * 18;
       chEl.style.setProperty('--ch-gap', `${gapPx.toFixed(1)}px`);
     }
-    document.getElementById('ads-vignette').style.opacity = player.isADS ? '1' : '0';
+    const adsVig = document.getElementById('ads-vignette');
+    if (adsVig) {
+      adsVig.style.opacity = player.isADS ? '1' : '0';
+      if (player.isADS) {
+        const z = (wDef && wDef.adsZoom) ? wDef.adsZoom : 1.25;
+        if (z >= 6.0) {
+          adsVig.style.background = 'radial-gradient(circle, transparent 48%, rgba(0, 0, 0, 0.80) 94%)';
+        } else if (z >= 3.0) {
+          adsVig.style.background = 'radial-gradient(circle, transparent 50%, rgba(0, 0, 0, 0.68) 96%)';
+        } else {
+          adsVig.style.background = 'radial-gradient(circle, transparent 55%, rgba(0, 0, 0, 0.55) 100%)';
+        }
+      }
+    }
 
     // Compass, Top-Left Live Minimap & Full-Size Tactical Map ([M] / Back-Select)
     this._updateCompass(player, world);

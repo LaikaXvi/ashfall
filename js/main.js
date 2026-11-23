@@ -1139,7 +1139,12 @@
       _updatePingWheelSelection();
       return;
     }
-    const sens = (player.isADS ? 0.0012 : 0.0022) * (window.MOUSE_SENS || 1.0);
+    const baseFov = window.BASE_FOV || 75;
+    const curFov = camera ? camera.fov : baseFov;
+    const zoomMult = (window.GAME_DATA && window.GAME_DATA.getZoomSensitivityMultiplier)
+      ? window.GAME_DATA.getZoomSensitivityMultiplier(curFov, baseFov, !!player.isADS)
+      : (player.isADS ? 0.55 : 1.0);
+    const sens = 0.0022 * zoomMult * (window.MOUSE_SENS || 1.0);
     player.yaw -= e.movementX * sens;
     player.pitch -= e.movementY * sens;
     player.pitch = THREE.MathUtils.clamp(player.pitch, -Math.PI / 2 + 0.08, Math.PI / 2 - 0.08);
@@ -3898,9 +3903,25 @@
       if (viewmodelCamera) {
         viewmodelCamera.position.copy(camera.position);
         viewmodelCamera.quaternion.copy(camera.quaternion);
-        const targetVmFov = (window.WEAPON_FOV_MODE === 'independent')
-          ? (window.VIEWMODEL_FOV || 75)
-          : camera.fov;
+        let targetVmFov = camera.fov;
+        if (window.WEAPON_FOV_MODE === 'independent') {
+          const vmBase = window.VIEWMODEL_FOV || 75;
+          const activeDef = (player && player.getActiveWeaponDef) ? player.getActiveWeaponDef() : null;
+          const hasMagScope = !!(activeDef && (activeDef.adsZoom || 1) >= 2.0);
+          if (hasMagScope) {
+            // Magnified scopes zoom proportionally with the optic in Independent mode too so the scope never shrinks tiny!
+            const bf = window.BASE_FOV || 75;
+            const liveZoom = Math.max(
+              1.0,
+              Math.tan(THREE.MathUtils.degToRad(bf * 0.5)) / Math.max(0.04, Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)))
+            );
+            targetVmFov = (window.GAME_DATA && window.GAME_DATA.computeAdsFov)
+              ? window.GAME_DATA.computeAdsFov(vmBase, liveZoom)
+              : (vmBase / liveZoom);
+          } else {
+            targetVmFov = vmBase;
+          }
+        }
         if (Math.abs(viewmodelCamera.fov - targetVmFov) > 0.01) {
           viewmodelCamera.fov = targetVmFov;
           viewmodelCamera.updateProjectionMatrix();

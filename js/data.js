@@ -1,7 +1,7 @@
 // Game Item Database, 5-Tier Loot Rarity, Logical POI Tables, Workbench & Attachments
 // IMPORTANT: Update GAME_DATA.VERSION (and ?v= cache-busters in index.html) with EVERY new commit!
 window.GAME_DATA = {
-  VERSION: 'v2.53',
+  VERSION: 'v2.54',
   OPERATOR_STATS: {
     maxHp: 75,
     plateArmor: 35,
@@ -45,6 +45,7 @@ window.GAME_DATA = {
       adsSpread: 0.004,
       recoil: 0.025,
       adsFov: 60,
+      adsZoom: 1.25,
       range: 70,
       pellets: 1,
       color: 0x3b3f42,
@@ -68,6 +69,7 @@ window.GAME_DATA = {
       adsSpread: 0.003,
       recoil: 0.022,
       adsFov: 58,
+      adsZoom: 1.25,
       range: 80,
       pellets: 1,
       color: 0x222528,
@@ -93,6 +95,7 @@ window.GAME_DATA = {
       adsSpread: 0.007,
       recoil: 0.018,
       adsFov: 54,
+      adsZoom: 1.35,
       range: 85,
       pellets: 1,
       color: 0x26292c,
@@ -116,6 +119,7 @@ window.GAME_DATA = {
       adsSpread: 0.004,
       recoil: 0.028,
       adsFov: 50,
+      adsZoom: 1.45,
       range: 140,
       pellets: 1,
       color: 0x3b2f26,
@@ -139,6 +143,7 @@ window.GAME_DATA = {
       adsSpread: 0.032,
       recoil: 0.065,
       adsFov: 56,
+      adsZoom: 1.30,
       range: 42,
       pellets: 8,
       color: 0x3a322c,
@@ -162,7 +167,8 @@ window.GAME_DATA = {
       spread: 0.035,
       adsSpread: 0.001,
       recoil: 0.075,
-      adsFov: 32,
+      adsFov: 22,
+      adsZoom: 4.0,
       range: 950,
       pellets: 1,
       color: 0x454a3a,
@@ -188,6 +194,7 @@ window.GAME_DATA = {
       adsSpread: 0.0012,
       recoil: 0.082,
       adsFov: 44,
+      adsZoom: 1.65,
       range: 900,
       pellets: 1,
       color: 0x6b4122,
@@ -211,7 +218,8 @@ window.GAME_DATA = {
       spread: 0.042,
       adsSpread: 0.0004,
       recoil: 0.095,
-      adsFov: 24,
+      adsFov: 15,
+      adsZoom: 6.0,
       range: 1250,
       pellets: 1,
       color: 0x3b4834,
@@ -854,12 +862,12 @@ window.GAME_DATA = {
 
   ATTACHMENTS: {
     optic: {
-      none: { id: 'none', name: 'Factory Sights', price: 0, recoilMult: 1.0, spreadMult: 1.0, adsSpreadMult: 1.0, adsFovOverride: null, desc: 'Standard factory iron sights / default optic.' },
-      red_dot: { id: 'red_dot', name: 'Cobra Reflex Red Dot', price: 2200, recoilMult: 1.0, spreadMult: 1.0, adsSpreadMult: 0.72, adsFovOverride: 62, desc: 'Slim open reflex sight. -28% ADS spread.' },
-      holo: { id: 'holo', name: 'EXPS3 Holographic', price: 2800, recoilMult: 0.98, spreadMult: 1.0, adsSpreadMult: 0.66, adsFovOverride: 58, desc: 'Hooded circle-dot holographic sight. -34% ADS spread.' },
-      acog_2x: { id: 'acog_2x', name: 'TA-31 3x Prism Scope', price: 4200, recoilMult: 1.0, spreadMult: 1.0, adsSpreadMult: 0.54, adsFovOverride: 40, desc: '3x cylindrical prism optic with BDC reticle. -46% ADS spread.' },
-      lpvo_4x: { id: 'lpvo_4x', name: 'Vortex 1-4x LPVO', price: 5600, recoilMult: 1.0, spreadMult: 1.0, adsSpreadMult: 0.44, adsFovOverride: 30, desc: '4x variable tactical tube optic. -56% ADS spread.' },
-      sniper_8x: { id: 'sniper_8x', name: 'Mk5 8x Long-Range', price: 7800, recoilMult: 1.0, spreadMult: 1.0, adsSpreadMult: 0.30, adsFovOverride: 18, desc: '8x precision sniper optic with mil-dot stadia. -70% ADS spread.' }
+      none: { id: 'none', name: 'Factory Sights', price: 0, recoilMult: 1.0, spreadMult: 1.0, adsSpreadMult: 1.0, zoom: null, adsFovOverride: null, desc: 'Standard factory iron sights / default optic.' },
+      red_dot: { id: 'red_dot', name: 'Cobra Reflex Red Dot', price: 2200, recoilMult: 1.0, spreadMult: 1.0, adsSpreadMult: 0.72, zoom: 1.25, adsFovOverride: 62, desc: '1.25x slim open reflex sight. -28% ADS spread.' },
+      holo: { id: 'holo', name: 'EXPS3 Holographic', price: 2800, recoilMult: 0.98, spreadMult: 1.0, adsSpreadMult: 0.66, zoom: 1.35, adsFovOverride: 58, desc: '1.35x hooded circle-dot holographic sight. -34% ADS spread.' },
+      acog_2x: { id: 'acog_2x', name: 'TA-31 3x Prism Scope', price: 4200, recoilMult: 1.0, spreadMult: 1.0, adsSpreadMult: 0.54, zoom: 3.0, adsFovOverride: 29, desc: '3x cylindrical prism optic with BDC reticle. -46% ADS spread.' },
+      lpvo_4x: { id: 'lpvo_4x', name: 'Vortex 1-4x LPVO', price: 5600, recoilMult: 1.0, spreadMult: 1.0, adsSpreadMult: 0.44, zoom: 4.0, adsFovOverride: 22, desc: '4x variable tactical tube optic. -56% ADS spread.' },
+      sniper_8x: { id: 'sniper_8x', name: 'Mk5 8x Long-Range', price: 7800, recoilMult: 1.0, spreadMult: 1.0, adsSpreadMult: 0.30, zoom: 8.0, adsFovOverride: 11, desc: '8x precision sniper optic with mil-dot stadia. -70% ADS spread.' }
     },
     muzzle: {
       none: { id: 'none', name: 'Factory Muzzle', price: 0, recoilMult: 1.0, spreadMult: 1.0, suppressed: false, desc: 'Standard barrel crown.' },
@@ -914,6 +922,23 @@ window.GAME_DATA = {
     };
   },
 
+  computeAdsFov(baseFov = 75, zoom = 1.25) {
+    const bf = Math.max(40, Math.min(130, Number(baseFov) || 75));
+    const z = Math.max(1.0, Number(zoom) || 1.0);
+    const halfRad = (bf * 0.5) * (Math.PI / 180);
+    const adsRad = 2 * Math.atan(Math.tan(halfRad) / z);
+    return Math.max(6.0, Math.min(bf, adsRad * (180 / Math.PI)));
+  },
+
+  getZoomSensitivityMultiplier(cameraFov, baseFov = 75, isADS = false) {
+    const bf = Math.max(40, Math.min(130, Number(baseFov) || 75));
+    const cf = Math.max(5.0, Math.min(135, Number(cameraFov) || bf));
+    const tanRatio = Math.tan((cf * 0.5) * (Math.PI / 180)) / Math.max(0.05, Math.tan((bf * 0.5) * (Math.PI / 180)));
+    if (!isADS) return Math.min(1.0, tanRatio);
+    // Exact focal-length 1/zoom sensitivity scaling with subtle ADS steadiness factor (0.78 at 1x -> 0.26 at 3x -> 0.20 at 4x -> 0.10 at 8x)
+    return Math.max(0.06, Math.min(0.85, tanRatio * 0.78));
+  },
+
   getEffectiveWeaponStats(weaponId, mods = {}) {
     const base = this.ITEMS[weaponId];
     if (!base) return null;
@@ -922,6 +947,9 @@ window.GAME_DATA = {
     const und = this.ATTACHMENTS.underbarrel[mods.underbarrel || 'none'] || this.ATTACHMENTS.underbarrel.none;
     const mag = this.ATTACHMENTS.magazine[mods.magazine || 'none'] || this.ATTACHMENTS.magazine.none;
     const stk = this.ATTACHMENTS.stock[mods.stock || 'none'] || this.ATTACHMENTS.stock.none;
+    const adsZoom = opt.zoom || base.adsZoom || 1.25;
+    const liveBaseFov = (typeof window !== 'undefined' && window.BASE_FOV) ? window.BASE_FOV : 75;
+    const computedAdsFov = Math.round(this.computeAdsFov(liveBaseFov, adsZoom));
 
     return {
       ...base,
@@ -929,7 +957,8 @@ window.GAME_DATA = {
       horizRecoil: (base.horizRecoil != null ? base.horizRecoil : base.recoil * 0.48) * muz.recoilMult * und.recoilMult * stk.recoilMult,
       spread: base.spread * muz.spreadMult * und.spreadMult * stk.spreadMult,
       adsSpread: base.adsSpread * opt.adsSpreadMult * stk.adsSpreadMult,
-      adsFov: opt.adsFovOverride || base.adsFov,
+      adsZoom,
+      adsFov: computedAdsFov,
       magSize: Math.ceil(base.magSize * mag.magMult),
       suppressed: !!muz.suppressed,
       hasLaser: !!und.laser,

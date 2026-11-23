@@ -701,8 +701,8 @@ class WeaponSystem {
     return ironGroup;
   }
 
-  _addScope(group, scopeY, style = 'lpvo', receiverTopY = 0.030) {
-    // High-precision watertight LatheGeometry scope tube (outer matte body + beveled lips + matte-black inner bore — zero see-through gaps!)
+  _addScope(group, scopeY, style = 'lpvo', receiverTopY = 0.030, withHands = true) {
+    // High-precision watertight LatheGeometry scope tube + wide-aperture ADS optical ocular assembly (v2.54)
     const scopeOuterMat = new THREE.MeshLambertMaterial({ color: 0x1a1e22 });
     const scopeInnerMat = new THREE.MeshLambertMaterial({ color: 0x090a0c, side: THREE.BackSide });
     const ringMat = new THREE.MeshLambertMaterial({ color: 0x262a2f });
@@ -713,15 +713,17 @@ class WeaponSystem {
 
     const isSniper = style === 'sniper';
     const isAcog = style === 'acog';
-    const rTube = isSniper ? 0.0185 : (isAcog ? 0.0165 : 0.0170);
-    const rFront = isSniper ? 0.0255 : (isAcog ? 0.0205 : 0.0200);
-    const rRear = isSniper ? 0.0215 : (isAcog ? 0.0185 : 0.0205);
+    const rTube = isSniper ? 0.0190 : (isAcog ? 0.0170 : 0.0175);
+    const rFront = isSniper ? 0.0265 : (isAcog ? 0.0215 : 0.0215);
+    const rRear = isSniper ? 0.0260 : (isAcog ? 0.0225 : 0.0242);
     const len = isSniper ? 0.275 : (isAcog ? 0.135 : 0.215);
     const zCenter = isSniper ? -0.025 : (isAcog ? 0.015 : -0.005);
-    const wall = 0.0026;
+    const wall = isSniper ? 0.0029 : (isAcog ? 0.0026 : 0.0028);
+    const rEye = rRear - wall;
 
     // Build continuous smooth Lathe profile along Y, then rotateX(+PI/2) so +Y becomes +Z (rear eyepiece) and -Y becomes -Z (front objective)!
     const half = len * 0.5;
+    const rearZ = zCenter + half;
     const outerPts = [
       new THREE.Vector2(rFront - wall, -half),
       new THREE.Vector2(rFront, -half),
@@ -730,19 +732,19 @@ class WeaponSystem {
       new THREE.Vector2(rTube, half * 0.42),
       new THREE.Vector2(rRear, half * 0.62),
       new THREE.Vector2(rRear, half),
-      new THREE.Vector2(rRear - wall, half),
-      new THREE.Vector2(rRear - wall, half * 0.62),
+      new THREE.Vector2(rEye, half),
+      new THREE.Vector2(rEye, half * 0.62),
       new THREE.Vector2(rTube - wall, half * 0.42),
       new THREE.Vector2(rTube - wall, -half * 0.34),
       new THREE.Vector2(rFront - wall, -half * 0.56),
       new THREE.Vector2(rFront - wall, -half)
     ];
-    const bodyGeo = new THREE.LatheGeometry(outerPts, 28);
+    const bodyGeo = new THREE.LatheGeometry(outerPts, 32);
     bodyGeo.rotateX(Math.PI / 2);
     const bodyMesh = new THREE.Mesh(bodyGeo, scopeOuterMat);
     bodyMesh.position.set(0, scopeY, zCenter);
 
-    // Solid dark inner bore liner so interior never leaks sky/background light
+    // Solid dark inner bore liner so interior never leaks sky/background light in hipfire/inspect/3P
     const boreGeo = new THREE.CylinderGeometry(rTube - wall + 0.0002, rTube - wall + 0.0002, len * 0.86, 24, 1, true);
     boreGeo.rotateX(Math.PI / 2);
     const boreMesh = new THREE.Mesh(boreGeo, scopeInnerMat);
@@ -771,35 +773,74 @@ class WeaponSystem {
     const windTurret = new THREE.Mesh(new THREE.CylinderGeometry(0.0054, 0.0060, 0.010, 16), accentMat);
     windTurret.rotation.z = Math.PI / 2;
     windTurret.position.set(rTube + 0.0045, scopeY, zCenter);
-    const magRing = new THREE.Mesh(new THREE.TorusGeometry(rRear * 0.96, 0.0018, 8, 24), accentMat);
+    const magRing = new THREE.Mesh(new THREE.TorusGeometry(rRear * 0.96, 0.0018, 8, 28), accentMat);
     magRing.position.set(0, scopeY, zCenter + half * 0.68);
 
     // Subtle anti-reflective objective lens disc
     const lens = new THREE.Mesh(new THREE.CircleGeometry(rFront - wall - 0.0005, 24), glassMat);
     lens.position.set(0, scopeY, zCenter - half * 0.88);
 
-    // Compact, concise, ultra-fine reticle centered cleanly inside the tube
-    const retZ = zCenter - len * 0.08;
-    const retR = (rTube - wall) * 0.90;
+    // Wide-aperture ADS optical eye-box assembly at rear ocular plane (eliminates straw-tunnel pinch!)
+    // Depth-only circular hole mask writes rear ocular depth FIRST (renderOrder=-10) without modifying zoomed world color,
+    // cleanly clipping forward scope rings/tube/barrel out of the glass window while keeping the 3D outer bezel & world intact!
+    const holeMaskMat = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: true });
+    const ocularHoleMask = new THREE.Mesh(new THREE.CircleGeometry(rEye, 48), holeMaskMat);
+    ocularHoleMask.position.set(0, scopeY, rearZ - 0.0005);
+    ocularHoleMask.renderOrder = -10;
+    ocularHoleMask.visible = false;
+
+    const bezelMat = new THREE.MeshBasicMaterial({ color: 0x0a0c0e });
+    const ocularBezel = new THREE.Mesh(new THREE.RingGeometry(rEye - 0.0003, rRear + 0.0028, 48), bezelMat);
+    ocularBezel.position.set(0, scopeY, rearZ + 0.0004);
+    ocularBezel.renderOrder = 5;
+    ocularBezel.visible = false;
+
+    const shadowRingMat = new THREE.MeshBasicMaterial({
+      color: 0x040507,
+      transparent: true,
+      opacity: 0.34,
+      depthWrite: false
+    });
+    const shadowRing = new THREE.Mesh(new THREE.RingGeometry(rEye * 0.86, rEye + 0.0003, 48), shadowRingMat);
+    shadowRing.position.set(0, scopeY, rearZ + 0.0008);
+    shadowRing.renderOrder = 6;
+    shadowRing.visible = false;
+
+    // Razor-sharp optical reticle centered cleanly at the rear ocular focal plane (scales edge-to-edge with scope!)
+    const retR = rEye * 0.97;
     const retGroup = new THREE.Group();
-    retGroup.position.set(0, scopeY, retZ);
+    retGroup.position.set(0, scopeY, rearZ + 0.0012);
+    retGroup.visible = false;
+
+    const addRetPart = (mesh) => {
+      mesh.renderOrder = 10;
+      retGroup.add(mesh);
+      return mesh;
+    };
 
     if (isAcog) {
-      // Concise TA-31 red chevron + subtle fine BDC vertical drop line
-      const chevL = new THREE.Mesh(new THREE.BoxGeometry(0.0032, 0.00045, 0.0004), illumMat);
-      chevL.position.set(-0.0011, -0.0009, 0.0003);
+      // TA-31 3x Prism: glowing red chevron + crisp BDC vertical drop line + outer horizontal stadia guides
+      const chevL = new THREE.Mesh(new THREE.BoxGeometry(0.0026, 0.00032, 0.0002), illumMat);
+      chevL.position.set(-0.00095, -0.00080, 0.0002);
       chevL.rotation.z = 0.72;
-      const chevR = new THREE.Mesh(new THREE.BoxGeometry(0.0032, 0.00045, 0.0004), illumMat);
-      chevR.position.set(0.0011, -0.0009, 0.0003);
+      const chevR = new THREE.Mesh(new THREE.BoxGeometry(0.0026, 0.00032, 0.0002), illumMat);
+      chevR.position.set(0.00095, -0.00080, 0.0002);
       chevR.rotation.z = -0.72;
-      const bdcV = new THREE.Mesh(new THREE.BoxGeometry(0.00038, retR * 0.65, 0.0003), reticleMat);
-      bdcV.position.set(0, -retR * 0.36, 0);
-      retGroup.add(chevL, chevR, bdcV);
-      [-0.0032, -0.0056, -0.0082].forEach((dy, idx) => {
-        const w = 0.0028 - idx * 0.0005;
-        const hash = new THREE.Mesh(new THREE.BoxGeometry(w, 0.00038, 0.0003), reticleMat);
+      const bdcV = new THREE.Mesh(new THREE.BoxGeometry(0.00022, retR * 0.76, 0.0002), reticleMat);
+      bdcV.position.set(0, -retR * 0.46, 0);
+      addRetPart(chevL); addRetPart(chevR); addRetPart(bdcV);
+      // Outer horizontal target-lead posts
+      const postLen = retR * 0.50;
+      const hL = new THREE.Mesh(new THREE.BoxGeometry(postLen, 0.00032, 0.0002), reticleMat);
+      hL.position.set(-(retR - postLen * 0.5), 0, 0);
+      const hR = new THREE.Mesh(new THREE.BoxGeometry(postLen, 0.00032, 0.0002), reticleMat);
+      hR.position.set(retR - postLen * 0.5, 0, 0);
+      addRetPart(hL); addRetPart(hR);
+      [-0.0038, -0.0068, -0.0098, -0.0128].forEach((dy, idx) => {
+        const w = 0.0032 - idx * 0.00045;
+        const hash = new THREE.Mesh(new THREE.BoxGeometry(w, 0.00024, 0.0002), reticleMat);
         hash.position.set(0, dy, 0);
-        retGroup.add(hash);
+        addRetPart(hash);
       });
       // Glowing fiber-optic light pipe on top of TA-31 prism
       const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.0020, 0.0020, 0.048, 12), illumMat);
@@ -807,37 +848,76 @@ class WeaponSystem {
       pipe.position.set(0, scopeY + rTube + 0.0038, zCenter - 0.018);
       group.add(pipe);
     } else if (isSniper) {
-      // Concise ultra-fine mil-dot sniper crosshair (hairline 0.00038)
-      const hLine = new THREE.Mesh(new THREE.BoxGeometry(retR * 1.92, 0.00038, 0.0003), reticleMat);
-      const vLine = new THREE.Mesh(new THREE.BoxGeometry(0.00038, retR * 1.92, 0.0003), reticleMat);
-      const centerDot = new THREE.Mesh(new THREE.CircleGeometry(0.00065, 10), illumMat);
-      centerDot.position.z = 0.0004;
-      retGroup.add(hLine, vLine, centerDot);
-      [-0.0064, -0.0032, 0.0032, 0.0064].forEach((off) => {
-        const tickV = new THREE.Mesh(new THREE.BoxGeometry(0.0018, 0.00036, 0.0003), reticleMat);
+      // Precision 6x / 8x Sniper: ultra-clean full-diameter mil-dot crosshair + bold outer duplex posts + micro red center dot
+      addRetPart(new THREE.Mesh(new THREE.BoxGeometry(retR * 1.98, 0.00022, 0.0002), reticleMat));
+      addRetPart(new THREE.Mesh(new THREE.BoxGeometry(0.00022, retR * 1.98, 0.0002), reticleMat));
+      // Thick outer duplex posts framing the periphery
+      const dupLen = retR * 0.46;
+      const dupOff = retR - dupLen * 0.5;
+      const dL = new THREE.Mesh(new THREE.BoxGeometry(dupLen, 0.00054, 0.0002), reticleMat); dL.position.set(-dupOff, 0, 0);
+      const dR = new THREE.Mesh(new THREE.BoxGeometry(dupLen, 0.00054, 0.0002), reticleMat); dR.position.set(dupOff, 0, 0);
+      const dB = new THREE.Mesh(new THREE.BoxGeometry(0.00054, dupLen, 0.0002), reticleMat); dB.position.set(0, -dupOff, 0);
+      const dT = new THREE.Mesh(new THREE.BoxGeometry(0.00054, dupLen, 0.0002), reticleMat); dT.position.set(0, dupOff, 0);
+      addRetPart(dL); addRetPart(dR); addRetPart(dB); addRetPart(dT);
+      const centerDot = new THREE.Mesh(new THREE.CircleGeometry(0.00042, 12), illumMat);
+      centerDot.position.z = 0.0003;
+      addRetPart(centerDot);
+      // Graduated mil-dot elevation & windage ticks
+      [-0.50, -0.36, -0.22, -0.10, 0.10, 0.22, 0.36, 0.50].forEach((frac) => {
+        const off = retR * frac;
+        const tLen = Math.abs(frac) === 0.22 || Math.abs(frac) === 0.50 ? 0.0014 : 0.0009;
+        const tickV = new THREE.Mesh(new THREE.BoxGeometry(tLen, 0.00022, 0.0002), reticleMat);
         tickV.position.set(0, off, 0);
-        const tickH = new THREE.Mesh(new THREE.BoxGeometry(0.00036, 0.0018, 0.0003), reticleMat);
+        const tickH = new THREE.Mesh(new THREE.BoxGeometry(0.00022, tLen, 0.0002), reticleMat);
         tickH.position.set(off, 0, 0);
-        retGroup.add(tickV, tickH);
+        addRetPart(tickV); addRetPart(tickH);
       });
     } else {
-      // Concise LPVO 1-4x reticle: fine outer stadia + tiny illuminated ring & micro dot
-      const stadiaGap = 0.0048;
-      const stadiaLen = Math.max(0.002, retR - stadiaGap);
-      const hL = new THREE.Mesh(new THREE.BoxGeometry(stadiaLen, 0.00042, 0.0003), reticleMat);
+      // Vortex 1-4x LPVO: bold outer duplex posts + fine inner hairline + glowing red tactical ring & micro center dot
+      const ringR = 0.0028;
+      const stadiaGap = 0.0042;
+      const stadiaLen = Math.max(0.003, retR - stadiaGap);
+      const hL = new THREE.Mesh(new THREE.BoxGeometry(stadiaLen, 0.00024, 0.0002), reticleMat);
       hL.position.set(-(stadiaGap + stadiaLen * 0.5), 0, 0);
-      const hR = new THREE.Mesh(new THREE.BoxGeometry(stadiaLen, 0.00042, 0.0003), reticleMat);
+      const hR = new THREE.Mesh(new THREE.BoxGeometry(stadiaLen, 0.00024, 0.0002), reticleMat);
       hR.position.set(stadiaGap + stadiaLen * 0.5, 0, 0);
-      const vB = new THREE.Mesh(new THREE.BoxGeometry(0.00042, stadiaLen, 0.0003), reticleMat);
+      const vB = new THREE.Mesh(new THREE.BoxGeometry(0.00024, stadiaLen, 0.0002), reticleMat);
       vB.position.set(0, -(stadiaGap + stadiaLen * 0.5), 0);
-      const microRing = new THREE.Mesh(new THREE.RingGeometry(0.0034, 0.0040, 24), illumMat);
-      microRing.position.z = 0.0003;
-      const centerDot = new THREE.Mesh(new THREE.CircleGeometry(0.00065, 10), illumMat);
-      centerDot.position.z = 0.0004;
-      retGroup.add(hL, hR, vB, microRing, centerDot);
+      const vT = new THREE.Mesh(new THREE.BoxGeometry(0.00022, stadiaLen * 0.65, 0.0002), reticleMat);
+      vT.position.set(0, retR - (stadiaLen * 0.65) * 0.5, 0);
+      // Outer duplex reinforcement bars
+      const dupLen = retR * 0.44;
+      const dupOff = retR - dupLen * 0.5;
+      const oL = new THREE.Mesh(new THREE.BoxGeometry(dupLen, 0.00048, 0.0002), reticleMat); oL.position.set(-dupOff, 0, 0);
+      const oR = new THREE.Mesh(new THREE.BoxGeometry(dupLen, 0.00048, 0.0002), reticleMat); oR.position.set(dupOff, 0, 0);
+      const oB = new THREE.Mesh(new THREE.BoxGeometry(0.00048, dupLen, 0.0002), reticleMat); oB.position.set(0, -dupOff, 0);
+      const microRing = new THREE.Mesh(new THREE.RingGeometry(ringR - 0.00028, ringR, 32), illumMat);
+      microRing.position.z = 0.0002;
+      const centerDot = new THREE.Mesh(new THREE.CircleGeometry(0.00042, 12), illumMat);
+      centerDot.position.z = 0.0003;
+      addRetPart(hL); addRetPart(hR); addRetPart(vB); addRetPart(vT);
+      addRetPart(oL); addRetPart(oR); addRetPart(oB);
+      addRetPart(microRing); addRetPart(centerDot);
+      [-0.26, -0.44, -0.62].forEach((frac, idx) => {
+        const tick = new THREE.Mesh(new THREE.BoxGeometry(0.0018 - idx * 0.0003, 0.00022, 0.0002), reticleMat);
+        tick.position.set(0, retR * frac, 0);
+        addRetPart(tick);
+      });
     }
 
-    group.add(bodyMesh, boreMesh, railBase, ringF, ringR, stanF, stanR, elevTurret, windTurret, magRing, lens, retGroup);
+    group.add(bodyMesh, boreMesh, railBase, ringF, ringR, stanF, stanR, elevTurret, windTurret, magRing, lens, ocularHoleMask, ocularBezel, shadowRing, retGroup);
+    if (withHands) {
+      this.scopeOptic = {
+        style,
+        rearZ,
+        rEye,
+        holeMask: ocularHoleMask,
+        bezel: ocularBezel,
+        shadowRing,
+        boreMesh,
+        retGroup
+      };
+    }
   }
 
   _addRedDot(group, opticY, opticZ = 0.02) {
@@ -910,15 +990,15 @@ class WeaponSystem {
       this.sightHeight = y;
     } else if (mods.optic === 'acog_2x' && weaponDef.slot !== 'secondary') {
       const y = isLongRifle ? 0.072 : 0.064;
-      this._addScope(g, y, 'acog', recTopY);
+      this._addScope(g, y, 'acog', recTopY, withHands);
       this.sightHeight = y;
     } else if (mods.optic === 'lpvo_4x' && weaponDef.slot !== 'secondary') {
       const y = isLongRifle ? 0.074 : 0.066;
-      this._addScope(g, y, 'lpvo', recTopY);
+      this._addScope(g, y, 'lpvo', recTopY, withHands);
       this.sightHeight = y;
     } else if (mods.optic === 'sniper_8x' && weaponDef.slot !== 'secondary') {
       const y = isLongRifle ? 0.078 : 0.070;
-      this._addScope(g, y, 'sniper', recTopY);
+      this._addScope(g, y, 'sniper', recTopY, withHands);
       this.sightHeight = y;
     }
 
@@ -1726,6 +1806,7 @@ class WeaponSystem {
       this.currentMesh = null;
     }
     this.spareMagMesh = null;
+    if (withHands) this.scopeOptic = null;
 
     const g = new THREE.Group();
     const hasCamo = mods.camo && mods.camo !== 'none';
@@ -2546,7 +2627,7 @@ class WeaponSystem {
       this.adsZ = -0.20;
       this._addWeaponIronSights(g, 'awm338', this.sightHeight, true);
       if (!mods.optic || mods.optic === 'none') {
-        this._addScope(g, this.sightHeight, 'lpvo', 0.042);
+        this._addScope(g, this.sightHeight, 'sniper', 0.042, withHands);
       }
       this.muzzleMesh.position.set(0, 0.018, -0.75);
       this.muzzleFlash.position.set(0, 0.02, -0.79);
@@ -2617,7 +2698,7 @@ class WeaponSystem {
       this.adsZ = -0.22;
       this._addWeaponIronSights(g, 'm24', this.sightHeight, true);
       if (!mods.optic || mods.optic === 'none') {
-        this._addScope(g, this.sightHeight, 'lpvo', 0.036);
+        this._addScope(g, this.sightHeight, 'lpvo', 0.036, withHands);
       }
       this.muzzleMesh.position.set(0, 0.016, -0.62);
       this.muzzleFlash.position.set(0, 0.02, -0.66);
@@ -2866,6 +2947,7 @@ class WeaponSystem {
       charmPivot: this.charmPivot,
       sightHeight: this.sightHeight,
       adsZ: this.adsZ,
+      scopeOptic: this.scopeOptic,
       muzzlePos: this.muzzleMesh.position.clone(),
       flashPos: this.muzzleFlash.position.clone()
     };
@@ -2909,6 +2991,7 @@ class WeaponSystem {
     this.charmPivot = saved.charmPivot;
     this.sightHeight = saved.sightHeight;
     this.adsZ = saved.adsZ;
+    this.scopeOptic = saved.scopeOptic;
     this.muzzleMesh.position.copy(saved.muzzlePos);
     this.muzzleFlash.position.copy(saved.flashPos);
 
@@ -3593,7 +3676,9 @@ class WeaponSystem {
       : (weaponDef.slot === 'secondary' ? 0.72
       : (weaponDef.id === 'mp5k' ? 0.86
       : (weaponDef.id === 'm24' || weaponDef.id === 'awm338' || weaponDef.id === 'mosin9130' || weaponDef.id === 'm870' ? 1.24 : 1.05)));
-    const swayMult = (isAdsActive ? 0.28 : 1.0) * wWeight;
+    const adsZoom = (weaponDef && weaponDef.adsZoom) ? weaponDef.adsZoom : 1.25;
+    const zoomDamp = isAdsActive ? (1 / Math.max(1.0, adsZoom)) : 1.0;
+    const swayMult = (isAdsActive ? (0.28 * zoomDamp) : 1.0) * wWeight;
     const clampedDY = THREE.MathUtils.clamp(dYaw, -0.16, 0.16);
     const clampedDP = THREE.MathUtils.clamp(dPitch, -0.14, 0.14);
     const swayLerpIn = Math.min(1, dt * 10);
@@ -3613,7 +3698,32 @@ class WeaponSystem {
     const grabPosY = 0.010 * grabCantActive;
     const grabRotX = 0.065 * grabCantActive;
     const grabRotZ = -0.14 * grabCantActive;
-    const sprScale = isAdsActive ? 0.38 : 1.0;
+    const sprScale = isAdsActive ? (0.38 * Math.max(0.22, zoomDamp)) : 1.0;
+
+    // Wide-aperture magnified scope eye-box toggle & dynamic optical eye-relief (keeps 3x/4x/6x/8x scopes big & clear at ANY FOV!)
+    let effectiveAdsZ = this.adsZ;
+    if (this.scopeOptic) {
+      const sc = this.scopeOptic;
+      const eyeBoxActive = !!(isAdsActive && !customRot && !this.wallBlocked && !this.isThirdPerson && this._adsBlend > 0.48);
+      if (sc.holeMask) sc.holeMask.visible = eyeBoxActive;
+      if (sc.bezel) sc.bezel.visible = eyeBoxActive;
+      if (sc.shadowRing) sc.shadowRing.visible = eyeBoxActive;
+      if (sc.boreMesh) sc.boreMesh.visible = !eyeBoxActive;
+      if (sc.retGroup) sc.retGroup.visible = eyeBoxActive || (isAdsActive && !customRot && !this.wallBlocked && !this.isThirdPerson && this._adsBlend > 0.25);
+
+      if (isAdsActive && !customRot && adsZoom >= 2.0) {
+        // Generous MW2019/Tarkov ocular aperture scaling with zoom: ~53% at 3x, ~59% at 4x, ~68% at 6x, ~74% at 8x
+        const targetScreenFrac = THREE.MathUtils.clamp(0.30 + Math.log2(Math.max(1.5, adsZoom)) * 0.145, 0.46, 0.76);
+        const baseFovNow = window.BASE_FOV || 75;
+        const vmBaseNow = (window.WEAPON_FOV_MODE === 'independent') ? (window.VIEWMODEL_FOV || 75) : baseFovNow;
+        const targetVmAdsFov = (window.GAME_DATA && window.GAME_DATA.computeAdsFov)
+          ? window.GAME_DATA.computeAdsFov(vmBaseNow, adsZoom)
+          : (vmBaseNow / Math.max(1.0, adsZoom));
+        const tanHalfVm = Math.max(0.04, Math.tan(THREE.MathUtils.degToRad(targetVmAdsFov * 0.5)));
+        const dEye = THREE.MathUtils.clamp(sc.rEye / (targetScreenFrac * tanHalfVm), 0.042, 0.56);
+        effectiveAdsZ = -(sc.rearZ + dEye);
+      }
+    }
 
     const slideCantZ = (!customRot && !this.isFistsMode && player.isSliding) ? (isAdsActive ? -0.10 : -0.32) : 0;
     const slideCantY = (!customRot && !this.isFistsMode && player.isSliding) ? (isAdsActive ? 0.0 : 0.18) : 0;
@@ -3631,7 +3741,7 @@ class WeaponSystem {
     const adsPivotY = (isAdsActive && !customRot) ? ((1 - Math.cos(targetRotZ)) * this.sightHeight) : 0;
     const basePosX = this.isFistsMode ? 0.0 : (isAdsActive ? adsPivotX : (tacSprintingHip ? 0.24 : (sprintingHip ? 0.19 : 0.22)));
     const basePosY = this.isFistsMode ? -0.16 : (isAdsActive ? (-this.sightHeight + adsPivotY) : (tacSprintingHip ? -0.14 : (sprintingHip ? -0.235 : -0.20)));
-    const basePosZ = this.isFistsMode ? -0.38 : (isAdsActive ? this.adsZ : (tacSprintingHip ? -0.34 : (sprintingHip ? -0.40 : -0.42)));
+    const basePosZ = this.isFistsMode ? -0.38 : (isAdsActive ? effectiveAdsZ : (tacSprintingHip ? -0.34 : (sprintingHip ? -0.40 : -0.42)));
 
     const targetX = basePosX + this.recoilX + this.lookSwayX + activePosOff.x + wallPosX + leanAlignX + drawPos.x + grabPosX + this._sprPos.x * sprScale;
     const targetY = basePosY + this.lookSwayY + activePosOff.y + wallPosY + drawPos.y + adsSnapY + grabPosY + airDriftY + this._sprPos.y * sprScale;
@@ -3874,12 +3984,15 @@ class WeaponSystem {
       }
     }
 
-    // FOV ADS zoom & subtle Tactical Sprint FOV burst (respects Settings FOV slider)
+    // True optical zoom-scaled ADS FOV & subtle Tactical Sprint FOV burst (scales cleanly with Settings BASE_FOV & scope zoom!)
     const baseFov = window.BASE_FOV || 75;
     const tacBoost = tacSprintingHip ? 5 : 0;
-    const targetFov = (isAdsActive && weaponDef) ? Math.min(baseFov, weaponDef.adsFov) : (baseFov + tacBoost);
-    if (Math.abs(this.camera.fov - targetFov) > 0.05) {
-      this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFov, dt * 14);
+    const computedAdsFov = (window.GAME_DATA && window.GAME_DATA.computeAdsFov)
+      ? window.GAME_DATA.computeAdsFov(baseFov, adsZoom)
+      : (weaponDef ? Math.min(baseFov, weaponDef.adsFov || 55) : baseFov);
+    const targetFov = (isAdsActive && weaponDef) ? computedAdsFov : (baseFov + tacBoost);
+    if (Math.abs(this.camera.fov - targetFov) > 0.04) {
+      this.camera.fov = THREE.MathUtils.lerp(this.camera.fov, targetFov, Math.min(1, dt * 14));
       this.camera.updateProjectionMatrix();
     }
 
@@ -5714,6 +5827,7 @@ class WeaponSystem {
     }
     this.magMesh = null;
     this.spareMagMesh = null;
+    this.scopeOptic = null;
     this.boltMesh = null;
     this.charmPivot = null;
     this.leftHand = null;
@@ -5871,6 +5985,7 @@ class WeaponSystem {
     }
     this.magMesh = null;
     this.spareMagMesh = null;
+    this.scopeOptic = null;
     this.boltMesh = null;
     this.charmPivot = null;
     this.leftFist = null;

@@ -474,6 +474,7 @@ class GunsmithController {
       `<div class="gs-tags">
         <span class="ammo-chip">${eff.suppressed ? 'SUPPRESSED' : 'UNSUPPRESSED'}</span>
         <span class="ammo-chip">${eff.hasLaser ? 'PEQ-15 LASER' : 'NO LASER'}</span>
+        <span class="ammo-chip">ZOOM: ${(eff.adsZoom || 1.25).toFixed(eff.adsZoom >= 2 ? 1 : 2).replace(/\.0$/, '')}x</span>
         <span class="ammo-chip">ADS FOV: ${eff.adsFov}°</span>
       </div>`;
   }
