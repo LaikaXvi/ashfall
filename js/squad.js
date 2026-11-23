@@ -581,6 +581,10 @@ class SquadMate {
     this._remoteReload = !!st.rld;
     this._remotePlate = !!st.plt;
     this._remoteHeal = !!st.hl;
+    this._remoteRevive = !!st.rv;
+    this._remoteReviveProg = typeof st.rvp === 'number' ? st.rvp : 0;
+    this._remoteThrow = !!st.th;
+    this._remoteThrowProg = typeof st.thp === 'number' ? st.thp : 0;
     if (typeof st.mag === 'number') this._remoteMag = st.mag;
     if (typeof st.hp === 'number') this.hp = st.hp;
     if (typeof st.armor === 'number') this.armor = st.armor;
@@ -607,6 +611,44 @@ class SquadMate {
     this.muzzleTimer = 0.08;
     if (this.muzzleMesh) this.muzzleMesh.material.opacity = 1;
     if (this.muzzleLight) this.muzzleLight.intensity = 2.6;
+  }
+
+  _syncMW2Anim(dt, opts = {}) {
+    if (!this.mw2Anim) return false;
+    const gy = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(this.position.x, this.position.z) : 0;
+    this.position.y = gy;
+    if (this.group) {
+      this.group.position.x = this.position.x;
+      this.group.position.y = gy;
+      this.group.position.z = this.position.z;
+      this.group.rotation.x = 0;
+      this.group.rotation.z = 0;
+    }
+    const spd = opts.moving ? (opts.speed || this._lastMoveSpeed || 6.8) : 0;
+    this.mw2Anim.update(dt, {
+      speed: spd,
+      stance: opts.stance || 'stand',
+      isSprinting: !!opts.moving && spd >= 6.0,
+      isTacSprinting: !!opts.moving && spd >= 9.2,
+      isADS: !!opts.isADS,
+      isPlating: !!opts.isPlating,
+      plateProgress: opts.plateProgress || 0,
+      isReloading: !!opts.isReloading,
+      reloadProgress: opts.reloadProgress || 0,
+      isHealing: !!opts.isHealing,
+      isReviving: !!opts.isReviving,
+      reviveProgress: opts.reviveProgress || 0,
+      isThrowing: !!opts.isThrowing,
+      throwProgress: opts.throwProgress || 0,
+      isDowned: !!this.isDowned,
+      dead: !!this.dead,
+      isPistol: !!this.isPistol,
+      world: this.world,
+      worldPos: this.position,
+      worldYaw: this.group ? (this.group.rotation.y + Math.PI) : 0,
+      feetY: this.position.y
+    });
+    return true;
   }
 
   update(dt, player, enemyManager, weaponSystem, raidTimeLeft, onComms, onAllyKill, allAllies = [], onAllyEvent = null) {
@@ -681,6 +723,10 @@ class SquadMate {
             isReloading: !!this._remoteReload,
             reloadProgress: (tLoop * 0.55) % 1,
             isHealing: !!this._remoteHeal,
+            isReviving: !!this._remoteRevive,
+            reviveProgress: this._remoteReviveProg || ((tLoop * 0.35) % 1),
+            isThrowing: !!this._remoteThrow,
+            throwProgress: this._remoteThrowProg || ((tLoop * 1.45) % 1),
             isPistol: !!this.isPistol,
             world: this.world,
             worldPos: this.position,
@@ -696,7 +742,7 @@ class SquadMate {
             this._updateBleedSprite(dt);
           } else {
             if (this.bleedSprite) this.bleedSprite.visible = false;
-            const stLbl = this._remotePlate ? 'PLATING' : (this._remoteHeal ? 'HEALING' : (this._remoteReload ? 'RELOADING' : (isSlide ? 'SLIDE' : (isCrouch ? 'CROUCH' : (isProne ? 'PRONE' : 'SQUAD')))));
+            const stLbl = this._remoteRevive ? 'REVIVING' : (this._remotePlate ? 'PLATING' : (this._remoteHeal ? 'HEALING' : (this._remoteReload ? 'RELOADING' : (isSlide ? 'SLIDE' : (isCrouch ? 'CROUCH' : (isProne ? 'PRONE' : 'SQUAD'))))));
             this._redrawTag(stLbl, this.squadColor);
           }
           return;
@@ -831,30 +877,34 @@ class SquadMate {
 
     // Dead ally: still update overhead revivable medical-cross sprite (can be slow-revived!)
     if (this.dead) {
+      this._syncMW2Anim(dt, { moving: false });
       this._updateBleedSprite(dt);
       return;
     }
 
     // Downed ally: crawl slowly towards player/safety, bleed out unless being revived
     if (this.isDowned) {
+      let scooting = false;
       if (!this.beingRevivedBy) {
         this.downedBleedTimer -= dt;
         // Scoot slowly toward player for safety (legs in front, supporting arm heaving body)
         if (player && !player.dead && !player.isDowned) {
-          this._moveToward(player.position.x, player.position.z, 1.1, dt);
+          scooting = this._moveToward(player.position.x, player.position.z, 1.1, dt);
           this.group.rotation.y = Math.atan2(player.position.x - this.position.x, player.position.z - this.position.z);
-          this._scootCycle = (this._scootCycle || 0) + dt * 4.4;
-          const phase = Math.sin(this._scootCycle);
-          const heave = Math.max(0, phase);
-          const gyS = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(this.position.x, this.position.z) : 0;
-          this.position.y = gyS;
-          this.group.position.y = gyS - 0.56 + heave * 0.035;
-          this.group.rotation.x = -0.24 - heave * 0.04;
-          if (this.leftHip) this.leftHip.rotation.x = 1.72 + heave * 0.14;
-          if (this.rightHip) this.rightHip.rotation.x = 1.62 + Math.max(0, -phase) * 0.10;
-          if (this.opModel) {
-            if (this.opModel.leftLeg && this.opModel.leftLeg.knee) this.opModel.leftLeg.knee.rotation.x = -0.22;
-            if (this.opModel.rightLeg && this.opModel.rightLeg.knee) this.opModel.rightLeg.knee.rotation.x = -0.16;
+          if (!this.mw2Anim) {
+            this._scootCycle = (this._scootCycle || 0) + dt * 4.4;
+            const phase = Math.sin(this._scootCycle);
+            const heave = Math.max(0, phase);
+            const gyS = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(this.position.x, this.position.z) : 0;
+            this.position.y = gyS;
+            this.group.position.y = gyS - 0.56 + heave * 0.035;
+            this.group.rotation.x = -0.24 - heave * 0.04;
+            if (this.leftHip) this.leftHip.rotation.x = 1.72 + heave * 0.14;
+            if (this.rightHip) this.rightHip.rotation.x = 1.62 + Math.max(0, -phase) * 0.10;
+            if (this.opModel) {
+              if (this.opModel.leftLeg && this.opModel.leftLeg.knee) this.opModel.leftLeg.knee.rotation.x = -0.22;
+              if (this.opModel.rightLeg && this.opModel.rightLeg.knee) this.opModel.rightLeg.knee.rotation.x = -0.16;
+            }
           }
         }
         this._redrawTag(`DOWNED ${Math.ceil(Math.max(0, this.downedBleedTimer))}s`, '#ff5252');
@@ -866,6 +916,7 @@ class SquadMate {
       } else {
         this._redrawTag(`REVIVING ${Math.round(this.reviveProgress * 100)}%`, '#69f0ae');
       }
+      this._syncMW2Anim(dt, { moving: scooting, speed: 1.1 });
       this._updateBleedSprite(dt);
       return;
     }
@@ -926,7 +977,7 @@ class SquadMate {
         this._redrawTag('MOVING TO REVIVE', '#69f0ae');
         this.group.rotation.y = Math.atan2(tRef.position.x - this.position.x, tRef.position.z - this.position.z);
         const moved = this._moveToward(tRef.position.x, tRef.position.z, 6.6, dt);
-        if (moved) {
+        if (!this._syncMW2Anim(dt, { moving: moved, speed: 6.6 }) && moved) {
           this.animCycle += dt * 9.5;
           this.leftHip.rotation.x = Math.sin(this.animCycle) * 0.52;
           this.rightHip.rotation.x = -Math.sin(this.animCycle) * 0.52;
@@ -938,6 +989,7 @@ class SquadMate {
       const reviveDur = tRef.dead ? 7.5 : 3.5;
       tRef.beingRevivedBy = this.name;
       tRef.reviveProgress = Math.min(1, (tRef.reviveProgress || 0) + dt / reviveDur);
+      this.group.rotation.y = Math.atan2(tRef.position.x - this.position.x, tRef.position.z - this.position.z);
 
       // If teammate is DOWNED and exposed to a visible enemy, drag them to the nearest cover obstacle while reviving!
       let dragging = false;
@@ -967,13 +1019,22 @@ class SquadMate {
           } else {
             tRef.dragToward(pullX, pullZ, 2.2, dt);
           }
-          this.animCycle += dt * 4.5;
-          this.leftHip.rotation.x = Math.sin(this.animCycle) * 0.25;
-          this.rightHip.rotation.x = -Math.sin(this.animCycle) * 0.25;
+          if (!this.mw2Anim) {
+            this.animCycle += dt * 4.5;
+            this.leftHip.rotation.x = Math.sin(this.animCycle) * 0.25;
+            this.rightHip.rotation.x = -Math.sin(this.animCycle) * 0.25;
+          }
         }
       } else if (reviveCandidate.isPlayer) {
         tRef.beingDragged = false;
       }
+
+      this._syncMW2Anim(dt, {
+        moving: dragging,
+        speed: dragging ? 1.75 : 0,
+        isReviving: !dragging,
+        reviveProgress: tRef.reviveProgress || 0
+      });
 
       this._redrawTag(dragging ? 'DRAGGING TO COVER' : (tRef.dead ? 'REVIVING (SLOW)' : 'REVIVING'), '#69f0ae');
       if (tRef.reviveProgress >= 1) {
@@ -988,6 +1049,9 @@ class SquadMate {
     // 2. Self-preservation: Heal / Plate / Reload timers
     if (this.actionTimer > 0) {
       this.actionTimer -= dt;
+      const actDur = this._actionDuration || (this.state === 'HEAL' ? 2.6 : 1.8);
+      const actProg = THREE.MathUtils.clamp(1 - (this.actionTimer / Math.max(0.1, actDur)), 0, 1);
+      const curState = this.state;
       if (this.actionTimer <= 0) {
         if (this.state === 'HEAL') {
           this.medkits = Math.max(0, this.medkits - 1);
@@ -1002,29 +1066,44 @@ class SquadMate {
           this.state = 'FOLLOW';
         }
       }
-      this._redrawTag(this.state, '#f5a623');
-      this.leftHip.rotation.x = THREE.MathUtils.lerp(this.leftHip.rotation.x, 0, dt * 10);
-      this.rightHip.rotation.x = THREE.MathUtils.lerp(this.rightHip.rotation.x, 0, dt * 10);
+      this._redrawTag(curState, '#f5a623');
+      if (!this._syncMW2Anim(dt, {
+        moving: false,
+        isHealing: curState === 'HEAL',
+        isPlating: curState === 'PLATE',
+        plateProgress: curState === 'PLATE' ? actProg : 0,
+        isReloading: curState === 'RELOAD',
+        reloadProgress: curState === 'RELOAD' ? actProg : 0
+      })) {
+        this.leftHip.rotation.x = THREE.MathUtils.lerp(this.leftHip.rotation.x, 0, dt * 10);
+        this.rightHip.rotation.x = THREE.MathUtils.lerp(this.rightHip.rotation.x, 0, dt * 10);
+      }
       return;
     }
 
     // Trigger Heal / Plate / Reload when needed
     if (this.hp < 58 && this.medkits > 0) {
       this.state = 'HEAL';
+      this._actionDuration = 2.6;
       this.actionTimer = 2.6;
       this._say(onComms, 'Patching up — cover me!', '#f5a623');
+      this._syncMW2Anim(dt, { moving: false, isHealing: true });
       return;
     }
     if (this.mag <= 0) {
       this.state = 'RELOAD';
+      this._actionDuration = 1.8;
       this.actionTimer = 1.8;
       this._say(onComms, 'Reloading!', '#f5a623');
+      this._syncMW2Anim(dt, { moving: false, isReloading: true, reloadProgress: 0 });
       return;
     }
     if (!targetEnemy && this.armor < 45 && this.plates > 0) {
       this.state = 'PLATE';
+      this._actionDuration = 1.8;
       this.actionTimer = 1.8;
       this._say(onComms, 'Slotting a fresh armor plate.', '#64b5f6');
+      this._syncMW2Anim(dt, { moving: false, isPlating: true, plateProgress: 0 });
       return;
     }
 
@@ -1244,23 +1323,13 @@ class SquadMate {
       }
     }
 
-    if (this.mw2Anim) {
-      const mSpd = moving ? (this._lastMoveSpeed || 6.8) : 0;
-      this.mw2Anim.update(dt, {
-        speed: mSpd,
-        stance: 'stand',
-        isSprinting: moving && mSpd >= 8.2,
-        isTacSprinting: moving && mSpd >= 11.2,
-        isADS: this.state === 'COMBAT' && this.healingTimer <= 0,
-        isHealing: this.healingTimer > 0,
-        isDowned: !!this.isDowned,
-        dead: !!this.dead,
-        isPistol: !!this.isPistol,
-        world: this.world,
-        worldPos: this.position,
-        worldYaw: this.group ? (this.group.rotation.y + Math.PI) : 0,
-        feetY: this.position.y
-      });
+    if (this._syncMW2Anim(dt, {
+      moving,
+      speed: this._lastMoveSpeed || 6.8,
+      stance: (!moving && this.state === 'COMBAT' && this.coverSpot && !this.isPeeking) ? 'crouch' : 'stand',
+      isADS: this.state === 'COMBAT' && this.healingTimer <= 0,
+      isHealing: this.healingTimer > 0
+    })) {
       return;
     }
 

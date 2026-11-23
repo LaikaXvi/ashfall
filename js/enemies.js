@@ -1245,7 +1245,13 @@ class Enemy {
       const plateProg = isPlating ? THREE.MathUtils.clamp(1 - (this.platingTimer / 2.6), 0, 1) : 0;
       const isReloading = (this.reloadTimer || 0) > 0;
       const reloadProg = isReloading ? THREE.MathUtils.clamp(1 - (this.reloadTimer / 2.0), 0, 1) : 0;
-      const isHealing = (this.healingTimer || 0) > 0 || (this.selfReviveTimer || 0) > 0 || (this.tourniquetTimer || 0) > 0;
+      const isSelfRev = (this.selfReviveTimer || 0) > 0;
+      const isReviving = !!this._isRevivingAlly || isSelfRev;
+      const reviveProg = isSelfRev ? THREE.MathUtils.clamp(1 - (this.selfReviveTimer / 4.0), 0, 1) : (this._reviveProgress || 0);
+      const isHealing = (this.healingTimer || 0) > 0 || (this.tourniquetTimer || 0) > 0;
+      if (this._throwAnimTimer > 0) this._throwAnimTimer = Math.max(0, this._throwAnimTimer - dt);
+      const isThrowing = (this._throwAnimTimer || 0) > 0;
+      const throwProg = isThrowing ? THREE.MathUtils.clamp(1 - (this._throwAnimTimer / 0.65), 0, 1) : 0;
 
       this.mw2Anim.update(dt, {
         speed: isMoving ? spd : 0,
@@ -1254,7 +1260,7 @@ class Enemy {
         isTacSprinting: !!this.isTacSprinting && isMoving,
         isSliding: (this.slideTimer || 0) > 0,
         slideProgress: (this.slideTimer || 0) > 0 ? (1 - this.slideTimer / 0.55) : 0,
-        isADS: this.state === 'COMBAT' && !this.isTacSprinting && !isPlating && !isHealing && !!this._hasCombatLOS,
+        isADS: this.state === 'COMBAT' && !this.isTacSprinting && !isPlating && !isHealing && !isReviving && !isThrowing && !!this._hasCombatLOS,
         aimPitch: this._combatAimPitch || 0,
         lean: this.leanAngle || 0,
         isDowned: !!this.isDowned,
@@ -1264,6 +1270,10 @@ class Enemy {
         isReloading,
         reloadProgress: reloadProg,
         isHealing,
+        isReviving,
+        reviveProgress: reviveProg,
+        isThrowing,
+        throwProgress: throwProg,
         isPistol: !!this.isPistol,
         world: this.world,
         worldPos: this.position,
@@ -1706,6 +1716,7 @@ class Enemy {
 
   _throwOperatorGrenade(targetPos, kind = 'frag') {
     if (!this.scene || !this.activeGrenades) return;
+    this._throwAnimTimer = 0.65;
     const isSmoke = kind === 'smoke';
     const mesh = new THREE.Mesh(
       new THREE.SphereGeometry(0.085, 8, 8),
@@ -2076,6 +2087,9 @@ class Enemy {
       return;
     }
 
+    this._isRevivingAlly = false;
+    this._reviveProgress = 0;
+
     if (this.muzzleTimer > 0) {
       this.muzzleTimer -= dt;
       if (this.muzzleTimer <= 0) {
@@ -2254,6 +2268,7 @@ class Enemy {
         const reviveDur = reviveMate.dead ? 7.5 : 4.0;
         reviveMate.beingRevivedBy = this.name;
         reviveMate.reviveProgress = Math.min(1, (reviveMate.reviveProgress || 0) + dt / reviveDur);
+        this.group.rotation.y = Math.atan2(reviveMate.position.x - this.position.x, reviveMate.position.z - this.position.z);
 
         const threatPos = this.lastKnownPlayerPos || (player && !player.dead && !player.isDowned && !player.invisible ? player.position : null);
         if (reviveMate.isDowned && threatPos && this._hasLineOfSightFrom(this.position, threatPos)) {
@@ -2272,7 +2287,12 @@ class Enemy {
             const dLen = Math.hypot(dx, dz) || 1;
             reviveMate.dragToward(this.position.x - (dx / dLen) * 0.95, this.position.z - (dz / dLen) * 0.95, 2.2, dt);
           }
+          this._isRevivingAlly = !moved;
+          this._reviveProgress = reviveMate.reviveProgress;
+          this.updateVisualAnim(dt, moved, moved ? 1.75 : 0);
         } else {
+          this._isRevivingAlly = true;
+          this._reviveProgress = reviveMate.reviveProgress;
           this._animMoving = false;
           this.updateVisualAnim(dt, false, 0);
         }
@@ -2612,6 +2632,9 @@ class Enemy {
       if (this.group) this.group.visible = false;
       return;
     }
+    this._isRevivingAlly = false;
+    this._reviveProgress = 0;
+
     if (this.muzzleTimer > 0) {
       this.muzzleTimer -= dt;
       if (this.muzzleTimer <= 0) {

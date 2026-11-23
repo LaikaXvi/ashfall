@@ -98,6 +98,22 @@ class WeaponSystem {
     this.tacFistRig = null;
     this.tacFist = null;
     this.tacFistArm = null;
+    // MW19 / Warzone / DMZ Combat Auto-Injector Revive Syringe Rig (teammate revive + self-revive)
+    this.reviveRig = null;
+    this.reviveHandR = null;
+    this.reviveArmR = null;
+    this.reviveHandL = null;
+    this.reviveArmL = null;
+    this.reviveSyringe = null;
+    this.revivePlunger = null;
+    this.reviveFluid = null;
+    this.reviveCap = null;
+    this._reviveSfxFlags = { uncap: false, plunge: false };
+    // Dynamic left-hand item / weapon pickup & container grab interaction
+    this.grabTimer = 0;
+    this.grabDuration = 0.34;
+    this.grabKind = 'item';
+    this._adsBlend = 0;
     this.isThirdPerson = false;
     this.isMeleeMode = false;
     this.meleeMesh = null;
@@ -125,6 +141,300 @@ class WeaponSystem {
 
     this.particles = []; // { mesh, vel, life, maxLife, isSmoke }
     this.tracers = [];   // { line, life }
+  }
+
+  triggerGrabAnim(kind = 'item') {
+    if (this.isReloading || this.isPlating || this.isHealing || this.isInspecting) return;
+    this.grabKind = kind || 'item';
+    this.grabDuration = (kind === 'weapon' || kind === 'container') ? 0.38 : 0.32;
+    this.grabTimer = this.grabDuration;
+  }
+
+  _ensureReviveRig() {
+    if (this.reviveRig || !this.vmCamera) return;
+    const rig = new THREE.Group();
+    rig.visible = false;
+
+    const handR = this._createHand(true, 'syringeHold');
+    handR.userData.handStyle = 'syringeHold';
+    const armR = this._createForearm();
+    armR.userData.fpSide = 'right';
+
+    const handL = this._createHand(false, 'syringeCapPull');
+    handL.userData.handStyle = 'syringeCapPull';
+    const armL = this._createForearm();
+    armL.userData.fpSide = 'left';
+
+    // High-detail DMZ / Warzone Combat Auto-Injector Syringe
+    const syr = new THREE.Group();
+    const bodyMat = new THREE.MeshPhongMaterial({ color: 0x3a4635, specular: 0x5c6b56, shininess: 32 });
+    const darkMat = new THREE.MeshPhongMaterial({ color: 0x1b1f23, specular: 0x454d56, shininess: 40 });
+    const steelMat = new THREE.MeshPhongMaterial({ color: 0xc2ccd6, specular: 0xffffff, shininess: 88 });
+    const glassMat = new THREE.MeshPhongMaterial({
+      color: 0xdaf6ff,
+      specular: 0xffffff,
+      shininess: 96,
+      transparent: true,
+      opacity: 0.44
+    });
+    const fluidMat = new THREE.MeshPhongMaterial({
+      color: 0x26f0a8,
+      emissive: 0x0c7a52,
+      specular: 0x99ffe0,
+      shininess: 72
+    });
+    const capMat = new THREE.MeshPhongMaterial({ color: 0xd94626, specular: 0xff9977, shininess: 46 });
+
+    // Glass dosage barrel + glowing emerald-cyan combat bio-stim fluid inside
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.0115, 0.0115, 0.096, 16), glassMat);
+    syr.add(barrel);
+    const fluid = new THREE.Mesh(new THREE.CylinderGeometry(0.0092, 0.0092, 0.082, 14), fluidMat);
+    fluid.position.set(0, -0.004, 0);
+    syr.add(fluid);
+    // Graduated black dosage markings on barrel
+    for (let i = -2; i <= 2; i++) {
+      const tick = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.002, 0.004), darkMat);
+      tick.position.set(0, i * 0.016, -0.010);
+      syr.add(tick);
+    }
+    // Lower OD collar + steel luer-lock needle hub + fine surgical steel cannula
+    const lowerCollar = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.0125, 0.022, 14), bodyMat);
+    lowerCollar.position.set(0, -0.052, 0);
+    const needleHub = new THREE.Mesh(new THREE.CylinderGeometry(0.0055, 0.0085, 0.016, 12), darkMat);
+    needleHub.position.set(0, -0.068, 0);
+    const needle = new THREE.Mesh(new THREE.CylinderGeometry(0.0014, 0.0018, 0.044, 10), steelMat);
+    needle.position.set(0, -0.096, 0);
+    // Upper ergonomic finger-flange collar
+    const upperCollar = new THREE.Mesh(new THREE.CylinderGeometry(0.0145, 0.0135, 0.016, 14), bodyMat);
+    upperCollar.position.set(0, 0.052, 0);
+    const flange = new THREE.Mesh(new THREE.BoxGeometry(0.044, 0.007, 0.018), darkMat);
+    flange.position.set(0, 0.058, 0);
+    syr.add(lowerCollar, needleHub, needle, upperCollar, flange);
+
+    // Animated thumb plunger assembly (slides down inside barrel as injection progresses!)
+    const plunger = new THREE.Group();
+    const stopper = new THREE.Mesh(new THREE.CylinderGeometry(0.0096, 0.0096, 0.010, 14), darkMat);
+    stopper.position.set(0, 0.036, 0);
+    const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.0038, 0.0038, 0.064, 10), steelMat);
+    rod.position.set(0, 0.068, 0);
+    const thumbPad = new THREE.Mesh(new THREE.CylinderGeometry(0.0155, 0.0145, 0.009, 14), capMat);
+    thumbPad.position.set(0, 0.100, 0);
+    plunger.add(stopper, rod, thumbPad);
+    syr.add(plunger);
+
+    // Removable red needle safety cap (starts on needle, transfers to left hand on uncap!)
+    const safetyCap = new THREE.Mesh(new THREE.CylinderGeometry(0.0075, 0.0055, 0.052, 12), capMat);
+    safetyCap.position.set(0, -0.092, 0);
+    syr.add(safetyCap);
+
+    // Seat syringe firmly in right gloved palm (needle pointing down-forward ready to plunge)
+    syr.position.set(-0.016, 0.006, -0.034);
+    syr.rotation.set(0.32, 0.0, -0.14);
+    handR.add(syr);
+
+    // Secondary cap held by left hand once popped off
+    const pulledCap = new THREE.Mesh(new THREE.CylinderGeometry(0.0075, 0.0055, 0.052, 12), capMat);
+    pulledCap.position.set(0.018, -0.006, -0.028);
+    pulledCap.rotation.set(0.25, 0, 0.45);
+    pulledCap.visible = false;
+    handL.add(pulledCap);
+
+    rig.add(handR, armR, handL, armL);
+    this.vmCamera.add(rig);
+
+    this.reviveRig = rig;
+    this.reviveHandR = handR;
+    this.reviveArmR = armR;
+    this.reviveHandL = handL;
+    this.reviveArmL = armL;
+    this.reviveSyringe = syr;
+    this.revivePlunger = plunger;
+    this.reviveFluid = fluid;
+    this.reviveCap = safetyCap;
+    this.revivePulledCap = pulledCap;
+  }
+
+  _updateReviveAnim(dt, player) {
+    this._ensureReviveRig();
+    const isAllyRev = !!(player && player.isRevivingAlly && !player.dead && !player.isDowned);
+    const isSelfRev = !!(player && player.isDowned && !player.dead &&
+      (player.beingRevivedBy === 'SELF-REVIVE' || player.beingRevivedBy === 'TOURNIQUET') &&
+      (player.reviveProgress || 0) > 0.005);
+    const active = isAllyRev || isSelfRev;
+
+    if (!active || !this.reviveRig) {
+      if (this.reviveRig) this.reviveRig.visible = false;
+      this._reviveSfxFlags.uncap = false;
+      this._reviveSfxFlags.plunge = false;
+      return false;
+    }
+
+    if (player.isThirdPerson) {
+      this.reviveRig.visible = false;
+      return true;
+    }
+
+    // Hide weapon & other camera rigs while injecting syringe
+    this.viewmodelGroup.visible = false;
+    if (this.plateRig) this.plateRig.visible = false;
+    if (this.medRig) this.medRig.visible = false;
+    if (this.tacFistRig) this.tacFistRig.visible = false;
+    this.reviveRig.visible = true;
+
+    const p = THREE.MathUtils.clamp(isSelfRev ? (player.reviveProgress || 0) : (player.allyReviveProgress || 0), 0, 1);
+    const smooth = (t) => t * t * (3 - 2 * t);
+    const easeOutBack = (t) => {
+      const c1 = 1.6;
+      const c3 = c1 + 1;
+      const x = THREE.MathUtils.clamp(t, 0, 1) - 1;
+      return 1 + c3 * x * x * x + c1 * x * x;
+    };
+
+    // Audio cues for cap snap & needle plunge
+    if (p > 0.14 && !this._reviveSfxFlags.uncap) {
+      this._reviveSfxFlags.uncap = true;
+      if (window.soundEngine && window.soundEngine.playPinPull) window.soundEngine.playPinPull();
+    }
+    if (p > 0.28 && !this._reviveSfxFlags.plunge) {
+      this._reviveSfxFlags.plunge = true;
+      if (window.soundEngine && window.soundEngine.playMagIn) window.soundEngine.playMagIn('g17');
+    }
+
+    const uncapped = p > 0.15;
+    if (this.reviveCap) this.reviveCap.visible = !uncapped;
+    if (this.revivePulledCap) this.revivePulledCap.visible = uncapped && p < 0.34;
+
+    // Plunger depression & glowing fluid drain during the injection phase (0.34..0.88)
+    const injectT = THREE.MathUtils.clamp((p - 0.34) / 0.54, 0, 1);
+    const injectEase = smooth(injectT);
+    if (this.revivePlunger) {
+      this.revivePlunger.position.y = -injectEase * 0.068;
+    }
+    if (this.reviveFluid) {
+      const remain = Math.max(0.06, 1 - injectEase * 0.94);
+      this.reviveFluid.scale.y = remain;
+      this.reviveFluid.position.y = -0.004 - (1 - remain) * 0.041;
+    }
+
+    const rTarget = new THREE.Vector3();
+    const rRot = new THREE.Euler();
+    const lTarget = new THREE.Vector3();
+    const lRot = new THREE.Euler();
+    let showLeft = true;
+    let rStyle = 'syringeHold';
+    let lStyle = 'syringeCapPull';
+
+    if (isSelfRev) {
+      // Warzone / DMZ Self-Revive: pull cap off -> snap-stab syringe down-inward into own chest -> depress plunger!
+      if (p < 0.20) {
+        const t = easeOutBack(p / 0.20);
+        const pullT = p > 0.11 ? easeOutBack((p - 0.11) / 0.09) : 0;
+        rTarget.set(THREE.MathUtils.lerp(0.24, 0.09, t), THREE.MathUtils.lerp(-0.26, -0.05, t), THREE.MathUtils.lerp(-0.34, -0.28, t));
+        rRot.set(0.18, 0.22, 0.32);
+        lTarget.set(THREE.MathUtils.lerp(-0.18, 0.02, t) - pullT * 0.22, THREE.MathUtils.lerp(-0.24, -0.10, t) - pullT * 0.10, -0.28);
+        lRot.set(0.10, 0.30, -0.20 - pullT * 0.35);
+      } else if (p < 0.34) {
+        // Cock up briefly then plunge firmly into chest!
+        const raw = (p - 0.20) / 0.14;
+        const stabT = raw < 0.35 ? 0 : easeOutBack((raw - 0.35) / 0.65);
+        const cock = raw < 0.35 ? smooth(raw / 0.35) : (1 - smooth((raw - 0.35) / 0.65));
+        rTarget.set(
+          THREE.MathUtils.lerp(0.09, 0.03, stabT) + cock * 0.03,
+          THREE.MathUtils.lerp(-0.05, -0.145, stabT) + cock * 0.05,
+          THREE.MathUtils.lerp(-0.28, -0.205, stabT) - cock * 0.02
+        );
+        rRot.set(THREE.MathUtils.lerp(0.18, -0.58, stabT), THREE.MathUtils.lerp(0.22, 0.34, stabT), THREE.MathUtils.lerp(0.32, 0.62, stabT));
+        showLeft = false;
+      } else if (p < 0.88) {
+        // Plunging bio-stim fluid into chest with subtle physical tension
+        rStyle = 'syringePlunge';
+        const tremor = Math.sin(p * 78) * 0.0025;
+        rTarget.set(0.03 + tremor, -0.148 - injectEase * 0.012, -0.205);
+        rRot.set(-0.60 - injectEase * 0.06, 0.34, 0.62);
+        showLeft = false;
+      } else {
+        // Crisp pull-out from chest!
+        const outT = smooth((p - 0.88) / 0.12);
+        rTarget.set(THREE.MathUtils.lerp(0.03, 0.24, outT), THREE.MathUtils.lerp(-0.16, -0.26, outT), THREE.MathUtils.lerp(-0.205, -0.32, outT));
+        rRot.set(THREE.MathUtils.lerp(-0.66, 0.10, outT), 0.25, THREE.MathUtils.lerp(0.62, 0.15, outT));
+        showLeft = false;
+      }
+    } else {
+      // Teammate Combat Revive: uncap syringe -> snap-plunge forward-down into downed ally -> depress plunger while bracing!
+      if (p < 0.20) {
+        const t = easeOutBack(p / 0.20);
+        const pullT = p > 0.12 ? easeOutBack((p - 0.12) / 0.08) : 0;
+        rTarget.set(THREE.MathUtils.lerp(0.26, 0.11, t), THREE.MathUtils.lerp(-0.26, -0.05, t), THREE.MathUtils.lerp(-0.36, -0.30, t));
+        rRot.set(0.20, -0.18, 0.18);
+        lTarget.set(THREE.MathUtils.lerp(-0.20, 0.04, t) - pullT * 0.22, THREE.MathUtils.lerp(-0.26, -0.10, t) - pullT * 0.10, -0.30);
+        lRot.set(0.14, 0.28 + pullT * 0.30, -0.20 - pullT * 0.35);
+      } else if (p < 0.34) {
+        // Cock syringe up & snap-plunge forward-down into teammate's shoulder/chest!
+        const raw = (p - 0.20) / 0.14;
+        const cock = raw < 0.36 ? smooth(raw / 0.36) : 0;
+        const stabT = raw >= 0.36 ? easeOutBack((raw - 0.36) / 0.64) : 0;
+        rTarget.set(
+          THREE.MathUtils.lerp(0.11, 0.05, stabT) + cock * 0.03,
+          THREE.MathUtils.lerp(-0.05, -0.14, stabT) + cock * 0.065,
+          THREE.MathUtils.lerp(-0.30, -0.40, stabT) + cock * 0.04
+        );
+        rRot.set(THREE.MathUtils.lerp(0.20, -0.44, stabT) + cock * 0.18, -0.16, THREE.MathUtils.lerp(0.18, 0.06, stabT));
+        // Left hand moves down-left to brace teammate's shoulder
+        lStyle = 'slapOpen';
+        const braceT = smooth(raw);
+        lTarget.set(THREE.MathUtils.lerp(-0.20, -0.14, braceT), THREE.MathUtils.lerp(-0.20, -0.17, braceT), THREE.MathUtils.lerp(-0.30, -0.38, braceT));
+        lRot.set(-0.36, 0.22, -0.10);
+      } else if (p < 0.88) {
+        // Hold syringe seated while thumb firmly depresses plunger & fluid drains
+        rStyle = 'syringePlunge';
+        lStyle = 'slapOpen';
+        const tremor = Math.sin(p * 64) * 0.0022;
+        rTarget.set(0.05 + tremor, -0.142 - injectEase * 0.014, -0.40 - injectEase * 0.008);
+        rRot.set(-0.46 - injectEase * 0.08, -0.16, 0.06);
+        lTarget.set(-0.14, -0.17, -0.38);
+        lRot.set(-0.38, 0.22, -0.10);
+      } else {
+        // Crisp pull-out & stow as ally stands up!
+        const outT = smooth((p - 0.88) / 0.12);
+        rTarget.set(THREE.MathUtils.lerp(0.05, 0.24, outT), THREE.MathUtils.lerp(-0.155, -0.26, outT), THREE.MathUtils.lerp(-0.41, -0.30, outT));
+        rRot.set(THREE.MathUtils.lerp(-0.54, 0.15, outT), -0.18, 0.16);
+        lStyle = 'slapOpen';
+        lTarget.set(THREE.MathUtils.lerp(-0.14, -0.26, outT), THREE.MathUtils.lerp(-0.17, -0.28, outT), THREE.MathUtils.lerp(-0.38, -0.26, outT));
+        lRot.set(-0.25, 0.15, -0.10);
+      }
+    }
+
+    const rate = Math.min(1, dt * 22);
+    if (this.reviveHandR && this.reviveArmR) {
+      if (this.reviveHandR.userData) this.reviveHandR.userData.activeStyle = rStyle;
+      this.reviveHandR.position.lerp(rTarget, rate);
+      this.reviveHandR.rotation.x = THREE.MathUtils.lerp(this.reviveHandR.rotation.x, rRot.x, rate);
+      this.reviveHandR.rotation.y = THREE.MathUtils.lerp(this.reviveHandR.rotation.y, rRot.y, rate);
+      this.reviveHandR.rotation.z = THREE.MathUtils.lerp(this.reviveHandR.rotation.z, rRot.z, rate);
+      const rShoulder = new THREE.Vector3(0.29, -0.30, -0.02);
+      const rWrist = this.reviveHandR.position.clone().add(new THREE.Vector3(0.012, -0.010, 0.038));
+      this._currentAimHand = this.reviveHandR;
+      this._aimArm(this.reviveArmR, rShoulder, rWrist);
+      this._currentAimHand = null;
+    }
+    if (this.reviveHandL && this.reviveArmL) {
+      this.reviveHandL.visible = showLeft;
+      this.reviveArmL.visible = showLeft;
+      if (showLeft) {
+        if (this.reviveHandL.userData) this.reviveHandL.userData.activeStyle = lStyle;
+        this.reviveHandL.position.lerp(lTarget, rate);
+        this.reviveHandL.rotation.x = THREE.MathUtils.lerp(this.reviveHandL.rotation.x, lRot.x, rate);
+        this.reviveHandL.rotation.y = THREE.MathUtils.lerp(this.reviveHandL.rotation.y, lRot.y, rate);
+        this.reviveHandL.rotation.z = THREE.MathUtils.lerp(this.reviveHandL.rotation.z, lRot.z, rate);
+        const lShoulder = new THREE.Vector3(-0.29, -0.30, -0.02);
+        const lWrist = this.reviveHandL.position.clone().add(new THREE.Vector3(-0.012, -0.010, 0.038));
+        this._currentAimHand = this.reviveHandL;
+        this._aimArm(this.reviveArmL, lShoulder, lWrist);
+        this._currentAimHand = null;
+      }
+    }
+
+    return true;
   }
 
   _addWeaponIronSights(group, weaponId, sightY, hasOptic = false, extra = {}) {
@@ -1467,6 +1777,27 @@ class WeaponSystem {
       g.add(guard, trig);
     };
 
+    // DMZ 2022 Tactical Weapon Detail Helpers: milled Picatinny rail teeth & receiver takedown cross-pins
+    const addPicatinnyRail = (yPos, zStart, zEnd, width = 0.021, step = 0.013, mat = darkMat) => {
+      const zMin = Math.min(zStart, zEnd);
+      const zMax = Math.max(zStart, zEnd);
+      const toothGeo = new THREE.BoxGeometry(width, 0.0036, step * 0.56);
+      for (let z = zMin + step * 0.4; z <= zMax - step * 0.4; z += step) {
+        const tooth = new THREE.Mesh(toothGeo, mat);
+        tooth.position.set(0, yPos, z);
+        g.add(tooth);
+      }
+    };
+    const addReceiverPins = (xHalf, coords) => {
+      const pinGeo = new THREE.CylinderGeometry(0.0030, 0.0030, xHalf * 2 + 0.004, 8);
+      pinGeo.rotateZ(Math.PI / 2);
+      for (const [py, pz] of coords) {
+        const pin = new THREE.Mesh(pinGeo, magMat);
+        pin.position.set(0, py, pz);
+        g.add(pin);
+      }
+    };
+
     if (weaponDef.slot === 'secondary') {
       const isG17 = weaponDef.id === 'g17';
       const slideLen = isG17 ? 0.24 : 0.21;
@@ -1496,6 +1827,16 @@ class WeaponSystem {
           rib.position.set(0, 0.0, 0.072 + s * 0.008);
           slideGroup.add(rib);
         }
+        // DMZ Gen5 tactical front slide serrations + frame takedown lever & cross-pins
+        for (let s = 0; s < 3; s++) {
+          const fRib = new THREE.Mesh(new THREE.BoxGeometry(0.0352, 0.015, 0.0022), darkMat);
+          fRib.position.set(0, 0.0, -0.095 + s * 0.008);
+          slideGroup.add(fRib);
+        }
+        const slideStop = new THREE.Mesh(roundedBox(0.004, 0.006, 0.022, 0.001, 0.0004), magMat);
+        slideStop.position.set(-0.016, -0.009, 0.036);
+        g.add(slideStop);
+        addReceiverPins(0.015, [[-0.013, 0.012], [-0.014, 0.068]]);
         slideGroup.position.set(0, 0.006, 0);
         this.boltMesh = slideGroup;
         this.boltRestPos.copy(slideGroup.position);
@@ -1552,6 +1893,11 @@ class WeaponSystem {
         hammer.position.set(0, 0.002, slideLen / 2 + 0.004);
         hammer.rotation.x = 0.35;
         slideGroup.add(slideLower, slideCrown, ejPort, safetyLever, hammer);
+        for (let s = 0; s < 5; s++) {
+          const pmRib = new THREE.Mesh(new THREE.BoxGeometry(0.0314, 0.015, 0.0022), darkMat);
+          pmRib.position.set(0, 0.0, 0.056 + s * 0.007);
+          slideGroup.add(pmRib);
+        }
         slideGroup.position.set(0, 0.006, 0);
         this.boltMesh = slideGroup;
         this.boltRestPos.copy(slideGroup.position);
@@ -1708,6 +2054,9 @@ class WeaponSystem {
         lower, magWell, paddleRel, selector, grip, endCap,
         mag, this.spareMagMesh, boltHandle, this.rightHand, this.leftHand
       );
+      // DMZ 2022 MP5 receiver push-pins, claw-mount lugs & low-profile optics rail
+      addReceiverPins(0.019, [[-0.016, 0.168], [-0.016, 0.012], [-0.021, -0.042]]);
+      addPicatinnyRail(0.036, -0.075, 0.085, 0.018, 0.014, bluedMat);
 
       this.sightHeight = 0.044;
       this.adsZ = -0.25;
@@ -1874,6 +2223,15 @@ class WeaponSystem {
         hgLower, hgUpper, hgFerrule, grip, magPaddle,
         mag, this.spareMagMesh, boltHandle, this.rightHand, this.leftHand
       );
+      // DMZ 2022 AK-74M Russian side dovetail rail, trunnion rivets & brake compensation ports
+      const sideRail = new THREE.Mesh(roundedBox(0.006, 0.015, 0.132, 0.0015, 0.0005), bluedMat);
+      sideRail.position.set(-0.024, 0.002, 0.078);
+      const sideRailGroove = new THREE.Mesh(new THREE.BoxGeometry(0.007, 0.004, 0.118), darkMat);
+      sideRailGroove.position.set(-0.0245, 0.002, 0.078);
+      const brakePort = new THREE.Mesh(new THREE.BoxGeometry(0.029, 0.011, 0.014), darkMat);
+      brakePort.position.set(0, 0.002, -0.562);
+      g.add(sideRail, sideRailGroove, brakePort);
+      addReceiverPins(0.022, [[-0.014, 0.045], [-0.014, 0.088], [0.006, -0.085], [-0.010, -0.095]]);
 
       this.sightHeight = 0.044;
       this.adsZ = -0.26;
@@ -1947,6 +2305,9 @@ class WeaponSystem {
       this.leftHandRestRot.copy(this.leftHand.rotation);
 
       g.add(receiver, ejectionPort, barrel, magTube, bblClamp, pump, stockBody, stockPad, shell, this.rightHand, this.leftHand);
+      // DMZ 2022 Remington 870 receiver trigger pins + milled top rail slots
+      addReceiverPins(0.023, [[-0.012, 0.042], [-0.012, 0.095]]);
+      addPicatinnyRail(0.030, -0.055, 0.095, 0.018, 0.014, bluedMat);
 
       this.sightHeight = 0.042;
       this.adsZ = -0.26;
@@ -2115,6 +2476,9 @@ class WeaponSystem {
         chassis, receiver, topRail, barrel, muzzleBrake, bipodMount, bipodL, bipodR,
         mag, this.spareMagMesh, boltGroup, this.rightHand, this.leftHand
       );
+      // DMZ 2022 AWM milled top Picatinny rail teeth & chassis mounting bolts
+      addPicatinnyRail(0.0465, -0.092, 0.132, 0.023, 0.013, darkMat);
+      addReceiverPins(0.022, [[-0.014, -0.06], [-0.014, 0.08], [-0.014, -0.20]]);
 
       this.sightHeight = 0.078;
       this.adsZ = -0.20;
@@ -2183,6 +2547,9 @@ class WeaponSystem {
       this.leftHandRestRot.copy(this.leftHand.rotation);
 
       g.add(chassis, receiver, topRail, barrel, mag, this.spareMagMesh, boltGroup, this.rightHand, this.leftHand);
+      // DMZ 2022 M24 SWS milled Picatinny scope base teeth & receiver action pins
+      addPicatinnyRail(0.043, -0.062, 0.122, 0.021, 0.013, darkMat);
+      addReceiverPins(0.022, [[-0.014, -0.04], [-0.014, 0.09]]);
 
       this.sightHeight = 0.074;
       this.adsZ = -0.22;
@@ -2606,6 +2973,8 @@ class WeaponSystem {
           }
         }
       }
+      // Drive Warzone/DMZ first-person Self-Revive Combat Syringe animation if player is self-reviving while downed!
+      this._updateReviveAnim(dt, player);
       return;
     } else {
       if (this.downedLegsGroup) this.downedLegsGroup.visible = false;
@@ -2615,6 +2984,7 @@ class WeaponSystem {
         if (this.plateRig) this.plateRig.visible = false;
         if (this.medRig) this.medRig.visible = false;
         if (this.tacFistRig) this.tacFistRig.visible = false;
+        if (this.reviveRig) this.reviveRig.visible = false;
         if (this.ledgeHandsGroup && this.ledgeHandsParts) {
           this.ledgeHandsGroup.visible = !player.isThirdPerson;
           const ls = player.ledgeState;
@@ -2650,6 +3020,11 @@ class WeaponSystem {
         if (this.plateRig) this.plateRig.visible = false;
         if (this.medRig) this.medRig.visible = false;
         if (this.tacFistRig) this.tacFistRig.visible = false;
+        if (this.reviveRig) this.reviveRig.visible = false;
+        return;
+      }
+      // Teammate Combat Syringe Revive Animation (hides weapon & plays 2-handed MW19/DMZ syringe injection!)
+      if (this._updateReviveAnim(dt, player)) {
         return;
       }
       if (!this.isThirdPerson && !this.isHealing) {
@@ -2677,13 +3052,14 @@ class WeaponSystem {
       }
     }
 
-    // Weapon Draw Animation (shoulder_down from top OR undersling_up from bottom)
+    // Weapon Draw Animation (MW19/DMZ snappy shoulder-settle with subtle spring overshoot)
     let drawPos = { x: 0, y: 0, z: 0 };
     let drawRot = { x: 0, y: 0, z: 0 };
     if (this.drawTimer > 0) {
       this.drawTimer = Math.max(0, this.drawTimer - dt);
       const t = 1 - (this.drawTimer / (this.drawDuration || 0.42));
-      const ease = 1 - Math.pow(1 - t, 3); // smooth cubic ease-out
+      const x = THREE.MathUtils.clamp(t, 0, 1) - 1;
+      const ease = 1 + 1.95 * x * x * x + 0.95 * x * x; // crisp MW19 easeOutBack shoulder snap
       const inv = 1 - ease;
       if (this.drawStyle === 'shoulder_down') {
         // Pulled down from over-the-shoulder sling
@@ -2701,6 +3077,26 @@ class WeaponSystem {
         drawRot.x = 0.65 * inv;
         drawRot.y = 0.20 * inv;
         drawRot.z = 0.30 * inv;
+      }
+    }
+
+    // Dynamic Left-Hand Pickup / Item-Use Grab Arc (weapon stays ready in right hand while left hand grabs!)
+    let grabArc = 0;
+    let grabStyle = null;
+    if (this.grabTimer > 0) {
+      this.grabTimer = Math.max(0, this.grabTimer - dt);
+      const gp = 1 - (this.grabTimer / Math.max(0.01, this.grabDuration));
+      if (gp < 0.42) {
+        const gt = gp / 0.42;
+        grabArc = gt * gt * (3 - 2 * gt);
+        grabStyle = 'grabReach';
+      } else if (gp < 0.72) {
+        grabArc = 1.0;
+        grabStyle = 'grabClose';
+      } else {
+        const gt = (gp - 0.72) / 0.28;
+        grabArc = 1 - gt * gt * (3 - 2 * gt);
+        grabStyle = 'grabClose';
       }
     }
 
@@ -3023,16 +3419,26 @@ class WeaponSystem {
     this.lookSwayRotX = THREE.MathUtils.lerp(this.lookSwayRotX, THREE.MathUtils.clamp(clampedDP * 1.05 * swayMult, -0.12, 0.12), swayLerpIn);
     this.lookSwayRotZ = THREE.MathUtils.lerp(this.lookSwayRotZ, THREE.MathUtils.clamp(-clampedDY * 1.15 * swayMult, -0.14, 0.14), swayLerpIn);
 
-    // Sprint tilt, DMZ Tactical Sprint high-port skyward carry, tactical slide cant, wall tuck, progressive corner-lean cant (even while ADS!), recoil kick & camera sway
+    // Sprint tilt, DMZ Tactical Sprint high-port skyward carry, tactical slide cant, wall tuck, progressive corner-lean cant (even while ADS!), recoil kick, MW19 ADS snap-cant & grab cant
+    this._adsBlend = THREE.MathUtils.lerp(this._adsBlend || 0, isAdsActive ? 1 : 0, Math.min(1, dt * 19));
+    const adsSnapArc = (!customRot && !this.isFistsMode) ? Math.sin(this._adsBlend * Math.PI) : 0;
+    const adsSnapRotZ = -0.072 * adsSnapArc;
+    const adsSnapY = -0.008 * adsSnapArc;
+    const grabCantActive = (!customRot && !this.isFistsMode && !isAdsActive && grabArc > 0.01) ? grabArc : 0;
+    const grabPosX = 0.032 * grabCantActive;
+    const grabPosY = 0.010 * grabCantActive;
+    const grabRotX = 0.065 * grabCantActive;
+    const grabRotZ = -0.14 * grabCantActive;
+
     const slideCantZ = (!customRot && !this.isFistsMode && player.isSliding) ? (isAdsActive ? -0.10 : -0.32) : 0;
     const slideCantY = (!customRot && !this.isFistsMode && player.isSliding) ? (isAdsActive ? 0.0 : 0.18) : 0;
     const sprintRotX = this.isFistsMode ? 0 : (tacSprintingHip ? 0.86 : (sprintingHip ? -0.14 : 0));
     const sprintRotY = this.isFistsMode ? 0 : (tacSprintingHip ? 0.16 : (sprintingHip ? 0.22 : 0));
     const sprintRotZ = this.isFistsMode ? 0 : (tacSprintingHip ? -0.14 : (sprintingHip ? 0.08 : 0));
     const leanRotZ = isAdsActive ? (-player.lean * 0.13) : (-player.lean * 0.22);
-    const targetRotX = (customRot && !this.isFistsMode ? activeRotOff.x : (sprintRotX + swayRotX + this.recoilPitch + this.lookSwayRotX + wallRotX)) + drawRot.x;
+    const targetRotX = (customRot && !this.isFistsMode ? activeRotOff.x : (sprintRotX + swayRotX + this.recoilPitch + this.lookSwayRotX + wallRotX + grabRotX)) + drawRot.x;
     const targetRotY = (customRot && !this.isFistsMode ? activeRotOff.y : (sprintRotY + slideCantY + this.recoilYaw + this.lookSwayRotY + wallRotY + leanCantY)) + drawRot.y;
-    const targetRotZ = (customRot && !this.isFistsMode ? activeRotOff.z : (sprintRotZ + swayRotZ + slideCantZ + boltActionRoll + this.recoilRoll + this.lookSwayRotZ + wallRotZ + leanRotZ)) + drawRot.z;
+    const targetRotZ = (customRot && !this.isFistsMode ? activeRotOff.z : (sprintRotZ + swayRotZ + slideCantZ + boltActionRoll + this.recoilRoll + this.lookSwayRotZ + wallRotZ + leanRotZ + adsSnapRotZ + grabRotZ)) + drawRot.z;
 
     // MW2/DMZ One-Handed High-Port Tactical Sprint: weapon held UP in right hand, left fist pumping apart!
     // When in Fists mode, center the viewmodel horizontally so both hands come evenly from bottom-left & bottom-right!
@@ -3042,16 +3448,17 @@ class WeaponSystem {
     const basePosY = this.isFistsMode ? -0.16 : (isAdsActive ? (-this.sightHeight + adsPivotY) : (tacSprintingHip ? -0.14 : (sprintingHip ? -0.235 : -0.20)));
     const basePosZ = this.isFistsMode ? -0.38 : (isAdsActive ? this.adsZ : (tacSprintingHip ? -0.34 : (sprintingHip ? -0.40 : -0.42)));
 
-    const targetX = basePosX + this.recoilX + this.lookSwayX + activePosOff.x + wallPosX + leanAlignX + drawPos.x;
-    const targetY = basePosY + this.lookSwayY + activePosOff.y + wallPosY + drawPos.y;
+    const targetX = basePosX + this.recoilX + this.lookSwayX + activePosOff.x + wallPosX + leanAlignX + drawPos.x + grabPosX;
+    const targetY = basePosY + this.lookSwayY + activePosOff.y + wallPosY + drawPos.y + adsSnapY + grabPosY;
     const targetZ = basePosZ + this.recoilZ + activePosOff.z + wallPosZ + drawPos.z;
 
-    const lerpRate = this.isReloading ? 28 : ((this.isPlating || this.isHealing) ? 16 : (this.isInspecting ? 9 : (this.drawTimer > 0 ? 22 : 13)));
+    const adsSnapping = isAdsActive || adsSnapArc > 0.08;
+    const lerpRate = this.isReloading ? 28 : ((this.isPlating || this.isHealing) ? 16 : (this.isInspecting ? 9 : (this.drawTimer > 0 ? 24 : (adsSnapping ? 20 : 14))));
     this.viewmodelGroup.position.x = THREE.MathUtils.lerp(this.viewmodelGroup.position.x, targetX + bobX, Math.min(1, dt * lerpRate));
     this.viewmodelGroup.position.y = THREE.MathUtils.lerp(this.viewmodelGroup.position.y, targetY - bobY, Math.min(1, dt * lerpRate));
     this.viewmodelGroup.position.z = THREE.MathUtils.lerp(this.viewmodelGroup.position.z, targetZ, Math.min(1, dt * (lerpRate + 2)));
 
-    const rotRate = this.isReloading ? 26 : ((this.isPlating || this.isHealing) ? 14 : (this.isInspecting ? 8 : 11));
+    const rotRate = this.isReloading ? 26 : ((this.isPlating || this.isHealing) ? 14 : (this.isInspecting ? 8 : (adsSnapping ? 19 : 12)));
     this.viewmodelGroup.rotation.x = THREE.MathUtils.lerp(this.viewmodelGroup.rotation.x, targetRotX, Math.min(1, dt * rotRate));
     this.viewmodelGroup.rotation.y = THREE.MathUtils.lerp(this.viewmodelGroup.rotation.y, targetRotY, Math.min(1, dt * rotRate));
     this.viewmodelGroup.rotation.z = THREE.MathUtils.lerp(this.viewmodelGroup.rotation.z, targetRotZ, Math.min(1, dt * rotRate));
@@ -3165,6 +3572,7 @@ class WeaponSystem {
         }
         if (mantleGrabArc > 0.04) {
           // Supporting left hand leaves gun to grab & push off the top edge of the hip-height obstacle!
+          if (this.leftHand.userData) this.leftHand.userData.activeStyle = 'slapOpen';
           const grabTarget = new THREE.Vector3(
             this.leftHandRestPos.x - 0.18 * mantleGrabArc,
             this.leftHandRestPos.y - 0.10 * mantleGrabArc,
@@ -3176,6 +3584,7 @@ class WeaponSystem {
           this.leftHand.rotation.z = THREE.MathUtils.lerp(this.leftHand.rotation.z, 0.45 * mantleGrabArc, Math.min(1, dt * 20));
         } else if (proneHandPushArc > 0.04) {
           // Supporting left hand leaves gun to plant on the ground / push off while entering or exiting prone!
+          if (this.leftHand.userData) this.leftHand.userData.activeStyle = 'slapOpen';
           const pushTarget = new THREE.Vector3(
             this.leftHandRestPos.x - 0.24 * proneHandPushArc,
             this.leftHandRestPos.y - 0.26 * proneHandPushArc,
@@ -3185,7 +3594,24 @@ class WeaponSystem {
           this.leftHand.rotation.x = THREE.MathUtils.lerp(this.leftHand.rotation.x, -1.05 * proneHandPushArc, Math.min(1, dt * 18));
           this.leftHand.rotation.y = THREE.MathUtils.lerp(this.leftHand.rotation.y, 0.25 * proneHandPushArc, Math.min(1, dt * 18));
           this.leftHand.rotation.z = THREE.MathUtils.lerp(this.leftHand.rotation.z, 0.55 * proneHandPushArc, Math.min(1, dt * 18));
+        } else if (grabArc > 0.02 && !isAdsActive) {
+          // Supporting left hand dynamically reaches out to grab ground items, weapons, or container latches!
+          if (this.leftHand.userData) this.leftHand.userData.activeStyle = grabStyle || 'grabReach';
+          const reachZ = (this.grabKind === 'container') ? -0.26 : -0.22;
+          const reachY = (this.grabKind === 'container') ? -0.06 : -0.15;
+          const itemTarget = new THREE.Vector3(
+            this.leftHandRestPos.x - 0.14 * grabArc,
+            this.leftHandRestPos.y + reachY * grabArc,
+            this.leftHandRestPos.z + reachZ * grabArc
+          );
+          this.leftHand.position.lerp(itemTarget, Math.min(1, dt * 24));
+          this.leftHand.rotation.x = THREE.MathUtils.lerp(this.leftHand.rotation.x, -0.58 * grabArc, Math.min(1, dt * 22));
+          this.leftHand.rotation.y = THREE.MathUtils.lerp(this.leftHand.rotation.y, 0.24 * grabArc, Math.min(1, dt * 22));
+          this.leftHand.rotation.z = THREE.MathUtils.lerp(this.leftHand.rotation.z, 0.30 * grabArc, Math.min(1, dt * 22));
         } else {
+          if (this.leftHand.userData && (this.leftHand.userData.activeStyle === 'grabReach' || this.leftHand.userData.activeStyle === 'grabClose' || this.leftHand.userData.activeStyle === 'slapOpen')) {
+            this.leftHand.userData.activeStyle = null;
+          }
           this.leftHand.position.lerp(this.leftHandRestPos, Math.min(1, dt * 18));
           this.leftHand.rotation.x = THREE.MathUtils.lerp(this.leftHand.rotation.x, this.leftHandRestRot.x, Math.min(1, dt * 18));
           this.leftHand.rotation.y = THREE.MathUtils.lerp(this.leftHand.rotation.y, this.leftHandRestRot.y, Math.min(1, dt * 18));
@@ -3278,6 +3704,7 @@ class WeaponSystem {
       if (this.plateRig) this.plateRig.visible = false;
       if (this.medRig) this.medRig.visible = false;
       if (this.tacFistRig) this.tacFistRig.visible = false;
+      if (this.reviveRig) this.reviveRig.visible = false;
     }
 
     // Update particles (impacts & muzzle smoke) & tracers
@@ -4233,10 +4660,10 @@ class WeaponSystem {
         if (player) player.insertSinglePlate();
       }
 
-      // Tactile body thud as plate bottoms out into vest
+      // Tactile Warzone/DMZ body thud as SAPI ceramic plate slams home into carrier
       const thud = (pt > 0.76 && pt < 0.90) ? Math.sin(((pt - 0.76) / 0.14) * Math.PI) : 0;
-      pos.y -= thud * 0.018;
-      rot.x -= thud * 0.045;
+      pos.y -= thud * 0.024;
+      rot.x -= thud * 0.062;
 
       if (this.plateMesh) {
         if (pt < 0.14) {
@@ -4360,7 +4787,7 @@ class WeaponSystem {
     this.plateZipFlags = { open: false, close: false };
     if (this.plateHand) {
       this.plateHand.position.set(-0.08, -0.24, -0.24);
-      this.plateHand.rotation.set(-0.35, -0.25, -1.45);
+      this.plateHand.rotation.set(-0.32, -0.22, -0.12);
     }
     return true;
   }

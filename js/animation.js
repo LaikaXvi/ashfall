@@ -313,6 +313,8 @@
     let handMag = null;
     let handShell = null;
     let inventoryTablet = null;
+    let syringeProp = null;
+    let grenadeProp = null;
 
     const makeArm = (xOff, isRight) => {
       const shoulder = new THREE.Group();
@@ -335,12 +337,16 @@
       wrist.add(glove);
 
       if (!isRight) {
-        // 3D Ceramic Armor Plate prop for MW2 4-stage plating animation
-        plateProp = new THREE.Group();
-        const plateBody = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.21, 0.022), new THREE.MeshLambertMaterial({ color: 0x22384c }));
-        const plateTrim = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.028, 0.026), new THREE.MeshLambertMaterial({ color: 0x4ea8de }));
-        plateTrim.position.y = 0.068;
-        plateProp.add(plateBody, plateTrim);
+        // 3D Sculpted SAPI Ceramic Armor Plate prop for MW2 4-stage plating animation
+        if (typeof window.buildArmorPlateMesh === 'function') {
+          plateProp = window.buildArmorPlateMesh({ forIcon: false });
+        } else {
+          plateProp = new THREE.Group();
+          const plateBody = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.21, 0.022), new THREE.MeshLambertMaterial({ color: 0x22384c }));
+          const plateTrim = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.028, 0.026), new THREE.MeshLambertMaterial({ color: 0x4ea8de }));
+          plateTrim.position.y = 0.068;
+          plateProp.add(plateBody, plateTrim);
+        }
         plateProp.position.set(0.01, -0.10, -0.04);
         plateProp.rotation.set(0.35, 0, 0.12);
         plateProp.visible = false;
@@ -365,6 +371,46 @@
         inventoryTablet.visible = false;
 
         wrist.add(plateProp, handMag, handShell, inventoryTablet);
+      } else {
+        // 3D Combat Revive Syringe prop (glowing emerald bio-stim auto-injector)
+        syringeProp = new THREE.Group();
+        const sBarrel = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.015, 0.015, 0.12, 10),
+          new THREE.MeshPhongMaterial({ color: 0x26f0a8, emissive: 0x0c7a52, shininess: 68 })
+        );
+        const sCollar = new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.018, 0.032, 10), gearMat);
+        sCollar.position.set(0, -0.055, 0);
+        const sNeedle = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.0028, 0.0032, 0.058, 8),
+          new THREE.MeshLambertMaterial({ color: 0xd0d8e0 })
+        );
+        sNeedle.position.set(0, -0.098, 0);
+        const sPlunger = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.018, 0.016, 0.024, 10),
+          new THREE.MeshLambertMaterial({ color: 0xd94626 })
+        );
+        sPlunger.position.set(0, 0.076, 0);
+        syringeProp.add(sBarrel, sCollar, sNeedle, sPlunger);
+        syringeProp.position.set(-0.01, -0.075, -0.035);
+        syringeProp.rotation.set(Math.PI * 0.42, 0, 0.12);
+        syringeProp.visible = false;
+
+        // 3D M67 Frag Grenade prop for 3P throw animations
+        grenadeProp = new THREE.Group();
+        const gBody = new THREE.Mesh(
+          new THREE.SphereGeometry(0.044, 10, 8),
+          new THREE.MeshLambertMaterial({ color: 0x45503b })
+        );
+        const gFuze = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.014, 0.017, 0.024, 8),
+          new THREE.MeshLambertMaterial({ color: 0x8b939c })
+        );
+        gFuze.position.set(0, 0.045, 0);
+        grenadeProp.add(gBody, gFuze);
+        grenadeProp.position.set(-0.01, -0.068, -0.025);
+        grenadeProp.visible = false;
+
+        wrist.add(syringeProp, grenadeProp);
       }
 
       elbow.add(elbowPad, forearm, wrist);
@@ -380,7 +426,7 @@
       leftLeg, rightLeg, leftArm, rightArm,
       weaponPivot, weaponMount, rearGripTarget, foregripTarget,
       vestGroup, vestMat, heavyExtras, packGroup, packMat, packLargeExtras,
-      carrierFlap, plateProp, handMag, handShell, inventoryTablet,
+      carrierFlap, plateProp, handMag, handShell, inventoryTablet, syringeProp, grenadeProp,
       isMW2Rig: true
     };
     if (window.RigAssets && window.RigAssets.ready && window.RiggedCharacter) {
@@ -444,6 +490,8 @@
       const isPlating = !!st.isPlating;
       const isReloading = !!st.isReloading;
       const isHealing = !!st.isHealing;
+      const isReviving = !!st.isReviving;
+      const isThrowing = !!st.isThrowing;
       const isPistol = !!st.isPistol;
       const aimPitch = THREE.MathUtils.clamp(st.aimPitch || 0, -0.82, 0.82);
       r._animState = {
@@ -453,6 +501,8 @@
         isDowned,
         dead: isDead,
         isProne,
+        isReviving,
+        isThrowing,
         stanceTrans: st.stanceTrans || null
       };
 
@@ -467,9 +517,12 @@
         }
       }
 
-      // Reset carrier flap & plate prop visibility by default
+      // Reset carrier flap & action prop visibility by default
       if (r.carrierFlap) r.carrierFlap.rotation.x = THREE.MathUtils.lerp(r.carrierFlap.rotation.x, 0, rate);
       if (r.plateProp) r.plateProp.visible = false;
+      if (r.handMag) r.handMag.visible = false;
+      if (r.syringeProp) r.syringeProp.visible = false;
+      if (r.grenadeProp) r.grenadeProp.visible = false;
 
       // === DEAD RAGDOLL REST POSE ===
       if (isDead) {
@@ -697,9 +750,92 @@
         headPitch -= fl * 0.12;
       }
 
-      // === LAYER 4: ACTION OVERLAYS (4-STAGE MW2 PLATING, RELOAD, MEDKIT, STANCE TRANSITION) ===
+      // === LAYER 4: ACTION OVERLAYS (4-STAGE MW2 PLATING, RELOAD, MEDKIT, REVIVE SYRINGE, GRENADE THROW, STANCE TRANSITION) ===
       let customLeftArm = null;
-      if (isPlating && !isDowned) {
+      let customRightArm = null;
+      if (isReviving) {
+        const rp = THREE.MathUtils.clamp(st.reviveProgress || 0, 0, 1);
+        if (isDowned) {
+          // 3P Warzone/DMZ Self-Revive Syringe plunged straight into own chest while downed!
+          rightIKWeight = 0.0;
+          if (r.syringeProp) r.syringeProp.visible = true;
+          const stab = rp < 0.25 ? smoothstep(rp / 0.25) : 1.0;
+          const pulse = (rp >= 0.30 && rp <= 0.88) ? Math.sin(this.idleTime * 14) * 0.04 : 0;
+          headPitch = -0.36;
+          customRightArm = {
+            shX: THREE.MathUtils.lerp(0.42, 1.12, stab) + pulse,
+            shZ: THREE.MathUtils.lerp(-0.22, -0.62, stab),
+            elbX: THREE.MathUtils.lerp(0.75, 1.56, stab)
+          };
+        } else {
+          // 3P Combat Med-Syringe Teammate Revive: kneel down over ally, sling rifle, brace with left hand & inject syringe with right!
+          rightIKWeight = 0.0;
+          leftIKWeight = 0.0;
+          pelvisY = 0.56;
+          lHipX = 1.12; lKneeX = -1.62; lAnkX = 0.45;
+          rHipX = 0.28; rKneeX = -1.52; rAnkX = 0.35;
+          spinePitch = -0.18;
+          torsoPitch = -0.34;
+          headPitch = -0.36;
+          // Sling rifle neatly down across front torso
+          wpnPosX = 0.14; wpnPosY = 0.10; wpnPosZ = -0.18;
+          wpnRotX = -0.96; wpnRotY = 0.52; wpnRotZ = -0.18;
+          if (r.syringeProp) r.syringeProp.visible = true;
+          // Left hand braces downed teammate's shoulder
+          customLeftArm = { shX: 1.02, shZ: 0.24, elbX: 0.52 };
+          if (rp < 0.22) {
+            const k = smoothstep(rp / 0.22);
+            customRightArm = {
+              shX: THREE.MathUtils.lerp(0.65, 1.32, k),
+              shZ: THREE.MathUtils.lerp(-0.18, -0.26, k),
+              elbX: THREE.MathUtils.lerp(0.95, 1.42, k)
+            };
+          } else if (rp < 0.36) {
+            // Crisp downward plunge into teammate!
+            const k = smoothstep((rp - 0.22) / 0.14);
+            customRightArm = {
+              shX: THREE.MathUtils.lerp(1.32, 0.88, k),
+              shZ: THREE.MathUtils.lerp(-0.26, -0.32, k),
+              elbX: THREE.MathUtils.lerp(1.42, 0.62, k)
+            };
+          } else if (rp < 0.88) {
+            // Hold seated & depress plunger
+            const push = Math.sin(this.idleTime * 11) * 0.03;
+            customRightArm = { shX: 0.86 + push, shZ: -0.32, elbX: 0.60 - push };
+          } else {
+            const k = smoothstep((rp - 0.88) / 0.12);
+            customRightArm = {
+              shX: THREE.MathUtils.lerp(0.86, 0.65, k),
+              shZ: THREE.MathUtils.lerp(-0.32, -0.18, k),
+              elbX: THREE.MathUtils.lerp(0.60, 0.95, k)
+            };
+          }
+        }
+      } else if (isThrowing && !isDowned) {
+        // 3P Overhand Grenade / Knife Throw Overlay
+        const tp = THREE.MathUtils.clamp(st.throwProgress || 0, 0, 1);
+        rightIKWeight = 0.0;
+        wpnPosX = -0.04; wpnPosY = 0.20; wpnPosZ = -0.24;
+        wpnRotX = -0.34; wpnRotY = 0.28; wpnRotZ = 0.12;
+        if (r.grenadeProp) r.grenadeProp.visible = tp < 0.60;
+        if (tp < 0.45) {
+          const k = smoothstep(tp / 0.45);
+          torsoYaw -= 0.36 * k;
+          customRightArm = {
+            shX: THREE.MathUtils.lerp(0.85, 2.38, k),
+            shZ: THREE.MathUtils.lerp(-0.18, -0.38, k),
+            elbX: THREE.MathUtils.lerp(1.05, 1.38, k)
+          };
+        } else {
+          const k = smoothstep((tp - 0.45) / 0.55);
+          torsoYaw += THREE.MathUtils.lerp(-0.36, 0.32, k);
+          customRightArm = {
+            shX: THREE.MathUtils.lerp(2.38, 0.44, k),
+            shZ: THREE.MathUtils.lerp(-0.38, -0.10, k),
+            elbX: THREE.MathUtils.lerp(1.38, 0.24, k)
+          };
+        }
+      } else if (isPlating && !isDowned) {
         // 4-Stage MW2 Armor Plating matching 1st-person:
         // 1) Unzip plate carrier -> 2) Pull ceramic plate -> 3) Slide plate into vest -> 4) Zip carrier closed!
         const pp = THREE.MathUtils.clamp(st.plateProgress || 0, 0, 1);
@@ -831,9 +967,14 @@
       }
 
       // === LAYER 5: REAL-TIME 2-BONE ANALYTICAL ARM IK (LOCK HANDS TO REAR GRIP & FOREGRIP!) ===
-      if (rightIKWeight > 0.01 && r.weaponPivot && r.rearGripTarget) {
+      if (rightIKWeight > 0.01 && !customRightArm && r.weaponPivot && r.rearGripTarget) {
         this._rTarget.copy(r.rearGripTarget.position).applyMatrix4(r.weaponPivot.matrix);
         solveArmIKInTorsoSpace(r.rightArm, this._rTarget, this._rPole, rightIKWeight);
+      } else if (customRightArm) {
+        r.rightArm.shoulder.rotation.x = THREE.MathUtils.lerp(r.rightArm.shoulder.rotation.x, customRightArm.shX, rate);
+        r.rightArm.shoulder.rotation.y = THREE.MathUtils.lerp(r.rightArm.shoulder.rotation.y, 0, rate);
+        r.rightArm.shoulder.rotation.z = THREE.MathUtils.lerp(r.rightArm.shoulder.rotation.z, customRightArm.shZ, rate);
+        r.rightArm.elbow.rotation.x = THREE.MathUtils.lerp(r.rightArm.elbow.rotation.x, customRightArm.elbX, rate);
       } else if (isDowned) {
         r.rightArm.shoulder.rotation.set(-0.55, 0, -0.35);
         r.rightArm.elbow.rotation.set(0.45, 0, 0);

@@ -34,58 +34,90 @@ class ThrowableSystem {
 
   _createThrowableMesh(id) {
     const g = new THREE.Group();
-    const oliveMat = new THREE.MeshLambertMaterial({ color: 0x45503b });
-    const darkMat = new THREE.MeshLambertMaterial({ color: 0x1b1e21 });
-    const steelMat = new THREE.MeshLambertMaterial({ color: 0x8b939c });
-    const brassMat = new THREE.MeshLambertMaterial({ color: 0xd4a442 });
+    const oliveMat = new THREE.MeshPhongMaterial({ color: 0x45503b, specular: 0x3a4236, shininess: 22 });
+    const darkMat = new THREE.MeshPhongMaterial({ color: 0x1b1f23, specular: 0x4a525c, shininess: 38 });
+    const steelMat = new THREE.MeshPhongMaterial({ color: 0x8f98a2, specular: 0xc2ccd6, shininess: 62 });
+    const brassMat = new THREE.MeshPhongMaterial({ color: 0xd9a842, specular: 0xffe49c, shininess: 70 });
 
     if (id === 'frag_grenade') {
-      const body = new THREE.Mesh(new THREE.SphereGeometry(0.036, 12, 10), oliveMat);
-      const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.015, 0.018, 8), steelMat);
-      collar.position.set(0, 0.038, 0);
-      const spoon = new THREE.Mesh(new THREE.BoxGeometry(0.010, 0.048, 0.012), darkMat);
-      spoon.position.set(0.022, 0.018, 0);
-      spoon.rotation.z = -0.35;
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.010, 0.002, 6, 12), brassMat);
-      ring.position.set(-0.018, 0.042, 0);
-      g.add(body, collar, spoon, ring);
+      // M67 Fragmentation Grenade — sculpted olive sphere, equatorial weld seam, steel fuze, curved lever & brass pull-ring
+      const body = new THREE.Mesh(new THREE.SphereGeometry(0.036, 16, 12), oliveMat);
+      const weldBand = new THREE.Mesh(new THREE.TorusGeometry(0.0358, 0.0018, 6, 18), darkMat);
+      weldBand.rotation.x = Math.PI / 2;
+      const stencil = new THREE.Mesh(new THREE.CylinderGeometry(0.0345, 0.0355, 0.007, 16), new THREE.MeshBasicMaterial({ color: 0xd4b946 }));
+      stencil.position.set(0, 0.011, 0);
+      const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.0115, 0.0155, 0.019, 10), steelMat);
+      collar.position.set(0, 0.039, 0);
+      const fuzeTop = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.010, 0.014), steelMat);
+      fuzeTop.position.set(0.004, 0.050, 0);
+      const spoonTop = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.006, 0.012), darkMat);
+      spoonTop.position.set(0.017, 0.048, 0);
+      spoonTop.rotation.z = -0.22;
+      const spoon = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.050, 0.012), darkMat);
+      spoon.position.set(0.028, 0.020, 0);
+      spoon.rotation.z = -0.26;
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.0115, 0.0022, 6, 14), brassMat);
+      ring.position.set(-0.019, 0.046, 0);
+      g.add(body, weldBand, stencil, collar, fuzeTop, spoonTop, spoon, ring);
       g.userData.pinRing = ring;
     } else if (id === 'throwing_knife') {
-      // Tactical tanto blade + paracord handle + pommel ring
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.13, 0.024), darkMat);
-      blade.position.set(0, 0.065, 0);
-      const edge = new THREE.Mesh(new THREE.BoxGeometry(0.003, 0.125, 0.005), steelMat);
-      edge.position.set(0, 0.065, -0.012);
-      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.014, 0.036, 4), darkMat);
-      tip.position.set(0, 0.148, 0);
+      // DMZ Tactical Tanto Throwing Knife — beveled carbon steel blade, honed edge, fuller groove, cord-wrapped handle & pommel ring
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.132, 0.024), darkMat);
+      blade.position.set(0, 0.066, 0);
+      const fuller = new THREE.Mesh(new THREE.BoxGeometry(0.0056, 0.085, 0.005), steelMat);
+      fuller.position.set(0, 0.068, 0.002);
+      const edge = new THREE.Mesh(new THREE.BoxGeometry(0.003, 0.128, 0.005), steelMat);
+      edge.position.set(0, 0.066, -0.012);
+      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.014, 0.038, 4), darkMat);
+      tip.position.set(0, 0.150, 0);
       tip.rotation.y = Math.PI / 4;
-      const handle = new THREE.Mesh(new THREE.BoxGeometry(0.009, 0.085, 0.018), oliveMat);
-      handle.position.set(0, -0.042, 0);
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.011, 0.003, 6, 10), darkMat);
-      ring.position.set(0, -0.092, 0);
-      g.add(blade, edge, tip, handle, ring);
+      const guard = new THREE.Mesh(new THREE.BoxGeometry(0.010, 0.009, 0.032), steelMat);
+      guard.position.set(0, 0.002, 0);
+      const handle = new THREE.Mesh(new THREE.BoxGeometry(0.0095, 0.086, 0.018), oliveMat);
+      handle.position.set(0, -0.044, 0);
+      // Ribbed paracord wrap ridges
+      for (let i = 0; i < 4; i++) {
+        const cord = new THREE.Mesh(new THREE.BoxGeometry(0.011, 0.007, 0.020), darkMat);
+        cord.position.set(0, -0.018 - i * 0.018, 0);
+        g.add(cord);
+      }
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.012, 0.0032, 6, 12), darkMat);
+      ring.position.set(0, -0.095, 0);
+      g.add(blade, fuller, edge, tip, guard, handle, ring);
     } else if (id === 'smoke_grenade') {
-      const can = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.115, 12), new THREE.MeshLambertMaterial({ color: 0x5c645a }));
-      const stripe = new THREE.Mesh(new THREE.CylinderGeometry(0.0268, 0.0268, 0.018, 12), new THREE.MeshBasicMaterial({ color: 0xe6c235 }));
+      // M18 Colored Smoke Canister
+      const canMat = new THREE.MeshPhongMaterial({ color: 0x5c665a, specular: 0x454d44, shininess: 24 });
+      const can = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.116, 16), canMat);
+      const topRim = new THREE.Mesh(new THREE.CylinderGeometry(0.0272, 0.0272, 0.007, 16), darkMat);
+      topRim.position.set(0, 0.056, 0);
+      const botRim = new THREE.Mesh(new THREE.CylinderGeometry(0.0272, 0.0272, 0.007, 16), darkMat);
+      botRim.position.set(0, -0.056, 0);
+      const stripe = new THREE.Mesh(new THREE.CylinderGeometry(0.0268, 0.0268, 0.018, 16), new THREE.MeshBasicMaterial({ color: 0xe6c235 }));
       stripe.position.set(0, 0.024, 0);
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.016, 0.018, 8), steelMat);
-      cap.position.set(0, 0.064, 0);
-      const spoon = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.065, 0.010), darkMat);
-      spoon.position.set(0.026, 0.025, 0);
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.010, 0.002, 6, 12), brassMat);
-      ring.position.set(-0.018, 0.062, 0);
-      g.add(can, stripe, cap, spoon, ring);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.016, 0.019, 10), steelMat);
+      cap.position.set(0, 0.066, 0);
+      const spoon = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.068, 0.010), darkMat);
+      spoon.position.set(0.028, 0.026, 0);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.011, 0.0022, 6, 14), brassMat);
+      ring.position.set(-0.019, 0.065, 0);
+      g.add(can, topRim, botRim, stripe, cap, spoon, ring);
       g.userData.pinRing = ring;
     } else {
-      // M84 Concussion / Stun Grenade
-      const can = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.105, 12), darkMat);
-      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.0248, 0.0248, 0.016, 12), new THREE.MeshBasicMaterial({ color: 0x3b82d6 }));
-      band.position.set(0, 0.02, 0);
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.015, 0.018, 8), steelMat);
-      cap.position.set(0, 0.060, 0);
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.010, 0.002, 6, 12), brassMat);
-      ring.position.set(-0.018, 0.058, 0);
-      g.add(can, band, cap, ring);
+      // M84 Concussion / Stun Grenade with hexagonal percussion collars & flash ports
+      const can = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.106, 14), darkMat);
+      const hexTop = new THREE.Mesh(new THREE.CylinderGeometry(0.027, 0.027, 0.014, 6), steelMat);
+      hexTop.position.set(0, 0.044, 0);
+      const hexBot = new THREE.Mesh(new THREE.CylinderGeometry(0.027, 0.027, 0.014, 6), steelMat);
+      hexBot.position.set(0, -0.044, 0);
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.0248, 0.0248, 0.016, 14), new THREE.MeshBasicMaterial({ color: 0x3b82d6 }));
+      band.position.set(0, 0.018, 0);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.015, 0.019, 10), steelMat);
+      cap.position.set(0, 0.061, 0);
+      const spoon = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.060, 0.010), steelMat);
+      spoon.position.set(0.026, 0.022, 0);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.011, 0.0022, 6, 14), brassMat);
+      ring.position.set(-0.019, 0.060, 0);
+      g.add(can, hexTop, hexBot, band, cap, spoon, ring);
       g.userData.pinRing = ring;
     }
     return g;
@@ -95,21 +127,21 @@ class ThrowableSystem {
     const rig = new THREE.Group();
     rig.visible = false;
 
-    const brassMat = new THREE.MeshLambertMaterial({ color: 0xd4a442 });
+    const brassMat = new THREE.MeshPhongMaterial({ color: 0xd9a842, specular: 0xffe49c, shininess: 70 });
 
-    // Use the exact detailed tactical gloved hands & forearms from WeaponSystem!
-    const hand = this.weaponSystem ? this.weaponSystem._createHand(true, 'grip') : new THREE.Group();
-    hand.scale.setScalar(1.22);
+    // Rigged anatomical first-person arms & hands driven via WeaponSystem.fpArms!
+    const hand = this.weaponSystem ? this.weaponSystem._createHand(true, 'grenadeHold') : new THREE.Group();
+    hand.userData.handStyle = 'grenadeHold';
     const rArm = this.weaponSystem ? this.weaponSystem._createForearm() : new THREE.Group();
-    rArm.scale.set(1.18, 1.18, 1.0);
+    rArm.userData.fpSide = 'right';
     rig.add(hand, rArm);
 
-    const lHand = this.weaponSystem ? this.weaponSystem._createHand(false, 'supportPistol') : new THREE.Group();
-    lHand.scale.setScalar(1.20);
+    const lHand = this.weaponSystem ? this.weaponSystem._createHand(false, 'pinPull') : new THREE.Group();
+    lHand.userData.handStyle = 'pinPull';
     const lArm = this.weaponSystem ? this.weaponSystem._createForearm() : new THREE.Group();
-    lArm.scale.set(1.18, 1.18, 1.0);
-    const pulledPin = new THREE.Mesh(new THREE.TorusGeometry(0.013, 0.0026, 6, 12), brassMat);
-    pulledPin.position.set(0.024, 0.014, -0.028);
+    lArm.userData.fpSide = 'left';
+    const pulledPin = new THREE.Mesh(new THREE.TorusGeometry(0.014, 0.0026, 6, 14), brassMat);
+    pulledPin.position.set(0.022, 0.012, -0.032);
     lHand.add(pulledPin);
     lHand.visible = false;
     lArm.visible = false;
@@ -123,13 +155,13 @@ class ThrowableSystem {
     };
     Object.entries(this.prepMeshes).forEach(([id, m]) => {
       m.visible = false;
-      m.scale.setScalar(1.25);
-      // Seat grenade/knife cleanly inside the right gloved palm
+      m.scale.setScalar(1.36);
+      // Seat grenade/knife cleanly inside the anatomical gloved right palm
       if (id === 'throwing_knife') {
-        m.position.set(-0.004, 0.022, -0.024);
-        m.rotation.set(-0.28, 0.0, 0.0);
+        m.position.set(-0.006, 0.018, -0.028);
+        m.rotation.set(-0.34, 0.0, 0.0);
       } else {
-        m.position.set(-0.012, 0.025, -0.024);
+        m.position.set(-0.010, 0.020, -0.028);
       }
       hand.add(m);
     });
@@ -501,6 +533,28 @@ class ThrowableSystem {
       this.cookPulse = Math.max(0, this.cookPulse - dt * 3.6);
     }
 
+    // Track 3P/MP throwable animation state on player
+    if (player) {
+      player._isThrowing = (this.state === 'prep' || this.state === 'throwing');
+      if (this.state === 'prep') {
+        player._throwProgress = Math.min(0.45, this.holdTime * 0.65);
+      } else if (this.state === 'throwing') {
+        const tt = THREE.MathUtils.clamp(1 - (this.throwAnimTimer / this.throwAnimDuration), 0, 1);
+        player._throwProgress = 0.45 + tt * 0.55;
+      } else {
+        player._throwProgress = 0;
+      }
+    }
+
+    // MW19 snappy spring easing helpers
+    const smooth = (t) => t * t * (3 - 2 * t);
+    const easeOutBack = (t) => {
+      const c1 = 1.65;
+      const c3 = c1 + 1;
+      const x = THREE.MathUtils.clamp(t, 0, 1) - 1;
+      return 1 + c3 * x * x * x + c1 * x * x;
+    };
+
     // === UPDATE FIRST-PERSON PREP / COOK / THROW ANIMATION ===
     if (this.state === 'prep') {
       this.holdTime += dt;
@@ -516,31 +570,36 @@ class ThrowableSystem {
         m.visible = (k === this.activeItemId);
       });
 
-      // Position hand: throwing knife raised up ready; grenades animate left-hand pin pull BEFORE becoming live!
-      const smooth = (t) => t * t * (3 - 2 * t);
       const activeMesh = this.prepMeshes[this.activeItemId];
       if (isKnife) {
+        if (this.prepHand && this.prepHand.userData) this.prepHand.userData.activeStyle = 'knifeHold';
         if (this.prepLeftHand) this.prepLeftHand.visible = false;
         if (this.prepLeftArm) this.prepLeftArm.visible = false;
-        const readyT = smooth(Math.min(1, this.holdTime / 0.14));
-        const breathe = Math.sin(this.holdTime * 3.2) * 0.004;
-        // Raise throwing knife high into a clear, cocked-back overhand ready-to-throw stance
+        const readyT = easeOutBack(Math.min(1, this.holdTime / 0.16));
+        const breathe = Math.sin(this.holdTime * 3.4) * 0.004;
+        // Raise throwing knife high into a crisp MW19 cocked-back overhand ready-to-throw stance
         this.prepHand.position.set(
-          THREE.MathUtils.lerp(0.28, 0.19, readyT),
-          THREE.MathUtils.lerp(-0.26, 0.09, readyT) + breathe,
-          THREE.MathUtils.lerp(-0.28, -0.32, readyT)
+          THREE.MathUtils.lerp(0.29, 0.18, readyT),
+          THREE.MathUtils.lerp(-0.26, 0.07, readyT) + breathe,
+          THREE.MathUtils.lerp(-0.28, -0.33, readyT)
         );
-        this.prepHand.rotation.set(THREE.MathUtils.lerp(-0.20, -0.42, readyT), -0.14, 0.18);
+        this.prepHand.rotation.set(THREE.MathUtils.lerp(-0.18, -0.44, readyT), -0.16, 0.20);
       } else {
-        // Phase A (0..pinPullDuration): Bring grenade center-right & yank actual pin off with left hand (NOT live yet!)
-        // Phase B (pinPullDuration+): Pin is removed -> pull back to throw & start 5s cook timer on frag!
+        if (this.prepHand && this.prepHand.userData) this.prepHand.userData.activeStyle = 'grenadeHold';
+        if (this.prepLeftHand && this.prepLeftHand.userData) this.prepLeftHand.userData.activeStyle = 'pinPull';
+        // Phase A (0..pinPullDuration): Bring grenade center-right, hook pin, snap-yank pin off with left hand
+        // Phase B (pinPullDuration+): Pin is removed -> crisp cock-back windup & 5s cook timer on frag
         if (this.holdTime < this.pinPullDuration) {
           const pp = this.holdTime / this.pinPullDuration;
-          const raiseT = smooth(Math.min(1, pp / 0.35));
-          const yankT = pp > 0.35 ? smooth((pp - 0.35) / 0.65) : 0;
-          const detached = pp > 0.36;
+          const raiseT = easeOutBack(Math.min(1, pp / 0.34));
+          // Brief tactile hook beat (0.34..0.42) then explosive yank left-down (0.42..1.0)
+          const yankRaw = pp > 0.40 ? Math.min(1, (pp - 0.40) / 0.52) : 0;
+          const yankT = yankRaw > 0 ? easeOutBack(yankRaw) : 0;
+          const detached = pp > 0.42;
+          // Crisp recoil kick on the right hand the instant the pin pops free
+          const popKick = (pp > 0.40 && pp < 0.62) ? Math.sin(((pp - 0.40) / 0.22) * Math.PI) : 0;
 
-          if (pp > 0.38 && !this.pinSoundPlayed) {
+          if (pp > 0.41 && !this.pinSoundPlayed) {
             this.pinSoundPlayed = true;
             window.soundEngine.playPinPull();
           }
@@ -551,49 +610,54 @@ class ThrowableSystem {
           }
 
           this.prepHand.position.set(
-            THREE.MathUtils.lerp(0.24, 0.09, raiseT) + yankT * 0.04,
-            THREE.MathUtils.lerp(-0.26, -0.09, raiseT),
-            THREE.MathUtils.lerp(-0.34, -0.30, raiseT)
+            THREE.MathUtils.lerp(0.24, 0.09, raiseT) + yankT * 0.045 + popKick * 0.018,
+            THREE.MathUtils.lerp(-0.26, -0.09, raiseT) + popKick * 0.010,
+            THREE.MathUtils.lerp(-0.35, -0.31, raiseT)
           );
-          this.prepHand.rotation.set(0.22, -0.20, 0.15 - yankT * 0.12);
+          this.prepHand.rotation.set(0.22 + popKick * 0.12, -0.22, 0.16 - yankT * 0.14 - popKick * 0.16);
 
           if (this.prepLeftHand) {
             this.prepLeftHand.visible = true;
             if (this.prepLeftArm) this.prepLeftArm.visible = true;
             if (this.prepPulledPin) this.prepPulledPin.visible = detached;
             this.prepLeftHand.position.set(
-              THREE.MathUtils.lerp(-0.18, 0.03, raiseT) - yankT * 0.26,
-              THREE.MathUtils.lerp(-0.26, -0.04, raiseT) - yankT * 0.12,
-              -0.30 + yankT * 0.04
+              THREE.MathUtils.lerp(-0.18, 0.02, raiseT) - yankT * 0.24,
+              THREE.MathUtils.lerp(-0.26, -0.045, raiseT) - yankT * 0.13,
+              -0.31 + yankT * 0.05
             );
-            this.prepLeftHand.rotation.set(0.15, 0.30 + yankT * 0.35, -0.25 - yankT * 0.30);
+            this.prepLeftHand.rotation.set(0.14, 0.28 + yankT * 0.38, -0.24 - yankT * 0.34);
           }
         } else {
           this.pinPulled = true;
           if (activeMesh && activeMesh.userData.pinRing) activeMesh.userData.pinRing.visible = false;
           if (this.prepLeftHand) this.prepLeftHand.visible = false;
           if (this.prepLeftArm) this.prepLeftArm.visible = false;
-          const postT = smooth(Math.min(1, (this.holdTime - this.pinPullDuration) / 0.18));
-          const cookShake = isFrag ? Math.sin(this.cookTime * 24) * Math.min(0.008, this.cookTime * 0.0018) : 0;
+          const postT = easeOutBack(Math.min(1, (this.holdTime - this.pinPullDuration) / 0.18));
+          const cookShake = isFrag ? Math.sin(this.cookTime * 28) * Math.min(0.008, this.cookTime * 0.0020) : 0;
+          const cookRoll = isFrag ? Math.cos(this.cookTime * 22) * Math.min(0.04, this.cookTime * 0.01) : 0;
           this.prepHand.position.set(
-            THREE.MathUtils.lerp(0.13, 0.19, postT) + cookShake,
-            THREE.MathUtils.lerp(-0.09, -0.05, postT),
-            THREE.MathUtils.lerp(-0.30, -0.27, postT)
+            THREE.MathUtils.lerp(0.135, 0.20, postT) + cookShake,
+            THREE.MathUtils.lerp(-0.09, -0.04, postT) + Math.abs(cookShake) * 0.5,
+            THREE.MathUtils.lerp(-0.31, -0.27, postT)
           );
-          this.prepHand.rotation.set(0.32, -0.25, 0.18);
+          this.prepHand.rotation.set(0.34, -0.26, 0.20 + cookRoll);
         }
       }
 
-      // Aim detailed forearms from shoulders to wrist cuffs
+      // Aim rigged anatomical forearms (setting _currentAimHand so RiggedFPArms tracks exact wrist & grip style!)
       if (this.weaponSystem && this.prepRightArm) {
         const rShoulder = new THREE.Vector3(0.30, -0.32, -0.02);
         const rWrist = this.prepHand.position.clone().add(new THREE.Vector3(0.012, -0.012, 0.040));
+        this.weaponSystem._currentAimHand = this.prepHand;
         this.weaponSystem._aimArm(this.prepRightArm, rShoulder, rWrist);
+        this.weaponSystem._currentAimHand = null;
       }
       if (this.weaponSystem && this.prepLeftArm && this.prepLeftHand && this.prepLeftHand.visible) {
         const lShoulder = new THREE.Vector3(-0.30, -0.32, -0.02);
         const lWrist = this.prepLeftHand.position.clone().add(new THREE.Vector3(-0.012, -0.012, 0.040));
+        this.weaponSystem._currentAimHand = this.prepLeftHand;
         this.weaponSystem._aimArm(this.prepLeftArm, lShoulder, lWrist);
+        this.weaponSystem._currentAimHand = null;
       }
 
       // Show live 3D trajectory arc immediately when holding throwing knife (or past brief tap for grenades)
@@ -630,17 +694,30 @@ class ThrowableSystem {
       if (this.prepLeftHand) this.prepLeftHand.visible = false;
       if (this.prepLeftArm) this.prepLeftArm.visible = false;
       Object.values(this.prepMeshes).forEach((m) => { m.visible = false; });
-      // Crisp forward throw follow-through
+
+      // MW19 explosive overhand whip + open-hand fingers-splayed follow-through!
+      if (this.prepHand && this.prepHand.userData) {
+        this.prepHand.userData.activeStyle = t > 0.16 ? 'throwRelease' : (this.activeItemId === 'throwing_knife' ? 'knifeHold' : 'grenadeHold');
+      }
+      const whip = smooth(Math.min(1, t / 0.72));
+      const settle = t > 0.72 ? smooth((t - 0.72) / 0.28) : 0;
+      const arcLift = Math.sin(whip * Math.PI) * 0.085;
       this.prepHand.position.set(
-        THREE.MathUtils.lerp(0.18, 0.04, t),
-        THREE.MathUtils.lerp(-0.02, -0.28, t),
-        THREE.MathUtils.lerp(-0.30, -0.48, t)
+        THREE.MathUtils.lerp(0.20, -0.02, whip) + settle * 0.04,
+        THREE.MathUtils.lerp(0.02, -0.27, whip) + arcLift - settle * 0.03,
+        THREE.MathUtils.lerp(-0.27, -0.49, whip) + settle * 0.06
       );
-      this.prepHand.rotation.set(-0.65 * t, -0.15, 0.1);
+      this.prepHand.rotation.set(
+        THREE.MathUtils.lerp(0.30, -0.78, whip),
+        THREE.MathUtils.lerp(-0.24, 0.16, whip),
+        THREE.MathUtils.lerp(0.18, -0.22, whip)
+      );
       if (this.weaponSystem && this.prepRightArm) {
         const rShoulder = new THREE.Vector3(0.30, -0.32, -0.02);
         const rWrist = this.prepHand.position.clone().add(new THREE.Vector3(0.012, -0.012, 0.040));
+        this.weaponSystem._currentAimHand = this.prepHand;
         this.weaponSystem._aimArm(this.prepRightArm, rShoulder, rWrist);
+        this.weaponSystem._currentAimHand = null;
       }
 
       if (this.throwAnimTimer <= 0) {

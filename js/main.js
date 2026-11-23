@@ -1514,6 +1514,9 @@
     if (window.soundEngine && window.soundEngine.playMagIn) {
       try { window.soundEngine.playMagIn(); } catch (e) {}
     }
+    if (weaponSystem && weaponSystem.triggerGrabAnim) {
+      weaponSystem.triggerGrabAnim('weapon');
+    }
     nearbyInteractable = null;
     if (targetSlotKey === 'backpackWeapon') {
       ui.addFeedMessage(`Stowed ${def.name} in Weapon Backpack`, '#69f0ae');
@@ -1526,6 +1529,7 @@
     if (nearbyInteractable.type === 'munition_box' && nearbyInteractable.box && player && player.resupplyFromMunitionBox) {
       const msg = player.resupplyFromMunitionBox(nearbyInteractable.box);
       if (msg) ui.showNotice(msg, '#69f0ae');
+      if (weaponSystem && weaponSystem.triggerGrabAnim) weaponSystem.triggerGrabAnim('item');
       ui.updateHUD(player, raidTimeLeft, getActiveExtractProgress());
       window._lastInteractCheckMs = 0;
       checkInteractions();
@@ -1533,6 +1537,7 @@
     }
     if (nearbyInteractable.type === 'door' && nearbyInteractable.door && world && world.interactDoor) {
       world.interactDoor(nearbyInteractable.door, player.position, !!player.isADS);
+      if (weaponSystem && weaponSystem.triggerGrabAnim) weaponSystem.triggerGrabAnim('container');
       window._lastInteractCheckMs = 0;
       checkInteractions();
       return true;
@@ -1561,6 +1566,7 @@
         if (window.soundEngine && window.soundEngine.playClick) {
           try { window.soundEngine.playClick(); } catch (e) {}
         }
+        if (weaponSystem && weaponSystem.triggerGrabAnim) weaponSystem.triggerGrabAnim('item');
         nearbyInteractable = null;
         return true;
       } else {
@@ -1583,6 +1589,7 @@
       }
     }
     if (c && world && world.openContainer) {
+      if (weaponSystem && weaponSystem.triggerGrabAnim) weaponSystem.triggerGrabAnim('container');
       const newlyOpened = world.openContainer(c);
       if (newlyOpened) {
         if (ui && ui.recordMissionProgress) ui.recordMissionProgress('loot', 1);
@@ -3145,6 +3152,7 @@
         // Downed revive = 3.5s, Eliminated (dead) revive = 7.5s (slower)
         const dur = candidate.dead ? 7.5 : 3.5;
         candidate.reviveProgress = Math.min(1, (candidate.reviveProgress || 0) + dt / dur);
+        player.allyReviveProgress = candidate.reviveProgress;
 
         // Parent/lock DOWNED ally directly to the reviver's local drag slot with their BACK towards the reviver!
         const moving = Math.hypot(player.velocity.x, player.velocity.z) > 0.20;
@@ -3204,6 +3212,7 @@
           activeReviveAlly = null;
           player.isRevivingAlly = false;
           player.isDraggingAlly = false;
+          player.allyReviveProgress = 0;
         }
         ui.updateReviveBanner(player, activeReviveAlly, !!(activeReviveAlly && activeReviveAlly.isDowned && moving));
         return;
@@ -3220,6 +3229,7 @@
     if (player) {
       player.isRevivingAlly = false;
       player.isDraggingAlly = false;
+      player.allyReviveProgress = 0;
     }
     ui.updateReviveBanner(player, null, false);
   }

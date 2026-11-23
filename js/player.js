@@ -784,7 +784,13 @@ class Player {
         ? THREE.MathUtils.clamp(1 - (ws.reloadTimer / ws.reloadDuration), 0, 1)
         : 0;
 
-      // In First Person, suppress 3P upper-body actions (reload/plate/heal/ADS/aimPitch) so only clean torso & legs locomotion + slide render!
+      const isSelfReviving = !!(this.isDowned && (this.beingRevivedBy === 'SELF-REVIVE' || this.beingRevivedBy === 'TOURNIQUET') && (this.reviveProgress || 0) > 0.005);
+      const isReviving3P = !isFP && !!(this.isRevivingAlly || isSelfReviving);
+      const reviveProg3P = isSelfReviving ? (this.reviveProgress || 0) : (this.allyReviveProgress || 0);
+      const isThrowing3P = !isFP && !!this._isThrowing;
+      const throwProg3P = this._throwProgress || 0;
+
+      // In First Person, suppress 3P upper-body actions (reload/plate/heal/revive/throw/ADS/aimPitch) so only clean torso & legs locomotion + slide render!
       this.mw2Anim.update(dt, {
         speed: this.onGround ? horizSpeed : 0,
         moveRight: strafeInput,
@@ -804,6 +810,10 @@ class Player {
         isReloading: isFP ? false : !!(ws && ws.isReloading),
         reloadProgress: reloadProg,
         isHealing: isFP ? false : !!(ws && ws.isHealing),
+        isReviving: isReviving3P,
+        reviveProgress: reviveProg3P,
+        isThrowing: isThrowing3P,
+        throwProgress: throwProg3P,
         stanceTrans: this.stanceTrans,
         recoilKick: isFP ? 0 : (ws ? (ws.recoilZ || ws.recoilOffset || 0) : 0),
         isPistol: !!(this.tpWeapon && this.tpWeapon.isPistol),
@@ -816,6 +826,8 @@ class Player {
         if (p.plateProp) p.plateProp.visible = false;
         if (p.handMag) p.handMag.visible = false;
         if (p.handShell) p.handShell.visible = false;
+        if (p.syringeProp) p.syringeProp.visible = false;
+        if (p.grenadeProp) p.grenadeProp.visible = false;
       }
       return;
     }

@@ -752,7 +752,9 @@
         rig.plateProp,
         rig.handMag,
         rig.handShell,
-        rig.inventoryTablet
+        rig.inventoryTablet,
+        rig.syringeProp,
+        rig.grenadeProp
       ].filter(Boolean));
       const hideTraverse = (node) => {
         if (!node || skipRoots.has(node)) return;
@@ -1179,7 +1181,7 @@
     }
   };
 
-  // ==================== FIRST-PERSON RIGGED ARMS (v2.49) ====================
+  // ==================== FIRST-PERSON RIGGED ARMS (v2.50 MW19/DMZ) ====================
   const FP_HAND_STYLES = {
     grip:          { f: new THREE.Vector3(-0.22, -0.08, -0.97), back: new THREE.Vector3( 0.97,  0.08, -0.22), palmOffset: new THREE.Vector3( 0.020, -0.002, 0.005), curl: [1.18, 1.28, 0.85], thumb: 0.72 },
     rightFist:     { f: new THREE.Vector3(-0.22,  0.14, -0.96), back: new THREE.Vector3( 0.92,  0.34, -0.18), palmOffset: new THREE.Vector3( 0.005,  0.000, 0.002), curl: [1.50, 1.62, 0.95], thumb: 1.00 },
@@ -1195,7 +1197,17 @@
     leftBoltPinch: { f: new THREE.Vector3( 0.32, -0.12, -0.94), back: new THREE.Vector3(-0.22,  0.96, -0.18), palmOffset: new THREE.Vector3(-0.012,  0.008, 0.004), curl: [1.24, 1.36, 0.86], thumb: 0.88 },
     slapOpen:      { f: new THREE.Vector3( 0.32, -0.15, -0.94), back: new THREE.Vector3(-0.25,  0.96, -0.12), palmOffset: new THREE.Vector3(-0.006,  0.014, 0.004), curl: [0.16, 0.18, 0.12], thumb: 0.28 },
     shellFeed:     { f: new THREE.Vector3( 0.28,  0.35, -0.89), back: new THREE.Vector3(-0.30, -0.88, -0.36), palmOffset: new THREE.Vector3(-0.008, -0.014, 0.004), curl: [1.02, 1.12, 0.78], thumb: 0.80 },
-    slideGrab:     { f: new THREE.Vector3( 0.45, -0.16, -0.88), back: new THREE.Vector3(-0.36,  0.90, -0.24), palmOffset: new THREE.Vector3(-0.010,  0.012, 0.004), curl: [1.18, 1.28, 0.85], thumb: 0.85 }
+    slideGrab:     { f: new THREE.Vector3( 0.45, -0.16, -0.88), back: new THREE.Vector3(-0.36,  0.90, -0.24), palmOffset: new THREE.Vector3(-0.010,  0.012, 0.004), curl: [1.18, 1.28, 0.85], thumb: 0.85 },
+    // MW19 / Warzone / DMZ 2022 Throwable, Combat Syringe & Item-Grab Hand Styles
+    grenadeHold:    { f: new THREE.Vector3(-0.35,  0.25, -0.90), back: new THREE.Vector3( 0.88, -0.22, -0.42), palmOffset: new THREE.Vector3( 0.018, -0.004, 0.006), curl: [1.14, 1.24, 0.84], thumb: 0.78 },
+    pinPull:        { f: new THREE.Vector3( 0.58,  0.14, -0.80), back: new THREE.Vector3(-0.62,  0.68, -0.39), palmOffset: new THREE.Vector3(-0.012,  0.004, 0.004), curl: [1.26, 1.38, 0.88], thumb: 0.88 },
+    knifeHold:      { f: new THREE.Vector3(-0.18,  0.32, -0.93), back: new THREE.Vector3( 0.95,  0.22, -0.22), palmOffset: new THREE.Vector3( 0.014, -0.004, 0.004), curl: [1.28, 1.38, 0.88], thumb: 0.86 },
+    throwRelease:   { f: new THREE.Vector3(-0.12, -0.30, -0.95), back: new THREE.Vector3( 0.45,  0.86, -0.24), palmOffset: new THREE.Vector3( 0.006,  0.008, 0.004), curl: [0.14, 0.16, 0.10], thumb: 0.22 },
+    syringeHold:    { f: new THREE.Vector3(-0.34, -0.18, -0.92), back: new THREE.Vector3( 0.92,  0.18, -0.34), palmOffset: new THREE.Vector3( 0.016,  0.002, 0.004), curl: [1.24, 1.34, 0.88], thumb: 0.54 },
+    syringePlunge:  { f: new THREE.Vector3(-0.32, -0.24, -0.91), back: new THREE.Vector3( 0.91,  0.24, -0.32), palmOffset: new THREE.Vector3( 0.016,  0.000, 0.004), curl: [1.34, 1.46, 0.92], thumb: 1.00 },
+    syringeCapPull: { f: new THREE.Vector3( 0.46,  0.06, -0.88), back: new THREE.Vector3(-0.60,  0.72, -0.35), palmOffset: new THREE.Vector3(-0.012,  0.004, 0.004), curl: [1.18, 1.30, 0.84], thumb: 0.82 },
+    grabReach:      { f: new THREE.Vector3( 0.28, -0.26, -0.92), back: new THREE.Vector3(-0.36,  0.88, -0.30), palmOffset: new THREE.Vector3(-0.008,  0.010, 0.004), curl: [0.24, 0.28, 0.20], thumb: 0.30 },
+    grabClose:      { f: new THREE.Vector3( 0.32, -0.18, -0.93), back: new THREE.Vector3(-0.46,  0.82, -0.34), palmOffset: new THREE.Vector3(-0.010,  0.006, 0.004), curl: [1.28, 1.40, 0.90], thumb: 0.88 }
   };
 
   function isEffectivelyVisible(obj, stopAt) {
@@ -1215,6 +1227,13 @@
       this._uShowL = { value: 0.0 };
       this._uShowR = { value: 0.0 };
       this.disabled = false;
+      // Per-side smoothed finger/thumb curl & hand-basis vectors for fluid MW19/DMZ articulation
+      this._wasVisible = { left: false, right: false };
+      this._curCurl = { left: [0.80, 0.90, 0.62], right: [1.18, 1.28, 0.85] };
+      this._curThumb = { left: 0.45, right: 0.72 };
+      this._curStyleF = { left: FP_HAND_STYLES.supportRifle.f.clone(), right: FP_HAND_STYLES.grip.f.clone() };
+      this._curStyleBack = { left: FP_HAND_STYLES.supportRifle.back.clone(), right: FP_HAND_STYLES.grip.back.clone() };
+      this._curStylePalm = { left: FP_HAND_STYLES.supportRifle.palmOffset.clone(), right: FP_HAND_STYLES.grip.palmOffset.clone() };
 
       const cloned = RigAssets.cloneSoldier();
       if (!cloned || !cloned.body || !cloned.bones.leftarm || !cloned.bones.rightarm) {
@@ -1414,7 +1433,10 @@
           const bArm = B[side + 'arm'];
           const bFore = B[side + 'forearm'];
           const bHand = B[side + 'hand'];
-          if (!pose || !bArm || !bFore || !bHand || !pose.armGroup.parent) return false;
+          if (!pose || !bArm || !bFore || !bHand || !pose.armGroup.parent) {
+            this._wasVisible[side] = false;
+            return false;
+          }
 
           pose.armGroup.parent.updateWorldMatrix(true, false);
           const shoulderW = pose.armGroup.parent.localToWorld(pose.shoulderLocal.clone());
@@ -1423,6 +1445,27 @@
           const handObj = pose.handObj;
           const styleKey = (handObj && handObj.userData && (handObj.userData.activeStyle || handObj.userData.handStyle)) || 'grip';
           const style = FP_HAND_STYLES[styleKey] || FP_HAND_STYLES.grip;
+
+          // Smooth MW19/DMZ finger & wrist-basis interpolation (snap immediately when arm newly enters frame)
+          const wasVis = this._wasVisible[side];
+          const stepDt = Math.min(0.05, Math.max(0.001, dt || 0.016));
+          const styleLerp = wasVis ? Math.min(1, stepDt * 22) : 1.0;
+          const curlLerp = wasVis ? Math.min(1, stepDt * 26) : 1.0;
+
+          const curF = this._curStyleF[side];
+          const curBack = this._curStyleBack[side];
+          const curPalm = this._curStylePalm[side];
+          curF.lerp(style.f, styleLerp).normalize();
+          curBack.lerp(style.back, styleLerp).normalize();
+          curPalm.lerp(style.palmOffset, styleLerp);
+
+          const curCurl = this._curCurl[side];
+          curCurl[0] = THREE.MathUtils.lerp(curCurl[0], style.curl[0], curlLerp);
+          curCurl[1] = THREE.MathUtils.lerp(curCurl[1], style.curl[1], curlLerp);
+          curCurl[2] = THREE.MathUtils.lerp(curCurl[2], style.curl[2], curlLerp);
+          this._curThumb[side] = THREE.MathUtils.lerp(this._curThumb[side], style.thumb, curlLerp);
+          this._wasVisible[side] = true;
+
           let handWQ = camQ;
           let handWPos = null;
           if (handObj) {
@@ -1430,12 +1473,12 @@
             handWQ = handObj.getWorldQuaternion(new THREE.Quaternion());
             handWPos = handObj.getWorldPosition(new THREE.Vector3());
           }
-          const fW = style.f.clone().applyQuaternion(handWQ).normalize();
-          const backW = style.back.clone().applyQuaternion(handWQ).normalize();
+          const fW = curF.clone().applyQuaternion(handWQ).normalize();
+          const backW = curBack.clone().applyQuaternion(handWQ).normalize();
 
           let wristTarget = wristW;
           if (handWPos) {
-            const palmTargetW = handWPos.add(style.palmOffset.clone().applyQuaternion(handWQ));
+            const palmTargetW = handWPos.add(curPalm.clone().applyQuaternion(handWQ));
             wristTarget = palmTargetW.addScaledVector(fW, -this.palmCenterDist);
           }
 
@@ -1506,7 +1549,7 @@
 
           const qHand = RigIK.handBasisQuat(this.handBasis[side], fW, backW, new THREE.Quaternion());
           RigIK.setWorldQuat(bHand, qHand);
-          RigIK.applyFingerCurl(this.fingerCurls[side], style.curl, style.thumb);
+          RigIK.applyFingerCurl(this.fingerCurls[side], curCurl, this._curThumb[side]);
           return true;
         };
 
