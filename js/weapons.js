@@ -1080,28 +1080,54 @@ class WeaponSystem {
     }
 
     // 3. Underbarrel
+    this.hasVertGrip = false;
     if (mods.underbarrel === 'vert_grip' && weaponDef.slot !== 'secondary') {
-      const gripZ = weaponDef.id === 'mp5k' ? -0.15 : -0.21;
-      const vGrip = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.015, 0.085, 8), matDark);
-      vGrip.position.set(0, -0.058, gripZ);
-      g.add(vGrip);
-      // Reposition & reshape operator's support hand to wrap around the vertical foregrip instead of the handguard!
+      this.hasVertGrip = true;
+      const isTrenchGun = weaponDef.id === 'm870';
+      const gripZ = isTrenchGun
+        ? -0.24
+        : (weaponDef.id === 'mp5k' ? -0.175 : ((weaponDef.id === 'awm338' || weaponDef.id === 'm24') ? -0.185 : -0.215));
+      const collarWorldY = isTrenchGun
+        ? -0.039
+        : (weaponDef.id === 'mp5k' ? -0.036 : (weaponDef.id === 'ak74m' ? -0.024 : -0.031));
+
+      // Sculpted RK-1 Tactical Vertical Foregrip (Picatinny clamp collar + contoured ribbed post + flared endcap)
+      const vGripGroup = new THREE.Group();
+      const railClamp = new THREE.Mesh(new THREE.BoxGeometry(0.030, 0.014, 0.044), matDark);
+      railClamp.position.set(0, -0.004, 0);
+      const clampBolt = new THREE.Mesh(new THREE.CylinderGeometry(0.0035, 0.0035, 0.034, 8), matSteel);
+      clampBolt.rotation.z = Math.PI / 2;
+      clampBolt.position.set(0, -0.004, 0);
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.0135, 0.0150, 0.082, 12), matDark);
+      shaft.position.set(0, -0.046, 0);
+      const baseCap = new THREE.Mesh(new THREE.CylinderGeometry(0.0168, 0.0150, 0.010, 12), matSteel);
+      baseCap.position.set(0, -0.088, 0);
+      vGripGroup.add(railClamp, clampBolt, shaft, baseCap);
+      for (let r = 0; r < 3; r++) {
+        const rib = new THREE.Mesh(new THREE.CylinderGeometry(0.0156, 0.0156, 0.005, 12), matSteel);
+        rib.position.set(0, -0.030 - r * 0.018, 0);
+        vGripGroup.add(rib);
+      }
+
+      if (isTrenchGun && this.boltMesh) {
+        // Parent directly onto the M870 sliding pump so the vertical foregrip moves 1:1 when pumping the slide!
+        vGripGroup.position.set(0, collarWorldY - this.boltRestPos.y, gripZ - this.boltRestPos.z);
+        this.boltMesh.add(vGripGroup);
+      } else {
+        vGripGroup.position.set(0, collarWorldY, gripZ);
+        g.add(vGripGroup);
+      }
+
+      // Reposition & reshape operator's support hand to wrap solidly around the vertical foregrip shaft!
       if (withHands && this.leftHand) {
         g.remove(this.leftHand);
         this.leftHand = this._createHand(false, 'foregrip');
-        this.leftHand.position.set(0.0, -0.064, gripZ + 0.004);
+        this.leftHand.position.set(0.0, collarWorldY - 0.044, gripZ);
+        this.leftHand.rotation.set(0, 0, 0);
         this.leftHandRestPos.copy(this.leftHand.position);
         this.leftHandRestRot.copy(this.leftHand.rotation);
         g.add(this.leftHand);
       }
-    } else if (withHands && weaponDef.id === 'mp5k' && this.leftHand) {
-      // MP5-K has an integrated vertical foregrip — wrap left hand cleanly around it!
-      g.remove(this.leftHand);
-      this.leftHand = this._createHand(false, 'foregrip');
-      this.leftHand.position.set(0.0, -0.062, -0.146);
-      this.leftHandRestPos.copy(this.leftHand.position);
-      this.leftHandRestRot.copy(this.leftHand.rotation);
-      g.add(this.leftHand);
     } else if (mods.underbarrel === 'laser') {
       const lx = weaponDef.slot === 'secondary' ? 0.0 : 0.028;
       const ly = weaponDef.slot === 'secondary' ? -0.026 : 0.005;
@@ -1366,12 +1392,13 @@ class WeaponSystem {
     const skinMat = new THREE.MeshLambertMaterial({ color: 0xd1a483 });
     const cuffMat = new THREE.MeshLambertMaterial({ color: 0x1a1c19 });
 
-    if (style === 'grip') {
-      // Right hand wrapped around pistol grip
+    if (style === 'grip' || style === 'shotgunGrip') {
+      // Right hand wrapped around pistol grip (or swept shotgun grip wrist with extra lateral clearance)
+      const latX = style === 'shotgunGrip' ? 0.020 : 0.008;
       const palm = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.058, 0.050), gloveMat);
-      palm.position.set(0.008, 0, 0.004);
+      palm.position.set(latX, 0, 0.004);
       const knuckle = new THREE.Mesh(new THREE.BoxGeometry(0.044, 0.014, 0.020), knuckleMat);
-      knuckle.position.set(0.008, 0.020, -0.016);
+      knuckle.position.set(latX, 0.020, -0.016);
       handGroup.add(palm, knuckle);
 
       // 4 fingers curling around front of grip
@@ -2475,31 +2502,32 @@ class WeaponSystem {
       this.boltMesh = pump;
       this.boltRestPos.copy(pump.position);
 
-      // One-piece sculpted walnut buttstock + rounded rubber recoil pad
+      // One-piece sculpted walnut buttstock with semi-pistol wrist swell + rounded rubber recoil pad
       const stockGeo = extrudeSide([
-        [-0.14, -0.002], [-0.14, -0.036], [-0.21, -0.056], [-0.465, -0.098],
-        [-0.465, 0.004], [-0.24, -0.006]
+        [-0.14, -0.002], [-0.14, -0.032], [-0.175, -0.060], [-0.215, -0.062],
+        [-0.465, -0.098], [-0.465, 0.004], [-0.24, -0.006]
       ], 0.038, null, true);
       const stockBody = new THREE.Mesh(stockGeo, woodMat);
       const stockPad = new THREE.Mesh(roundedBox(0.040, 0.104, 0.020, 0.007, 0.0022), darkMat);
       stockPad.position.set(0, -0.047, 0.475);
       addTriggerGuard(0.08, -0.028);
 
-      // 12ga red ribbed shell for loading port animation
+      // 12ga red ribbed shell for loading port animation (nose forward -Z, brass base rearward +Z for thumb push!)
       const shell = new THREE.Group();
       const shellHull = new THREE.Mesh(new THREE.CylinderGeometry(0.0095, 0.0095, 0.058, 12), shellRedMat);
       const shellBrass = new THREE.Mesh(new THREE.CylinderGeometry(0.010, 0.010, 0.016, 12), brassMat);
       shellBrass.position.set(0, -0.028, 0);
       shell.add(shellHull, shellBrass);
-      shell.rotation.x = Math.PI / 2;
+      shell.rotation.x = -Math.PI / 2;
       shell.position.set(0, -0.020, -0.02);
       this.magMesh = shell;
       this.magRestPos.copy(shell.position);
 
-      this.rightHand = this._createHand(true, 'grip');
-      this.rightHand.position.set(0.0, -0.044, 0.145);
+      this.rightHand = this._createHand(true, 'shotgunGrip');
+      this.rightHand.position.set(0.004, -0.048, 0.168);
+      this.rightHand.rotation.set(0.22, -0.04, 0.06);
       this.leftHand = this._createHand(false, 'supportRifle');
-      this.leftHand.position.set(0.0, -0.036, -0.24);
+      this.leftHand.position.set(0.0, -0.032, -0.24);
       this.leftHandRestPos.copy(this.leftHand.position);
       this.leftHandRestRot.copy(this.leftHand.rotation);
 
@@ -2829,8 +2857,8 @@ class WeaponSystem {
         );
         plateGroup.add(plateBody);
       }
-      // Seated cleanly underneath the top-pinch grip with zero finger clipping behind the plate
-      plateGroup.position.set(0.0, -0.056, -0.004);
+      // Seated cleanly underneath the top-pinch grip so the gloved hand holds the plate squarely by its top rim (zero tilt!)
+      plateGroup.position.set(0.0, -0.082, -0.006);
       plateGroup.visible = false;
       plateHand.add(plateGroup);
       this.plateMesh = plateGroup;
@@ -2966,6 +2994,7 @@ class WeaponSystem {
     // Snapshot 1st-person viewmodel references so building the 3rd-person prop never mutates them
     const saved = {
       currentMesh: this.currentMesh,
+      hasVertGrip: !!this.hasVertGrip,
       magMesh: this.magMesh,
       magRestPos: this.magRestPos.clone(),
       magRestRot: this.magRestRot.clone(),
@@ -2998,6 +3027,7 @@ class WeaponSystem {
       group: g,
       weaponId: weaponDef.id,
       isPistol: weaponDef.slot === 'secondary',
+      hasVertGrip: !!this.hasVertGrip,
       muzzlePos: this.muzzleMesh.position.clone(),
       magMesh: this.magMesh,
       spareMagMesh: this.spareMagMesh,
@@ -3010,6 +3040,7 @@ class WeaponSystem {
 
     // Restore all 1st-person viewmodel references untouched
     this.currentMesh = saved.currentMesh;
+    this.hasVertGrip = saved.hasVertGrip;
     this.magMesh = saved.magMesh;
     this.magRestPos.copy(saved.magRestPos);
     this.magRestRot.copy(saved.magRestRot);
@@ -3492,6 +3523,7 @@ class WeaponSystem {
     }
 
     let pumpOffset = 0;
+    this._livePumpOffset = 0;
     if (!this.isReloading && !this.isInspecting && !this.isPlating && !this.isHealing && weaponDef && weaponDef.id === 'm870') {
       if (this.pumpDelayTimer > 0) {
         this.pumpDelayTimer -= dt;
@@ -3505,8 +3537,15 @@ class WeaponSystem {
         const smooth = (t) => t * t * (3 - 2 * t);
         const pull = pt < 0.48 ? smooth(pt / 0.48) : 1 - smooth((pt - 0.48) / 0.52);
         pumpOffset = pull * 0.088;
+        this._livePumpOffset = pumpOffset;
         if (this.leftHand) {
+          this.leftHand.visible = true;
+          if (this.leftFist) this.leftFist.visible = false;
+          if (this.leftHand.userData) {
+            this.leftHand.userData.activeStyle = this.hasVertGrip ? 'foregrip' : 'supportRifle';
+          }
           this.leftHand.position.set(this.leftHandRestPos.x, this.leftHandRestPos.y, this.leftHandRestPos.z + pumpOffset);
+          this.leftHand.rotation.copy(this.leftHandRestRot);
         }
       } else if (this.leftHand) {
         this.leftHand.position.lerp(this.leftHandRestPos, Math.min(1, dt * 24));
@@ -4075,20 +4114,38 @@ class WeaponSystem {
           this.leftHand.rotation.y = THREE.MathUtils.lerp(this.leftHand.rotation.y, 0.22 * grabArc, Math.min(1, dt * 22));
           this.leftHand.rotation.z = THREE.MathUtils.lerp(this.leftHand.rotation.z, 0.28 * grabArc, Math.min(1, dt * 22));
         } else {
-          if (this.leftHand.userData && (this.leftHand.userData.activeStyle === 'grabReach' || this.leftHand.userData.activeStyle === 'grabClose' || this.leftHand.userData.activeStyle === 'slapOpen')) {
-            this.leftHand.userData.activeStyle = null;
+          if (this.leftHand.userData) {
+            if (this.hasVertGrip) {
+              this.leftHand.userData.activeStyle = 'foregrip';
+            } else if (
+              this.leftHand.userData.activeStyle === 'grabReach' ||
+              this.leftHand.userData.activeStyle === 'grabClose' ||
+              this.leftHand.userData.activeStyle === 'slapOpen' ||
+              this.leftHand.userData.activeStyle === 'foregrip' ||
+              this.leftHand.userData.activeStyle === 'supportRifle'
+            ) {
+              this.leftHand.userData.activeStyle = null;
+            }
           }
-          // MW4 Kinetic Support-Hand Slide: conforms dynamically along handguard for 45° Tac-Stance C-clamp, CQB wall-tuck & Prone brace!
-          const proneSlideZ = player.isProne ? -0.010 : 0.0;
-          const dynLeftPos = new THREE.Vector3(
-            this.leftHandRestPos.x - 0.008 * tsB,
-            this.leftHandRestPos.y + 0.008 * tsB - 0.004 * wp,
-            this.leftHandRestPos.z - 0.014 * tsB + 0.014 * wp + proneSlideZ
-          );
-          this.leftHand.position.lerp(dynLeftPos, Math.min(1, dt * 18));
-          this.leftHand.rotation.x = THREE.MathUtils.lerp(this.leftHand.rotation.x, this.leftHandRestRot.x + 0.06 * tsB, Math.min(1, dt * 18));
-          this.leftHand.rotation.y = THREE.MathUtils.lerp(this.leftHand.rotation.y, this.leftHandRestRot.y + 0.08 * tsB, Math.min(1, dt * 18));
-          this.leftHand.rotation.z = THREE.MathUtils.lerp(this.leftHand.rotation.z, this.leftHandRestRot.z + 0.16 * tsB, Math.min(1, dt * 18));
+          if (this.hasVertGrip) {
+            // Keep support hand wrapped solidly around the vertical foregrip shaft at all times!
+            this.leftHand.position.lerp(this.leftHandRestPos, Math.min(1, dt * 20));
+            this.leftHand.rotation.x = THREE.MathUtils.lerp(this.leftHand.rotation.x, this.leftHandRestRot.x, Math.min(1, dt * 18));
+            this.leftHand.rotation.y = THREE.MathUtils.lerp(this.leftHand.rotation.y, this.leftHandRestRot.y, Math.min(1, dt * 18));
+            this.leftHand.rotation.z = THREE.MathUtils.lerp(this.leftHand.rotation.z, this.leftHandRestRot.z, Math.min(1, dt * 18));
+          } else {
+            // MW4 Kinetic Support-Hand Slide: conforms dynamically along handguard for 45° Tac-Stance C-clamp, CQB wall-tuck & Prone brace!
+            const proneSlideZ = player.isProne ? -0.010 : 0.0;
+            const dynLeftPos = new THREE.Vector3(
+              this.leftHandRestPos.x - 0.008 * tsB,
+              this.leftHandRestPos.y + 0.008 * tsB - 0.004 * wp,
+              this.leftHandRestPos.z - 0.014 * tsB + 0.014 * wp + proneSlideZ
+            );
+            this.leftHand.position.lerp(dynLeftPos, Math.min(1, dt * 18));
+            this.leftHand.rotation.x = THREE.MathUtils.lerp(this.leftHand.rotation.x, this.leftHandRestRot.x + 0.06 * tsB, Math.min(1, dt * 18));
+            this.leftHand.rotation.y = THREE.MathUtils.lerp(this.leftHand.rotation.y, this.leftHandRestRot.y + 0.08 * tsB, Math.min(1, dt * 18));
+            this.leftHand.rotation.z = THREE.MathUtils.lerp(this.leftHand.rotation.z, this.leftHandRestRot.z + 0.16 * tsB, Math.min(1, dt * 18));
+          }
         }
       }
     } else if (this.leftFist) {
@@ -4573,22 +4630,22 @@ class WeaponSystem {
     }
 
     if (id === 'm870') {
-      // M870 Shotgun: Roll to expose bottom port, feed all missing shells (up to 6), then pump if empty
+      // M870 Trenchgun: Roll to expose bottom loading gate, drive each 12ga shell in with the left THUMB, then pump slide/foregrip if empty!
       const loadStart = 0.12;
       const loadEnd = this.wasEmptyReload ? 0.68 : 0.88;
       const count = Math.max(1, this.reloadShellCount);
 
       if (this.wasEmptyReload && p > 0.72 && !this.reloadSfxFlags.rack) {
         this.reloadSfxFlags.rack = true;
-        window.soundEngine.playRechamber(this.reloadWeaponId || (weaponDef && weaponDef.id) || 'ak74m');
+        window.soundEngine.playRechamber(this.reloadWeaponId || (weaponDef && weaponDef.id) || 'm870');
       }
 
       restRightHand();
 
       if (p < loadEnd) {
         const enterT = smooth(Math.min(1, p / loadStart));
-        pos.x = -0.11 * enterT; pos.y = 0.13 * enterT;
-        rot.x = 0.28 * enterT; rot.y = 0.30 * enterT; rot.z = -0.78 * enterT;
+        pos.x = -0.09 * enterT; pos.y = 0.11 * enterT;
+        rot.x = 0.24 * enterT; rot.y = 0.26 * enterT; rot.z = -0.66 * enterT;
 
         if (p >= loadStart && this.magMesh) {
           const loadProgress = (p - loadStart) / (loadEnd - loadStart);
@@ -4596,7 +4653,7 @@ class WeaponSystem {
           const shellIdx = Math.min(count - 1, Math.floor(shellFloat));
           const shellT = shellFloat - shellIdx;
 
-          if (shellT > 0.45 && shellIdx > this.lastShellSoundIdx) {
+          if (shellT > 0.46 && shellIdx > this.lastShellSoundIdx) {
             this.lastShellSoundIdx = shellIdx;
             window.soundEngine.playMagIn(this.reloadWeaponId);
           }
@@ -4605,24 +4662,57 @@ class WeaponSystem {
             if (player) player.loadSingleShell();
           }
 
-          this.magMesh.visible = shellT < 0.88;
-          if (shellT < 0.35) {
-            // 1. Bring shell up to loading port, angled upward toward the underbarrel tube
-            const alignT = smooth(shellT / 0.35);
-            this.magMesh.position.x = THREE.MathUtils.lerp(-0.035, 0.0, alignT);
-            this.magMesh.position.y = THREE.MathUtils.lerp(-0.125, -0.052, alignT);
-            this.magMesh.position.z = THREE.MathUtils.lerp(0.065, 0.045, alignT);
-            this.magMesh.rotation.x = this.magRestRot.x + 0.44;
-          } else {
-            // 2. Level out horizontally and slide forward (-Z) into the magazine tube under the barrel
-            const slideT = smooth(THREE.MathUtils.clamp((shellT - 0.35) / 0.50, 0, 1));
-            const levelT = Math.min(1, slideT * 1.8);
+          // Tactile receiver nudge when the thumb clicks the brass shell rim past the magazine tube latch!
+          const clickPulse = (shellT > 0.54 && shellT < 0.76) ? Math.sin(((shellT - 0.54) / 0.22) * Math.PI) : 0;
+          pos.y += clickPulse * 0.006;
+          pos.z -= clickPulse * 0.007;
+          rot.x += clickPulse * 0.020;
+
+          this.magMesh.visible = shellT < 0.78;
+          if (shellT < 0.32) {
+            // Beat 1: Bring 12ga shell up to bottom loading port (red nose angled into gate, left thumb cocked behind brass rim!)
+            const alignT = smooth(shellT / 0.32);
+            this.magMesh.position.x = THREE.MathUtils.lerp(-0.032, 0.0, alignT);
+            this.magMesh.position.y = THREE.MathUtils.lerp(-0.115, -0.036, alignT);
+            this.magMesh.position.z = THREE.MathUtils.lerp(0.055, -0.004, alignT);
+            this.magMesh.rotation.x = this.magRestRot.x + THREE.MathUtils.lerp(0.50, 0.34, alignT);
+            moveLeftHand(
+              this.magMesh.position.x - 0.012,
+              this.magMesh.position.y - 0.014,
+              this.magMesh.position.z + 0.042,
+              0.12, 0.08, -0.08,
+              'shellThumbStage'
+            );
+          } else if (shellT < 0.78) {
+            // Beat 2: Brace fingers along receiver & flex/drive the LEFT THUMB forward against the brass base to click shell into tube!
+            const pushT = smooth(THREE.MathUtils.clamp((shellT - 0.32) / 0.46, 0, 1));
+            const levelT = Math.min(1, pushT * 1.6);
             this.magMesh.position.x = 0.0;
-            this.magMesh.position.y = THREE.MathUtils.lerp(-0.052, -0.018, levelT);
-            this.magMesh.position.z = THREE.MathUtils.lerp(0.045, -0.105, slideT);
-            this.magMesh.rotation.x = THREE.MathUtils.lerp(this.magRestRot.x + 0.44, this.magRestRot.x, levelT);
+            this.magMesh.position.y = THREE.MathUtils.lerp(-0.036, -0.018, levelT);
+            this.magMesh.position.z = THREE.MathUtils.lerp(-0.004, -0.068, pushT);
+            this.magMesh.rotation.x = THREE.MathUtils.lerp(this.magRestRot.x + 0.34, this.magRestRot.x, levelT);
+            moveLeftHand(
+              THREE.MathUtils.lerp(-0.012, -0.008, pushT),
+              THREE.MathUtils.lerp(-0.050, -0.032, pushT),
+              THREE.MathUtils.lerp(0.038, -0.012, pushT),
+              THREE.MathUtils.lerp(0.12, 0.38, pushT),
+              THREE.MathUtils.lerp(0.08, 0.04, pushT),
+              THREE.MathUtils.lerp(-0.08, 0.14, pushT),
+              pushT > 0.18 ? 'shellThumbPush' : 'shellThumbStage'
+            );
+          } else {
+            // Beat 3: Withdraw thumb cleanly out of the loading port to grab the next shell (or transition to pump/foregrip)
+            const exitS = smooth((shellT - 0.78) / 0.22);
+            moveLeftHand(
+              THREE.MathUtils.lerp(-0.008, -0.028, exitS),
+              THREE.MathUtils.lerp(-0.032, -0.086, exitS),
+              THREE.MathUtils.lerp(-0.012, 0.042, exitS),
+              THREE.MathUtils.lerp(0.38, 0.14, exitS),
+              0.08,
+              THREE.MathUtils.lerp(0.14, -0.08, exitS),
+              'shellThumbStage'
+            );
           }
-          moveLeftHand(this.magMesh.position.x - 0.008, this.magMesh.position.y - 0.024, this.magMesh.position.z + 0.028, 0.24, 0.10, -0.15, 'shellFeed');
         } else {
           if (this.magMesh) this.magMesh.visible = false;
           restLeftHand();
@@ -4632,27 +4722,30 @@ class WeaponSystem {
         const t = smooth(rawT);
         if (this.magMesh) this.magMesh.visible = false;
         const pull = rawT > 0.20 && rawT < 0.58 ? smooth((rawT - 0.20) / 0.38) : (rawT >= 0.58 && rawT < 0.88 ? 1 - smooth((rawT - 0.58) / 0.30) : 0);
-        pos.x = THREE.MathUtils.lerp(-0.11, -0.04, t);
-        pos.y = THREE.MathUtils.lerp(0.13, 0.03, t) - pull * 0.012;
+        pos.x = THREE.MathUtils.lerp(-0.09, -0.04, t);
+        pos.y = THREE.MathUtils.lerp(0.11, 0.03, t) - pull * 0.012;
         pos.z = pull * 0.025;
-        rot.x = THREE.MathUtils.lerp(0.28, 0.05, t);
-        rot.y = THREE.MathUtils.lerp(0.30, 0, t);
-        rot.z = THREE.MathUtils.lerp(-0.78, 0, t);
+        rot.x = THREE.MathUtils.lerp(0.24, 0.05, t);
+        rot.y = THREE.MathUtils.lerp(0.26, 0, t);
+        rot.z = THREE.MathUtils.lerp(-0.66, 0, t);
+        this._livePumpOffset = pull * 0.09;
         if (this.boltMesh) {
           this.boltMesh.position.z = this.boltRestPos.z + pull * 0.09;
-          moveLeftHand(this.leftHandRestPos.x, this.leftHandRestPos.y, this.leftHandRestPos.z + pull * 0.09, this.leftHandRestRot.x, this.leftHandRestRot.y, this.leftHandRestRot.z, 'supportRifle');
+          const rackStyle = this.hasVertGrip ? 'foregrip' : 'supportRifle';
+          moveLeftHand(this.leftHandRestPos.x, this.leftHandRestPos.y, this.leftHandRestPos.z + pull * 0.09, this.leftHandRestRot.x, this.leftHandRestRot.y, this.leftHandRestRot.z, rackStyle);
         }
       } else {
         const startP = this.wasEmptyReload ? 0.90 : loadEnd;
         const t = smooth((p - startP) / (1 - startP));
         if (this.magMesh) this.magMesh.visible = false;
         if (this.boltMesh) this.boltMesh.position.copy(this.boltRestPos);
+        this._livePumpOffset = 0;
         restLeftHand();
-        pos.x = THREE.MathUtils.lerp(this.wasEmptyReload ? -0.04 : -0.11, 0, t);
-        pos.y = THREE.MathUtils.lerp(this.wasEmptyReload ? 0.03 : 0.13, 0, t);
-        rot.x = THREE.MathUtils.lerp(this.wasEmptyReload ? 0.05 : 0.28, 0, t);
+        pos.x = THREE.MathUtils.lerp(this.wasEmptyReload ? -0.04 : -0.09, 0, t);
+        pos.y = THREE.MathUtils.lerp(this.wasEmptyReload ? 0.03 : 0.11, 0, t);
+        rot.x = THREE.MathUtils.lerp(this.wasEmptyReload ? 0.05 : 0.24, 0, t);
         rot.y = THREE.MathUtils.lerp(0, 0, t);
-        rot.z = THREE.MathUtils.lerp(this.wasEmptyReload ? 0 : -0.78, 0, t);
+        rot.z = THREE.MathUtils.lerp(this.wasEmptyReload ? 0 : -0.66, 0, t);
       }
       return;
     }
@@ -5187,31 +5280,27 @@ class WeaponSystem {
 
       if (this.plateMesh) {
         if (pt < 0.14) {
-          // Beat A: Dip hand at bottom-left edge to grab fresh ceramic plate
+          // Beat A: Dip hand at bottom-left edge & square wrist upright to pinch fresh plate by its top rim
           this.plateMesh.visible = false;
-          handTarget.set(-0.20, -0.195, -0.25);
-          handRotTarget.set(-0.20, 0.24, -0.38);
+          handTarget.set(-0.18, -0.175, -0.25);
+          handRotTarget.set(-0.08, 0.0, 0.0);
         } else if (pt < 0.44) {
-          // Beat B: Sweep hand + plate horizontally across bottom of screen to lower carrier opening (never floating mid-screen!)
+          // Beat B: Sweep hand + dead-upright plate (held squarely by the top rim!) low across bottom of screen to pouch lip
           const t = smooth((pt - 0.14) / 0.30);
           this.plateMesh.visible = true;
           handTarget.set(
-            THREE.MathUtils.lerp(-0.20, -0.01, t),
-            THREE.MathUtils.lerp(-0.175, -0.112, t),
+            THREE.MathUtils.lerp(-0.18, 0.0, t),
+            THREE.MathUtils.lerp(-0.145, -0.088, t),
             THREE.MathUtils.lerp(-0.255, -0.245, t)
           );
-          handRotTarget.set(
-            THREE.MathUtils.lerp(-0.10, -0.20, t),
-            THREE.MathUtils.lerp(0.32, 0.04, t),
-            THREE.MathUtils.lerp(-0.42, -0.28, t)
-          );
+          handRotTarget.set(-0.08, 0.0, 0.0);
         } else if (pt < 0.54) {
-          // Beat C: Brief alignment beat low at the carrier pouch lip along bottom of screen
+          // Beat C: Brief upright alignment beat at the carrier pouch lip along bottom of screen
           this.plateMesh.visible = true;
-          handTarget.set(-0.01, -0.112, -0.245);
-          handRotTarget.set(-0.20, 0.04, -0.28);
+          handTarget.set(0.0, -0.088, -0.245);
+          handRotTarget.set(-0.08, 0.0, 0.0);
         } else if (pt < 0.86) {
-          // Beat D: Two-stage vertical push down into the carrier across bottom edge
+          // Beat D: Two-stage vertical push straight down into the carrier (zero sideways angle!)
           const raw = (pt - 0.54) / 0.32;
           let slideT;
           if (raw < 0.45) {
@@ -5223,16 +5312,16 @@ class WeaponSystem {
           }
           this.plateMesh.visible = slideT < 0.96;
           handTarget.set(
-            -0.01,
-            THREE.MathUtils.lerp(-0.112, -0.225, slideT),
+            0.0,
+            THREE.MathUtils.lerp(-0.088, -0.205, slideT),
             THREE.MathUtils.lerp(-0.245, -0.275, slideT)
           );
-          handRotTarget.set(-0.20 - slideT * 0.12, 0.04, -0.28 - slideT * 0.06);
+          handRotTarget.set(-0.08 - slideT * 0.08, 0.0, 0.0);
         } else {
           // Beat E: Brief low settle pause before next plate or zipping up
           this.plateMesh.visible = false;
           handTarget.set(-0.06, -0.195, -0.24);
-          handRotTarget.set(-0.26, 0.10, -0.36);
+          handRotTarget.set(-0.22, 0.08, -0.28);
         }
       }
     } else if (p < grabCloseEnd) {
@@ -5278,8 +5367,14 @@ class WeaponSystem {
       if (this.plateHand.userData) this.plateHand.userData.activeStyle = plateStyle;
       this.plateHand.position.lerp(handTarget, handRate);
       this.plateHand.rotation.x = THREE.MathUtils.lerp(this.plateHand.rotation.x, handRotTarget.x, handRate);
-      this.plateHand.rotation.y = THREE.MathUtils.lerp(this.plateHand.rotation.y, handRotTarget.y, handRate);
-      this.plateHand.rotation.z = THREE.MathUtils.lerp(this.plateHand.rotation.z, handRotTarget.z, handRate);
+      if (this.plateMesh && this.plateMesh.visible) {
+        // Lock yaw & roll strictly to 0 while holding the ceramic plate so it is ALWAYS held upright by the top rim!
+        this.plateHand.rotation.y = 0;
+        this.plateHand.rotation.z = 0;
+      } else {
+        this.plateHand.rotation.y = THREE.MathUtils.lerp(this.plateHand.rotation.y, handRotTarget.y, handRate);
+        this.plateHand.rotation.z = THREE.MathUtils.lerp(this.plateHand.rotation.z, handRotTarget.z, handRate);
+      }
       const lShoulder = new THREE.Vector3(-0.30, -0.30, 0.08);
       const lWrist = this.plateHand.position.clone().add(new THREE.Vector3(-0.012, -0.004, 0.036));
       this._currentAimHand = this.plateHand;

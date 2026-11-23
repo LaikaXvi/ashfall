@@ -539,14 +539,18 @@
         stanceTrans: st.stanceTrans || null
       };
 
-      // Update grip anchors for pistol vs rifle so both hands always seat accurately
+      // Update grip anchors for pistol vs rifle (including vertical foregrips & live Trench Gun slide pump!)
       if (r.rearGripTarget && r.foregripTarget) {
+        const pumpOff = st.pumpOffset || 0;
         if (isPistol) {
           r.rearGripTarget.position.set(0.01, -0.05, 0.02);
           r.foregripTarget.position.set(-0.02, -0.055, -0.01); // Two-handed weaver/isosceles pistol grip
+        } else if (st.hasVertGrip) {
+          r.rearGripTarget.position.set(0.01, -0.055, 0.04);
+          r.foregripTarget.position.set(-0.01, -0.088, -0.24 + pumpOff); // Left hand wrapped around vertical foregrip!
         } else {
           r.rearGripTarget.position.set(0.01, -0.055, 0.04);
-          r.foregripTarget.position.set(-0.01, -0.035, -0.25); // Left hand on rifle handguard/foregrip
+          r.foregripTarget.position.set(-0.01, -0.035, -0.25 + pumpOff); // Left hand on rifle handguard / shotgun pump
         }
       }
 

@@ -795,9 +795,10 @@ class Player {
       if (p.inventoryTablet) p.inventoryTablet.visible = !isFP && !!this.isInventoryOpen && !this.isDowned && !this.dead;
       if (p.weaponMount) p.weaponMount.visible = !isFP && !this.isDowned && !this.dead && !this.mantleState && !this.ledgeState && !this.isInventoryOpen;
 
-      // Sync 3rd-person weapon bolt blowback
+      // Sync 3rd-person weapon bolt blowback & M870 Trench Gun pump slide (along with any pump-mounted vertical foregrip!)
+      const tpPumpOff = (!isFP && ws && this.tpWeapon && this.tpWeapon.weaponId === 'm870') ? (ws._livePumpOffset || 0) : 0;
       if (!isFP && ws && this.tpWeapon && this.tpWeapon.boltMesh && !ws.isReloading) {
-        this.tpWeapon.boltMesh.position.z = this.tpWeapon.boltRestPos.z + (ws.boltKick || 0);
+        this.tpWeapon.boltMesh.position.z = this.tpWeapon.boltRestPos.z + (this.tpWeapon.weaponId === 'm870' ? tpPumpOff : (ws.boltKick || 0));
       }
 
       const plateProg = (!isFP && ws && ws.isPlating && ws.plateDuration > 0)
@@ -840,6 +841,8 @@ class Player {
         stanceTrans: this.stanceTrans,
         recoilKick: isFP ? 0 : (ws ? (ws.recoilZ || ws.recoilOffset || 0) : 0),
         isPistol: !!(this.tpWeapon && this.tpWeapon.isPistol),
+        hasVertGrip: !!(this.tpWeapon && this.tpWeapon.hasVertGrip),
+        pumpOffset: tpPumpOff,
         world: this.world,
         worldPos: this.position,
         worldYaw: this.yaw,

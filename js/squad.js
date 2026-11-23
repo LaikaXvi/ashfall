@@ -184,6 +184,7 @@ class SquadMate {
       if (builtWpn && builtWpn.group) {
         wObj = builtWpn.group;
         this.isPistol = !!builtWpn.isPistol;
+        this.hasVertGrip = !!builtWpn.hasVertGrip;
         wObj.scale.setScalar(builtWpn.isPistol ? 1.25 : 1.38);
         wObj.position.set(0, 0.01, builtWpn.isPistol ? -0.02 : -0.12);
       }
@@ -667,6 +668,7 @@ class SquadMate {
       isDowned: !!this.isDowned,
       dead: !!this.dead,
       isPistol: !!this.isPistol,
+      hasVertGrip: !!this.hasVertGrip,
       world: this.world,
       worldPos: this.position,
       worldYaw: this.group ? (this.group.rotation.y + Math.PI) : 0,
@@ -752,6 +754,7 @@ class SquadMate {
             isThrowing: !!this._remoteThrow,
             throwProgress: this._remoteThrowProg || ((tLoop * 1.45) % 1),
             isPistol: !!this.isPistol,
+            hasVertGrip: !!this.hasVertGrip,
             world: this.world,
             worldPos: this.position,
             worldYaw: this.group ? (this.group.rotation.y + Math.PI) : 0,
