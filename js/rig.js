@@ -883,7 +883,8 @@
         const isHiddenBone = skBones.map((b) => {
           const bn = normName(b.name);
           return bn.includes('head') || bn.includes('neck') || bn.includes('shoulder') ||
-            bn.includes('arm') || bn.includes('forearm') || bn.includes('hand');
+            bn.includes('arm') || bn.includes('forearm') || bn.includes('hand') ||
+            bn.includes('spine2') || bn.includes('spine1');
         });
         const vCount = skinIdx.count;
         const idxArr = skinIdx.array;
@@ -900,9 +901,9 @@
             const bi = idxArr[iBase + k] | 0;
             if (isHiddenBone[bi]) hSum += wtArr[wBase + k];
           }
-          // Discard head, neck, collar, shoulders, and both arms cleanly below collarbone so nothing clips the FP camera
-          const aboveChest = posAttr ? (posAttr.getZ(i) > 145.5) : false;
-          fpMaskArr[i] = (hSum > 0.05 || aboveChest) ? 1.0 : 0.0;
+          // Discard head, neck, shoulders, arms, and upper torso/plate carrier so sliding or looking down never blocks the FP screen
+          const aboveWaist = posAttr ? (posAttr.getZ(i) > 108.0) : false;
+          fpMaskArr[i] = (hSum > 0.05 || aboveWaist) ? 1.0 : 0.0;
         }
         geom.setAttribute('fpMask', new THREE.BufferAttribute(fpMaskArr, 1));
 
@@ -915,7 +916,7 @@
           shader.fragmentShader = 'uniform float uFpBodyMode;\nvarying float vFpMask;\n' +
             shader.fragmentShader.replace('#include <clipping_planes_fragment>', 'if (uFpBodyMode > 0.5 && vFpMask > 0.5) discard;\n#include <clipping_planes_fragment>');
         };
-        fpBodyMat.customProgramCacheKey = () => 'ashfall_fp_body_mask_v1';
+        fpBodyMat.customProgramCacheKey = () => 'ashfall_fp_body_mask_v2';
         fpBodyMat.needsUpdate = true;
         this.body.material = fpBodyMat;
       }
@@ -1607,11 +1608,12 @@
           shOff.z = THREE.MathUtils.clamp(shOff.z + shVel.z * stepDt, -0.055, 0.055);
 
           // Right shoulder pockets inward/upward matching tucked shoulder-center viewmodel; left clavicle protracts slightly forward for support
-          const shBaseX = side === 'right' ? 0.175 : 0.21;
+          const isPlatingArm = !!(side === 'left' && ws && ws.isPlating);
+          const shBaseX = side === 'right' ? 0.175 : (isPlatingArm ? 0.25 : 0.21);
           const shCamLocal = new THREE.Vector3(
             sideSign * (shBaseX - (side === 'right' ? adsB * 0.032 : adsB * 0.015)) + shOff.x,
-            -0.29 + (side === 'right' ? adsB * 0.024 : adsB * 0.014) - wp * 0.020 + shOff.y,
-            0.14 + (side === 'left' ? -adsB * 0.022 : adsB * 0.012) + wp * 0.035 + shOff.z
+            (isPlatingArm ? -0.255 : -0.29) + (side === 'right' ? adsB * 0.024 : adsB * 0.014) - wp * 0.020 + shOff.y,
+            (isPlatingArm ? -0.08 : 0.14) + (side === 'left' ? -adsB * 0.022 : adsB * 0.012) + wp * 0.035 + shOff.z
           );
           const camSh = cam.localToWorld(shCamLocal);
           const anchor = shoulderW.clone().lerp(camSh, 0.50);
@@ -1622,6 +1624,23 @@
             anchor.addScaledVector(wristTarget.clone().sub(anchor).normalize(), dist - maxReach);
           }
 
+          // Keep the severed upper-arm root strictly outside the camera frustum (behind near plane or >=11.5cm below bottom edge)
+          // so opening doors, opening containers, or plating can NEVER expose the back of the arm viewmodel!
+          const anchorCam = cam.worldToLocal(anchor.clone());
+          anchorCam.z = Math.max(-0.15, anchorCam.z);
+          if (anchorCam.z < 0.06) {
+            const halfTanY = Math.tan(THREE.MathUtils.degToRad((cam.fov || 75) * 0.5));
+            const maxSafeY = -Math.max(0, -anchorCam.z) * halfTanY - 0.115;
+            if (anchorCam.y > maxSafeY) anchorCam.y = maxSafeY;
+          }
+          anchor.copy(cam.localToWorld(anchorCam));
+
+          const clampedToWrist = wristTarget.clone().sub(anchor);
+          const clampedDist = clampedToWrist.length();
+          if (clampedDist > maxReach && clampedDist > 1e-5) {
+            wristTarget = anchor.clone().addScaledVector(clampedToWrist.multiplyScalar(1 / clampedDist), maxReach);
+          }
+
           if (bArm.parent) {
             bArm.parent.updateWorldMatrix(true, false);
             bArm.position.copy(bArm.parent.worldToLocal(anchor.clone()));
@@ -1630,9 +1649,9 @@
 
           // MW4 Kinetic Dynamic Elbow Pole: tucks ribs cleanly on ADS, 45° Tactical Stance cant, Corner Lean & CQB Wall Push!
           const cantTuck = THREE.MathUtils.clamp(-vmRoll * sideSign * 0.22, -0.14, 0.16);
-          const poleOut = sideSign * (0.42 - adsB * 0.09 - wp * 0.08) - cantTuck;
-          const poleDown = 0.48 + adsB * 0.06 + wp * 0.10 + Math.abs(vmRoll) * 0.08;
-          const poleBack = 0.04 + wp * 0.14 + (side === 'right' ? adsB * 0.04 : -adsB * 0.02);
+          const poleOut = isPlatingArm ? -0.52 : (sideSign * (0.42 - adsB * 0.09 - wp * 0.08) - cantTuck);
+          const poleDown = isPlatingArm ? 0.22 : (0.48 + adsB * 0.06 + wp * 0.10 + Math.abs(vmRoll) * 0.08);
+          const poleBack = isPlatingArm ? 0.02 : (0.04 + wp * 0.14 + (side === 'right' ? adsB * 0.04 : -adsB * 0.02));
           const pole = anchor.clone()
             .addScaledVector(camRight, poleOut)
             .addScaledVector(camDown, poleDown)

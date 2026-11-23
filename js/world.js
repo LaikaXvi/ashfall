@@ -1782,8 +1782,13 @@ class WastelandWorld {
       normal: new THREE.Vector3(sinR, 0, cosR).normalize(),
       width,
       height,
+      halfThick: 0.075,
+      minAngle: -1.68,
+      maxAngle: 1.68,
       angle: 0,
       targetAngle: 0,
+      angVel: 0,
+      freeSwing: false,
       state: 'closed',
       passable: false,
       bashCooldown: 0,
@@ -1797,6 +1802,7 @@ class WastelandWorld {
       maxY: baseY + height,
       minZ: cz - halfSpanZ,
       maxZ: cz + halfSpanZ,
+      isDoorThreshold: true,
       doorRef: doorObj
     };
     doorObj.collider = collider;
@@ -1807,9 +1813,11 @@ class WastelandWorld {
 
   interactDoor(door, playerPos, isPeek = false) {
     if (!door || !playerPos) return;
-    if (door.state === 'open' || door.state === 'peek') {
+    if (door.state === 'open' || door.state === 'peek' || Math.abs(door.angle) > 0.16) {
       door.targetAngle = 0;
       door.state = 'closed';
+      door.freeSwing = false;
+      door.angVel = 0;
       door.bashSpeed = 6.8;
       if (window.soundEngine && window.soundEngine.playDoorClose) {
         try { window.soundEngine.playDoorClose(); } catch (e) {}
@@ -1820,10 +1828,12 @@ class WastelandWorld {
     const toPlayerZ = playerPos.z - door.center.z;
     const dot = toPlayerX * door.normal.x + toPlayerZ * door.normal.z;
     const swingDir = dot >= 0 ? 1 : -1;
+    door.freeSwing = false;
+    door.angVel = 0;
     if (isPeek) {
-      door.targetAngle = swingDir * 0.42;
+      door.targetAngle = swingDir * 0.44;
       door.state = 'peek';
-      door.bashSpeed = 5.5;
+      door.bashSpeed = 5.8;
       if (window.soundEngine && window.soundEngine.playDoorOpen) {
         try { window.soundEngine.playDoorOpen(true); } catch (e) {}
       }
@@ -1837,52 +1847,265 @@ class WastelandWorld {
     }
   }
 
-  updateDoors(dt, player, weaponSystem) {
-    if (!this.doors || this.doors.length === 0) return;
-    const px = player && player.position ? player.position.x : 0;
-    const py = player && player.position ? (player.position.y - (player.currentEyeHeight || 1.65)) : 0;
-    const pz = player && player.position ? player.position.z : 0;
-    const isSprinting = !!(player && (player.isSprinting || player.isTacSprinting));
+  _collidesStaticOnly(x, z, r, minY, maxY) {
+    const list = this.getNearbyColliders ? this.getNearbyColliders(x, z, r + 0.5) : this.colliders;
+    for (let i = 0; i < list.length; i++) {
+      const c = list[i];
+      if (c.doorRef) continue;
+      if (maxY <= c.minY + 0.02 || minY >= c.maxY - 0.42) continue;
+      if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) return true;
+    }
+    return false;
+  }
+
+  // Test sphere/capsule against the live rotated 3D door leaf segment (open, swinging, peeked, or closed!)
+  hitTestDoorLeaves(x, z, r = 0.08, minY = 0, maxY = 1.8) {
+    if (!this.doors || this.doors.length === 0) return null;
+    for (let i = 0; i < this.doors.length; i++) {
+      const d = this.doors[i];
+      const baseY = d.hingePos.y;
+      if (maxY <= baseY + 0.02 || minY >= baseY + d.height - 0.02) continue;
+      const hx = d.hingePos.x;
+      const hz = d.hingePos.z;
+      const reach = d.width + r + 0.25;
+      if (Math.abs(x - hx) > reach || Math.abs(z - hz) > reach) continue;
+
+      const theta = d.baseRotY + d.angle;
+      const uX = Math.cos(theta);
+      const uZ = -Math.sin(theta);
+      const relX = x - hx;
+      const relZ = z - hz;
+      const proj = Math.max(0, Math.min(d.width, relX * uX + relZ * uZ));
+      const qx = hx + uX * proj;
+      const qz = hz + uZ * proj;
+      const dx = x - qx;
+      const dz = z - qz;
+      const minDist = r + (d.halfThick || 0.075);
+      if (dx * dx + dz * dz < minDist * minDist) {
+        return d;
+      }
+    }
+    return null;
+  }
+
+  // Resolve entity circle vs live physical door leaf + apply realistic rotational push impulse (including pushing peeked & open doors!)
+  resolveDoorEntityCollision(pos, radius, feetY, headY, velX = 0, velZ = 0, opts = null) {
+    if (!this.doors || this.doors.length === 0 || !pos) return false;
+    let collidedAny = false;
+    const isSprinting = !!(opts && opts.isSprinting);
+    const isAI = !!(opts && opts.isAI);
+    const weaponSystem = opts && opts.weaponSystem;
+    const dt = Math.min(0.05, Math.max(0.004, (opts && opts.dt) || 0.016));
 
     for (let i = 0; i < this.doors.length; i++) {
       const d = this.doors[i];
-      if (d.bashCooldown > 0) d.bashCooldown = Math.max(0, d.bashCooldown - dt);
+      const baseY = d.hingePos.y;
+      if (headY <= baseY + 0.05 || feetY >= baseY + d.height - 0.05) continue;
+      const hx = d.hingePos.x;
+      const hz = d.hingePos.z;
+      const reach = d.width + radius + 0.3;
+      if (Math.abs(pos.x - hx) > reach || Math.abs(pos.z - hz) > reach) continue;
 
-      if (player && !player.dead) {
-        const dy = Math.abs(py - d.hingePos.y);
-        if (dy < 2.2) {
-          const dx = px - d.center.x;
-          const dz = pz - d.center.z;
-          const dist = Math.hypot(dx, dz);
+      const theta = d.baseRotY + d.angle;
+      const uX = Math.cos(theta);
+      const uZ = -Math.sin(theta);
+      // Unit tangent in direction of +d(angle)
+      const tX = -Math.sin(theta);
+      const tZ = -Math.cos(theta);
 
-          if (isSprinting && d.state !== 'open' && d.bashCooldown <= 0 && dist < 1.58) {
-            const dot = dx * d.normal.x + dz * d.normal.z;
-            const swingDir = dot >= 0 ? 1 : -1;
-            d.targetAngle = swingDir * 1.68;
-            d.state = 'open';
-            d.passable = true;
-            d.bashSpeed = 16.5;
-            d.bashCooldown = 0.65;
-            if (window.soundEngine && window.soundEngine.playDoorBash) {
-              try { window.soundEngine.playDoorBash(); } catch (e) {}
-            }
-            if (weaponSystem && weaponSystem.triggerDoorBash) {
-              weaponSystem.triggerDoorBash();
-            }
-          } else if (d.state === 'peek' && dist < 1.32) {
-            const swingDir = d.targetAngle >= 0 ? 1 : -1;
-            d.targetAngle = swingDir * 1.52;
-            d.state = 'open';
-            d.bashSpeed = 6.8;
+      const relX = pos.x - hx;
+      const relZ = pos.z - hz;
+      const rawProj = relX * uX + relZ * uZ;
+      const proj = Math.max(0, Math.min(d.width, rawProj));
+      const qx = hx + uX * proj;
+      const qz = hz + uZ * proj;
+      let dx = pos.x - qx;
+      let dz = pos.z - qz;
+      let dist = Math.hypot(dx, dz);
+      const minDist = radius + (d.halfThick || 0.075);
+      if (dist >= minDist) continue;
+
+      collidedAny = true;
+      let nx, nz;
+      if (dist > 1e-4) {
+        nx = dx / dist;
+        nz = dz / dist;
+      } else {
+        const sideSign = (relX * tX + relZ * tZ) >= 0 ? 1 : -1;
+        nx = tX * sideSign;
+        nz = tZ * sideSign;
+        dist = 0;
+      }
+
+      const overlap = minDist - dist;
+      const lever = Math.max(0, Math.min(1, proj / Math.max(0.4, d.width)));
+      // Push direction from entity onto door is (-nx, -nz); project onto +angle tangent (tX, tZ)
+      const tauSign = (-nx) * tX + (-nz) * tZ;
+      const intoSpeed = Math.max(0, -(velX * nx + velZ * nz));
+      const isLatchedClosed = (d.state === 'closed' && !d.freeSwing && Math.abs(d.angle) < 0.05);
+
+      if (!d.locked) {
+        if (isSprinting && !isAI && d.bashCooldown <= 0 && Math.abs(tauSign) > 0.35 && lever > 0.16 && Math.abs(d.angle) < 1.35) {
+          // Tactical sprint bash slams closed, peeked, or ajar doors violently open!
+          const bashDir = tauSign >= 0 ? 1 : -1;
+          d.freeSwing = true;
+          d.state = 'open';
+          d.angVel = bashDir * 11.5;
+          d.bashCooldown = 0.65;
+          if (window.soundEngine && window.soundEngine.playDoorBash) {
+            try { window.soundEngine.playDoorBash(); } catch (e) {}
           }
+          if (weaponSystem && weaponSystem.triggerDoorBash) {
+            weaponSystem.triggerDoorBash();
+          }
+        } else if (isLatchedClosed && isAI) {
+          this.interactDoor(d, pos, false);
+        } else if (!isLatchedClosed && lever > 0.14 && Math.abs(tauSign) > 0.22) {
+          // Unlatched door (peeked, swinging, or open): entity physically pushes & swings the door leaf!
+          if (d.state === 'peek') {
+            d.state = 'open';
+          }
+          d.freeSwing = true;
+          const pushDrive = (intoSpeed * 3.1 + overlap * 26.0) * (0.35 + 0.85 * lever);
+          d.angVel = THREE.MathUtils.clamp(d.angVel + tauSign * pushDrive * dt * 14.0, -12.0, 12.0);
         }
       }
 
-      if (Math.abs(d.angle - d.targetAngle) > 0.004) {
-        d.angle = THREE.MathUtils.lerp(d.angle, d.targetAngle, Math.min(1, dt * d.bashSpeed));
-        d.pivot.rotation.y = d.baseRotY + d.angle;
+      // Solid physical collision response: push entity cleanly out of the door leaf (unless blocked by a static wall behind)
+      const candX = pos.x + nx * overlap;
+      const candZ = pos.z + nz * overlap;
+      if (!this._collidesStaticOnly(candX, candZ, radius * 0.92, feetY, headY)) {
+        pos.x = candX;
+        pos.z = candZ;
+      } else if (!this._collidesStaticOnly(candX, pos.z, radius * 0.92, feetY, headY)) {
+        pos.x = candX;
+      } else if (!this._collidesStaticOnly(pos.x, candZ, radius * 0.92, feetY, headY)) {
+        pos.z = candZ;
       }
-      d.passable = Math.abs(d.angle) > 0.72;
+    }
+    return collidedAny;
+  }
+
+  // Reflect thrown grenades cleanly off the live angled door leaf (while letting grenades pass freely through open doorways!)
+  bounceProjectileOffDoors(pos, vel, r = 0.08) {
+    if (!this.doors || this.doors.length === 0 || !pos || !vel) return 0;
+    for (let i = 0; i < this.doors.length; i++) {
+      const d = this.doors[i];
+      const baseY = d.hingePos.y;
+      if (pos.y + r <= baseY || pos.y - r >= baseY + d.height) continue;
+      const hx = d.hingePos.x;
+      const hz = d.hingePos.z;
+      const reach = d.width + r + 0.25;
+      if (Math.abs(pos.x - hx) > reach || Math.abs(pos.z - hz) > reach) continue;
+
+      const theta = d.baseRotY + d.angle;
+      const uX = Math.cos(theta);
+      const uZ = -Math.sin(theta);
+      const tX = -Math.sin(theta);
+      const tZ = -Math.cos(theta);
+
+      const relX = pos.x - hx;
+      const relZ = pos.z - hz;
+      const proj = Math.max(0, Math.min(d.width, relX * uX + relZ * uZ));
+      const qx = hx + uX * proj;
+      const qz = hz + uZ * proj;
+      const dx = pos.x - qx;
+      const dz = pos.z - qz;
+      const dist = Math.hypot(dx, dz);
+      const minDist = r + (d.halfThick || 0.075);
+      if (dist >= minDist) continue;
+
+      let nx, nz;
+      if (dist > 1e-4) {
+        nx = dx / dist;
+        nz = dz / dist;
+      } else {
+        const sideSign = (relX * tX + relZ * tZ) >= 0 ? 1 : -1;
+        nx = tX * sideSign;
+        nz = tZ * sideSign;
+      }
+      pos.x = qx + nx * (minDist + 0.006);
+      pos.z = qz + nz * (minDist + 0.006);
+
+      const vDotN = vel.x * nx + vel.z * nz;
+      const impact = Math.abs(vDotN);
+      if (vDotN < 0) {
+        vel.x -= (1 + 0.45) * vDotN * nx;
+        vel.z -= (1 + 0.45) * vDotN * nz;
+        vel.x *= 0.88;
+        vel.z *= 0.88;
+        if (!d.locked && !(d.state === 'closed' && !d.freeSwing && Math.abs(d.angle) < 0.05)) {
+          const tau = ((-nx) * tX + (-nz) * tZ) * (proj / Math.max(0.5, d.width));
+          d.freeSwing = true;
+          if (d.state === 'peek') d.state = 'open';
+          d.angVel = THREE.MathUtils.clamp(d.angVel + tau * impact * 0.16, -10, 10);
+        }
+      }
+      return Math.max(0.5, impact);
+    }
+    return 0;
+  }
+
+  applyExplosionToDoors(blastPos, radius = 6.5) {
+    if (!this.doors || !blastPos) return;
+    for (let i = 0; i < this.doors.length; i++) {
+      const d = this.doors[i];
+      if (d.locked) continue;
+      if (Math.abs(blastPos.y - d.center.y) > 3.2) continue;
+      const dx = d.center.x - blastPos.x;
+      const dz = d.center.z - blastPos.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist >= radius || dist < 1e-3) continue;
+      const theta = d.baseRotY + d.angle;
+      const tX = -Math.sin(theta);
+      const tZ = -Math.cos(theta);
+      const pushTau = (dx / dist) * tX + (dz / dist) * tZ;
+      const falloff = 1 - dist / radius;
+      d.freeSwing = true;
+      d.state = 'open';
+      d.angVel = THREE.MathUtils.clamp(d.angVel + (pushTau >= 0 ? 1 : -1) * (6.5 + 8.5 * falloff), -14, 14);
+    }
+  }
+
+  updateDoors(dt, player, weaponSystem) {
+    if (!this.doors || this.doors.length === 0) return;
+    const stepDt = Math.min(0.05, Math.max(0.001, dt || 0.016));
+
+    for (let i = 0; i < this.doors.length; i++) {
+      const d = this.doors[i];
+      if (d.bashCooldown > 0) d.bashCooldown = Math.max(0, d.bashCooldown - stepDt);
+
+      if (d.freeSwing) {
+        // Real inertial door physics: angular velocity + hinge friction damping + wall-stop rebound
+        d.angle += d.angVel * stepDt;
+        d.angVel *= Math.exp(-4.8 * stepDt);
+
+        if (d.angle > d.maxAngle) {
+          d.angle = d.maxAngle;
+          d.angVel = -Math.abs(d.angVel) * 0.18;
+        } else if (d.angle < d.minAngle) {
+          d.angle = d.minAngle;
+          d.angVel = Math.abs(d.angVel) * 0.18;
+        }
+
+        // Soft latch detent if pushed gently all the way back into the closed frame
+        if (Math.abs(d.angle) < 0.035 && Math.abs(d.angVel) < 0.35) {
+          d.angle = 0;
+          d.angVel = 0;
+          d.targetAngle = 0;
+          d.freeSwing = false;
+          d.state = 'closed';
+        } else if (Math.abs(d.angVel) < 0.015) {
+          d.angVel = 0;
+        }
+      } else if (Math.abs(d.angle - d.targetAngle) > 0.002) {
+        d.angle = THREE.MathUtils.lerp(d.angle, d.targetAngle, Math.min(1, stepDt * d.bashSpeed));
+      } else {
+        d.angle = d.targetAngle;
+      }
+
+      d.pivot.rotation.y = d.baseRotY + d.angle;
+      d.passable = Math.abs(d.angle) > 0.68;
     }
   }
 
@@ -1898,14 +2121,16 @@ class WastelandWorld {
 
     const buildWallWithDoor = (wx, wz, length, isHorizontal, rotY) => {
       const sideLen = (length - doorW) / 2;
+      const lintelH = Math.max(0.35, h - 2.65);
+      const lintelY = baseY + 2.65 + lintelH * 0.5;
       if (isHorizontal) {
         this._addBox(wx - (doorW / 2 + sideLen / 2), baseY + h / 2, wz, sideLen, h, t, wMat);
         this._addBox(wx + (doorW / 2 + sideLen / 2), baseY + h / 2, wz, sideLen, h, t, wMat);
-        this._addBox(wx, baseY + h - (h - 2.65) / 2, wz, doorW, Math.max(0.6, h - 2.65), t, wMat);
+        this._addBox(wx, lintelY, wz, doorW, lintelH, t, wMat);
       } else {
         this._addBox(wx, baseY + h / 2, wz - (doorW / 2 + sideLen / 2), t, h, sideLen, wMat);
         this._addBox(wx, baseY + h / 2, wz + (doorW / 2 + sideLen / 2), t, h, sideLen, wMat);
-        this._addBox(wx, baseY + h - (h - 2.65) / 2, wz, t, Math.max(0.6, h - 2.65), doorW, wMat);
+        this._addBox(wx, lintelY, wz, t, lintelH, doorW, wMat);
       }
       this._addDoor(wx, baseY + 0.16, wz, doorW, 2.62, rotY, 'Entrance Door', 'steel');
     };

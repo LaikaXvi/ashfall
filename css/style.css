@@ -7121,12 +7121,21 @@ input[type="range"].gp-focus {
   height: calc(var(--deploy-slot) * 3 + var(--deploy-gap) * 2);
 }
 
-.dmz-prompt-pill {
+.dmz-prompt-stack {
   position: fixed;
   left: 50%;
-  bottom: 30%;
-  transform: translateX(-50%);
+  bottom: 11.5%;
+  transform: translateX(-50%) scale(var(--ui-scale, 1));
+  transform-origin: bottom center;
   z-index: 42;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.dmz-prompt-pill {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -7163,6 +7172,10 @@ input[type="range"].gp-focus {
   object-fit: contain;
   flex-shrink: 0;
   filter: drop-shadow(0 0 6px rgba(255, 193, 7, 0.55));
+}
+
+.dmz-prompt-pill.dmz-prompt-medkit .pp-icon {
+  filter: drop-shadow(0 0 6px rgba(105, 240, 174, 0.55));
 }
 
 .dmz-prompt-pill .pp-label {
@@ -7384,7 +7397,7 @@ input[type="range"].gp-focus {
   transform-origin: center left;
 }
 
-.dmz-prompt-pill {
+.dmz-prompt-stack {
   transform: translateX(-50%) scale(var(--ui-scale, 1));
   transform-origin: bottom center;
 }

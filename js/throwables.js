@@ -403,21 +403,38 @@ class ThrowableSystem {
     }
   }
 
-  _pointHitsCollider(p, r = 0.08) {
-    if (!this.world || !this.world.colliders) return false;
+  _pointHitsCollider(p, r = 0.08, skipDoorLeaves = false) {
+    if (!this.world || !this.world.colliders) return null;
     const list = this.world.getNearbyColliders ? this.world.getNearbyColliders(p.x, p.z, r + 0.5) : this.world.colliders;
     for (let i = 0; i < list.length; i++) {
       const c = list[i];
+      // Skip static doorway threshold AABBs so grenades pass cleanly through open/peeked doorways from outside!
+      if (c.doorRef) continue;
       if (p.y + r > c.minY && p.y - r < c.maxY &&
           p.x + r > c.minX && p.x - r < c.maxX &&
           p.z + r > c.minZ && p.z - r < c.maxZ) {
         return c;
       }
     }
+    // Collide accurately against the live angled 3D door leaf (closed, peeked, swinging, or open!)
+    if (!skipDoorLeaves && this.world.hitTestDoorLeaves) {
+      const hitDoor = this.world.hitTestDoorLeaves(p.x, p.z, r, p.y - r, p.y + r);
+      if (hitDoor) {
+        return {
+          isDoorLeaf: true,
+          doorRef: hitDoor,
+          minY: hitDoor.hingePos.y,
+          maxY: hitDoor.hingePos.y + hitDoor.height
+        };
+      }
+    }
     return null;
   }
 
   _detonateFrag(pos, player, enemyManager, onHitCallback) {
+    if (this.world && this.world.applyExplosionToDoors) {
+      this.world.applyExplosionToDoors(pos, 6.5);
+    }
     const distToPlayer = pos.distanceTo(player.position);
     const dx = pos.x - player.position.x;
     const dz = pos.z - player.position.z;
@@ -826,9 +843,9 @@ class ThrowableSystem {
       } else {
         const resolved = prevPos.clone();
 
-        // 1. X axis
+        // 1. X axis (static world geometry; open doorways have no threshold AABB!)
         resolved.x = nextPos.x;
-        const hitX = this._pointHitsCollider(resolved, r);
+        const hitX = this._pointHitsCollider(resolved, r, true);
         if (hitX) {
           const impX = Math.abs(pr.vel.x);
           resolved.x = prevPos.x;
@@ -837,9 +854,9 @@ class ThrowableSystem {
           tryBounceSound(impX);
         }
 
-        // 2. Z axis
+        // 2. Z axis (static world geometry)
         resolved.z = nextPos.z;
-        const hitZ = this._pointHitsCollider(resolved, r);
+        const hitZ = this._pointHitsCollider(resolved, r, true);
         if (hitZ) {
           const impZ = Math.abs(pr.vel.z);
           resolved.z = prevPos.z;
@@ -850,7 +867,7 @@ class ThrowableSystem {
 
         // 3. Y axis (ground plane, building floors/crates, or ceilings!)
         resolved.y = nextPos.y;
-        const hitY = this._pointHitsCollider(resolved, r);
+        const hitY = this._pointHitsCollider(resolved, r, true);
         if (hitY) {
           const impY = Math.abs(pr.vel.y);
           if (pr.vel.y <= 0) {
@@ -880,6 +897,12 @@ class ThrowableSystem {
             pr.vel.z = 0;
           }
           tryBounceSound(impY);
+        }
+
+        // 4. Live angled 3D door leaf bounce (grenades pass freely through open doorways, or bank accurately off open/closed door panels!)
+        if (this.world && this.world.bounceProjectileOffDoors) {
+          const doorImp = this.world.bounceProjectileOffDoors(resolved, pr.vel, r);
+          if (doorImp > 0) tryBounceSound(doorImp);
         }
 
         nextPos.copy(resolved);

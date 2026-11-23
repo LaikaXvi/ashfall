@@ -1206,6 +1206,17 @@ class Enemy {
     if (!this._collides(this.position.x, this.position.z + vz, r)) {
       this.position.z += vz;
     }
+    if (this.world && this.world.resolveDoorEntityCollision) {
+      this.world.resolveDoorEntityCollision(
+        this.position,
+        r,
+        this.position.y,
+        this.position.y + 1.65,
+        dirX * speed,
+        dirZ * speed,
+        { isAI: true, dt }
+      );
+    }
 
     let movedDist = Math.hypot(this.position.x - prevX, this.position.z - prevZ);
 
@@ -1539,14 +1550,25 @@ class Enemy {
     const list = this.world.getNearbyColliders ? this.world.getNearbyColliders(x, z, r + 0.5) : this.world.colliders;
     for (let i = 0; i < list.length; i++) {
       const c = list[i];
-      if (c.doorRef && c.doorRef.passable) continue;
+      if (c.doorRef) continue;
       // Elevation-aware collision: allow smooth step-up onto staircases (<= 0.48m) & walking beneath 2nd-floor ceilings (>= 1.65m)!
       if (c.maxY <= feetY + 0.48) continue;
       if (c.minY >= feetY + 1.65) continue;
       if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) {
-        // AI operator walking up to a closed unlocked door automatically swings it open!
-        if (c.doorRef && !c.doorRef.passable && !c.doorRef.locked && this.world && this.world.interactDoor && c.doorRef.state === 'closed') {
-          this.world.interactDoor(c.doorRef, this.position, false);
+        return true;
+      }
+    }
+    if (this.world && this.world.hitTestDoorLeaves) {
+      const hitDoor = this.world.hitTestDoorLeaves(x, z, r, feetY + 0.1, feetY + 1.65);
+      if (hitDoor) {
+        if (!hitDoor.locked) {
+          if (hitDoor.state === 'closed' && !hitDoor.freeSwing && Math.abs(hitDoor.angle) < 0.05 && this.world.interactDoor) {
+            this.world.interactDoor(hitDoor, this.position, false);
+          } else if (hitDoor.state === 'peek' || Math.abs(hitDoor.angle) < 0.72) {
+            hitDoor.freeSwing = true;
+            hitDoor.state = 'open';
+            hitDoor.angVel = (hitDoor.angle >= 0 ? 1 : -1) * 5.5;
+          }
         }
         return true;
       }
@@ -1792,20 +1814,51 @@ class Enemy {
 
   _updateOperatorGrenades(dt, player, allEnemies) {
     if (!this.activeGrenades || this.activeGrenades.length === 0) return;
+    const hitStatic = (p, r = 0.08) => {
+      if (!this.world || !this.world.colliders) return null;
+      const list = this.world.getNearbyColliders ? this.world.getNearbyColliders(p.x, p.z, r + 0.5) : this.world.colliders;
+      for (let k = 0; k < list.length; k++) {
+        const c = list[k];
+        if (c.doorRef) continue;
+        if (p.y + r > c.minY && p.y - r < c.maxY && p.x + r > c.minX && p.x - r < c.maxX && p.z + r > c.minZ && p.z - r < c.maxZ) {
+          return c;
+        }
+      }
+      return null;
+    };
     for (let i = this.activeGrenades.length - 1; i >= 0; i--) {
       const g = this.activeGrenades[i];
       g.fuse -= dt;
       g.vel.y -= 16.0 * dt;
-      g.pos.addScaledVector(g.vel, dt);
-      if (g.pos.y <= 0.12) {
-        g.pos.y = 0.12;
+      const prev = g.pos.clone();
+      const next = g.pos.clone().addScaledVector(g.vel, dt);
+      const r = 0.08;
+      const floorY = ((this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(next.x, next.z) : 0) + 0.10;
+
+      g.pos.x = next.x;
+      if (hitStatic(g.pos, r)) { g.pos.x = prev.x; g.vel.x = -g.vel.x * 0.42; g.vel.z *= 0.82; }
+      g.pos.z = next.z;
+      if (hitStatic(g.pos, r)) { g.pos.z = prev.z; g.vel.z = -g.vel.z * 0.42; g.vel.x *= 0.82; }
+      g.pos.y = next.y;
+      const hy = hitStatic(g.pos, r);
+      if (hy) {
+        if (g.vel.y <= 0) { g.pos.y = hy.maxY + r + 0.005; g.vel.y = Math.abs(g.vel.y) * 0.35; g.vel.x *= 0.68; g.vel.z *= 0.68; }
+        else { g.pos.y = hy.minY - r - 0.005; g.vel.y = -g.vel.y * 0.35; }
+      } else if (g.pos.y <= floorY) {
+        g.pos.y = floorY;
         g.vel.y = Math.abs(g.vel.y) * 0.35;
         g.vel.x *= 0.62;
         g.vel.z *= 0.62;
       }
+      if (this.world && this.world.bounceProjectileOffDoors) {
+        this.world.bounceProjectileOffDoors(g.pos, g.vel, r);
+      }
       g.mesh.position.copy(g.pos);
 
       if (g.fuse <= 0) {
+        if (g.kind !== 'smoke' && this.world && this.world.applyExplosionToDoors) {
+          this.world.applyExplosionToDoors(g.pos, 6.0);
+        }
         this.scene.remove(g.mesh);
         if (g.kind === 'smoke') {
           const puff = new THREE.Mesh(

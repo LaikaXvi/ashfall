@@ -758,21 +758,28 @@ class Player {
     this.idleTime += dt;
 
     this._syncThirdPersonGear();
-    if (isFP && p.packGroup) p.packGroup.visible = false;
+    if (isFP) {
+      if (p.packGroup) p.packGroup.visible = false;
+      if (p.vestGroup) p.vestGroup.visible = false;
+      if (p.carrierFlap) p.carrierFlap.visible = false;
+      if (!p.skin && p.torso) p.torso.visible = false;
+    } else if (!p.skin && p.torso) {
+      p.torso.visible = true;
+    }
 
     // Place character at player's feet position and orient to player's yaw
-    // In First Person, shift body slightly rearward so looking down shows torso/vest/legs cleanly,
-    // and shift forward slightly during a slide so the real 3P extended lead leg & boot kick cleanly into view!
+    // In First Person, keep hips/chest safely behind the camera even when sliding (so the plate carrier never blocks the view
+    // while the long extended 3P lead leg & boot still kick cleanly forward into the lower frame!)
     const groundBase = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(this.position.x, this.position.z) : 0;
     const feetY = Math.max(groundBase, this.position.y - this.currentEyeHeight);
     let bodyX = this.position.x;
     let bodyY = feetY;
     let bodyZ = this.position.z;
     if (isFP) {
-      const backDist = this.isSliding ? 0.04 : (this.isProne ? 0.34 : (this.stance === 'crouch' ? 0.28 : 0.25));
+      const backDist = this.isSliding ? 0.30 : (this.isProne ? 0.34 : (this.stance === 'crouch' ? 0.28 : 0.25));
       bodyX += Math.sin(this.yaw) * backDist;
       bodyZ += Math.cos(this.yaw) * backDist;
-      if (this.isSliding) bodyY += 0.04;
+      if (this.isSliding) bodyY -= 0.04;
     }
     this.avatarGroup.position.set(bodyX, bodyY, bodyZ);
     this.avatarGroup.rotation.y = this.yaw;
@@ -2045,7 +2052,7 @@ class Player {
     return added > 0;
   }
 
-  _collidesAt(x, eyeY, z, eyeHOverride = null) {
+  _collidesAt(x, eyeY, z, eyeHOverride = null, includeDoors = false) {
     const eh = eyeHOverride != null ? eyeHOverride : this.currentEyeHeight;
     const feetY = eyeY - eh;
     const headY = eyeY + 0.18;
@@ -2054,13 +2061,16 @@ class Player {
 
     for (let i = 0; i < list.length; i++) {
       const c = list[i];
-      if (c.doorRef && c.doorRef.passable) continue;
+      if (c.doorRef) continue;
       // Auto step-up: allow walking smoothly onto stair treads & curbs up to 0.42m above feetY!
       if (headY > c.minY + 0.02 && feetY < c.maxY - 0.42) {
         if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) {
           return true;
         }
       }
+    }
+    if (includeDoors && this.world && this.world.hitTestDoorLeaves) {
+      if (this.world.hitTestDoorLeaves(x, z, r, feetY + 0.05, headY)) return true;
     }
     return false;
   }
@@ -2070,13 +2080,16 @@ class Player {
     const list = this.world.getNearbyColliders ? this.world.getNearbyColliders(x, z, r + 0.6) : this.world.colliders;
     for (let i = 0; i < list.length; i++) {
       const c = list[i];
-      if (c.doorRef && c.doorRef.passable) continue;
+      if (c.doorRef) continue;
       // Only full-height walls/pillars extending above eye level (ignores hip-height tables, boxes, crates, sandbags)
       if (c.maxY >= eyeY + 0.12 && c.minY < eyeY) {
         if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) {
           return true;
         }
       }
+    }
+    if (this.world && this.world.hitTestDoorLeaves) {
+      if (this.world.hitTestDoorLeaves(x, z, r, eyeY - 0.25, eyeY + 0.12)) return true;
     }
     return false;
   }
@@ -2087,7 +2100,7 @@ class Player {
     const list = this.world.getNearbyColliders ? this.world.getNearbyColliders(x, z, r + 0.6) : this.world.colliders;
     for (let i = 0; i < list.length; i++) {
       const c = list[i];
-      if (c.doorRef && c.doorRef.passable) continue;
+      if (c.doorRef) continue;
       if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) {
         if (c.maxY <= feetY + 0.46 && c.maxY > bestY) {
           bestY = c.maxY;
@@ -2103,6 +2116,7 @@ class Player {
     const list = this.world.getNearbyColliders ? this.world.getNearbyColliders(x, z, r + 0.6) : this.world.colliders;
     for (let i = 0; i < list.length; i++) {
       const c = list[i];
+      if (c.doorRef) continue;
       if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) {
         if (c.minY >= feetY + 0.45 && c.minY < ceilY) {
           ceilY = c.minY;
@@ -2884,6 +2898,24 @@ class Player {
       }
     } else {
       this.velocity.z = 0;
+    }
+
+    // Physical hinged door leaf collision & push torque (collide with open doors, physically push peeked/open doors, sprint-bash closed doors!)
+    if (this.world && this.world.resolveDoorEntityCollision) {
+      this.world.resolveDoorEntityCollision(
+        this.position,
+        this.radius,
+        this.position.y - this.currentEyeHeight,
+        this.position.y + 0.18,
+        this.velocity.x,
+        this.velocity.z,
+        {
+          isSprinting: !!(this.isSprinting || this.isTacSprinting || this.isSliding),
+          isAI: false,
+          weaponSystem: this.weaponSystem,
+          dt
+        }
+      );
     }
 
     // Vertical movement + standing on top of shipping containers, crates & objects + ceiling clamp

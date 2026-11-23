@@ -3866,6 +3866,7 @@
         }
         if (!window._lastPlatePromptMs || now - window._lastPlatePromptMs >= 150) {
           window._lastPlatePromptMs = now;
+          const isGp = window._lastInputMode === 'gamepad';
           const ppEl = document.getElementById('plate-prompt');
           if (ppEl && player) {
             const hasBagPlate = Array.isArray(player.backpack) && player.backpack.some(it => it && it.id === 'armor_plate' && (it.qty || 0) > 0);
@@ -3877,7 +3878,6 @@
             if (showPlate) {
               const keySpan = ppEl.querySelector('.pp-key');
               if (keySpan) {
-                const isGp = window._lastInputMode === 'gamepad';
                 const plateBind = (window.KEYBINDS && window.KEYBINDS.plates) || 'KeyG';
                 keySpan.textContent = isGp ? 'Y' : (ui && ui._formatKeyCode ? ui._formatKeyCode(plateBind) : 'G');
               }
@@ -3885,6 +3885,29 @@
               if (iconImg && window.itemIcons && window.itemIcons.getIcon) {
                 const plateUrl = window.itemIcons.getIcon('armor_plate');
                 if (plateUrl && iconImg.src !== plateUrl) iconImg.src = plateUrl;
+              }
+            }
+          }
+          const mpEl = document.getElementById('medkit-prompt');
+          if (mpEl && player) {
+            const hasMedkit = (typeof player.getMedkitCount === 'function')
+              ? player.getMedkitCount() > 0
+              : (Array.isArray(player.backpack) && player.backpack.some(it => it && it.id === 'medkit' && (it.qty || 0) > 0));
+            const maxHpVal = player.maxHp || 100;
+            const needsMed = (player.hp < maxHpVal - 0.5) || (player.disabledHp || 0) > 0;
+            const busyHealing = !!(weaponSystem && weaponSystem.isHealing);
+            const showMedkit = hasMedkit && needsMed && !busyHealing && !player.dead && !player.isDowned && !player.isMenuBlocked;
+            mpEl.classList.toggle('hidden', !showMedkit);
+            if (showMedkit) {
+              const keySpan = mpEl.querySelector('.pp-key');
+              if (keySpan) {
+                const medBind = (window.KEYBINDS && window.KEYBINDS.medkit) || 'KeyH';
+                keySpan.textContent = isGp ? '↑' : (ui && ui._formatKeyCode ? ui._formatKeyCode(medBind) : 'H');
+              }
+              const iconImg = mpEl.querySelector('.pp-icon');
+              if (iconImg && window.itemIcons && window.itemIcons.getIcon) {
+                const medUrl = window.itemIcons.getIcon('medkit');
+                if (medUrl && iconImg.src !== medUrl) iconImg.src = medUrl;
               }
             }
           }

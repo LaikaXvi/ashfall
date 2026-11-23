@@ -239,12 +239,24 @@ class SquadMate {
     const list = this.world.getNearbyColliders ? this.world.getNearbyColliders(x, z, r + 0.5) : this.world.colliders;
     for (let i = 0; i < list.length; i++) {
       const c = list[i];
-      if (c.doorRef && c.doorRef.passable) continue;
+      if (c.doorRef) continue;
       if (c.maxY <= feetY + 0.48) continue;
       if (c.minY >= feetY + 1.65) continue;
       if (x + r > c.minX && x - r < c.maxX && z + r > c.minZ && z - r < c.maxZ) {
-        if (c.doorRef && !c.doorRef.passable && !c.doorRef.locked && this.world && this.world.interactDoor && c.doorRef.state === 'closed') {
-          this.world.interactDoor(c.doorRef, this.position, false);
+        return true;
+      }
+    }
+    if (this.world && this.world.hitTestDoorLeaves) {
+      const hitDoor = this.world.hitTestDoorLeaves(x, z, r, feetY + 0.1, feetY + 1.65);
+      if (hitDoor) {
+        if (!hitDoor.locked) {
+          if (hitDoor.state === 'closed' && !hitDoor.freeSwing && Math.abs(hitDoor.angle) < 0.05 && this.world.interactDoor) {
+            this.world.interactDoor(hitDoor, this.position, false);
+          } else if (hitDoor.state === 'peek' || Math.abs(hitDoor.angle) < 0.72) {
+            hitDoor.freeSwing = true;
+            hitDoor.state = 'open';
+            hitDoor.angVel = (hitDoor.angle >= 0 ? 1 : -1) * 5.5;
+          }
         }
         return true;
       }
@@ -305,6 +317,17 @@ class SquadMate {
     if (!this._collides(this.position.x, this.position.z + vz)) {
       this.position.z += vz;
       moved = true;
+    }
+    if (this.world && this.world.resolveDoorEntityCollision) {
+      this.world.resolveDoorEntityCollision(
+        this.position,
+        0.42,
+        this.position.y,
+        this.position.y + 1.65,
+        dirX * speed,
+        dirZ * speed,
+        { isAI: true, dt }
+      );
     }
     const gy = (this.world && this.world.getWalkHeightAt)
       ? this.world.getWalkHeightAt(this.position.x, this.position.z, this.position.y)

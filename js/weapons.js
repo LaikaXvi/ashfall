@@ -4061,19 +4061,19 @@ class WeaponSystem {
           this.leftHand.rotation.y = THREE.MathUtils.lerp(this.leftHand.rotation.y, 0.25 * proneHandPushArc, Math.min(1, dt * 18));
           this.leftHand.rotation.z = THREE.MathUtils.lerp(this.leftHand.rotation.z, 0.55 * proneHandPushArc, Math.min(1, dt * 18));
         } else if (grabArc > 0.02 && !isAdsActive) {
-          // Supporting left hand dynamically reaches out to grab ground items, weapons, or container latches!
+          // Supporting left hand dynamically reaches out to grab ground items, weapons, doors, or container latches within natural shoulder reach!
           if (this.leftHand.userData) this.leftHand.userData.activeStyle = grabStyle || 'grabReach';
-          const reachZ = (this.grabKind === 'container') ? -0.26 : -0.22;
-          const reachY = (this.grabKind === 'container') ? -0.06 : -0.15;
+          const reachZ = (this.grabKind === 'container') ? -0.14 : -0.13;
+          const reachY = (this.grabKind === 'container') ? -0.05 : -0.12;
           const itemTarget = new THREE.Vector3(
-            this.leftHandRestPos.x - 0.14 * grabArc,
+            this.leftHandRestPos.x - 0.10 * grabArc,
             this.leftHandRestPos.y + reachY * grabArc,
             this.leftHandRestPos.z + reachZ * grabArc
           );
           this.leftHand.position.lerp(itemTarget, Math.min(1, dt * 24));
-          this.leftHand.rotation.x = THREE.MathUtils.lerp(this.leftHand.rotation.x, -0.58 * grabArc, Math.min(1, dt * 22));
-          this.leftHand.rotation.y = THREE.MathUtils.lerp(this.leftHand.rotation.y, 0.24 * grabArc, Math.min(1, dt * 22));
-          this.leftHand.rotation.z = THREE.MathUtils.lerp(this.leftHand.rotation.z, 0.30 * grabArc, Math.min(1, dt * 22));
+          this.leftHand.rotation.x = THREE.MathUtils.lerp(this.leftHand.rotation.x, -0.52 * grabArc, Math.min(1, dt * 22));
+          this.leftHand.rotation.y = THREE.MathUtils.lerp(this.leftHand.rotation.y, 0.22 * grabArc, Math.min(1, dt * 22));
+          this.leftHand.rotation.z = THREE.MathUtils.lerp(this.leftHand.rotation.z, 0.28 * grabArc, Math.min(1, dt * 22));
         } else {
           if (this.leftHand.userData && (this.leftHand.userData.activeStyle === 'grabReach' || this.leftHand.userData.activeStyle === 'grabClose' || this.leftHand.userData.activeStyle === 'slapOpen')) {
             this.leftHand.userData.activeStyle = null;
@@ -5119,36 +5119,36 @@ class WeaponSystem {
     const grabCloseEnd = 0.81;
     const zipEnd = 0.94;
 
-    // Lower & cant weapon down-right out of the way
+    // Lower & cant weapon aside while keeping the plating hand & forearm anchored low across the bottom of the screen
     const env = p < 0.09 ? smooth(p / 0.09) : (p > 0.91 ? 1 - smooth((p - 0.91) / 0.09) : 1);
     pos.x = 0.18 * env;
-    pos.y = -0.18 * env;
-    pos.z = 0.06 * env;
-    rot.x = -0.36 * env;
-    rot.y = -0.36 * env;
-    rot.z = -0.26 * env;
+    pos.y = -0.15 * env;
+    pos.z = 0.05 * env;
+    rot.x = -0.28 * env;
+    rot.y = -0.34 * env;
+    rot.z = -0.24 * env;
 
     if (this.leftHand) this.leftHand.visible = false;
     if (this.leftArm) this.leftArm.visible = false;
     if (this.plateRig) this.plateRig.visible = true;
 
-    let handTarget = new THREE.Vector3(0.13, -0.14, -0.24);
-    let handRotTarget = new THREE.Euler(-0.32, -0.18, -0.12);
+    let handTarget = new THREE.Vector3(0.10, -0.168, -0.24);
+    let handRotTarget = new THREE.Euler(-0.22, -0.18, -0.44);
     let plateStyle = 'plate';
 
     if (p < grabOpenEnd) {
-      // === STEP 1: REACH TO LOWER-RIGHT COLLAR TO GRAB ZIPPER FROM ABOVE (PALM DOWN) ===
+      // === STEP 1: SWEEP LOW ACROSS BOTTOM OF SCREEN TO LOWER-RIGHT ZIPPER ===
       const t = smooth(p / grabOpenEnd);
       plateStyle = 'leftBoltPinch';
       if (this.plateMesh) this.plateMesh.visible = false;
       handTarget.set(
-        THREE.MathUtils.lerp(-0.08, 0.13, t),
-        THREE.MathUtils.lerp(-0.24, -0.135, t),
+        THREE.MathUtils.lerp(-0.18, 0.10, t),
+        THREE.MathUtils.lerp(-0.205, -0.168, t),
         -0.24
       );
-      handRotTarget.set(-0.32, -0.22, -0.12);
+      handRotTarget.set(-0.22, -0.18, -0.44);
     } else if (p < unzipEnd) {
-      // === STEP 2: UNZIP RIGHT-TO-LEFT ACROSS BOTTOM OF SCREEN (PALM DOWN) ===
+      // === STEP 2: UNZIP RIGHT-TO-LEFT LOW ACROSS BOTTOM OF SCREEN ===
       const rawT = (p - grabOpenEnd) / (unzipEnd - grabOpenEnd);
       const pullT = smooth(Math.min(1, rawT / 0.82)); // 0.82..1.00 is a brief hold/beat after unzip
       plateStyle = 'leftBoltPinch';
@@ -5158,13 +5158,13 @@ class WeaponSystem {
       }
       if (this.plateMesh) this.plateMesh.visible = false;
       handTarget.set(
-        THREE.MathUtils.lerp(0.13, -0.14, pullT),
-        -0.135 + Math.sin(pullT * Math.PI) * 0.012,
+        THREE.MathUtils.lerp(0.10, -0.15, pullT),
+        -0.168 + Math.sin(pullT * Math.PI) * 0.008,
         -0.24
       );
-      handRotTarget.set(-0.32, -0.22 + pullT * 0.42, -0.12);
+      handRotTarget.set(-0.22, -0.18 + pullT * 0.34, -0.44 + pullT * 0.10);
     } else if (p < zipStart) {
-      // === STEP 3: DISTINCT PER-PLATE REACH → PRESENT → HOLD → SHOVE IN ===
+      // === STEP 3: LOW BOTTOM-OF-SCREEN PLATE SWEEP -> POUCH LIP -> TUCK DOWN INTO CARRIER ===
       const loadProg = (p - unzipEnd) / (zipStart - unzipEnd);
       const plateFloat = loadProg * count;
       const plateIdx = Math.min(count - 1, Math.floor(plateFloat));
@@ -5187,31 +5187,31 @@ class WeaponSystem {
 
       if (this.plateMesh) {
         if (pt < 0.14) {
-          // Beat A: Dip hand down-left to grab fresh ceramic plate from top edge
+          // Beat A: Dip hand at bottom-left edge to grab fresh ceramic plate
           this.plateMesh.visible = false;
-          handTarget.set(-0.20, -0.22, -0.25);
-          handRotTarget.set(-0.25, 0.25, -0.15);
+          handTarget.set(-0.20, -0.195, -0.25);
+          handRotTarget.set(-0.20, 0.24, -0.38);
         } else if (pt < 0.44) {
-          // Beat B: Lift & align hand (with parented plate locked cleanly underneath!) over chest carrier slot
+          // Beat B: Sweep hand + plate horizontally across bottom of screen to lower carrier opening (never floating mid-screen!)
           const t = smooth((pt - 0.14) / 0.30);
           this.plateMesh.visible = true;
           handTarget.set(
-            THREE.MathUtils.lerp(-0.20, 0.0, t),
-            THREE.MathUtils.lerp(-0.14, 0.04, t),
-            THREE.MathUtils.lerp(-0.26, -0.25, t)
+            THREE.MathUtils.lerp(-0.20, -0.01, t),
+            THREE.MathUtils.lerp(-0.175, -0.112, t),
+            THREE.MathUtils.lerp(-0.255, -0.245, t)
           );
           handRotTarget.set(
-            THREE.MathUtils.lerp(0.18, -0.18, t),
-            THREE.MathUtils.lerp(0.42, 0.04, t),
-            THREE.MathUtils.lerp(-0.22, 0.0, t)
+            THREE.MathUtils.lerp(-0.10, -0.20, t),
+            THREE.MathUtils.lerp(0.32, 0.04, t),
+            THREE.MathUtils.lerp(-0.42, -0.28, t)
           );
         } else if (pt < 0.54) {
-          // Beat C: Brief alignment beat right at the lip of the pouch
+          // Beat C: Brief alignment beat low at the carrier pouch lip along bottom of screen
           this.plateMesh.visible = true;
-          handTarget.set(0.0, 0.04, -0.25);
-          handRotTarget.set(-0.18, 0.04, 0.0);
+          handTarget.set(-0.01, -0.112, -0.245);
+          handRotTarget.set(-0.20, 0.04, -0.28);
         } else if (pt < 0.86) {
-          // Beat D: Two-stage vertical slide straight down into the tight carrier slot
+          // Beat D: Two-stage vertical push down into the carrier across bottom edge
           const raw = (pt - 0.54) / 0.32;
           let slideT;
           if (raw < 0.45) {
@@ -5223,31 +5223,31 @@ class WeaponSystem {
           }
           this.plateMesh.visible = slideT < 0.96;
           handTarget.set(
-            0.0,
-            THREE.MathUtils.lerp(0.04, -0.19, slideT),
-            THREE.MathUtils.lerp(-0.25, -0.285, slideT)
+            -0.01,
+            THREE.MathUtils.lerp(-0.112, -0.225, slideT),
+            THREE.MathUtils.lerp(-0.245, -0.275, slideT)
           );
-          handRotTarget.set(-0.18 - slideT * 0.14, 0.04, 0.0);
+          handRotTarget.set(-0.20 - slideT * 0.12, 0.04, -0.28 - slideT * 0.06);
         } else {
-          // Beat E: Brief settle pause before next plate or zipping up
+          // Beat E: Brief low settle pause before next plate or zipping up
           this.plateMesh.visible = false;
-          handTarget.set(-0.04, -0.20, -0.24);
-          handRotTarget.set(-0.35, 0.08, -0.12);
+          handTarget.set(-0.06, -0.195, -0.24);
+          handRotTarget.set(-0.26, 0.10, -0.36);
         }
       }
     } else if (p < grabCloseEnd) {
-      // === STEP 4A: REPOSITION HAND TO LOWER-LEFT ZIPPER PULL (PALM DOWN) ===
+      // === STEP 4A: CATCH LOWER-LEFT ZIPPER PULL ALONG BOTTOM EDGE ===
       const t = smooth((p - zipStart) / (grabCloseEnd - zipStart));
       plateStyle = 'leftBoltPinch';
       if (this.plateMesh) this.plateMesh.visible = false;
       handTarget.set(
-        THREE.MathUtils.lerp(-0.04, -0.14, t),
-        THREE.MathUtils.lerp(-0.20, -0.135, t),
+        THREE.MathUtils.lerp(-0.06, -0.15, t),
+        THREE.MathUtils.lerp(-0.195, -0.168, t),
         -0.24
       );
-      handRotTarget.set(-0.32, 0.20, -0.12);
+      handRotTarget.set(-0.22, 0.16, -0.34);
     } else if (p < zipEnd) {
-      // === STEP 4B: ZIP LEFT-TO-RIGHT ACROSS BOTTOM OF SCREEN (PALM DOWN) ===
+      // === STEP 4B: ZIP LEFT-TO-RIGHT LOW ACROSS BOTTOM OF SCREEN ===
       const zipT = smooth((p - grabCloseEnd) / (zipEnd - grabCloseEnd));
       plateStyle = 'leftBoltPinch';
       if (zipT > 0.04 && !this.plateZipFlags.close) {
@@ -5256,22 +5256,22 @@ class WeaponSystem {
       }
       if (this.plateMesh) this.plateMesh.visible = false;
       handTarget.set(
-        THREE.MathUtils.lerp(-0.14, 0.13, zipT),
-        -0.135 + Math.sin(zipT * Math.PI) * 0.012,
+        THREE.MathUtils.lerp(-0.15, 0.10, zipT),
+        -0.168 + Math.sin(zipT * Math.PI) * 0.008,
         -0.24
       );
-      handRotTarget.set(-0.32, 0.20 - zipT * 0.42, -0.12);
+      handRotTarget.set(-0.22, 0.16 - zipT * 0.34, -0.34 - zipT * 0.10);
     } else {
-      // === STEP 5: DROP HAND & RETURN TO WEAPON ===
+      // === STEP 5: DROP HAND BELOW SCREEN & RETURN TO WEAPON ===
       const exitT = smooth((p - zipEnd) / (1 - zipEnd));
       plateStyle = 'leftBoltPinch';
       if (this.plateMesh) this.plateMesh.visible = false;
       handTarget.set(
-        THREE.MathUtils.lerp(0.13, 0.02, exitT),
-        THREE.MathUtils.lerp(-0.135, -0.28, exitT),
+        THREE.MathUtils.lerp(0.10, -0.04, exitT),
+        THREE.MathUtils.lerp(-0.168, -0.26, exitT),
         -0.24
       );
-      handRotTarget.set(-0.32, -0.22, -0.12);
+      handRotTarget.set(-0.24, -0.18, -0.40);
     }
 
     if (this.plateHand && this.plateArm) {
@@ -5280,8 +5280,8 @@ class WeaponSystem {
       this.plateHand.rotation.x = THREE.MathUtils.lerp(this.plateHand.rotation.x, handRotTarget.x, handRate);
       this.plateHand.rotation.y = THREE.MathUtils.lerp(this.plateHand.rotation.y, handRotTarget.y, handRate);
       this.plateHand.rotation.z = THREE.MathUtils.lerp(this.plateHand.rotation.z, handRotTarget.z, handRate);
-      const lShoulder = new THREE.Vector3(-0.28, -0.28, -0.02);
-      const lWrist = this.plateHand.position.clone().add(new THREE.Vector3(-0.01, 0.005, 0.042));
+      const lShoulder = new THREE.Vector3(-0.30, -0.30, 0.08);
+      const lWrist = this.plateHand.position.clone().add(new THREE.Vector3(-0.012, -0.004, 0.036));
       this._currentAimHand = this.plateHand;
       this._aimArm(this.plateArm, lShoulder, lWrist);
     }
@@ -5308,8 +5308,8 @@ class WeaponSystem {
     this.lastPlateInsertedIdx = -1;
     this.plateZipFlags = { open: false, close: false };
     if (this.plateHand) {
-      this.plateHand.position.set(-0.08, -0.24, -0.24);
-      this.plateHand.rotation.set(-0.32, -0.22, -0.12);
+      this.plateHand.position.set(-0.18, -0.205, -0.24);
+      this.plateHand.rotation.set(-0.22, -0.18, -0.44);
     }
     return true;
   }
