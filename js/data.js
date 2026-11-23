@@ -1,7 +1,18 @@
 // Game Item Database, 5-Tier Loot Rarity, Logical POI Tables, Workbench & Attachments
-// IMPORTANT: Update GAME_DATA.VERSION (and ?v= cache-busters in index.html) with EVERY new commit!
+// IMPORTANT: Semantic pre-release versioning ONLY (game is NOT release-ready — never use >=1.0.0).
+// Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
+// With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'v2.64',
+  VERSION: 'Alpha RC 0.2.65',
+  VERSION_INFO: {
+    major: 0,
+    minor: 2,
+    patch: 65,
+    channel: 'Alpha', // Alpha | Beta — never blank while major === 0
+    stage: 'RC',     // RC = Release Candidate
+    get semver() { return `${this.major}.${this.minor}.${this.patch}`; },
+    get label() { return `${this.channel} ${this.stage} ${this.major}.${this.minor}.${this.patch}`; }
+  },
   OPERATOR_STATS: {
     maxHp: 75,
     plateArmor: 35,
@@ -1083,3 +1094,43 @@ window.GAME_DATA = {
     { id: 'm_supply_chain', faction: 'PHANTOM', title: 'SUPPLY CHAIN', type: 'extracts', target: 3, rewardCredits: 12000, rewardXp: 1100, desc: 'Complete 3 successful extractions from the wasteland.' }
   ]
 };
+
+// ==================== SEMANTIC PRE-RELEASE VERSIONING (0.X.XX ONLY — never >=1.0.0 pre-launch) ====================
+// Canonical build label lives in GAME_DATA.VERSION_INFO; GAME_DATA.VERSION is its display string.
+// Bump minor/patch per commit, e.g. Alpha RC 0.2.65 -> Alpha RC 0.2.66.
+(function initAshfallVersioning() {
+  if (!window.GAME_DATA || window.GAME_DATA.__versioningReady) return;
+  const info = window.GAME_DATA.VERSION_INFO || { major: 0, minor: 2, patch: 65, channel: 'Alpha', stage: 'RC' };
+  window.GAME_DATA.VERSION_INFO = info;
+  if (typeof info.semver !== 'string') {
+    Object.defineProperty(info, 'semver', { get() { return `${this.major}.${this.minor}.${this.patch}`; }, enumerable: true });
+  }
+  if (typeof info.label !== 'string') {
+    Object.defineProperty(info, 'label', { get() { return `${this.channel} ${this.stage} ${this.major}.${this.minor}.${this.patch}`; }, enumerable: true });
+  }
+  window.GAME_DATA.VERSION = info.label || window.GAME_DATA.VERSION;
+
+  window.GAME_DATA.parseVersion = function parseVersion(v) {
+    const m = String(v || '').match(/(\d+)\.(\d+)\.(\d+)/);
+    if (!m) return null;
+    const parts = m.slice(1, 4).map(n => parseInt(n, 10));
+    const rest = String(v || '').replace(m[0], '').trim();
+    return { major: parts[0], minor: parts[1], patch: parts[2], tag: rest };
+  };
+  window.GAME_DATA.getCacheBuster = function getCacheBuster() {
+    const p = window.GAME_DATA.parseVersion(window.GAME_DATA.VERSION);
+    if (!p) return '0265';
+    return `${p.major}${p.minor}${String(p.patch).padStart(2, '0')}`;
+  };
+  window.GAME_DATA.isNewerVersion = function isNewerVersion(remote, local) {
+    const r = window.GAME_DATA.parseVersion(remote);
+    const l = window.GAME_DATA.parseVersion(local);
+    if (!r || !l) return remote !== local;
+    for (const k of ['major', 'minor', 'patch']) {
+      if ((r[k] || 0) > (l[k] || 0)) return true;
+      if ((r[k] || 0) < (l[k] || 0)) return false;
+    }
+    return String(remote) !== String(local);
+  };
+  window.GAME_DATA.__versioningReady = true;
+})();
