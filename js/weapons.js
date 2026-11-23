@@ -2408,12 +2408,6 @@ class WeaponSystem {
       this.leftArm.visible = false;
     }
 
-    if (withHands) {
-      const vmScale = (weaponDef && weaponDef.slot === 'secondary') ? 0.84 : 0.78;
-      g.scale.setScalar(vmScale);
-      this.sightHeight = (this.sightHeight || 0.04) * vmScale;
-    }
-
     this.currentMesh = g;
     this.viewmodelGroup.add(g);
     return g;
@@ -3044,8 +3038,8 @@ class WeaponSystem {
     const adsPivotX = (isAdsActive && !customRot) ? (Math.sin(targetRotZ) * this.sightHeight) : 0;
     const adsPivotY = (isAdsActive && !customRot) ? ((1 - Math.cos(targetRotZ)) * this.sightHeight) : 0;
     const basePosX = this.isFistsMode ? 0.0 : (isAdsActive ? adsPivotX : (tacSprintingHip ? 0.24 : (sprintingHip ? 0.19 : 0.22)));
-    const basePosY = this.isFistsMode ? -0.16 : (isAdsActive ? (-this.sightHeight + adsPivotY) : (tacSprintingHip ? -0.15 : (sprintingHip ? -0.23 : -0.195)));
-    const basePosZ = this.isFistsMode ? -0.38 : (isAdsActive ? (this.adsZ - 0.055) : (tacSprintingHip ? -0.38 : (sprintingHip ? -0.44 : -0.46)));
+    const basePosY = this.isFistsMode ? -0.16 : (isAdsActive ? (-this.sightHeight + adsPivotY) : (tacSprintingHip ? -0.14 : (sprintingHip ? -0.235 : -0.20)));
+    const basePosZ = this.isFistsMode ? -0.38 : (isAdsActive ? this.adsZ : (tacSprintingHip ? -0.34 : (sprintingHip ? -0.40 : -0.42)));
 
     const targetX = basePosX + this.recoilX + this.lookSwayX + activePosOff.x + wallPosX + leanAlignX + drawPos.x;
     const targetY = basePosY + this.lookSwayY + activePosOff.y + wallPosY + drawPos.y;
@@ -3130,26 +3124,35 @@ class WeaponSystem {
       this.rightHand.rotation.y = THREE.MathUtils.lerp(this.rightHand.rotation.y, rRotY, fRate);
       this.rightHand.rotation.z = THREE.MathUtils.lerp(this.rightHand.rotation.z, rRotZ, fRate);
     } else if (this.leftHand && !customRot && !(weaponDef && weaponDef.id === 'm870' && this.pumpTimer > 0)) {
-      // Left-handed clenched fist pumping on the left during Tactical Sprint (positioned cleanly inside FOV)
+      // Left-handed clenched fist pumping on the left during Tactical Sprint (computed in camera space so gun pitch never flips it backwards!)
       if (tacSprintingHip) {
         const pump = Math.sin(this.bobTimer + Math.PI);
         const pumpCos = Math.cos(this.bobTimer + Math.PI);
-        const fistPos = new THREE.Vector3(
-          -0.34 + pumpCos * 0.024,
-          -0.08 + pump * 0.050,
-          -0.18 + pump * 0.065
+        // Desired fist position & orientation in camera space (bottom-left, pumping forward/back cleanly)
+        const camFistPos = new THREE.Vector3(
+          -0.24 + pumpCos * 0.024,
+          -0.17 + pump * 0.052,
+          -0.34 + pump * 0.075
         );
+        let fistLocalPos = new THREE.Vector3(-0.42 + pumpCos * 0.025, -0.04 + pump * 0.052, -0.14 + pump * 0.070);
+        if (this.vmCamera && this.currentMesh) {
+          this.vmCamera.updateMatrixWorld(true);
+          this.currentMesh.updateMatrixWorld(true);
+          fistLocalPos = this.currentMesh.worldToLocal(this.vmCamera.localToWorld(camFistPos.clone()));
+        }
         this.leftHand.visible = false;
         if (this.leftHand.userData) this.leftHand.userData.activeStyle = 'leftFist';
         if (this.leftFist) {
           this.leftFist.visible = true;
           if (this.leftFist.userData) this.leftFist.userData.activeStyle = 'leftFist';
-          this.leftFist.position.lerp(fistPos, Math.min(1, dt * 18));
-          this.leftFist.rotation.x = THREE.MathUtils.lerp(this.leftFist.rotation.x, -0.46 + pump * 0.14, Math.min(1, dt * 18));
-          this.leftFist.rotation.y = THREE.MathUtils.lerp(this.leftFist.rotation.y, 0.34, Math.min(1, dt * 18));
-          this.leftFist.rotation.z = THREE.MathUtils.lerp(this.leftFist.rotation.z, -0.14, Math.min(1, dt * 18));
+          this.leftFist.position.lerp(fistLocalPos, Math.min(1, dt * 18));
+          // Cancel parent viewmodelGroup pitch/yaw/roll so the clenched fist stays level and forward in camera space
+          const parentInvQ = this.viewmodelGroup.quaternion.clone().invert();
+          const camFistQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(pump * 0.14, 0.18, -0.08, 'YXZ'));
+          const targetFistQ = parentInvQ.multiply(camFistQ);
+          this.leftFist.quaternion.slerp(targetFistQ, Math.min(1, dt * 18));
         }
-        this.leftHand.position.copy(this.leftFist ? this.leftFist.position : fistPos);
+        this.leftHand.position.copy(this.leftFist ? this.leftFist.position : fistLocalPos);
       } else {
         this.leftHand.visible = true;
         if (this.leftHand.userData && this.leftHand.userData.activeStyle === 'leftFist') {

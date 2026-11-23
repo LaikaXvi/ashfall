@@ -3888,9 +3888,11 @@
       if (viewmodelCamera) {
         viewmodelCamera.position.copy(camera.position);
         viewmodelCamera.quaternion.copy(camera.quaternion);
-        const targetVmFov = (player && player.isADS) ? 64 : 72;
-        if (Math.abs(viewmodelCamera.fov - targetVmFov) > 0.05) {
-          viewmodelCamera.fov = THREE.MathUtils.lerp(viewmodelCamera.fov, targetVmFov, Math.min(1, dt * 14));
+        const targetVmFov = (window.WEAPON_FOV_MODE === 'independent')
+          ? (window.VIEWMODEL_FOV || 75)
+          : camera.fov;
+        if (Math.abs(viewmodelCamera.fov - targetVmFov) > 0.01) {
+          viewmodelCamera.fov = targetVmFov;
           viewmodelCamera.updateProjectionMatrix();
         }
         viewmodelCamera.updateMatrixWorld();

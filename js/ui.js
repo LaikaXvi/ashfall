@@ -36,6 +36,8 @@ window.GFX_SETTINGS = (() => {
   return { lod: 3, lighting: 3, shadows: 3, textures: 3, pixel: 2 };
 })();
 window.BASE_FOV = (typeof _savedUserSettings.baseFov === 'number' && Number.isFinite(_savedUserSettings.baseFov)) ? _savedUserSettings.baseFov : 75;
+window.WEAPON_FOV_MODE = (_savedUserSettings.weaponFovMode === 'independent') ? 'independent' : 'effected';
+window.VIEWMODEL_FOV = (typeof _savedUserSettings.viewmodelFov === 'number' && Number.isFinite(_savedUserSettings.viewmodelFov)) ? _savedUserSettings.viewmodelFov : 75;
 window._SAVED_AUDIO_SETTINGS = _savedUserSettings.audio || null;
 
 window.saveAllUserSettings = function saveAllUserSettings() {
@@ -46,6 +48,8 @@ window.saveAllUserSettings = function saveAllUserSettings() {
     } : window._SAVED_AUDIO_SETTINGS;
     const payload = {
       baseFov: window.BASE_FOV || 75,
+      weaponFovMode: window.WEAPON_FOV_MODE === 'independent' ? 'independent' : 'effected',
+      viewmodelFov: window.VIEWMODEL_FOV || 75,
       mouseSens: window.MOUSE_SENS || 1.0,
       ctrlSens: window.CONTROLLER_SENS || 1.0,
       ctrlLsDz: window.CONTROLLER_LS_DEADZONE ?? 0.12,
@@ -2848,6 +2852,24 @@ class GameUI {
         const el = document.getElementById(id);
         if (el) el.textContent = `${fov}°`;
       });
+      const wfovMode = window.WEAPON_FOV_MODE === 'independent' ? 'independent' : 'effected';
+      const vmFov = window.VIEWMODEL_FOV || 75;
+      const btnEff = document.getElementById('btn-wfov-effected');
+      const btnInd = document.getElementById('btn-wfov-independent');
+      if (btnEff) {
+        btnEff.style.borderColor = wfovMode === 'effected' ? '#69f0ae' : '';
+        btnEff.style.color = wfovMode === 'effected' ? '#69f0ae' : '';
+      }
+      if (btnInd) {
+        btnInd.style.borderColor = wfovMode === 'independent' ? '#69f0ae' : '';
+        btnInd.style.color = wfovMode === 'independent' ? '#69f0ae' : '';
+      }
+      const vmFovRow = document.getElementById('setting-vm-fov-row');
+      if (vmFovRow) vmFovRow.style.display = wfovMode === 'independent' ? 'flex' : 'none';
+      const vmFovEl = document.getElementById('setting-vm-fov');
+      const vmFovVal = document.getElementById('setting-vm-fov-val');
+      if (vmFovEl) vmFovEl.value = vmFov;
+      if (vmFovVal) vmFovVal.textContent = `${vmFov}°`;
       ['setting-sens', 'pause-setting-sens'].forEach((id) => {
         const el = document.getElementById(id);
         if (el) el.value = sens;
@@ -2950,6 +2972,30 @@ class GameUI {
         });
       }
     });
+    const btnWfovEff = document.getElementById('btn-wfov-effected');
+    if (btnWfovEff) {
+      btnWfovEff.addEventListener('click', () => {
+        window.WEAPON_FOV_MODE = 'effected';
+        if (window.saveAllUserSettings) window.saveAllUserSettings();
+        syncSettingsUI();
+      });
+    }
+    const btnWfovInd = document.getElementById('btn-wfov-independent');
+    if (btnWfovInd) {
+      btnWfovInd.addEventListener('click', () => {
+        window.WEAPON_FOV_MODE = 'independent';
+        if (window.saveAllUserSettings) window.saveAllUserSettings();
+        syncSettingsUI();
+      });
+    }
+    const vmFovSlider = document.getElementById('setting-vm-fov');
+    if (vmFovSlider) {
+      vmFovSlider.addEventListener('input', () => {
+        window.VIEWMODEL_FOV = parseInt(vmFovSlider.value, 10) || 75;
+        if (window.saveAllUserSettings) window.saveAllUserSettings();
+        syncSettingsUI();
+      });
+    }
     ['setting-sens', 'pause-setting-sens'].forEach((id) => {
       const el = document.getElementById(id);
       if (el) {

@@ -52,7 +52,7 @@
     <!-- IMPORTANT: Update version in GAME_DATA.VERSION (js/data.js) and here with EVERY new commit -->
     <div class="menu-version-stack">
       <button id="menu-update-badge" class="menu-update-badge hidden" title="Click to reload into the latest version">NEW VERSION AVAILABLE</button>
-      <div id="menu-version-badge" class="menu-version-badge">v2.46</div>
+      <div id="menu-version-badge" class="menu-version-badge">v2.47</div>
     </div>
     <!-- Minimal Sub-Menu Top Bar (Top-Left Back Button only — no redundant nav band) -->
     <header id="menu-topbar" class="hideout-header hidden">
@@ -500,6 +500,28 @@
                   <div style="display:flex;align-items:center;gap:10px;">
                     <input id="setting-fov" type="range" min="60" max="110" step="1" value="75" />
                     <span id="setting-fov-val" class="accent" style="min-width:38px;text-align:right;font-weight:700;">75°</span>
+                  </div>
+                </div>
+
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-title">WEAPON FOV</div>
+                    <div class="setting-desc">Tie weapon viewmodel FOV to Camera FOV (Effected) or set it separately (Independent)</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:6px;">
+                    <button id="btn-wfov-effected" class="btn-small">EFFECTED</button>
+                    <button id="btn-wfov-independent" class="btn-small">INDEPENDENT</button>
+                  </div>
+                </div>
+
+                <div id="setting-vm-fov-row" class="setting-row" style="display:none;">
+                  <div>
+                    <div class="setting-title">VIEWMODEL FOV</div>
+                    <div class="setting-desc">Adjust independent weapon viewmodel FOV (55° – 110°)</div>
+                  </div>
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    <input id="setting-vm-fov" type="range" min="55" max="110" step="1" value="75" />
+                    <span id="setting-vm-fov-val" class="accent" style="min-width:38px;text-align:right;font-weight:700;">75°</span>
                   </div>
                 </div>
 
@@ -1277,14 +1299,14 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION with every new commit) -->
-  <script src="js/data.js?v=246"></script>
-  <script src="js/rig.js?v=246"></script>
+  <script src="js/data.js?v=247"></script>
+  <script src="js/rig.js?v=247"></script>
   <script src="js/animation.js?v=244"></script>
   <script src="js/net.js?v=123"></script>
   <script src="js/sfx_samples.js?v=21"></script>
   <script src="js/audio.js?v=236"></script>
   <script src="js/world.js?v=246"></script>
-  <script src="js/weapons.js?v=246"></script>
+  <script src="js/weapons.js?v=247"></script>
   <script src="js/icons.js?v=246"></script>
   <script src="js/throwables.js?v=233"></script>
   <script src="js/enemies.js?v=246"></script>
@@ -1295,8 +1317,8 @@
   <script src="js/gunsmith.js?v=243"></script>
   <script src="js/matchmaking.js?v=240"></script>
   <script src="js/hideout.js?v=244"></script>
-  <script src="js/ui.js?v=246"></script>
+  <script src="js/ui.js?v=247"></script>
   <script src="js/console.js?v=226"></script>
-  <script src="js/main.js?v=246"></script>
+  <script src="js/main.js?v=247"></script>
 </body>
 </html>
