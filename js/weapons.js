@@ -2880,95 +2880,198 @@ class WeaponSystem {
     }
 
     if (withHands && !this.medRig) {
-      // Camera-space Tactical Field Medkit Rig (matches close-up plating rig)
+      // AAA Camera-Space Tactical Trauma IFAK + Forearm Compression Wrap + Epinephrine Auto-Injector Rig (v2.63)
       const mRig = new THREE.Group();
       mRig.visible = false;
 
+      const pouchCordura = new THREE.MeshLambertMaterial({ color: 0x7a2424 });
+      const pouchTrim = new THREE.MeshLambertMaterial({ color: 0x1d2024 });
+      const webbingMat = new THREE.MeshLambertMaterial({ color: 0x2b3028 });
+      const foamMat = new THREE.MeshLambertMaterial({ color: 0x15181b });
+      const sterileWhite = new THREE.MeshLambertMaterial({ color: 0xeae6dd });
+      const sterileOlive = new THREE.MeshLambertMaterial({ color: 0xcfcbb8 });
+      const medRedMat = new THREE.MeshLambertMaterial({ color: 0xc93030 });
+      const gunmetalMat = new THREE.MeshPhongMaterial({ color: 0x363d45, specular: 0x7c8794, shininess: 42 });
+      const metalBright = new THREE.MeshPhongMaterial({ color: 0xb6c0ca, specular: 0xffffff, shininess: 65 });
+      const safetyOrange = new THREE.MeshLambertMaterial({ color: 0xe6671e });
+      const capRedMat = new THREE.MeshLambertMaterial({ color: 0xd63232 });
+      const bioFluidMat = new THREE.MeshBasicMaterial({ color: 0x39f08a });
+      const glassChamberMat = new THREE.MeshLambertMaterial({ color: 0x10241b });
+
+      // Helper to build a detailed Military Epinephrine Auto-Injector Pen (reused for stowed slot & live right-hand grip)
+      const buildAutoInjector = (interactive = false) => {
+        const gPen = new THREE.Group();
+        const barrelLow = new THREE.Mesh(new THREE.CylinderGeometry(0.0102, 0.0100, 0.040, 14), gunmetalMat);
+        barrelLow.position.set(0, -0.026, 0);
+        const barrelHigh = new THREE.Mesh(new THREE.CylinderGeometry(0.0104, 0.0102, 0.032, 14), gunmetalMat);
+        barrelHigh.position.set(0, 0.032, 0);
+        // Recessed glass ampoule core between upper & lower aluminum sleeves
+        const chamberCore = new THREE.Mesh(new THREE.CylinderGeometry(0.0076, 0.0076, 0.028, 12), glassChamberMat);
+        chamberCore.position.set(0, 0.003, 0);
+        const sideRailL = new THREE.Mesh(new THREE.BoxGeometry(0.0032, 0.030, 0.005), gunmetalMat);
+        sideRailL.position.set(-0.0086, 0.003, 0);
+        const sideRailR = sideRailL.clone();
+        sideRailR.position.x = 0.0086;
+        gPen.add(barrelLow, barrelHigh, chamberCore, sideRailL, sideRailR);
+
+        // Knurled tactical grip bands
+        for (const gy of [-0.038, -0.016, 0.022, 0.042]) {
+          const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.0109, 0.0109, 0.004, 14), pouchTrim);
+          ring.position.set(0, gy, 0);
+          gPen.add(ring);
+        }
+
+        // Illuminated green bio-fluid column pivoted at bottom of window so scale.y drains cleanly downward!
+        const fluidPivot = new THREE.Group();
+        fluidPivot.position.set(0, -0.009, 0);
+        const fluidCol = new THREE.Mesh(new THREE.CylinderGeometry(0.0066, 0.0066, 0.024, 12), bioFluidMat);
+        fluidCol.position.set(0, 0.012, 0);
+        fluidPivot.add(fluidCol);
+        gPen.add(fluidPivot);
+
+        // Internal stainless plunger piston driving down as fluid drains
+        const plunger = new THREE.Mesh(new THREE.CylinderGeometry(0.0068, 0.0068, 0.006, 12), metalBright);
+        plunger.position.set(0, 0.016, 0);
+        gPen.add(plunger);
+
+        // Spring-loaded orange tactile needle shroud at bottom (-Y) + fine steel needle
+        const shroud = new THREE.Mesh(new THREE.CylinderGeometry(0.0090, 0.0078, 0.016, 14), safetyOrange);
+        shroud.position.set(0, -0.052, 0);
+        const needle = new THREE.Mesh(new THREE.CylinderGeometry(0.0011, 0.0006, 0.016, 8), metalBright);
+        needle.position.set(0, -0.062, 0);
+        gPen.add(shroud, needle);
+
+        // Top red safety pin cap (+Y) with flanged pull tab
+        const capGroup = new THREE.Group();
+        capGroup.position.set(0, 0.054, 0);
+        const capCyl = new THREE.Mesh(new THREE.CylinderGeometry(0.0114, 0.0110, 0.014, 14), capRedMat);
+        const capRim = new THREE.Mesh(new THREE.CylinderGeometry(0.0132, 0.0126, 0.004, 14), capRedMat);
+        capRim.position.set(0, 0.006, 0);
+        capGroup.add(capCyl, capRim);
+        gPen.add(capGroup);
+
+        if (interactive) {
+          const capSocket = new THREE.Object3D();
+          capSocket.position.set(0, 0.056, 0);
+          const tipSocket = new THREE.Object3D();
+          tipSocket.position.set(0, -0.058, 0);
+          gPen.add(capSocket, tipSocket);
+          gPen.userData = { fluidPivot, plunger, shroud, capGroup, capSocket, tipSocket };
+        }
+        return gPen;
+      };
+
+      const buildGauzeRoll = () => {
+        const gRoll = new THREE.Group();
+        const outer = new THREE.Mesh(new THREE.CylinderGeometry(0.020, 0.020, 0.052, 16), sterileOlive);
+        const core = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.053, 12), pouchTrim);
+        const stripe = new THREE.Mesh(new THREE.CylinderGeometry(0.0206, 0.0206, 0.010, 16), medRedMat);
+        gRoll.add(outer, core, stripe);
+        return gRoll;
+      };
+
+      // 1. Tactical Clamshell Cordura Trauma IFAK Pouch
       const boxGroup = new THREE.Group();
-      const caseRed = new THREE.MeshLambertMaterial({ color: 0x8f2222 });
-      const caseDark = new THREE.MeshLambertMaterial({ color: 0x202428 });
-      const foamMat = new THREE.MeshLambertMaterial({ color: 0x16191c });
-      const whiteMat = new THREE.MeshLambertMaterial({ color: 0xeceae4 });
-      const metalMat = new THREE.MeshLambertMaterial({ color: 0xb0b8c0 });
+      const baseTray = new THREE.Mesh(new THREE.BoxGeometry(0.132, 0.022, 0.094), pouchCordura);
+      const zipTrack = new THREE.Mesh(new THREE.BoxGeometry(0.136, 0.006, 0.098), pouchTrim);
+      zipTrack.position.set(0, 0.010, 0);
+      const foam = new THREE.Mesh(new THREE.BoxGeometry(0.120, 0.008, 0.082), foamMat);
+      foam.position.set(0, 0.009, 0);
+      boxGroup.add(baseTray, zipTrack, foam);
 
-      // Bottom tray & interior foam insert
-      const baseTray = new THREE.Mesh(new THREE.BoxGeometry(0.135, 0.024, 0.100), caseRed);
-      const foam = new THREE.Mesh(new THREE.BoxGeometry(0.122, 0.008, 0.088), foamMat);
-      foam.position.set(0, 0.011, 0);
-      // Decorative interior compartments
-      const slot1 = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.009, 0.068), caseDark);
-      slot1.position.set(-0.036, 0.012, 0);
-      const slot2 = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.009, 0.068), caseDark);
-      slot2.position.set(0.002, 0.012, 0);
-      const slot3 = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.009, 0.068), caseDark);
-      slot3.position.set(0.038, 0.012, 0);
-      boxGroup.add(baseTray, foam, slot1, slot2, slot3);
+      // MOLLE / PALS webbing straps on underside & front
+      for (const sx of [-0.040, 0.0, 0.040]) {
+        const strap = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.004, 0.096), webbingMat);
+        strap.position.set(sx, -0.012, 0);
+        boxGroup.add(strap);
+      }
 
-      // Hinged clamshell lid pivoted at back edge (-Z)
+      // Interior elastic loops + visible stowed Gauze Roll (left) & Epinephrine Auto-Injector (right)
+      const loopL = new THREE.Mesh(new THREE.BoxGeometry(0.044, 0.005, 0.020), webbingMat);
+      loopL.position.set(-0.030, 0.016, 0);
+      const loopR = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.005, 0.022), webbingMat);
+      loopR.position.set(0.034, 0.016, 0);
+      const slotBandage = buildGauzeRoll();
+      slotBandage.rotation.x = Math.PI / 2;
+      slotBandage.scale.setScalar(0.82);
+      slotBandage.position.set(-0.030, 0.020, 0);
+      const slotStim = buildAutoInjector(false);
+      slotStim.rotation.x = Math.PI / 2;
+      slotStim.scale.setScalar(0.68);
+      slotStim.position.set(0.034, 0.019, 0.002);
+      boxGroup.add(loopL, loopR, slotBandage, slotStim);
+
+      // Hinged Cordura lid pivoted at back edge (-Z) with Velcro medical cross patch
       const lidPivot = new THREE.Group();
-      lidPivot.position.set(0, 0.012, -0.050);
-      const lidMesh = new THREE.Mesh(new THREE.BoxGeometry(0.135, 0.016, 0.100), caseRed);
-      lidMesh.position.set(0, 0.008, 0.050);
-      // White medical cross on top of lid
-      const crossH = new THREE.Mesh(new THREE.BoxGeometry(0.044, 0.003, 0.014), whiteMat);
-      crossH.position.set(0, 0.017, 0.050);
-      const crossV = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.003, 0.044), whiteMat);
-      crossV.position.set(0, 0.017, 0.050);
-      // Front metal clasp latch
-      const latch = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.016, 0.008), metalMat);
-      latch.position.set(0, 0.002, 0.102);
-      lidPivot.add(lidMesh, crossH, crossV, latch);
+      lidPivot.position.set(0, 0.012, -0.047);
+      const lidMesh = new THREE.Mesh(new THREE.BoxGeometry(0.132, 0.015, 0.094), pouchCordura);
+      lidMesh.position.set(0, 0.0075, 0.047);
+      const patchPad = new THREE.Mesh(new THREE.BoxGeometry(0.052, 0.003, 0.046), pouchTrim);
+      patchPad.position.set(0, 0.016, 0.047);
+      const crossH = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.004, 0.011), sterileWhite);
+      crossH.position.set(0, 0.0175, 0.047);
+      const crossV = new THREE.Mesh(new THREE.BoxGeometry(0.011, 0.004, 0.036), sterileWhite);
+      crossV.position.set(0, 0.0175, 0.047);
+      lidPivot.add(lidMesh, patchPad, crossH, crossV);
       boxGroup.add(lidPivot);
-      boxGroup.scale.setScalar(1.16);
+
+      // Sliding front zipper slider + paracord pull tab along front rim (+Z = +0.050)
+      const zipPull = new THREE.Group();
+      const zipSlider = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.008, 0.010), metalBright);
+      const paracord = new THREE.Mesh(new THREE.BoxGeometry(0.007, 0.004, 0.020), capRedMat);
+      paracord.position.set(0, -0.002, 0.013);
+      zipPull.add(zipSlider, paracord);
+      zipPull.position.set(-0.052, 0.011, 0.050);
+      boxGroup.add(zipPull);
       mRig.add(boxGroup);
 
-      // Item 1: Auto-Injector Stim Syringe
-      const stimGroup = new THREE.Group();
-      const stimBody = new THREE.Mesh(new THREE.CylinderGeometry(0.009, 0.009, 0.088, 10), metalMat);
-      const stimFluid = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.044, 10), new THREE.MeshBasicMaterial({ color: 0x3ee885 }));
-      stimFluid.position.set(0, -0.005, 0);
-      const stimCap = new THREE.Mesh(new THREE.CylinderGeometry(0.0105, 0.0105, 0.016, 10), new THREE.MeshLambertMaterial({ color: 0xd93838 }));
-      stimCap.position.set(0, 0.048, 0);
-      const stimNeedle = new THREE.Mesh(new THREE.CylinderGeometry(0.002, 0.001, 0.024, 6), metalMat);
-      stimNeedle.position.set(0, -0.054, 0);
-      stimGroup.add(stimBody, stimFluid, stimCap, stimNeedle);
-      stimGroup.scale.setScalar(1.22);
-      stimGroup.visible = false;
-      mRig.add(stimGroup);
-
-      // Item 2: Sterile Field Bandage Roll
-      const bandGroup = new THREE.Group();
-      const bandRoll = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.054, 12), whiteMat);
-      const bandStripe = new THREE.Mesh(new THREE.CylinderGeometry(0.0228, 0.0228, 0.012, 12), new THREE.MeshLambertMaterial({ color: 0xc83232 }));
-      bandGroup.add(bandRoll, bandStripe);
-      bandGroup.scale.setScalar(1.18);
-      bandGroup.visible = false;
-      mRig.add(bandGroup);
-
-      // Item 3: Orange Painkiller Pill Bottle
-      const pillGroup = new THREE.Group();
-      const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.017, 0.017, 0.056, 10), new THREE.MeshLambertMaterial({ color: 0xe67e22 }));
-      const pillCap = new THREE.Mesh(new THREE.CylinderGeometry(0.0185, 0.0185, 0.014, 10), whiteMat);
-      pillCap.position.set(0, 0.034, 0);
-      const pillLabel = new THREE.Mesh(new THREE.CylinderGeometry(0.0176, 0.0176, 0.028, 10), whiteMat);
-      pillLabel.position.set(0, -0.002, 0);
-      pillGroup.add(bottle, pillCap, pillLabel);
-      pillGroup.scale.setScalar(1.22);
-      pillGroup.visible = false;
-      mRig.add(pillGroup);
-
-      // Dedicated close-up hands & forearms for medkit
+      // 2. Dedicated 1:1 Meter Hands & Forearms (true 1.0 scale so hand-parented props match Mixamo RiggedFPArms 1:1!)
       const mLeftHand = this._createHand(false, 'supportRifle');
-      mLeftHand.scale.setScalar(1.22);
+      mLeftHand.scale.setScalar(1.0);
       const mLeftArm = this._createForearm();
       mLeftArm.userData.fpSide = 'left';
-      mLeftArm.scale.set(1.20, 1.20, 1.0);
 
       const mRightHand = this._createHand(true, 'grip');
-      mRightHand.scale.setScalar(1.22);
+      mRightHand.scale.setScalar(1.0);
       const mRightArm = this._createForearm();
       mRightArm.userData.fpSide = 'right';
-      mRightArm.scale.set(1.20, 1.20, 1.0);
+
+      // 3. Hand-Parented Props inside mRightHand (ZERO lerp lag & ZERO finger-prop drift at any FPS!)
+      const bandageHeld = buildGauzeRoll();
+      bandageHeld.rotation.set(0.18, 0.0, 0.32);
+      bandageHeld.position.set(0.0, 0.002, -0.002);
+      bandageHeld.visible = false;
+      mRightHand.add(bandageHeld);
+
+      const stimHeld = buildAutoInjector(true);
+      // Aligned along Mixamo right-hand +uw axis ([-0.123, 0.955, 0.270]) so palm & curled fingers wrap radially with 0mm clipping!
+      stimHeld.rotation.set(0.275, 0.0, 0.123);
+      stimHeld.position.set(0.0, 0.0, 0.0);
+      stimHeld.visible = false;
+      mRightHand.add(stimHeld);
+
+      // 4. Bone-Tracked Expanding Forearm Compression Bandage Cuff + Taut Gauze Tail + Flying Detached Safety Cap
+      const forearmWrap = new THREE.Group();
+      const wrapSleeve1 = new THREE.Mesh(new THREE.CylinderGeometry(0.0385, 0.0365, 0.068, 16), sterileOlive);
+      const wrapSleeve2 = new THREE.Mesh(new THREE.CylinderGeometry(0.0398, 0.0382, 0.034, 16), sterileWhite);
+      wrapSleeve2.rotation.z = 0.08;
+      const pressureBar = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.044, 0.008), medRedMat);
+      pressureBar.position.set(0, 0.0, 0.038);
+      forearmWrap.add(wrapSleeve1, wrapSleeve2, pressureBar);
+      forearmWrap.visible = false;
+      mRig.add(forearmWrap);
+
+      const gauzeTail = new THREE.Mesh(new THREE.BoxGeometry(0.036, 0.0025, 1.0), sterileOlive);
+      gauzeTail.visible = false;
+      mRig.add(gauzeTail);
+
+      const detachedCap = new THREE.Group();
+      const dCyl = new THREE.Mesh(new THREE.CylinderGeometry(0.0114, 0.0110, 0.014, 14), capRedMat);
+      const dRim = new THREE.Mesh(new THREE.CylinderGeometry(0.0132, 0.0126, 0.004, 14), capRedMat);
+      dRim.position.set(0, 0.006, 0);
+      detachedCap.add(dCyl, dRim);
+      detachedCap.visible = false;
+      mRig.add(detachedCap);
 
       mRig.add(mLeftHand, mLeftArm, mRightHand, mRightArm);
       this.vmCamera.add(mRig);
@@ -2976,7 +3079,13 @@ class WeaponSystem {
       this.medRig = mRig;
       this.medBoxGroup = boxGroup;
       this.medLidPivot = lidPivot;
-      this.medItems = { stim: stimGroup, bandage: bandGroup, pills: pillGroup };
+      this.medZipPull = zipPull;
+      this.medSlotBandage = slotBandage;
+      this.medSlotStim = slotStim;
+      this.medForearmWrap = forearmWrap;
+      this.medGauzeTail = gauzeTail;
+      this.medDetachedCap = detachedCap;
+      this.medItems = { stim: stimHeld, bandage: bandageHeld, pills: detachedCap };
       this.medLeftHand = mLeftHand;
       this.medLeftArm = mLeftArm;
       this.medRightHand = mRightHand;
@@ -5430,32 +5539,33 @@ class WeaponSystem {
   }
 
   _computeHealPose(p, dt, pos, rot, player = null) {
-    const smooth = (t) => t * t * (3 - 2 * t);
-    const handRate = Math.min(1, dt * 11);
+    const smooth = (t) => {
+      const c = THREE.MathUtils.clamp(t, 0, 1);
+      return c * c * (3 - 2 * c);
+    };
+    const posRate = Math.min(1, dt * 22);
+    const rotRate = Math.min(1, dt * 20);
 
-    // Strict sequential handoff: weapon drops completely out BEFORE medkit appears,
-    // and medkit leaves completely BEFORE weapon returns (never 4 hands!)
+    // Strict sequential handoff: weapon tucks cleanly off-screen BEFORE IFAK rig enters,
+    // and IFAK stows completely off-screen BEFORE weapon returns (zero duplicate hands!)
     const weaponHideEnd = 0.06;
     const medShowStart = 0.06;
-    const medHideStart = 0.89;
-    const medHideEnd = 0.94;
+    const medHideEnd = 0.92;
 
     if (p < weaponHideEnd) {
-      // Weapon holstering down out of frame; medkit not yet visible
       const wt = smooth(p / weaponHideEnd);
       this.viewmodelGroup.visible = true;
-      pos.x = 0.22 * wt;
-      pos.y = -0.42 * wt;
-      pos.z = 0.10 * wt;
-      rot.x = -0.85 * wt;
-      rot.y = -0.35 * wt;
-      rot.z = -0.25 * wt;
+      pos.x = 0.20 * wt;
+      pos.y = -0.38 * wt;
+      pos.z = 0.08 * wt;
+      rot.x = -0.78 * wt;
+      rot.y = -0.32 * wt;
+      rot.z = -0.22 * wt;
       if (this.medRig) this.medRig.visible = false;
       return;
     }
 
     if (p >= medHideEnd) {
-      // Medkit is completely gone; raise weapon cleanly back to ready
       const wt = 1 - smooth((p - medHideEnd) / (1 - medHideEnd));
       if (this.medRig) this.medRig.visible = false;
       this.viewmodelGroup.visible = true;
@@ -5463,251 +5573,423 @@ class WeaponSystem {
       if (this.leftArm) this.leftArm.visible = true;
       if (this.rightHand) this.rightHand.visible = true;
       if (this.rightArm) this.rightArm.visible = true;
-      pos.x = 0.22 * wt;
-      pos.y = -0.42 * wt;
-      pos.z = 0.10 * wt;
-      rot.x = -0.85 * wt;
-      rot.y = -0.35 * wt;
-      rot.z = -0.25 * wt;
+      pos.x = 0.20 * wt;
+      pos.y = -0.38 * wt;
+      pos.z = 0.08 * wt;
+      rot.x = -0.78 * wt;
+      rot.y = -0.32 * wt;
+      rot.z = -0.22 * wt;
       return;
     }
 
-    // Weapon completely hidden while both hands are occupied with medkit
     this.viewmodelGroup.visible = false;
     if (this.plateRig) this.plateRig.visible = false;
     if (this.medRig) this.medRig.visible = true;
 
-    const medEnv = p < 0.12
-      ? smooth((p - medShowStart) / (0.12 - medShowStart))
-      : (p > medHideStart ? 1 - smooth((p - medHideStart) / (medHideEnd - medHideStart)) : 1);
+    const stimHeld = this.medItems ? this.medItems.stim : null;
+    const bandageHeld = this.medItems ? this.medItems.bandage : null;
+    if (stimHeld) stimHeld.visible = false;
+    if (bandageHeld) bandageHeld.visible = false;
+    if (this.medGauzeTail) this.medGauzeTail.visible = false;
 
-    // Hide all med items by default each frame; active phase shows its item
-    if (this.medItems) {
-      this.medItems.stim.visible = false;
-      this.medItems.bandage.visible = false;
-      this.medItems.pills.visible = false;
+    // Live Mixamo left-forearm bone segment in vmCamera space (from previous/live IK frame) for 0.0mm-clipping wrap & injection!
+    let foreStart = new THREE.Vector3(-0.14, -0.22, -0.15);
+    let foreEnd = new THREE.Vector3(0.02, -0.13, -0.27);
+    if (
+      this.fpArms && !this.fpArms.disabled &&
+      this.fpArms.bones && this.fpArms.bones.leftforearm && this.fpArms.bones.lefthand &&
+      this.vmCamera
+    ) {
+      this.vmCamera.updateMatrixWorld(true);
+      const bForeW = this.fpArms.bones.leftforearm.getWorldPosition(new THREE.Vector3());
+      const bHandW = this.fpArms.bones.lefthand.getWorldPosition(new THREE.Vector3());
+      const fS = this.vmCamera.worldToLocal(bForeW);
+      const fE = this.vmCamera.worldToLocal(bHandW);
+      if (fS.distanceToSquared(fE) > 0.002) {
+        foreStart.copy(fS);
+        foreEnd.copy(fE);
+      }
     }
+    const foreAxis = foreEnd.clone().sub(foreStart).normalize();
+    const camUpFwd = new THREE.Vector3(0.0, 0.74, 0.67);
+    const dorsalN = camUpFwd.clone().addScaledVector(foreAxis, -camUpFwd.dot(foreAxis));
+    if (dorsalN.lengthSq() < 1e-5) dorsalN.set(0, 1, 0);
+    dorsalN.normalize();
+    const sideN = new THREE.Vector3().crossVectors(foreAxis, dorsalN).normalize();
 
-    // Medkit centered cleanly in lower-center foreground (close-up camera space)
-    const boxPos = new THREE.Vector3(0.0, THREE.MathUtils.lerp(-0.34, -0.095, medEnv), -0.255);
-    const boxRot = new THREE.Euler(0.50, 0.0, 0.0);
+    // Subtle procedural breathing sway so hands never look robotic
+    const breatheY = Math.sin(p * Math.PI * 5.0) * 0.0025;
 
-    // Symmetrical left/right cradle positions (left hand cradling cleanly underneath left edge with zero box clipping)
-    let lHandTarget = new THREE.Vector3(boxPos.x - 0.102, boxPos.y - 0.038, boxPos.z + 0.012);
-    let lHandRot = new THREE.Euler(0.46, 0.08, 0.18);
-    let rHandTarget = new THREE.Vector3(boxPos.x + 0.098, boxPos.y - 0.018, boxPos.z + 0.015);
-    let rHandRot = new THREE.Euler(0.15, -0.15, 0.15);
+    let showBox = false;
+    const boxPos = new THREE.Vector3(-0.015, -0.118 + breatheY, -0.285);
+    const boxRot = new THREE.Euler(0.44, 0.06, -0.04);
 
-    // Helper to animate a single random medical item methodically over local progress u (0..1)
-    const animateItem = (itemType, u, flagKey) => {
-      const mesh = this.medItems ? this.medItems[itemType] : null;
-      if (!mesh) return;
+    let lStyle = 'medIfakCradleL';
+    let rStyle = 'medZipPinchR';
+    const lHandTarget = new THREE.Vector3(-0.042, -0.144, -0.276);
+    const lHandRot = new THREE.Euler(0.32, 0.10, 0.08);
+    const rHandTarget = new THREE.Vector3(0.045, -0.120, -0.255);
+    const rHandRot = new THREE.Euler(0.12, -0.14, 0.18);
 
-      if (u < 0.20) {
-        // Sub-beat A: Reach into centered tray & lift item cleanly into view
-        const t = smooth(u / 0.20);
-        mesh.visible = u > 0.06;
-        mesh.position.set(
-          THREE.MathUtils.lerp(0.0, 0.015, t),
-          THREE.MathUtils.lerp(boxPos.y + 0.015, -0.025, t),
-          THREE.MathUtils.lerp(boxPos.z, -0.23, t)
+    // =========================================================================
+    // ACT 1 (p = 0.06 .. 0.25): RAISE TACTICAL IFAK -> RIP ZIPPER -> FLIP OPEN
+    // =========================================================================
+    if (p < 0.25) {
+      showBox = true;
+      const raiseT = smooth((p - medShowStart) / 0.07);
+      boxPos.set(
+        THREE.MathUtils.lerp(-0.04, -0.015, raiseT),
+        THREE.MathUtils.lerp(-0.34, -0.118, raiseT) + breatheY,
+        THREE.MathUtils.lerp(-0.26, -0.285, raiseT)
+      );
+      if (this.medSlotBandage) this.medSlotBandage.visible = true;
+      if (this.medSlotStim) this.medSlotStim.visible = true;
+
+      if (p < 0.13) {
+        // Bring IFAK up with left palm cradling flat base & right fingers pinching front-left zipper cord
+        if (this.medLidPivot) this.medLidPivot.rotation.x = 0;
+        if (this.medZipPull) this.medZipPull.position.set(-0.052, 0.011, 0.050);
+        rHandTarget.set(boxPos.x - 0.036, boxPos.y + 0.008, boxPos.z + 0.054);
+        rHandRot.set(0.12, -0.02, 0.14);
+      } else if (p < 0.19) {
+        // Rip perimeter zipper cleanly left-to-right across front track
+        const zipT = smooth((p - 0.13) / 0.06);
+        if (zipT > 0.06 && !this.healFlags.zip) {
+          this.healFlags.zip = true;
+          if (window.soundEngine && window.soundEngine.playZipper) window.soundEngine.playZipper(false);
+        }
+        const zipX = THREE.MathUtils.lerp(-0.052, 0.052, zipT);
+        if (this.medZipPull) this.medZipPull.position.set(zipX, 0.011, 0.050);
+        if (this.medLidPivot) this.medLidPivot.rotation.x = -0.12 * zipT;
+        boxPos.x += Math.sin(zipT * Math.PI) * 0.008;
+        rHandTarget.set(boxPos.x + zipX + 0.012, boxPos.y + 0.010, boxPos.z + 0.056);
+        rHandRot.set(0.14, 0.06 * zipT, 0.16);
+      } else {
+        // Flip Cordura clamshell lid open to expose stowed Gauze & Auto-Injector
+        const openT = smooth((p - 0.19) / 0.06);
+        if (openT > 0.18 && !this.healFlags.open) {
+          this.healFlags.open = true;
+          if (window.soundEngine && window.soundEngine.playMedLatch) window.soundEngine.playMedLatch(false);
+        }
+        if (this.medZipPull) this.medZipPull.position.set(0.052, 0.011, 0.050);
+        if (this.medLidPivot) this.medLidPivot.rotation.x = THREE.MathUtils.lerp(-0.12, -1.72, openT);
+        rHandTarget.set(
+          boxPos.x + THREE.MathUtils.lerp(0.052, 0.025, openT),
+          boxPos.y + THREE.MathUtils.lerp(0.014, 0.082, openT),
+          boxPos.z + THREE.MathUtils.lerp(0.054, -0.020, openT)
         );
-        mesh.rotation.set(0.12, 0.05, 0.15);
-        rHandTarget.set(mesh.position.x + 0.022, mesh.position.y - 0.005, mesh.position.z + 0.018);
-        rHandRot.set(0.10, -0.25, 0.35);
-      } else if (u < 0.32) {
-        // Sub-beat B: Deliberate present/ready hold right in center view
-        mesh.visible = true;
-        mesh.position.set(0.015, -0.025, -0.23);
-        mesh.rotation.set(0.12, 0.05, 0.15);
-        rHandTarget.set(0.037, -0.030, -0.212);
-        rHandRot.set(0.10, -0.25, 0.35);
-      } else if (u < 0.82) {
-        // Sub-beat C: Methodical item-specific application
-        const au = (u - 0.32) / 0.50;
-        mesh.visible = true;
+        rHandRot.set(0.16 - openT * 0.10, 0.04, 0.14);
+      }
+      lHandTarget.set(boxPos.x - 0.026, boxPos.y - 0.024, boxPos.z + 0.010);
+      lHandRot.set(0.32, 0.10, 0.08);
+    }
+    // =========================================================================
+    // ACT 2 (p = 0.25 .. 0.56): PULL COMBAT GAUZE -> STOW IFAK -> FOREARM WRAP
+    // =========================================================================
+    else if (p < 0.56) {
+      if (this.medLidPivot) this.medLidPivot.rotation.x = -1.72;
+      if (this.medSlotStim) this.medSlotStim.visible = true;
 
-        if (itemType === 'stim') {
-          // Lower medkit slightly, raise left forearm to center, align syringe, jab firmly, hold, withdraw
-          const prep = au < 0.25 ? smooth(au / 0.25) : (au > 0.82 ? 1 - smooth((au - 0.82) / 0.18) : 1);
-          const jab = au < 0.28 ? 0 : (au < 0.44 ? smooth((au - 0.28) / 0.16) : (au < 0.78 ? 1 : 1 - smooth((au - 0.78) / 0.22)));
-          if (au > 0.32 && !this.healFlags[flagKey]) {
-            this.healFlags[flagKey] = true;
-            window.soundEngine.playMedItem('stim');
-          }
-          const jolt = (au > 0.40 && au < 0.52) ? Math.sin(((au - 0.40) / 0.12) * Math.PI) : 0;
+      if (p < 0.34) {
+        // Pull Combat Gauze out of left elastic loop while left hand lowers IFAK pouch off-screen (zero floating box!)
+        const pickT = smooth((p - 0.25) / 0.09);
+        const picked = pickT >= 0.34;
+        if (this.medSlotBandage) this.medSlotBandage.visible = !picked;
+        if (bandageHeld) bandageHeld.visible = picked;
+        rStyle = picked ? 'medGauzeGripR' : 'medZipPinchR';
 
-          boxPos.y -= 0.085 * prep;
-          lHandTarget.set(
-            THREE.MathUtils.lerp(boxPos.x - 0.102, -0.035, prep),
-            THREE.MathUtils.lerp(boxPos.y - 0.038, -0.085 - jolt * 0.010, prep),
-            THREE.MathUtils.lerp(boxPos.z + 0.012, -0.225, prep)
+        const stowT = smooth((pickT - 0.32) / 0.68);
+        showBox = stowT < 0.96;
+        boxPos.set(
+          THREE.MathUtils.lerp(-0.015, -0.11, stowT),
+          THREE.MathUtils.lerp(-0.118, -0.35, stowT),
+          THREE.MathUtils.lerp(-0.285, -0.25, stowT)
+        );
+        lHandTarget.set(boxPos.x - 0.026, boxPos.y - 0.024, boxPos.z + 0.010);
+        lHandRot.set(0.32, 0.10, 0.08);
+
+        if (!picked) {
+          const reachT = smooth(pickT / 0.34);
+          rHandTarget.set(
+            THREE.MathUtils.lerp(0.010, boxPos.x - 0.024, reachT),
+            THREE.MathUtils.lerp(-0.036, boxPos.y + 0.024, reachT),
+            THREE.MathUtils.lerp(-0.305, boxPos.z + 0.008, reachT)
           );
-          lHandRot.set(0.15, 0.35, -0.25);
-
-          mesh.position.set(
-            THREE.MathUtils.lerp(0.015, -0.015, prep),
-            THREE.MathUtils.lerp(-0.010, -0.052 - jolt * 0.010, jab),
-            -0.225
-          );
-          mesh.rotation.set(0.10, 0.05, THREE.MathUtils.lerp(0.18, 0.32, prep));
-          rHandTarget.set(mesh.position.x + 0.022, mesh.position.y + 0.022, mesh.position.z + 0.016);
-          rHandRot.set(0.05, -0.25, 0.55);
-        } else if (itemType === 'bandage') {
-          // Lower medkit slightly, bring left forearm to center, wrap gauze in 2 slow deliberate loops
-          const prep = au < 0.16 ? smooth(au / 0.16) : (au > 0.88 ? 1 - smooth((au - 0.88) / 0.12) : 1);
-          if (au > 0.18 && !this.healFlags[flagKey]) {
-            this.healFlags[flagKey] = true;
-            window.soundEngine.playMedItem('bandage');
-          }
-          const wrapT = THREE.MathUtils.clamp((au - 0.14) / 0.74, 0, 1);
-          const angle = wrapT * Math.PI * 4.0; // 2 clean full loops
-          const radius = 0.044;
-
-          boxPos.y -= 0.085 * prep;
-          lHandTarget.set(
-            THREE.MathUtils.lerp(boxPos.x - 0.102, -0.025, prep),
-            THREE.MathUtils.lerp(boxPos.y - 0.038, -0.085, prep),
-            THREE.MathUtils.lerp(boxPos.z + 0.012, -0.23, prep)
-          );
-          lHandRot.set(0.10, 0.30, -0.20);
-
-          mesh.position.set(
-            -0.015 + Math.cos(angle) * radius,
-            -0.070 + Math.sin(angle) * radius * 0.76,
-            -0.225 + Math.sin(angle) * 0.018
-          );
-          mesh.rotation.set(Math.PI / 2, 0.15, angle);
-          rHandTarget.set(mesh.position.x + 0.026, mesh.position.y + 0.008, mesh.position.z + 0.020);
-          rHandRot.set(0.05, -0.20, 0.75);
+          rHandRot.set(0.14, -0.12, 0.22);
         } else {
-          // Painkiller pills: 2 distinct shakes in center, brief pause, tip smoothly up to take dose, return upright
-          if (au > 0.08 && !this.healFlags[flagKey]) {
-            this.healFlags[flagKey] = true;
-            window.soundEngine.playMedItem('pills');
-          }
-          if (au < 0.42) {
-            const shake = Math.sin((au / 0.42) * Math.PI * 4) * 0.020;
-            mesh.position.set(0.010, -0.025 + shake, -0.225);
-            mesh.rotation.set(0.12 + shake * 4.5, 0.08, 0.12);
-          } else if (au < 0.50) {
-            // Brief hold beat between shaking and tipping
-            mesh.position.set(0.010, -0.025, -0.225);
-            mesh.rotation.set(0.12, 0.08, 0.12);
-          } else {
-            const tu = (au - 0.50) / 0.50;
-            const tip = tu < 0.35 ? smooth(tu / 0.35) : (tu < 0.72 ? 1 : 1 - smooth((tu - 0.72) / 0.28));
-            mesh.position.set(
-              THREE.MathUtils.lerp(0.010, 0.0, tip),
-              THREE.MathUtils.lerp(-0.025, -0.005, tip),
-              THREE.MathUtils.lerp(-0.225, -0.165, tip)
-            );
-            mesh.rotation.set(THREE.MathUtils.lerp(0.12, 1.38, tip), 0.05, 0.10);
-          }
-          rHandTarget.set(mesh.position.x + 0.024, mesh.position.y - 0.008, mesh.position.z + 0.018);
-          rHandRot.set(0.05, -0.30, 0.40);
+          const liftT = smooth((pickT - 0.34) / 0.66);
+          rHandTarget.set(
+            THREE.MathUtils.lerp(boxPos.x - 0.024, 0.052, liftT),
+            THREE.MathUtils.lerp(boxPos.y + 0.024, -0.095, liftT),
+            THREE.MathUtils.lerp(boxPos.z + 0.008, -0.265, liftT)
+          );
+          rHandRot.set(0.12, -0.16, 0.24);
         }
       } else {
-        // Sub-beat D: Place used item neatly back down into tray & brief settle beat
-        const raw = (u - 0.82) / 0.18;
-        const t = smooth(Math.min(1, raw / 0.78));
-        mesh.visible = raw < 0.72;
-        mesh.position.set(
-          THREE.MathUtils.lerp(0.015, 0.0, t),
-          THREE.MathUtils.lerp(-0.035, boxPos.y + 0.012, t),
-          THREE.MathUtils.lerp(-0.23, boxPos.z, t)
-        );
-        rHandTarget.set(mesh.position.x + 0.026, mesh.position.y + 0.008, mesh.position.z + 0.020);
-        rHandRot.set(0.10, -0.20, 0.65);
-      }
-    };
+        // Present left forearm across lower-left foreground & wrap sterile combat gauze tangentially around live forearm bone!
+        showBox = false;
+        if (this.medSlotBandage) this.medSlotBandage.visible = false;
+        if (bandageHeld) bandageHeld.visible = p < 0.545;
+        lStyle = 'medForearmBraceL';
+        rStyle = 'medGauzeGripR';
 
-    if (p < 0.11) {
-      // === STEP 1: BRING OUT & PRESENT CLOSED MEDKIT DEAD-CENTER ===
-      if (this.medLidPivot) this.medLidPivot.rotation.x = 0;
-    } else if (p < 0.15) {
-      // === STEP 2A: MOVE RIGHT HAND TO FRONT SILVER CLASP & POP LATCH ===
-      const t = smooth((p - 0.11) / 0.04);
-      if (this.medLidPivot) this.medLidPivot.rotation.x = 0;
-      if (t > 0.70 && !this.healFlags.open) {
-        this.healFlags.open = true;
-        window.soundEngine.playMedLatch(false);
+        const armInT = smooth((p - 0.34) / 0.04);
+        const wrapT = smooth((p - 0.36) / 0.15);
+        const cinchT = p >= 0.51 ? smooth((p - 0.51) / 0.05) : 0;
+        const cinchPulse = p >= 0.51 ? Math.sin(cinchT * Math.PI) : 0;
+
+        if (p > 0.365 && !this.healFlags.item1) {
+          this.healFlags.item1 = true;
+          if (window.soundEngine && window.soundEngine.playMedItem) window.soundEngine.playMedItem('bandage');
+        }
+        if (p > 0.518 && !this.healFlags.cinchImpulse && this.fpArms && this.fpArms.applyShoulderImpulse) {
+          this.healFlags.cinchImpulse = true;
+          this.fpArms.applyShoulderImpulse('left', 0.015, -0.022, 0.01, 0.45);
+          this.fpArms.applyShoulderImpulse('right', 0.020, -0.025, 0.015, 0.55);
+        }
+
+        lHandTarget.set(
+          THREE.MathUtils.lerp(-0.12, 0.040, armInT) + cinchPulse * 0.006,
+          THREE.MathUtils.lerp(-0.28, -0.128, armInT) - cinchPulse * 0.008 + breatheY,
+          THREE.MathUtils.lerp(-0.24, -0.275, armInT)
+        );
+        lHandRot.set(0.06, 0.12, -0.10);
+
+        const wrapCenter = foreStart.clone().lerp(foreEnd, 0.54);
+        if (this.medForearmWrap && wrapT > 0.04) {
+          this.medForearmWrap.visible = true;
+          this.medForearmWrap.position.copy(wrapCenter);
+          this.medForearmWrap.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), foreAxis);
+          const wGrow = THREE.MathUtils.lerp(0.22, 1.0, wrapT);
+          const radialTight = 1.0 - cinchPulse * 0.045;
+          this.medForearmWrap.scale.set(radialTight, wGrow, radialTight);
+        }
+
+        if (p < 0.51) {
+          // Orbital wrap at 6.1cm radius around forearm bone axis (clears 3.7cm sleeve + 2.0cm roll with 0.0mm clipping!)
+          const theta = -0.30 * Math.PI + wrapT * Math.PI * 2.10;
+          const radialVec = dorsalN.clone().multiplyScalar(Math.cos(theta))
+            .addScaledVector(sideN, Math.sin(theta) * 0.92);
+          const orbitPos = wrapCenter.clone()
+            .addScaledVector(radialVec, 0.061)
+            .addScaledVector(foreAxis, (wrapT - 0.5) * 0.022);
+          rHandTarget.copy(orbitPos);
+          rHandRot.set(
+            0.14 + Math.sin(theta) * 0.14,
+            -0.16 + Math.cos(theta) * 0.10,
+            0.26 + Math.cos(theta) * 0.16
+          );
+
+          // Taut gauze strip connecting forearm cuff to the unrolling bandage in right hand
+          if (this.medGauzeTail && wrapT > 0.08 && wrapT < 0.96) {
+            const cuffAnchor = wrapCenter.clone().addScaledVector(radialVec, 0.038);
+            const span = orbitPos.clone().sub(cuffAnchor);
+            const spanLen = span.length();
+            if (spanLen > 0.008) {
+              this.medGauzeTail.visible = true;
+              this.medGauzeTail.position.copy(cuffAnchor).addScaledVector(span, 0.5);
+              this.medGauzeTail.scale.set(1, 1, spanLen);
+              this.medGauzeTail.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), span.normalize());
+            }
+          }
+        } else {
+          // Crisp Velcro cinch pull down-right & tuck tail away
+          const startPos = wrapCenter.clone().addScaledVector(dorsalN, 0.056).addScaledVector(foreAxis, 0.012);
+          rHandTarget.set(
+            startPos.x + cinchT * 0.075,
+            startPos.y - cinchT * 0.085,
+            startPos.z + cinchT * 0.020
+          );
+          rHandRot.set(0.20, -0.20, 0.34);
+        }
       }
-      rHandTarget.set(
-        THREE.MathUtils.lerp(boxPos.x + 0.082, boxPos.x + 0.01, t),
-        THREE.MathUtils.lerp(boxPos.y - 0.010, boxPos.y + 0.025, t),
-        THREE.MathUtils.lerp(boxPos.z + 0.015, boxPos.z + 0.062, t)
-      );
-      rHandRot.set(-0.25, -0.15, 1.35);
-    } else if (p < 0.23) {
-      // === STEP 2B: FLIP HINGED LID WIDE OPEN & BRIEF PAUSE ===
-      const raw = (p - 0.15) / 0.08;
-      const t = smooth(Math.min(1, raw / 0.78));
-      if (this.medLidPivot) this.medLidPivot.rotation.x = -1.95 * t;
-      rHandTarget.set(
-        boxPos.x + 0.01 + t * 0.03,
-        boxPos.y + THREE.MathUtils.lerp(0.025, 0.115, t),
-        boxPos.z + THREE.MathUtils.lerp(0.062, -0.025, t)
-      );
-      rHandRot.set(-0.25 - t * 0.35, -0.15, 1.35);
-    } else if (p < 0.52) {
-      // === STEP 3: METHODICAL APPLICATION OF RANDOM ITEM #1 ===
-      if (this.medLidPivot) this.medLidPivot.rotation.x = -1.95;
-      animateItem(this.healSequence[0], (p - 0.23) / 0.29, 'item1');
-    } else if (p < 0.81) {
-      // === STEP 4: METHODICAL APPLICATION OF RANDOM ITEM #2 ===
-      if (this.medLidPivot) this.medLidPivot.rotation.x = -1.95;
-      const u2 = (p - 0.52) / 0.29;
-      animateItem(this.healSequence[1], u2, 'item2');
-      if (u2 > 0.74 && !this.healFlags.applied) {
-        this.healFlags.applied = true;
-        if (player) player.finishMedkit();
+    }
+    // =========================================================================
+    // ACT 3 (p = 0.56 .. 0.92): AUTO-INJECTOR CAP SNAP -> FOREARM PLUNGE & DRAIN
+    // =========================================================================
+    else {
+      showBox = false;
+      if (this.medForearmWrap) {
+        const wrapCenter = foreStart.clone().lerp(foreEnd, 0.54);
+        this.medForearmWrap.visible = p < 0.885;
+        this.medForearmWrap.position.copy(wrapCenter);
+        this.medForearmWrap.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), foreAxis);
+        this.medForearmWrap.scale.set(0.96, 1.0, 0.96);
       }
-    } else if (p < 0.89) {
-      // === STEP 5: FOLD LID SHUT & PRESS CLASP TO LATCH ===
-      const raw = (p - 0.81) / 0.08;
-      const closeT = smooth(Math.min(1, raw / 0.72));
-      const press = raw > 0.72 ? Math.sin(((raw - 0.72) / 0.28) * Math.PI) : 0;
-      if (this.medLidPivot) this.medLidPivot.rotation.x = THREE.MathUtils.lerp(-1.95, 0, closeT);
-      if (raw > 0.72 && !this.healFlags.close) {
-        this.healFlags.close = true;
-        window.soundEngine.playMedLatch(true);
+
+      if (stimHeld) {
+        stimHeld.visible = p < 0.895;
+        const ud = stimHeld.userData || {};
+        const capOff = p >= 0.632;
+        if (ud.capGroup) ud.capGroup.visible = !capOff;
+
+        if (p < 0.67) {
+          // Bring up Epinephrine Auto-Injector & snap off top red safety cap with left thumb/index!
+          const drawT = smooth((p - 0.56) / 0.05);
+          const snapT = p >= 0.632 ? smooth((p - 0.632) / 0.038) : 0;
+          const snapRecoil = p >= 0.632 ? Math.sin(snapT * Math.PI) : 0;
+
+          rStyle = 'syringeHold';
+          lStyle = 'syringeCapPull';
+          if (ud.fluidPivot) ud.fluidPivot.scale.y = 1.0;
+          if (ud.plunger) ud.plunger.position.y = 0.016;
+          if (ud.shroud) ud.shroud.position.y = -0.052;
+
+          rHandTarget.set(
+            THREE.MathUtils.lerp(0.10, 0.026, drawT),
+            THREE.MathUtils.lerp(-0.24, -0.098, drawT) - snapRecoil * 0.006,
+            THREE.MathUtils.lerp(-0.24, -0.265, drawT)
+          );
+          rHandRot.set(0.06, -0.08, 0.24);
+
+          if (!capOff) {
+            const reachCap = smooth((p - 0.57) / 0.055);
+            // Top safety cap sits ~5.6cm above rHandTarget along tilted +uw axis
+            const capPos = new THREE.Vector3(rHandTarget.x - 0.016, rHandTarget.y + 0.054, rHandTarget.z + 0.005);
+            lHandTarget.set(
+              THREE.MathUtils.lerp(0.035, capPos.x - 0.008, reachCap),
+              THREE.MathUtils.lerp(-0.135, capPos.y - 0.004, reachCap),
+              THREE.MathUtils.lerp(-0.275, capPos.z + 0.010, reachCap)
+            );
+            lHandRot.set(0.14, 0.18, -0.18);
+          } else {
+            if (!this.healFlags.capPop) {
+              this.healFlags.capPop = true;
+              if (window.soundEngine && window.soundEngine.playMedItem) window.soundEngine.playMedItem('cap');
+              if (this.medDetachedCap) {
+                this.medDetachedCap.visible = true;
+                this._capStartPos = new THREE.Vector3(rHandTarget.x - 0.016, rHandTarget.y + 0.056, rHandTarget.z + 0.004);
+              }
+            }
+            // Flick left hand up-left as cap pops free, then transition down toward forearm brace
+            lHandTarget.set(
+              THREE.MathUtils.lerp(0.002, -0.035, snapT),
+              THREE.MathUtils.lerp(-0.044, -0.085, snapT),
+              -0.265
+            );
+            lHandRot.set(0.10, 0.22, -0.24);
+          }
+        } else if (p < 0.855) {
+          // Brace left forearm steady -> Poise auto-injector -> Firm perpendicular plunge -> Live bio-fluid drain!
+          const braceT = smooth((p - 0.67) / 0.04);
+          const jabT = p < 0.72 ? 0 : (p < 0.755 ? smooth((p - 0.72) / 0.035) : 1);
+          const hitJolt = (p >= 0.745 && p < 0.795) ? Math.sin(((p - 0.745) / 0.050) * Math.PI) : 0;
+          const drainT = p >= 0.750 ? smooth((p - 0.750) / 0.092) : 0;
+
+          if (p > 0.742 && !this.healFlags.item2) {
+            this.healFlags.item2 = true;
+            if (window.soundEngine && window.soundEngine.playMedItem) window.soundEngine.playMedItem('stim');
+            if (this.fpArms && this.fpArms.applyShoulderImpulse) {
+              this.fpArms.applyShoulderImpulse('right', -0.015, -0.032, 0.018, 0.75);
+              this.fpArms.applyShoulderImpulse('left', 0.010, -0.026, 0.014, 0.60);
+            }
+          }
+          if (p >= 0.835 && !this.healFlags.applied) {
+            this.healFlags.applied = true;
+            if (player) player.finishMedkit();
+          }
+
+          lStyle = 'medForearmBraceL';
+          rStyle = p >= 0.735 ? 'syringePlunge' : 'syringeHold';
+
+          // Live glass ampoule fluid drain + internal piston travel + compressible orange safety shroud!
+          if (ud.fluidPivot) ud.fluidPivot.scale.y = THREE.MathUtils.lerp(1.0, 0.06, drainT);
+          if (ud.plunger) ud.plunger.position.y = THREE.MathUtils.lerp(0.016, -0.006, drainT);
+          if (ud.shroud) ud.shroud.position.y = -0.052 + 0.006 * jabT;
+
+          lHandTarget.set(
+            THREE.MathUtils.lerp(-0.035, 0.038, braceT),
+            THREE.MathUtils.lerp(-0.085, -0.132, braceT) - hitJolt * 0.009 + breatheY,
+            THREE.MathUtils.lerp(-0.265, -0.275, braceT)
+          );
+          lHandRot.set(0.06, 0.12, -0.10);
+
+          // Target proximal outer forearm (28% from elbow toward wrist, cleanly proximal to the gauze cuff at 54%!)
+          const injSurface = foreStart.clone().lerp(foreEnd, 0.28).addScaledVector(dorsalN, 0.035);
+          const hoverGap = THREE.MathUtils.lerp(0.058, 0.0, jabT);
+          // Offset right hand by +0.054m along dorsalN so the orange needle shroud kisses injSurface at jabT=1 with 0mm barrel clipping!
+          const handContactPos = injSurface.clone()
+            .addScaledVector(dorsalN, 0.054 + hoverGap)
+            .add(new THREE.Vector3(0.012, -hitJolt * 0.007, 0.0));
+          rHandTarget.copy(handContactPos);
+          rHandRot.set(0.08, -0.06, 0.22);
+        } else {
+          // Withdraw auto-injector straight out along dorsal normal (zero sideways scraping) & lower both arms off-screen
+          const outT = smooth((p - 0.855) / (medHideEnd - 0.855));
+          const pullAxial = smooth(Math.min(1, outT / 0.45));
+          const dropDown = outT > 0.35 ? smooth((outT - 0.35) / 0.65) : 0;
+
+          lStyle = 'medForearmBraceL';
+          rStyle = 'syringeHold';
+          if (ud.fluidPivot) ud.fluidPivot.scale.y = 0.06;
+          if (ud.plunger) ud.plunger.position.y = -0.006;
+          if (ud.shroud) ud.shroud.position.y = THREE.MathUtils.lerp(-0.046, -0.052, pullAxial);
+
+          const injSurface = foreStart.clone().lerp(foreEnd, 0.28).addScaledVector(dorsalN, 0.035);
+          const liftedPos = injSurface.clone().addScaledVector(dorsalN, 0.054 + pullAxial * 0.052).add(new THREE.Vector3(0.012, 0, 0));
+          rHandTarget.set(
+            THREE.MathUtils.lerp(liftedPos.x, 0.095, dropDown),
+            THREE.MathUtils.lerp(liftedPos.y, -0.34, dropDown),
+            THREE.MathUtils.lerp(liftedPos.z, -0.25, dropDown)
+          );
+          rHandRot.set(0.08 - dropDown * 0.20, -0.08, 0.22);
+
+          lHandTarget.set(
+            THREE.MathUtils.lerp(0.038, -0.095, dropDown),
+            THREE.MathUtils.lerp(-0.132, -0.34, dropDown),
+            THREE.MathUtils.lerp(-0.275, -0.25, dropDown)
+          );
+          lHandRot.set(0.06, 0.12, -0.10);
+        }
+
+        // Ballistic arc for the snapped-off red safety cap
+        if (this.medDetachedCap && this.medDetachedCap.visible && this._capStartPos) {
+          const capElapsed = Math.max(0, (p - 0.632) * (this.healDuration || 4.8));
+          if (capElapsed < 0.45) {
+            this.medDetachedCap.position.set(
+              this._capStartPos.x - 0.38 * capElapsed,
+              this._capStartPos.y + 0.26 * capElapsed - 2.4 * capElapsed * capElapsed,
+              this._capStartPos.z - 0.08 * capElapsed
+            );
+            this.medDetachedCap.rotation.set(capElapsed * 14.0, capElapsed * 9.0, capElapsed * 18.0);
+          } else {
+            this.medDetachedCap.visible = false;
+          }
+        }
       }
-      boxPos.y -= press * 0.010;
-      rHandTarget.set(
-        boxPos.x + 0.015,
-        boxPos.y + THREE.MathUtils.lerp(0.115, 0.028, closeT) - press * 0.008,
-        boxPos.z + THREE.MathUtils.lerp(-0.025, 0.058, closeT)
-      );
-      rHandRot.set(-0.55 + closeT * 0.35, -0.15, 1.40);
-    } else {
-      // === STEP 6: STOW CLOSED MEDKIT OFF BOTTOM OF SCREEN ===
-      if (this.medLidPivot) this.medLidPivot.rotation.x = 0;
     }
 
     if (this.medBoxGroup) {
-      this.medBoxGroup.position.copy(boxPos);
-      this.medBoxGroup.rotation.copy(boxRot);
+      this.medBoxGroup.visible = showBox;
+      if (showBox) {
+        this.medBoxGroup.position.copy(boxPos);
+        this.medBoxGroup.rotation.copy(boxRot);
+      }
+    }
+
+    if (!this._medQTargetL) {
+      this._medQTargetL = new THREE.Quaternion();
+      this._medQTargetR = new THREE.Quaternion();
     }
 
     if (this.medLeftHand && this.medLeftArm) {
-      this.medLeftHand.position.lerp(lHandTarget, handRate);
-      this.medLeftHand.rotation.x = THREE.MathUtils.lerp(this.medLeftHand.rotation.x, lHandRot.x, handRate);
-      this.medLeftHand.rotation.y = THREE.MathUtils.lerp(this.medLeftHand.rotation.y, lHandRot.y, handRate);
-      this.medLeftHand.rotation.z = THREE.MathUtils.lerp(this.medLeftHand.rotation.z, lHandRot.z, handRate);
-      const lShoulder = new THREE.Vector3(-0.28, -0.28, -0.02);
-      const lWrist = this.medLeftHand.position.clone().add(new THREE.Vector3(-0.015, -0.01, 0.04));
+      if (this.medLeftHand.userData) this.medLeftHand.userData.activeStyle = lStyle;
+      this.medLeftHand.position.lerp(lHandTarget, posRate);
+      this._medQTargetL.setFromEuler(lHandRot);
+      this.medLeftHand.quaternion.slerp(this._medQTargetL, rotRate);
+      const lShoulder = new THREE.Vector3(-0.26, -0.30, 0.06);
+      const lWrist = this.medLeftHand.position.clone().add(new THREE.Vector3(-0.015, -0.008, 0.036));
       this._currentAimHand = this.medLeftHand;
       this._aimArm(this.medLeftArm, lShoulder, lWrist);
     }
 
     if (this.medRightHand && this.medRightArm) {
-      this.medRightHand.position.lerp(rHandTarget, handRate);
-      this.medRightHand.rotation.x = THREE.MathUtils.lerp(this.medRightHand.rotation.x, rHandRot.x, handRate);
-      this.medRightHand.rotation.y = THREE.MathUtils.lerp(this.medRightHand.rotation.y, rHandRot.y, handRate);
-      this.medRightHand.rotation.z = THREE.MathUtils.lerp(this.medRightHand.rotation.z, rHandRot.z, handRate);
-      const rShoulder = new THREE.Vector3(0.28, -0.28, -0.02);
-      const rWrist = this.medRightHand.position.clone().add(new THREE.Vector3(0.015, -0.01, 0.04));
+      if (this.medRightHand.userData) this.medRightHand.userData.activeStyle = rStyle;
+      this.medRightHand.position.lerp(rHandTarget, posRate);
+      this._medQTargetR.setFromEuler(rHandRot);
+      this.medRightHand.quaternion.slerp(this._medQTargetR, rotRate);
+      const rShoulder = new THREE.Vector3(0.26, -0.30, 0.06);
+      const rWrist = this.medRightHand.position.clone().add(new THREE.Vector3(0.015, -0.008, 0.036));
       this._currentAimHand = this.medRightHand;
       this._aimArm(this.medRightArm, rShoulder, rWrist);
     }
@@ -5715,11 +5997,16 @@ class WeaponSystem {
 
   _endHealVisuals() {
     if (this.medRig) this.medRig.visible = false;
+    if (this.medBoxGroup) this.medBoxGroup.visible = false;
+    if (this.medForearmWrap) this.medForearmWrap.visible = false;
+    if (this.medGauzeTail) this.medGauzeTail.visible = false;
+    if (this.medDetachedCap) this.medDetachedCap.visible = false;
     if (this.medItems) {
-      this.medItems.stim.visible = false;
-      this.medItems.bandage.visible = false;
-      this.medItems.pills.visible = false;
+      if (this.medItems.stim) this.medItems.stim.visible = false;
+      if (this.medItems.bandage) this.medItems.bandage.visible = false;
     }
+    if (this.medLeftHand && this.medLeftHand.userData) this.medLeftHand.userData.activeStyle = null;
+    if (this.medRightHand && this.medRightHand.userData) this.medRightHand.userData.activeStyle = null;
     this.viewmodelGroup.visible = true;
     if (this.leftHand) this.leftHand.visible = true;
     if (this.leftArm) this.leftArm.visible = true;
@@ -5733,18 +6020,33 @@ class WeaponSystem {
     if (this.isReloading) this.cancelReload();
     this.cancelInspect();
     this.isHealing = true;
-    this.healDuration = 6.4;
+    this.healDuration = 4.9;
     this.healTimer = this.healDuration;
-    // Shuffle the 3 medical items and pick 2 distinct random items for this use
-    const pool = ['stim', 'bandage', 'pills'];
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [pool[i], pool[j]] = [pool[j], pool[i]];
+    this.healSequence = ['bandage', 'stim'];
+    this.healFlags = { zip: false, open: false, item1: false, cinchImpulse: false, capPop: false, item2: false, applied: false, close: false };
+    this._capStartPos = null;
+    if (this.medSlotBandage) this.medSlotBandage.visible = true;
+    if (this.medSlotStim) this.medSlotStim.visible = true;
+    if (this.medForearmWrap) this.medForearmWrap.visible = false;
+    if (this.medGauzeTail) this.medGauzeTail.visible = false;
+    if (this.medDetachedCap) this.medDetachedCap.visible = false;
+    if (this.medLidPivot) this.medLidPivot.rotation.x = 0;
+    if (this.medZipPull) this.medZipPull.position.set(-0.052, 0.011, 0.050);
+    if (this.medItems && this.medItems.stim && this.medItems.stim.userData) {
+      const ud = this.medItems.stim.userData;
+      if (ud.capGroup) ud.capGroup.visible = true;
+      if (ud.fluidPivot) ud.fluidPivot.scale.y = 1.0;
+      if (ud.plunger) ud.plunger.position.y = 0.016;
+      if (ud.shroud) ud.shroud.position.y = -0.052;
     }
-    this.healSequence = [pool[0], pool[1]];
-    this.healFlags = { open: false, item1: false, item2: false, applied: false, close: false };
-    if (this.medLeftHand) this.medLeftHand.position.set(-0.10, -0.32, -0.26);
-    if (this.medRightHand) this.medRightHand.position.set(0.10, -0.32, -0.26);
+    if (this.medLeftHand) {
+      this.medLeftHand.position.set(-0.07, -0.34, -0.26);
+      this.medLeftHand.quaternion.setFromEuler(new THREE.Euler(0.32, 0.10, 0.08));
+    }
+    if (this.medRightHand) {
+      this.medRightHand.position.set(0.03, -0.32, -0.24);
+      this.medRightHand.quaternion.setFromEuler(new THREE.Euler(0.16, -0.08, 0.22));
+    }
     return true;
   }
 

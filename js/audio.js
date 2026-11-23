@@ -1386,48 +1386,85 @@ class SoundEngine {
   playMedItem(type = 'stim') {
     if (this.muted || !this.ctx) return;
     const now = this.ctx.currentTime;
-    if (type === 'stim') {
-      // Sharp auto-injector spring snap + pressurized hiss
+    if (type === 'cap') {
+      // Crisp polymer safety-cap thumb snap
+      const pop = this.ctx.createOscillator();
+      pop.type = 'triangle';
+      pop.frequency.setValueAtTime(1650, now);
+      pop.frequency.exponentialRampToValueAtTime(520, now + 0.032);
+      const pg = this.ctx.createGain();
+      pg.gain.setValueAtTime(0.15, now);
+      pg.gain.exponentialRampToValueAtTime(0.001, now + 0.038);
+      pop.connect(pg);
+      pg.connect(this._bus('sfx'));
+      pop.start(now);
+      pop.stop(now + 0.042);
+    } else if (type === 'stim') {
+      // Heavy spring-loaded auto-injector thud + metallic needle click + pressurized bio-fluid hiss
+      const thud = this.ctx.createOscillator();
+      thud.type = 'sine';
+      thud.frequency.setValueAtTime(195, now);
+      thud.frequency.exponentialRampToValueAtTime(58, now + 0.065);
+      const tg = this.ctx.createGain();
+      tg.gain.setValueAtTime(0.22, now);
+      tg.gain.exponentialRampToValueAtTime(0.001, now + 0.075);
+      thud.connect(tg);
+      tg.connect(this._bus('sfx'));
+      thud.start(now);
+      thud.stop(now + 0.08);
+
       const click = this.ctx.createOscillator();
       click.type = 'square';
-      click.frequency.setValueAtTime(1400, now);
-      click.frequency.exponentialRampToValueAtTime(320, now + 0.03);
+      click.frequency.setValueAtTime(1550, now + 0.008);
+      click.frequency.exponentialRampToValueAtTime(340, now + 0.038);
       const cg = this.ctx.createGain();
-      cg.gain.setValueAtTime(0.16, now);
-      cg.gain.exponentialRampToValueAtTime(0.001, now + 0.035);
+      cg.gain.setValueAtTime(0.15, now + 0.008);
+      cg.gain.exponentialRampToValueAtTime(0.001, now + 0.042);
       click.connect(cg);
       cg.connect(this._bus('sfx'));
-      click.start(now);
-      click.stop(now + 0.04);
+      click.start(now + 0.008);
+      click.stop(now + 0.045);
 
-      const hiss = this._makeNoise(now + 0.025, 0.24);
+      const hiss = this._makeNoise(now + 0.025, 0.38);
       const hp = this.ctx.createBiquadFilter();
       hp.type = 'bandpass';
-      hp.frequency.setValueAtTime(4200, now + 0.025);
-      hp.Q.setValueAtTime(2.0, now + 0.025);
+      hp.frequency.setValueAtTime(4400, now + 0.025);
+      hp.frequency.exponentialRampToValueAtTime(2600, now + 0.38);
+      hp.Q.setValueAtTime(2.2, now + 0.025);
       const hg = this.ctx.createGain();
-      hg.gain.setValueAtTime(0.09, now + 0.025);
-      hg.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+      hg.gain.setValueAtTime(0.11, now + 0.025);
+      hg.gain.exponentialRampToValueAtTime(0.001, now + 0.39);
       hiss.connect(hp);
       hp.connect(hg);
       hg.connect(this._bus('sfx'));
     } else if (type === 'bandage') {
-      // Two soft cloth-wrapping swishes
-      [0, 0.28].forEach((offset) => {
-        const swish = this._makeNoise(now + offset, 0.18);
+      // Taut sterile gauze wrap swish + crisp Velcro trauma-strap cinch rip
+      [0, 0.30].forEach((offset) => {
+        const swish = this._makeNoise(now + offset, 0.22);
         const bp = this.ctx.createBiquadFilter();
         bp.type = 'bandpass';
-        bp.frequency.setValueAtTime(1100, now + offset);
-        bp.frequency.linearRampToValueAtTime(1750, now + offset + 0.14);
-        bp.Q.setValueAtTime(1.4, now + offset);
+        bp.frequency.setValueAtTime(1050, now + offset);
+        bp.frequency.linearRampToValueAtTime(1850, now + offset + 0.18);
+        bp.Q.setValueAtTime(1.5, now + offset);
         const sg = this.ctx.createGain();
         sg.gain.setValueAtTime(0.001, now + offset);
-        sg.gain.linearRampToValueAtTime(0.11, now + offset + 0.05);
-        sg.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.17);
+        sg.gain.linearRampToValueAtTime(0.12, now + offset + 0.06);
+        sg.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.21);
         swish.connect(bp);
         bp.connect(sg);
         sg.connect(this._bus('sfx'));
       });
+      const cinch = this._makeNoise(now + 0.56, 0.11);
+      const vbp = this.ctx.createBiquadFilter();
+      vbp.type = 'bandpass';
+      vbp.frequency.setValueAtTime(2900, now + 0.56);
+      vbp.Q.setValueAtTime(2.6, now + 0.56);
+      const vg = this.ctx.createGain();
+      vg.gain.setValueAtTime(0.11, now + 0.56);
+      vg.gain.exponentialRampToValueAtTime(0.001, now + 0.66);
+      cinch.connect(vbp);
+      vbp.connect(vg);
+      vg.connect(this._bus('sfx'));
     } else {
       // Pills: dry plastic bottle double rattle
       [0, 0.055, 0.16, 0.215].forEach((offset, idx) => {

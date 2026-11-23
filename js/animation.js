@@ -1143,11 +1143,22 @@
           customLeftArm = { shX: 0.96 - pull * 0.22, shZ: 0.46, elbX: 1.15 + pull * 0.28 };
         }
       } else if (isHealing && !isDowned) {
+        // Two-stage 3P Tactical Medkit Choreography: Forearm compression wrap (0..0.56) -> Auto-injector press (0.56..1.0)!
+        const hp = st.healProgress !== undefined ? st.healProgress : ((this.idleTime * 0.22) % 1);
         leftIKWeight = 0.0;
-        wpnPosX = 0.24; wpnPosY = 0.14; wpnPosZ = -0.18; wpnRotX = -0.75;
-        const wrap = Math.sin(this.idleTime * 8.0);
-        headPitch = -0.38;
-        customLeftArm = { shX: 0.92 + wrap * 0.12, shZ: 0.58, elbX: 1.42 + wrap * 0.14 };
+        wpnPosX = 0.25; wpnPosY = 0.10; wpnPosZ = -0.14; wpnRotX = -0.88;
+        headPitch = -0.34;
+        if (hp < 0.56) {
+          const wrapWave = Math.sin(hp * Math.PI * 6.0);
+          customLeftArm = { shX: 0.94 + wrapWave * 0.06, shZ: 0.52, elbX: 1.38 + wrapWave * 0.08 };
+        } else {
+          const injT = THREE.MathUtils.clamp((hp - 0.56) / 0.44, 0, 1);
+          const jab = injT < 0.35 ? smoothstep(injT / 0.35) : (injT < 0.80 ? 1 : 1 - smoothstep((injT - 0.80) / 0.20));
+          if (r.syringeProp) r.syringeProp.visible = true;
+          rightIKWeight = 0.0;
+          customLeftArm = { shX: 0.88, shZ: 0.44, elbX: 1.44 };
+          customRightArm = { shX: 0.96 + jab * 0.18, shZ: -0.46 - jab * 0.12, elbX: 1.32 + jab * 0.22 };
+        }
       } else if (st.stanceTrans && st.stanceTrans.timer > 0 && !isDowned) {
         // Stance transition supporting left-hand ground brace when entering/exiting prone
         const p = 1 - (st.stanceTrans.timer / Math.max(0.01, st.stanceTrans.duration));

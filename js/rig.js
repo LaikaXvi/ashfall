@@ -1299,9 +1299,13 @@
     pinPull:        { f: new THREE.Vector3( 0.58,  0.14, -0.80), back: new THREE.Vector3(-0.62,  0.68, -0.39), palmOffset: new THREE.Vector3(-0.012,  0.004, 0.004), curl: [1.26, 1.38, 0.88], thumb: 0.88 },
     knifeHold:      { f: new THREE.Vector3(-0.18,  0.32, -0.93), back: new THREE.Vector3( 0.95,  0.22, -0.22), palmOffset: new THREE.Vector3( 0.014, -0.004, 0.004), curl: [1.28, 1.38, 0.88], thumb: 0.86 },
     throwRelease:   { f: new THREE.Vector3(-0.12, -0.30, -0.95), back: new THREE.Vector3( 0.45,  0.86, -0.24), palmOffset: new THREE.Vector3( 0.006,  0.008, 0.004), curl: [0.14, 0.16, 0.10], thumb: 0.22 },
-    syringeHold:    { f: new THREE.Vector3(-0.34, -0.18, -0.92), back: new THREE.Vector3( 0.92,  0.18, -0.34), palmOffset: new THREE.Vector3( 0.016,  0.002, 0.004), curl: [1.24, 1.34, 0.88], thumb: 0.54 },
-    syringePlunge:  { f: new THREE.Vector3(-0.32, -0.24, -0.91), back: new THREE.Vector3( 0.91,  0.24, -0.32), palmOffset: new THREE.Vector3( 0.016,  0.000, 0.004), curl: [1.34, 1.46, 0.92], thumb: 1.00 },
-    syringeCapPull: { f: new THREE.Vector3( 0.46,  0.06, -0.88), back: new THREE.Vector3(-0.60,  0.72, -0.35), palmOffset: new THREE.Vector3(-0.012,  0.004, 0.004), curl: [1.18, 1.30, 0.84], thumb: 0.82 },
+    syringeHold:       { f: new THREE.Vector3(-0.40,  0.20, -0.89), back: new THREE.Vector3( 0.90,  0.22, -0.37), palmOffset: new THREE.Vector3( 0.019,  0.002,  0.012), curl: [1.28, 1.38, 0.92], thumb: 0.38 },
+    syringePlunge:     { f: new THREE.Vector3(-0.40,  0.20, -0.89), back: new THREE.Vector3( 0.90,  0.22, -0.37), palmOffset: new THREE.Vector3( 0.019,  0.002,  0.012), curl: [1.36, 1.48, 0.96], thumb: 1.00 },
+    syringeCapPull:    { f: new THREE.Vector3( 0.48,  0.24, -0.84), back: new THREE.Vector3(-0.56,  0.76, -0.33), palmOffset: new THREE.Vector3(-0.016,  0.006,  0.012), curl: [1.22, 1.36, 0.88], thumb: 0.90 },
+    medIfakCradleL:    { f: new THREE.Vector3( 0.40,  0.16, -0.90), back: new THREE.Vector3(-0.22, -0.96, -0.18), palmOffset: new THREE.Vector3(-0.012, -0.022,  0.010), curl: [0.28, 0.34, 0.22], thumb: 0.42 },
+    medZipPinchR:      { f: new THREE.Vector3(-0.42,  0.28, -0.86), back: new THREE.Vector3( 0.44,  0.86, -0.25), palmOffset: new THREE.Vector3( 0.018,  0.008,  0.016), curl: [1.18, 1.32, 0.86], thumb: 0.90 },
+    medForearmBraceL:  { f: new THREE.Vector3( 0.66,  0.18, -0.73), back: new THREE.Vector3(-0.48,  0.78, -0.40), palmOffset: new THREE.Vector3(-0.006,  0.000,  0.004), curl: [1.46, 1.66, 1.05], thumb: 0.94 },
+    medGauzeGripR:     { f: new THREE.Vector3(-0.42,  0.24, -0.87), back: new THREE.Vector3( 0.76,  0.56, -0.33), palmOffset: new THREE.Vector3( 0.022,  0.008,  0.014), curl: [1.04, 1.16, 0.80], thumb: 0.76 },
     grabReach:      { f: new THREE.Vector3( 0.28, -0.26, -0.92), back: new THREE.Vector3(-0.36,  0.88, -0.30), palmOffset: new THREE.Vector3(-0.008,  0.010, 0.004), curl: [0.24, 0.28, 0.20], thumb: 0.30 },
     grabClose:      { f: new THREE.Vector3( 0.32, -0.18, -0.93), back: new THREE.Vector3(-0.46,  0.82, -0.34), palmOffset: new THREE.Vector3(-0.010,  0.006, 0.004), curl: [1.28, 1.40, 0.90], thumb: 0.88 },
     ledgeGrabL:     { f: new THREE.Vector3( 0.08, -0.32, -0.94), back: new THREE.Vector3(-0.14,  0.94, -0.31), palmOffset: new THREE.Vector3(-0.008,  0.012, 0.004), curl: [1.14, 1.26, 0.82], thumb: 0.68 },
@@ -1612,11 +1616,13 @@
 
           // Right shoulder pockets inward/upward matching tucked shoulder-center viewmodel; left clavicle protracts slightly forward for support
           const isPlatingArm = !!(side === 'left' && ws && ws.isPlating);
-          const shBaseX = side === 'right' ? 0.175 : (isPlatingArm ? 0.25 : 0.21);
+          const isHealingArm = !!(ws && ws.isHealing);
+          const isForearmBrace = isHealingArm && side === 'left' && styleKey === 'medForearmBraceL';
+          const shBaseX = isHealingArm ? 0.215 : (side === 'right' ? 0.175 : (isPlatingArm ? 0.25 : 0.21));
           const shCamLocal = new THREE.Vector3(
-            sideSign * (shBaseX - (side === 'right' ? adsB * 0.032 : adsB * 0.015)) + shOff.x,
-            (isPlatingArm ? -0.255 : -0.29) + (side === 'right' ? adsB * 0.024 : adsB * 0.014) - wp * 0.020 + shOff.y,
-            (isPlatingArm ? -0.08 : 0.14) + (side === 'left' ? -adsB * 0.022 : adsB * 0.012) + wp * 0.035 + shOff.z
+            sideSign * (shBaseX - (isHealingArm ? 0 : (side === 'right' ? adsB * 0.032 : adsB * 0.015))) + shOff.x,
+            (isPlatingArm ? -0.255 : (isHealingArm ? -0.275 : -0.29)) + (side === 'right' ? adsB * 0.024 : adsB * 0.014) - wp * 0.020 + shOff.y,
+            (isPlatingArm ? -0.08 : (isHealingArm ? 0.06 : 0.14)) + (side === 'left' ? -adsB * 0.022 : adsB * 0.012) + wp * 0.035 + shOff.z
           );
           const camSh = cam.localToWorld(shCamLocal);
           const anchor = shoulderW.clone().lerp(camSh, 0.50);
@@ -1659,9 +1665,15 @@
 
           // MW4 Kinetic Dynamic Elbow Pole: tucks ribs cleanly on ADS, 45° Tactical Stance cant, Corner Lean & CQB Wall Push!
           const cantTuck = THREE.MathUtils.clamp(-vmRoll * sideSign * 0.22, -0.14, 0.16);
-          const poleOut = isPlatingArm ? -0.52 : (sideSign * (0.42 - adsB * 0.09 - wp * 0.08) - cantTuck);
-          const poleDown = isPlatingArm ? 0.22 : (0.48 + adsB * 0.06 + wp * 0.10 + Math.abs(vmRoll) * 0.08);
-          const poleBack = isPlatingArm ? 0.02 : (0.04 + wp * 0.14 + (side === 'right' ? adsB * 0.04 : -adsB * 0.02));
+          const poleOut = isPlatingArm
+            ? -0.52
+            : (isForearmBrace ? -0.46 : (isHealingArm ? sideSign * 0.38 : (sideSign * (0.42 - adsB * 0.09 - wp * 0.08) - cantTuck)));
+          const poleDown = isPlatingArm
+            ? 0.22
+            : (isForearmBrace ? 0.26 : (isHealingArm ? 0.36 : (0.48 + adsB * 0.06 + wp * 0.10 + Math.abs(vmRoll) * 0.08)));
+          const poleBack = isPlatingArm
+            ? 0.02
+            : (isForearmBrace ? 0.02 : (isHealingArm ? 0.05 : (0.04 + wp * 0.14 + (side === 'right' ? adsB * 0.04 : -adsB * 0.02))));
           const pole = anchor.clone()
             .addScaledVector(camRight, poleOut)
             .addScaledVector(camDown, poleDown)

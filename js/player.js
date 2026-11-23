@@ -812,6 +812,9 @@ class Player {
       const reloadProg = (!isFP && ws && ws.isReloading && ws.reloadDuration > 0)
         ? THREE.MathUtils.clamp(1 - (ws.reloadTimer / ws.reloadDuration), 0, 1)
         : 0;
+      const healProg = (!isFP && ws && ws.isHealing && ws.healDuration > 0)
+        ? THREE.MathUtils.clamp(1 - (ws.healTimer / ws.healDuration), 0, 1)
+        : 0;
 
       const isSelfReviving = !!(this.isDowned && (this.beingRevivedBy === 'SELF-REVIVE' || this.beingRevivedBy === 'TOURNIQUET') && (this.reviveProgress || 0) > 0.005);
       const isReviving3P = !isFP && !!(this.isRevivingAlly || isSelfReviving);
@@ -839,6 +842,7 @@ class Player {
         isReloading: isFP ? false : !!(ws && ws.isReloading),
         reloadProgress: reloadProg,
         isHealing: isFP ? false : !!(ws && ws.isHealing),
+        healProgress: healProg,
         isReviving: isReviving3P,
         reviveProgress: reviveProg3P,
         isThrowing: isThrowing3P,
