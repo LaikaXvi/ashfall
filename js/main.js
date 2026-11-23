@@ -1040,7 +1040,6 @@
 
     ui.profile.xp = (ui.profile.xp || 0) + raidXp;
     if (ui.recordMissionProgress) {
-      if (raidKills > 0) ui.recordMissionProgress('kills', raidKills);
       if (extracted) {
         ui.recordMissionProgress('extracts', 1);
         if (totalVal > 0) ui.recordMissionProgress('value', totalVal);
@@ -1103,9 +1102,12 @@
     ui.showScreen('hideout');
   });
 
-  document.getElementById('btn-close-loot').addEventListener('click', () => {
-    closeLootAndResume();
-  });
+  const btnCloseLoot = document.getElementById('btn-close-loot');
+  if (btnCloseLoot) {
+    btnCloseLoot.addEventListener('click', () => {
+      closeLootAndResume();
+    });
+  }
   const btnCloseContainer = document.getElementById('btn-close-container');
   if (btnCloseContainer) {
     btnCloseContainer.addEventListener('click', () => closeLootAndResume());
@@ -2919,6 +2921,7 @@
     if (killed) {
       if (window.soundEngine && window.soundEngine.playKillConfirm) window.soundEngine.playKillConfirm();
       raidKills += 1;
+      if (ui && ui.recordMissionProgress) ui.recordMissionProgress('kills', 1);
       const xp = isHead ? 150 : 100;
       raidXp += xp;
       if (player && player.deadSilenceTimer > 0) {
@@ -3734,6 +3737,7 @@
           const db = bledEnemy && bledEnemy.downedBy;
           if (db && db.isPlayer) {
             raidKills += 1;
+            if (ui && ui.recordMissionProgress) ui.recordMissionProgress('kills', 1);
             raidXp += 100;
             ui.addKillFeedEntry({
               killerName: getPlayerCallsign(),
@@ -3747,6 +3751,7 @@
             ui.showXpFeedback({ label: 'KILL', xp: 100 });
           } else if (db && bledEnemy && bledEnemy.isOperator) {
             raidKills += 1;
+            if (ui && ui.recordMissionProgress) ui.recordMissionProgress('kills', 1);
             ui.addKillFeedEntry({
               killerName: db.name,
               killerIsEnemy: !!db.isOperator && !db.isPlayer,
@@ -3801,7 +3806,10 @@
             raidTimeLeft,
             (msg, color) => ui.addFeedMessage(msg, color),
             (ally, enemy, action) => {
-              if (action === 'eliminated') raidKills += 1;
+              if (action === 'eliminated') {
+                raidKills += 1;
+                if (ui && ui.recordMissionProgress) ui.recordMissionProgress('kills', 1);
+              }
               if (enemy && enemy.isOperator) {
                 const wDef = GAME_DATA.ITEMS[ally.weaponId];
                 ui.addKillFeedEntry({

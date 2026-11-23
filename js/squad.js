@@ -21,9 +21,10 @@ class SquadMate {
     const opStats = (window.GAME_DATA && window.GAME_DATA.OPERATOR_STATS) || { maxHp: 100, walkSpeed: 6.8, sprintSpeed: 9.6, tacSprintSpeed: 12.4 };
     this.maxHp = opStats.maxHp;
     this.hp = opStats.maxHp;
-    this.walkSpeed = opStats.walkSpeed;
-    this.sprintSpeed = opStats.sprintSpeed;
-    this.tacSprintSpeed = opStats.tacSprintSpeed;
+    this.walkSpeed = (opStats.walkSpeed || 6.8) * 0.68;
+    this.sprintSpeed = (opStats.sprintSpeed || 9.6) * 0.70;
+    this.tacSprintSpeed = (opStats.tacSprintSpeed || 12.4) * 0.68;
+    this.actionCooldown = 0;
     this.healingTimer = 0;
     this.maxArmor = 100;
     this.armor = 100;
@@ -976,11 +977,12 @@ class SquadMate {
       if (distToMate > 2.0) {
         this._redrawTag('MOVING TO REVIVE', '#69f0ae');
         this.group.rotation.y = Math.atan2(tRef.position.x - this.position.x, tRef.position.z - this.position.z);
-        const moved = this._moveToward(tRef.position.x, tRef.position.z, 6.6, dt);
-        if (!this._syncMW2Anim(dt, { moving: moved, speed: 6.6 }) && moved) {
-          this.animCycle += dt * 9.5;
-          this.leftHip.rotation.x = Math.sin(this.animCycle) * 0.52;
-          this.rightHip.rotation.x = -Math.sin(this.animCycle) * 0.52;
+        const revSpd = this.sprintSpeed || 6.7;
+        const moved = this._moveToward(tRef.position.x, tRef.position.z, revSpd, dt);
+        if (!this._syncMW2Anim(dt, { moving: moved, speed: revSpd }) && moved) {
+          this.animCycle += dt * 7.8;
+          this.leftHip.rotation.x = Math.sin(this.animCycle) * 0.46;
+          this.rightHip.rotation.x = -Math.sin(this.animCycle) * 0.46;
         }
         return;
       }
@@ -1006,7 +1008,7 @@ class SquadMate {
           dragTargetX = this.position.x + (awayX / awayLen) * 3.0;
           dragTargetZ = this.position.z + (awayZ / awayLen) * 3.0;
         }
-        dragging = this._moveToward(dragTargetX, dragTargetZ, 1.75, dt);
+        dragging = this._moveToward(dragTargetX, dragTargetZ, 1.55, dt);
         if (dragging) {
           const dx = dragTargetX - this.position.x;
           const dz = dragTargetZ - this.position.z;
@@ -1015,12 +1017,12 @@ class SquadMate {
           const pullZ = this.position.z - (dz / len) * 0.95;
           if (reviveCandidate.isPlayer) {
             tRef.beingDragged = true;
-            tRef.dragToward(pullX, pullZ, 2.2, dt);
+            tRef.dragToward(pullX, pullZ, 1.9, dt);
           } else {
-            tRef.dragToward(pullX, pullZ, 2.2, dt);
+            tRef.dragToward(pullX, pullZ, 1.9, dt);
           }
           if (!this.mw2Anim) {
-            this.animCycle += dt * 4.5;
+            this.animCycle += dt * 4.0;
             this.leftHip.rotation.x = Math.sin(this.animCycle) * 0.25;
             this.rightHip.rotation.x = -Math.sin(this.animCycle) * 0.25;
           }
@@ -1031,7 +1033,7 @@ class SquadMate {
 
       this._syncMW2Anim(dt, {
         moving: dragging,
-        speed: dragging ? 1.75 : 0,
+        speed: dragging ? 1.55 : 0,
         isReviving: !dragging,
         reviveProgress: tRef.reviveProgress || 0
       });
@@ -1041,9 +1043,14 @@ class SquadMate {
         tRef.revive(45);
         this._say(onComms, `Got ${reviveCandidate.name} back up — stay sharp!`, '#69f0ae');
         if (onAllyEvent) onAllyEvent('revived', tRef, { name: this.name });
+        this.actionCooldown = 1.4;
         this.state = 'FOLLOW';
       }
       return;
+    }
+
+    if (this.actionCooldown > 0) {
+      this.actionCooldown = Math.max(0, this.actionCooldown - dt);
     }
 
     // 2. Self-preservation: Heal / Plate / Reload timers
@@ -1065,6 +1072,7 @@ class SquadMate {
           this.mag = this.magSize;
           this.state = 'FOLLOW';
         }
+        this.actionCooldown = 1.35 + Math.random() * 0.65;
       }
       this._redrawTag(curState, '#f5a623');
       if (!this._syncMW2Anim(dt, {
@@ -1081,27 +1089,27 @@ class SquadMate {
       return;
     }
 
-    // Trigger Heal / Plate / Reload when needed
-    if (this.hp < 58 && this.medkits > 0) {
+    // Trigger Heal / Plate / Reload when needed (gated by actionCooldown so actions have realistic breathing room)
+    if (this.actionCooldown <= 0 && this.hp < 58 && this.medkits > 0) {
       this.state = 'HEAL';
-      this._actionDuration = 2.6;
-      this.actionTimer = 2.6;
+      this._actionDuration = 2.8;
+      this.actionTimer = 2.8;
       this._say(onComms, 'Patching up — cover me!', '#f5a623');
       this._syncMW2Anim(dt, { moving: false, isHealing: true });
       return;
     }
     if (this.mag <= 0) {
       this.state = 'RELOAD';
-      this._actionDuration = 1.8;
-      this.actionTimer = 1.8;
+      this._actionDuration = 2.0;
+      this.actionTimer = 2.0;
       this._say(onComms, 'Reloading!', '#f5a623');
       this._syncMW2Anim(dt, { moving: false, isReloading: true, reloadProgress: 0 });
       return;
     }
-    if (!targetEnemy && this.armor < 45 && this.plates > 0) {
+    if (this.actionCooldown <= 0 && !targetEnemy && this.armor < 45 && this.plates > 0) {
       this.state = 'PLATE';
-      this._actionDuration = 1.8;
-      this.actionTimer = 1.8;
+      this._actionDuration = 2.1;
+      this.actionTimer = 2.1;
       this._say(onComms, 'Slotting a fresh armor plate.', '#64b5f6');
       this._syncMW2Anim(dt, { moving: false, isPlating: true, plateProgress: 0 });
       return;
@@ -1119,26 +1127,35 @@ class SquadMate {
       if (!this.coverSpot || this.coverSearchTimer <= 0) {
         const found = this._findBestCoverSpot(targetEnemy.position, 18);
         if (found) this.coverSpot = found;
-        this.coverSearchTimer = 2.6;
+        this.coverSearchTimer = 4.2;
       }
       if (this.coverSpot) {
-        this.coverPeekTimer = (this.coverPeekTimer || 1.3) - dt;
+        this.coverPeekTimer = (this.coverPeekTimer || 1.8) - dt;
         if (this.coverPeekTimer <= 0) {
           this.isPeeking = !this.isPeeking;
-          this.coverPeekTimer = this.isPeeking ? (1.4 + Math.random() * 0.8) : (0.95 + Math.random() * 0.65);
+          this.coverPeekTimer = this.isPeeking ? (2.0 + Math.random() * 1.1) : (1.6 + Math.random() * 1.1);
         }
         const goal = this.isPeeking ? this.coverSpot.peekPos : this.coverSpot.coverPos;
-        if (Math.hypot(goal.x - this.position.x, goal.z - this.position.z) > 0.45) {
-          moving = this._moveToward(goal.x, goal.z, this.isPeeking ? 4.2 : 5.4, dt);
+        if (Math.hypot(goal.x - this.position.x, goal.z - this.position.z) > 0.45 && this.actionCooldown <= 0) {
+          const cSpd = this.isPeeking ? 3.1 : 4.2;
+          moving = this._moveToward(goal.x, goal.z, cSpd, dt);
+          this._lastMoveSpeed = cSpd;
         }
-      } else if (bestEnemyDist > 22) {
-        moving = this._moveToward(targetEnemy.position.x, targetEnemy.position.z, 4.8, dt);
+      } else if (bestEnemyDist > 22 && this.actionCooldown <= 0) {
+        moving = this._moveToward(targetEnemy.position.x, targetEnemy.position.z, 3.8, dt);
+        this._lastMoveSpeed = 3.8;
       }
 
       this.fireTimer -= dt;
-      if (this.fireTimer <= 0 && this.mag > 0) {
+      if (this.fireTimer <= 0 && this.mag > 0 && this.actionCooldown <= 0) {
         this.mag -= 1;
-        this.fireTimer = this.weaponId === 'm24' ? 1.1 : (0.22 + Math.random() * 0.20);
+        this._burstCount = (this._burstCount || 0) + 1;
+        if (this._burstCount >= 4) {
+          this._burstCount = 0;
+          this.fireTimer = 1.05 + Math.random() * 0.75;
+        } else {
+          this.fireTimer = this.weaponId === 'm24' ? 1.45 : (0.34 + Math.random() * 0.28);
+        }
         this.muzzleMesh.material.opacity = 0.92;
         if (this.muzzleLight) this.muzzleLight.intensity = 3.2;
         this.muzzleTimer = 0.05;
@@ -1195,8 +1212,9 @@ class SquadMate {
         const dPlayer = this.position.distanceTo(player.position);
         // If player is nearby and not far behind, lead toward beacon; always push in if time < 65s or inside 18m of beacon
         if (dZone > zone.radius * 0.65) {
-          const spd = (raidTimeLeft < 65 || dPlayer < 16) ? 8.6 : 5.4;
+          const spd = (raidTimeLeft < 65 || dPlayer < 16) ? (this.sprintSpeed || 6.7) : (this.walkSpeed || 4.6);
           moving = this._moveToward(zone.position.x, zone.position.z, spd, dt);
+          this._lastMoveSpeed = spd;
           this.group.rotation.y = Math.atan2(zone.position.x - this.position.x, zone.position.z - this.position.z);
         } else {
           this.extractProgress += dt;
@@ -1211,7 +1229,7 @@ class SquadMate {
       }
     } else {
       // 5. Priority C: Autonomous Looting for Personal Gear/Value Objective vs Tactical Follow
-      if (!this.targetContainer && !this.objectiveComplete) {
+      if (!this.targetContainer && !this.objectiveComplete && this.actionCooldown <= 0) {
         const found = this._findNearbyLootTarget(enemyManager);
         if (found && this.position.distanceTo(player.position) < 22) {
           this.targetContainer = found;
@@ -1231,7 +1249,9 @@ class SquadMate {
           this._redrawTag('LOOTING', '#64b5f6');
           const d = Math.hypot(this.targetContainer.pos.x - this.position.x, this.targetContainer.pos.z - this.position.z);
           if (d > 1.7) {
-            moving = this._moveToward(this.targetContainer.pos.x, this.targetContainer.pos.z, 6.5, dt);
+            const lSpd = this.walkSpeed || 4.6;
+            moving = this._moveToward(this.targetContainer.pos.x, this.targetContainer.pos.z, lSpd, dt);
+            this._lastMoveSpeed = lSpd;
             this.group.rotation.y = Math.atan2(this.targetContainer.pos.x - this.position.x, this.targetContainer.pos.z - this.position.z);
           } else {
             // Take 1 needed item (medkit, plate, or highest-value item)
@@ -1248,13 +1268,14 @@ class SquadMate {
               }
             }
             this.targetContainer = null;
+            this.actionCooldown = 1.5;
           }
         }
       }
 
       if (!this.targetContainer) {
         // Team Support: Drop Medkit for injured player/ally or Share Armor Plate if missing plates!
-        if (!targetEnemy && this.supportCooldown <= 0 && this.world && this.world.spawnGroundItem) {
+        if (!targetEnemy && this.supportCooldown <= 0 && this.actionCooldown <= 0 && this.world && this.world.spawnGroundItem) {
           const teamList = [];
           if (player && !player.dead && !player.isDowned) teamList.push({ isPlayer: true, ref: player });
           for (const m of allAllies) {
@@ -1274,7 +1295,8 @@ class SquadMate {
               if (dTm > 3.2) {
                 this.state = 'SUPPORT';
                 this._redrawTag(needsMed ? 'DROPPING MEDKIT' : 'SHARING PLATES', '#69f0ae');
-                moving = this._moveToward(ref.position.x, ref.position.z, 5.2, dt);
+                moving = this._moveToward(ref.position.x, ref.position.z, this.walkSpeed || 4.6, dt);
+                this._lastMoveSpeed = this.walkSpeed || 4.6;
                 this.group.rotation.y = Math.atan2(ref.position.x - this.position.x, ref.position.z - this.position.z);
                 break;
               }
@@ -1291,7 +1313,8 @@ class SquadMate {
                 if (!tm.isPlayer) ref.plates = (ref.plates || 0) + 1;
                 this._say(onComms, 'Tossing you an armor plate!', '#42a5f5');
               }
-              this.supportCooldown = 16.0;
+              this.supportCooldown = 18.0;
+              this.actionCooldown = 1.6;
               break;
             }
           }
@@ -1304,8 +1327,8 @@ class SquadMate {
           const goalX = player.position.x + sinY * 2.8 + cosY * (this.flankSide * 2.4);
           const goalZ = player.position.z + cosY * 2.8 - sinY * (this.flankSide * 2.4);
           const distToGoal = Math.hypot(goalX - this.position.x, goalZ - this.position.z);
-          if (distToGoal > 1.5) {
-            const moveSpeed = distToGoal > 9.5 ? (this.tacSprintSpeed || 12.4) : (distToGoal > 4.2 ? (this.sprintSpeed || 9.6) : (this.walkSpeed || 6.8));
+          if (distToGoal > 1.8 && this.actionCooldown <= 0) {
+            const moveSpeed = distToGoal > 11.5 ? (this.tacSprintSpeed || 8.4) : (distToGoal > 5.5 ? (this.sprintSpeed || 6.7) : (this.walkSpeed || 4.6));
             moving = this._moveToward(goalX, goalZ, moveSpeed, dt);
             this._lastMoveSpeed = moveSpeed;
             this.group.rotation.y = Math.atan2(goalX - this.position.x, goalZ - this.position.z);

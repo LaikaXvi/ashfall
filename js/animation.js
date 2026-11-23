@@ -340,14 +340,15 @@
         // 3D Sculpted SAPI Ceramic Armor Plate prop for MW2 4-stage plating animation
         if (typeof window.buildArmorPlateMesh === 'function') {
           plateProp = window.buildArmorPlateMesh({ forIcon: false });
+          plateProp.scale.multiplyScalar(0.80);
         } else {
           plateProp = new THREE.Group();
-          const plateBody = new THREE.Mesh(new THREE.BoxGeometry(0.17, 0.21, 0.022), new THREE.MeshLambertMaterial({ color: 0x22384c }));
-          const plateTrim = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.028, 0.026), new THREE.MeshLambertMaterial({ color: 0x4ea8de }));
-          plateTrim.position.y = 0.068;
+          const plateBody = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.17, 0.020), new THREE.MeshLambertMaterial({ color: 0x22384c }));
+          const plateTrim = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.024, 0.024), new THREE.MeshLambertMaterial({ color: 0x4ea8de }));
+          plateTrim.position.y = 0.056;
           plateProp.add(plateBody, plateTrim);
         }
-        plateProp.position.set(0.01, -0.10, -0.04);
+        plateProp.position.set(0.01, -0.08, -0.04);
         plateProp.rotation.set(0.35, 0, 0.12);
         plateProp.visible = false;
 
@@ -632,7 +633,7 @@
       // Advance procedural gait cycle smoothly coupled to momentum & distinct phase cadence
       if ((moving || this.velSpeed > 0.35) && !isSlide && !isDowned && onGround) {
         let freq;
-        if (isProne) freq = 4.5;
+        if (isProne) freq = 3.1;
         else if (isCrouch) freq = 5.6 + Math.min(speed, 4.0) * 0.45;
         else {
           const walkF = 5.2 + Math.min(this.velSpeed, 5.4) * 0.68;

@@ -155,7 +155,17 @@ class GameUI {
     this._bindWeaponStagingModal();
     this._bindSpatialKeyboardNav();
     this._bindDragAndDrop();
-    window.addEventListener('resize', () => this._updateDeployResponsiveScale());
+    this._updateDynamicUiScale();
+    window.addEventListener('resize', () => {
+      this._updateDynamicUiScale();
+      this._updateDeployResponsiveScale();
+    });
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', () => {
+        this._updateDynamicUiScale();
+        this._updateDeployResponsiveScale();
+      });
+    }
     window.addEventListener('beforeunload', () => this.saveProfile());
     this.renderKeybindSettings();
     window.showCenterToast = (msg, color) => this.showCenterToast(msg, color);
@@ -1094,13 +1104,48 @@ class GameUI {
     });
   }
 
+  _updateDynamicUiScale() {
+    if (typeof document === 'undefined' || !document.documentElement) return;
+    const vv = window.visualViewport;
+    const w = Math.max(320, (vv && vv.width) || window.innerWidth || 1560);
+    const h = Math.max(240, (vv && vv.height) || window.innerHeight || 880);
+
+    // Smooth responsive UI scale relative to 1560x880 design canvas (scales down cleanly on compact/laptop windows so zero UI gets cut off)
+    const rawScale = Math.min(w / 1560, h / 880);
+    const uiScale = Math.min(1.10, Math.max(0.50, rawScale));
+    this._currentUiScale = uiScale;
+
+    // Dedicated Inventory/Loot panel scale accounting for actual rendered panel height & dual-panel width
+    const opPanel = document.getElementById('inv-operator-panel');
+    const cPanel = document.getElementById('inv-container-panel');
+    const lootMod = document.getElementById('loot-modal');
+    const lootOpen = !!(lootMod && !lootMod.classList.contains('hidden'));
+    const opH = (lootOpen && opPanel && opPanel.offsetHeight > 40) ? opPanel.offsetHeight : 735;
+    const hasCont = !!(lootOpen && cPanel && !cPanel.classList.contains('hidden') && cPanel.offsetHeight > 40);
+    const cH = hasCont ? cPanel.offsetHeight : 0;
+    const reqH = Math.max(735, opH, cH);
+    const reqW = hasCont ? 860 : 445;
+    const invScale = Math.min(uiScale, Math.max(0.45, Math.min((w - 32) / reqW, (h - 28) / reqH)));
+    this._currentInvScale = invScale;
+
+    document.documentElement.style.setProperty('--ui-scale', uiScale.toFixed(4));
+    document.documentElement.style.setProperty('--inv-scale', invScale.toFixed(4));
+
+    if (hasCont && this._lastLootCamera) {
+      this.positionContainerPanel(this._lastLootCamera);
+    }
+  }
+
   _updateDeployResponsiveScale() {
     const deployEl = document.getElementById('menu-view-deploy');
     if (!deployEl || deployEl.classList.contains('hidden')) return;
+    const uiScale = this._currentUiScale || 1;
+    const virtH = Math.round(window.innerHeight / uiScale);
+    const virtW = Math.round(window.innerWidth / uiScale);
     const topbar = document.getElementById('menu-topbar');
     const topH = (topbar && !topbar.classList.contains('hidden')) ? topbar.offsetHeight : 54;
-    const availH = Math.max(360, window.innerHeight - topH - 36);
-    const availW = Math.max(640, window.innerWidth - 48);
+    const availH = Math.max(360, virtH - topH - 36);
+    const availW = Math.max(640, virtW - 48);
 
     // Left panel: 3 rows of 5 double-wide weapon slots (10 single cols wide) + 8 rows of 8 item slots = 11 slot rows + headers
     const maxSlotHLeft = Math.floor((availH - 116) / 11);
@@ -4547,6 +4592,68 @@ class GameUI {
     return this.profile.missions;
   }
 
+  showMissionProgressTicker(def, prev, next) {
+    if (!def || typeof document === 'undefined') return;
+    let stack = document.getElementById('mission-ticker-stack');
+    if (!stack) {
+      stack = document.createElement('div');
+      stack.id = 'mission-ticker-stack';
+      stack.className = 'mission-ticker-stack';
+      document.body.appendChild(stack);
+    }
+    if (!this._missionTickers) this._missionTickers = new Map();
+
+    const target = Math.max(1, def.target || 1);
+    const clampedNext = Math.min(target, next);
+    const done = clampedNext >= target;
+    const pct = Math.min(100, Math.round((clampedNext / target) * 100));
+    const progText = def.type === 'value'
+      ? `₽${clampedNext.toLocaleString()} / ₽${target.toLocaleString()}`
+      : `${clampedNext.toLocaleString()} / ${target.toLocaleString()}`;
+
+    let entry = this._missionTickers.get(def.id);
+    if (entry && entry.el && entry.el.isConnected) {
+      if (entry.timerId) clearTimeout(entry.timerId);
+      if (entry.removeTimerId) clearTimeout(entry.removeTimerId);
+      entry.el.classList.remove('closing');
+    } else {
+      const el = document.createElement('div');
+      el.className = 'mission-ticker-card';
+      stack.appendChild(el);
+      entry = { el, timerId: null, removeTimerId: null };
+      this._missionTickers.set(def.id, entry);
+    }
+
+    entry.el.classList.toggle('complete', done);
+    entry.el.innerHTML = `
+      <div class="mt-head">
+        <span class="mt-eyebrow">${def.faction || 'SECTOR 7'} // ${done ? 'MISSION COMPLETE' : 'MISSION PROGRESS'}</span>
+        <span class="mt-count">${progText}</span>
+      </div>
+      <div class="mt-title">${def.title}</div>
+      <div class="mt-desc">${def.desc || ''}</div>
+      <div class="mt-bar-bg"><div class="mt-bar-fill" style="width:${pct}%"></div></div>
+      <div class="mt-timer-strip"><div class="mt-timer-fill"></div></div>
+    `;
+
+    // Restart 5.0-second display countdown cleanly
+    const timerFill = entry.el.querySelector('.mt-timer-fill');
+    if (timerFill) {
+      timerFill.style.animation = 'none';
+      void timerFill.offsetWidth;
+      timerFill.style.animation = 'mtDrain5s 5s linear forwards';
+    }
+
+    entry.timerId = setTimeout(() => {
+      if (!entry.el) return;
+      entry.el.classList.add('closing');
+      entry.removeTimerId = setTimeout(() => {
+        if (entry.el && entry.el.parentNode) entry.el.parentNode.removeChild(entry.el);
+        this._missionTickers.delete(def.id);
+      }, 260);
+    }, 5000);
+  }
+
   recordMissionProgress(eventType, amount = 1) {
     if (!amount || amount <= 0) return;
     const ms = this._ensureMissions();
@@ -4563,6 +4670,7 @@ class GameUI {
       if (next !== prev) {
         ms.progress[id] = next;
         changed = true;
+        this.showMissionProgressTicker(def, prev, next);
         if (next >= def.target) {
           if (this.addFeedMessage) this.addFeedMessage(`CONTRACT COMPLETE: ${def.title} — Claim reward at FOB Missions Board!`, '#ffca28');
           if (this.showCenterToast) this.showCenterToast(`CONTRACT COMPLETE: ${def.title}`, '#ffca28');
@@ -7013,17 +7121,19 @@ class GameUI {
   positionContainerPanel(camera) {
     const cPanel = document.getElementById('inv-container-panel');
     if (!cPanel || cPanel.classList.contains('hidden') || !this.activeLootSource) return;
+    if (camera) this._lastLootCamera = camera;
 
+    const invScale = this._currentInvScale || 1;
     const W = window.innerWidth;
     const H = window.innerHeight;
-    const pw = cPanel.offsetWidth || 358;
-    const ph = cPanel.offsetHeight || 220;
+    const pw = Math.round((cPanel.offsetWidth || 358) * invScale);
+    const ph = Math.round((cPanel.offsetHeight || 220) * invScale);
     const margin = 12;
 
     // Unanchor enemy/player operator body inventory from the 3D corpse and hang it cleanly on the left side of the screen
     if (this.activeLootSource.operatorEquipment) {
-      let leftX = 18;
-      let topY = Math.round((H - ph) * 0.46);
+      let leftX = 14;
+      let topY = Math.round((H - ph) * 0.50);
       topY = Math.max(margin, Math.min(H - ph - margin, topY));
 
       const minimapEl = document.querySelector('.hud-top-left');
@@ -7033,7 +7143,7 @@ class GameUI {
           if (mr.bottom + 10 + ph <= H - margin) {
             topY = Math.round(mr.bottom + 10);
           } else {
-            leftX = Math.round(mr.right + 14);
+            leftX = Math.round(mr.right + 12);
           }
         }
       }
@@ -7041,7 +7151,8 @@ class GameUI {
       cPanel.style.left = `${leftX}px`;
       cPanel.style.top = `${topY}px`;
       cPanel.style.bottom = 'auto';
-      cPanel.style.transform = 'none';
+      cPanel.style.transformOrigin = 'top left';
+      cPanel.style.transform = `scale(${invScale.toFixed(4)})`;
       return;
     }
 
@@ -7145,7 +7256,8 @@ class GameUI {
     cPanel.style.left = `${Math.round(bestX)}px`;
     cPanel.style.top = `${Math.round(bestY)}px`;
     cPanel.style.bottom = 'auto';
-    cPanel.style.transform = 'none';
+    cPanel.style.transformOrigin = 'top left';
+    cPanel.style.transform = `scale(${invScale.toFixed(4)})`;
   }
 
   closeLootModal() {
@@ -7893,15 +8005,16 @@ class GameUI {
       });
     });
 
-    // Position popout next to the slot (clamp inside viewport)
+    // Position popout next to the slot (clamp inside viewport accounting for dynamic --inv-scale)
     pop.classList.remove('hidden');
+    const invScale = this._currentInvScale || 1;
     const rect = slotEl.getBoundingClientRect();
-    const popW = 215;
+    const popW = Math.round(215 * invScale);
     let left = rect.right + 8;
     if (left + popW > window.innerWidth - 10) {
       left = Math.max(10, rect.left - popW - 8);
     }
-    const popH = pop.offsetHeight || 140;
+    const popH = Math.round((pop.offsetHeight || 140) * invScale);
     const top = Math.min(window.innerHeight - popH - 10, Math.max(12, rect.top));
     pop.style.left = `${left}px`;
     pop.style.top = `${top}px`;
@@ -8904,7 +9017,10 @@ class GameUI {
         ? `${maxSlots} + ${player.backpackWeapon ? 1 : 0}/1 WPN`
         : maxSlots;
     }
-    document.getElementById('bag-total-val').textContent = `₽ ${player.getBackpackValue().toLocaleString()}`;
+    const bagTotalEl = document.getElementById('bag-total-val');
+    if (bagTotalEl) {
+      bagTotalEl.textContent = `₽ ${player.getBackpackValue().toLocaleString()}`;
+    }
 
     // Sort counts: Docs (keys/intel), Chips (electronics), Chem (meds/gunpowder/fuel), Gear (materials/misc)
     let cntDocs = 0, cntChips = 0, cntChem = 0, cntGear = 0;
@@ -9041,6 +9157,9 @@ class GameUI {
         bList.appendChild(slot);
       }
     }
+
+    // Recompute live window-responsive --inv-scale after rendering backpack & container rows so zero rows get clipped!
+    this._updateDynamicUiScale();
 
     // Restore D-Pad / Spatial selection seamlessly across live reveal re-renders (keeping the exact selected item locked!)
     let restoredEl = null;

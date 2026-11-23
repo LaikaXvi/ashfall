@@ -7174,3 +7174,268 @@ input[type="range"].gp-focus {
   text-transform: uppercase;
   white-space: nowrap;
 }
+
+/* ==================== RIGHT-SIDE MISSION PROGRESS TICKER (5s) ==================== */
+.mission-ticker-stack {
+  position: fixed;
+  right: 18px;
+  top: 22%;
+  z-index: 950;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  pointer-events: none;
+  transform: scale(var(--ui-scale, 1));
+  transform-origin: top right;
+}
+
+.mission-ticker-card {
+  width: 284px;
+  background: linear-gradient(180deg, rgba(16, 20, 22, 0.93) 0%, rgba(10, 13, 15, 0.96) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-left: 3px solid var(--accent-bright);
+  padding: 9px 12px 11px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.62);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  position: relative;
+  overflow: hidden;
+  animation: mtSlideInRight 0.24s cubic-bezier(0.22, 1, 0.36, 1) both;
+  transition: opacity 0.24s ease, transform 0.24s ease;
+}
+
+.mission-ticker-card.complete {
+  border-left-color: #69f0ae;
+  border-color: rgba(105, 240, 174, 0.42);
+}
+
+.mission-ticker-card.closing {
+  opacity: 0;
+  transform: translateX(36px);
+}
+
+.mission-ticker-card .mt-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 3px;
+}
+
+.mission-ticker-card .mt-eyebrow {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--accent-bright);
+  text-transform: uppercase;
+}
+
+.mission-ticker-card.complete .mt-eyebrow {
+  color: #69f0ae;
+}
+
+.mission-ticker-card .mt-count {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 800;
+  color: #ffffff;
+}
+
+.mission-ticker-card .mt-title {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  color: #f2f4f6;
+  margin-bottom: 2px;
+}
+
+.mission-ticker-card .mt-desc {
+  font-size: 11px;
+  color: rgba(220, 228, 232, 0.76);
+  line-height: 1.3;
+  margin-bottom: 7px;
+}
+
+.mission-ticker-card .mt-bar-bg {
+  width: 100%;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.mission-ticker-card .mt-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #d9822b, #ffca28);
+  transition: width 0.28s ease;
+}
+
+.mission-ticker-card.complete .mt-bar-fill {
+  background: linear-gradient(90deg, #3bd184, #69f0ae);
+}
+
+.mission-ticker-card .mt-timer-strip {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.mission-ticker-card .mt-timer-fill {
+  width: 100%;
+  height: 100%;
+  background: rgba(245, 166, 35, 0.65);
+  transform-origin: left center;
+}
+
+.mission-ticker-card.complete .mt-timer-fill {
+  background: rgba(105, 240, 174, 0.72);
+}
+
+@keyframes mtSlideInRight {
+  from { opacity: 0; transform: translateX(42px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes mtDrain5s {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}
+
+/* ==================== DYNAMIC WINDOW-RESPONSIVE UI SCALING ==================== */
+:root {
+  --ui-scale: 1;
+  --inv-scale: 1;
+}
+
+/* Full-screen Menu & In-Raid Settings virtual scaled canvas (never clips tabs, cards, or columns!) */
+#hideout-screen,
+#ingame-settings-overlay {
+  inset: auto !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: calc(100vw / var(--ui-scale, 1)) !important;
+  height: calc(100vh / var(--ui-scale, 1)) !important;
+  transform: scale(var(--ui-scale, 1));
+  transform-origin: top left;
+}
+
+/* Modal & Entry Overlay Cards scale smoothly with active window dimensions */
+.fob-enter-card,
+#summary-screen .summary-card,
+#pointer-lock-overlay .modal-card,
+#weapon-staging-modal .weapon-staging-card,
+.op-submodal .op-submodal-card {
+  transform: scale(var(--ui-scale, 1));
+  transform-origin: center center;
+  max-height: calc((100vh - 28px) / var(--ui-scale, 1));
+  max-width: calc((100vw - 28px) / var(--ui-scale, 1));
+  overflow-y: auto;
+}
+
+#op-context-menu {
+  transform: scale(var(--ui-scale, 1));
+  transform-origin: top left;
+}
+
+.raid-update-badge {
+  transform: scale(var(--ui-scale, 1));
+  transform-origin: top right;
+}
+
+/* In-Raid HUD Corner & Edge Clusters scale cleanly from their natural anchors (preserving 1:1 center crosshair & cursor!) */
+#hud-screen .hud-top-left {
+  transform: scale(var(--ui-scale, 1));
+  transform-origin: top left;
+}
+
+#hud-screen .hud-top,
+#hud-screen .hud-top-center {
+  transform: translateX(-50%) scale(var(--ui-scale, 1));
+  transform-origin: top center;
+}
+
+#hud-screen .hud-bottom-left {
+  transform: scale(var(--ui-scale, 1));
+  transform-origin: bottom left;
+}
+
+#hud-screen .hud-bottom-right-cluster {
+  transform: scale(var(--ui-scale, 1));
+  transform-origin: bottom right;
+}
+
+#hud-screen .hud-bottom-center-pack {
+  transform: translateX(-50%) scale(var(--ui-scale, 1));
+  transform-origin: bottom center;
+}
+
+#hud-screen #hud-kill-feed {
+  transform: scale(var(--ui-scale, 1));
+  transform-origin: top right;
+}
+
+#hud-screen #hud-feed {
+  transform: scale(var(--ui-scale, 1));
+  transform-origin: center left;
+}
+
+.dmz-prompt-pill {
+  transform: translateX(-50%) scale(var(--ui-scale, 1));
+  transform-origin: bottom center;
+}
+
+/* Personal Operator Backpack & Active Loot Container panels scale dynamically so zero rows get cut off! */
+.inv-overlay #inv-operator-panel.dmz-operator-stack {
+  transform: scale(var(--inv-scale, var(--ui-scale, 1)));
+  transform-origin: bottom right;
+}
+
+.inv-overlay .inv-container-panel {
+  transform: translateY(-50%) scale(var(--inv-scale, var(--ui-scale, 1)));
+  transform-origin: left center;
+}
+
+.inv-overlay #item-action-popout {
+  transform: scale(var(--inv-scale, var(--ui-scale, 1)));
+  transform-origin: top left;
+}
+
+/* Gunsmith 3D Workbench Overlays scale cleanly while keeping the 3D WebGL canvas at native 1:1 viewport resolution */
+#gunsmith-screen {
+  padding: calc(14px * var(--ui-scale, 1)) calc(20px * var(--ui-scale, 1));
+  gap: calc(10px * var(--ui-scale, 1));
+}
+
+#gunsmith-screen .gs-minimal-header {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+#gunsmith-screen .gs-stats-overlay {
+  transform: scale(var(--ui-scale, 1));
+  transform-origin: top right;
+}
+
+#gunsmith-screen .gs-drawer {
+  transform: scale(var(--ui-scale, 1));
+  transform-origin: bottom left;
+}
+
+#gunsmith-screen .gs-node {
+  transform: translate(-50%, -50%) scale(var(--ui-scale, 1));
+}
+
+#gunsmith-screen .gs-node:hover,
+#gunsmith-screen .gs-node.active {
+  transform: translate(-50%, -50%) scale(calc(var(--ui-scale, 1) * 1.04));
+}
+
+#gunsmith-screen .gs-hint {
+  transform: translateX(-50%) scale(var(--ui-scale, 1));
+  transform-origin: bottom center;
+}

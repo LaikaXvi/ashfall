@@ -814,27 +814,52 @@ class WeaponSystem {
     // Depth-only circular hole mask writes rear ocular depth FIRST (renderOrder=-10) without modifying zoomed world color,
     // cleanly clipping forward scope rings/tube/barrel out of the glass window while keeping the 3D outer bezel & world intact!
     const holeMaskMat = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: true });
-    const ocularHoleMask = new THREE.Mesh(new THREE.CircleGeometry(rEye, 48), holeMaskMat);
+    const ocularHoleMask = new THREE.Mesh(new THREE.CircleGeometry(rEye + 0.0002, 64), holeMaskMat);
     ocularHoleMask.position.set(0, scopeY, rearZ - 0.0005);
     ocularHoleMask.renderOrder = -10;
     ocularHoleMask.visible = false;
 
-    const bezelMat = new THREE.MeshBasicMaterial({ color: 0x0a0c0e });
-    const ocularBezel = new THREE.Mesh(new THREE.RingGeometry(rEye - 0.0003, rRear + 0.0028, 48), bezelMat);
-    ocularBezel.position.set(0, scopeY, rearZ + 0.0004);
-    ocularBezel.renderOrder = 5;
-    ocularBezel.visible = false;
+    const rBezelIn = rEye - 0.0006;
+    const rBezelOut = rRear + 0.0030;
+    const rShadowOut = rEye + 0.0030;
+
+    // Cached radial-gradient eye-box shadow texture extending underneath the inner rim of ocularBezel (zero rim gap!)
+    if (!window._ashfallScopeShadowTex && typeof document !== 'undefined') {
+      const c = document.createElement('canvas');
+      c.width = 256;
+      c.height = 256;
+      const ctx2d = c.getContext('2d');
+      const grad = ctx2d.createRadialGradient(128, 128, 0, 128, 128, 128);
+      grad.addColorStop(0.00, 'rgba(4, 5, 7, 0.0)');
+      grad.addColorStop(0.58, 'rgba(4, 5, 7, 0.0)');
+      grad.addColorStop(0.70, 'rgba(4, 5, 7, 0.34)');
+      grad.addColorStop(0.78, 'rgba(4, 5, 7, 0.86)');
+      grad.addColorStop(0.83, 'rgba(4, 5, 7, 1.0)');
+      grad.addColorStop(1.00, 'rgba(4, 5, 7, 1.0)');
+      ctx2d.fillStyle = grad;
+      ctx2d.fillRect(0, 0, 256, 256);
+      const tex = new THREE.CanvasTexture(c);
+      tex.needsUpdate = true;
+      window._ashfallScopeShadowTex = tex;
+    }
 
     const shadowRingMat = new THREE.MeshBasicMaterial({
-      color: 0x040507,
+      map: window._ashfallScopeShadowTex || null,
+      color: window._ashfallScopeShadowTex ? 0xffffff : 0x040507,
       transparent: true,
-      opacity: 0.34,
+      opacity: 1.0,
       depthWrite: false
     });
-    const shadowRing = new THREE.Mesh(new THREE.RingGeometry(rEye * 0.86, rEye + 0.0003, 48), shadowRingMat);
-    shadowRing.position.set(0, scopeY, rearZ + 0.0008);
-    shadowRing.renderOrder = 6;
+    const shadowRing = new THREE.Mesh(new THREE.CircleGeometry(rShadowOut, 64), shadowRingMat);
+    shadowRing.position.set(0, scopeY, rearZ + 0.0002);
+    shadowRing.renderOrder = 4;
     shadowRing.visible = false;
+
+    const bezelMat = new THREE.MeshBasicMaterial({ color: 0x040507 });
+    const ocularBezel = new THREE.Mesh(new THREE.RingGeometry(rBezelIn, rBezelOut, 64), bezelMat);
+    ocularBezel.position.set(0, scopeY, rearZ + 0.0006);
+    ocularBezel.renderOrder = 6;
+    ocularBezel.visible = false;
 
     // Razor-sharp optical reticle centered cleanly at the rear ocular focal plane (scales edge-to-edge with scope!)
     const retR = rEye * 0.97;
@@ -2791,19 +2816,21 @@ class WeaponSystem {
       plateHand.scale.setScalar(1.22);
 
       // Sculpted SAPI ceramic armor plate (same model as Inventory Icon!) parented directly to plateHand
+      // Scaled down so the ceramic plate has a realistic, compact screen footprint rather than filling the viewport!
       let plateGroup;
       if (typeof window.buildArmorPlateMesh === 'function') {
         plateGroup = window.buildArmorPlateMesh({ forIcon: false });
+        plateGroup.scale.multiplyScalar(0.58);
       } else {
         plateGroup = new THREE.Group();
         const plateBody = new THREE.Mesh(
-          new THREE.BoxGeometry(0.138, 0.168, 0.022),
+          new THREE.BoxGeometry(0.084, 0.102, 0.015),
           new THREE.MeshLambertMaterial({ color: 0x383f48 })
         );
         plateGroup.add(plateBody);
       }
       // Seated cleanly underneath the top-pinch grip with zero finger clipping behind the plate
-      plateGroup.position.set(0.0, -0.105, -0.004);
+      plateGroup.position.set(0.0, -0.056, -0.004);
       plateGroup.visible = false;
       plateHand.add(plateGroup);
       this.plateMesh = plateGroup;
@@ -3820,11 +3847,25 @@ class WeaponSystem {
       if (sc.shadowRing) {
         sc.shadowRing.visible = eyeBoxActive;
         if (eyeBoxActive) {
-          const shOffX = isAdsReload ? THREE.MathUtils.clamp(-reloadPosOffset.x * 0.28, -0.0025, 0.0025) : THREE.MathUtils.clamp(-this.idleSwayYaw * 0.35, -0.0018, 0.0018);
-          const shOffY = isAdsReload ? THREE.MathUtils.clamp(-reloadPosOffset.y * 0.28, -0.0025, 0.0025) : THREE.MathUtils.clamp(-this.idleSwayPitch * 0.35, -0.0018, 0.0018);
-          sc.shadowRing.position.set(shOffX, (sc.scopeY || this.sightHeight) + shOffY, sc.rearZ + 0.0008);
+          let shOffX = isAdsReload
+            ? THREE.MathUtils.clamp(-reloadPosOffset.x * 0.24, -0.0020, 0.0020)
+            : THREE.MathUtils.clamp(-this.idleSwayYaw * 0.30, -0.0016, 0.0016);
+          let shOffY = isAdsReload
+            ? THREE.MathUtils.clamp(-reloadPosOffset.y * 0.24, -0.0020, 0.0020)
+            : THREE.MathUtils.clamp(-this.idleSwayPitch * 0.30, -0.0016, 0.0016);
+          const offMag = Math.hypot(shOffX, shOffY);
+          if (offMag > 0.0020) {
+            const k = 0.0020 / offMag;
+            shOffX *= k;
+            shOffY *= k;
+          }
+          // Seated at rearZ + 0.0002 behind ocularBezel (rearZ + 0.0006) with wide outer skirt so zero gap ever appears at the inner rim!
+          sc.shadowRing.position.set(shOffX, (sc.scopeY || this.sightHeight) + shOffY, sc.rearZ + 0.0002);
+          const targetShScale = isAdsReload ? 0.97 : 1.0;
+          const nextShScale = THREE.MathUtils.lerp(sc.shadowRing.scale.x || 1.0, targetShScale, Math.min(1, dt * 14));
+          sc.shadowRing.scale.setScalar(nextShScale);
           if (sc.shadowRing.material) {
-            sc.shadowRing.material.opacity = THREE.MathUtils.lerp(sc.shadowRing.material.opacity, isAdsReload ? 0.48 : 0.34, Math.min(1, dt * 14));
+            sc.shadowRing.material.opacity = 1.0;
           }
         }
       }

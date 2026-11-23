@@ -109,25 +109,26 @@ class Enemy {
     this.looted = false;
     this.stunTimer = 0;
 
-    // Tier & Operator Playstyle stats (100% parity with player-controlled operators: identical HP, speeds & mechanics!)
+    // Tier & Operator Playstyle stats (Grounded tactical AI pacing: deliberate movement speeds & action intervals!)
     if (this.isOperator) {
       this.name = opMeta.callsign;
-      const opStats = GAME_DATA.OPERATOR_STATS || { maxHp: 100, walkSpeed: 6.8, sprintSpeed: 9.6, tacSprintSpeed: 12.4, crouchSpeed: 3.9, adsSpeed: 4.3, proneSpeed: 2.0, downedSpeed: 1.9, slideStartSpeed: 13.6, slideEndSpeed: 4.6 };
+      const opStats = GAME_DATA.OPERATOR_STATS || { maxHp: 100, walkSpeed: 6.8, sprintSpeed: 9.6, tacSprintSpeed: 12.4, crouchSpeed: 3.9, adsSpeed: 4.3, proneSpeed: 1.15, downedSpeed: 1.9, slideStartSpeed: 13.6, slideEndSpeed: 4.6 };
       const styles = {
-        rusher:   { dmg: 11, fire: 0.20, acc: 0.11, wpn: 'mp5k',  col: 0x3b4852 },
-        flanker:  { dmg: 13, fire: 0.24, acc: 0.08, wpn: 'ak74m', col: 0x424d3b },
-        tactical: { dmg: 14, fire: 0.26, acc: 0.06, wpn: 'ak74m', col: 0x383d42 },
-        marksman: { dmg: 22, fire: 0.72, acc: 0.03, wpn: 'm24',   col: 0x4a4536 }
+        rusher:   { dmg: 11, fire: 0.30, acc: 0.11, wpn: 'mp5k',  col: 0x3b4852 },
+        flanker:  { dmg: 13, fire: 0.36, acc: 0.08, wpn: 'ak74m', col: 0x424d3b },
+        tactical: { dmg: 14, fire: 0.40, acc: 0.06, wpn: 'ak74m', col: 0x383d42 },
+        marksman: { dmg: 22, fire: 0.98, acc: 0.03, wpn: 'm24',   col: 0x4a4536 }
       };
       const st = styles[this.playstyle] || styles.tactical;
-      this.maxHp = opStats.maxHp; // Identical 100 HP to player operators!
+      this.maxHp = opStats.maxHp;
       this.damage = st.dmg;
       this.fireInterval = st.fire;
       this.accuracy = st.acc;
-      this.speed = opStats.walkSpeed;         // 6.8 m/s walk (identical to player!)
-      this.sprintSpeed = opStats.sprintSpeed; // 9.6 m/s sprint (identical to player!)
-      this.tacSprintSpeed = opStats.tacSprintSpeed; // 12.4 m/s tac-sprint (identical to player!)
-      this.downedSpeed = opStats.downedSpeed; // 1.9 m/s downed crawl (identical to player!)
+      this.speed = (opStats.walkSpeed || 6.8) * 0.66;              // ~4.5 m/s deliberate tactical walk
+      this.sprintSpeed = (opStats.sprintSpeed || 9.6) * 0.70;      // ~6.7 m/s controlled combat sprint
+      this.tacSprintSpeed = (opStats.tacSprintSpeed || 12.4) * 0.68; // ~8.4 m/s tactical sprint
+      this.proneSpeed = opStats.proneSpeed || 1.15;
+      this.downedSpeed = opStats.downedSpeed;
       this.armorColor = st.col;
       this.headColor = 0x26292d;
       const opPrimaries = this.playstyle === 'marksman' ? ['m24', 'ak74m']
@@ -1291,7 +1292,7 @@ class Enemy {
       this.mw2Anim.update(dt, {
         speed: isMoving ? spd : 0,
         stance: this.isProne ? 'prone' : (isCrouching ? 'crouch' : 'stand'),
-        isSprinting: isMoving && spd >= (this.isOperator ? 8.2 : 4.4),
+        isSprinting: isMoving && spd >= (this.isOperator ? 5.8 : 4.4),
         isTacSprinting: !!this.isTacSprinting && isMoving,
         isSliding: (this.slideTimer || 0) > 0,
         slideProgress: (this.slideTimer || 0) > 0 ? (1 - this.slideTimer / 0.55) : 0,
@@ -1740,12 +1741,13 @@ class Enemy {
   }
 
   _startOperatorSlide(dirVec) {
-    if (!this.isOperator || this.slideTimer > 0 || this.slideCooldown > 0) return;
+    if (!this.isOperator || this.slideTimer > 0 || this.slideCooldown > 0 || (this.opActionCooldown || 0) > 0) return;
     const len = Math.hypot(dirVec.x, dirVec.z);
     if (len < 0.1) return;
     this.slideDir.set(dirVec.x / len, 0, dirVec.z / len);
     this.slideTimer = 0.55;
-    this.slideCooldown = 2.6 + Math.random() * 1.4;
+    this.slideCooldown = 8.5 + Math.random() * 5.5;
+    this.opActionCooldown = 1.85;
     this.isTacSprinting = false;
   }
 
@@ -1918,6 +1920,7 @@ class Enemy {
       if (this.slideCooldown > 0) this.slideCooldown = Math.max(0, this.slideCooldown - dt);
       if (this.grenadeCooldown > 0) this.grenadeCooldown = Math.max(0, this.grenadeCooldown - dt);
       if (this.targetLockTimer > 0) this.targetLockTimer = Math.max(0, this.targetLockTimer - dt);
+      if (this.opActionCooldown > 0) this.opActionCooldown = Math.max(0, this.opActionCooldown - dt);
       if (this.proneTimer > 0) {
         this.proneTimer -= dt;
         if (this.proneTimer <= 0 || this.state !== 'COMBAT') this.isProne = false;
@@ -1961,9 +1964,10 @@ class Enemy {
               this.hp = Math.min(this.getEffectiveMaxHp(), this.hp + 45);
             }
             this.healingKind = null;
+            this.opActionCooldown = 1.65;
           }
           return;
-        } else if (this.timeSinceDamaged >= 2.0 && (this.hp < effMaxHp * 0.65 || (this.disabledHp || 0) > 0) && Array.isArray(this.lootItems)) {
+        } else if ((this.opActionCooldown || 0) <= 0 && this.timeSinceDamaged >= 3.2 && (this.hp < effMaxHp * 0.65 || (this.disabledHp || 0) > 0) && Array.isArray(this.lootItems)) {
           const medIdx = this.lootItems.findIndex(it => it && (it.id === 'medkit' || it.id === 'bandage' || it.id === 'painkillers'));
           if (medIdx !== -1) {
             const mIt = this.lootItems[medIdx];
@@ -1974,7 +1978,7 @@ class Enemy {
             return;
           }
         }
-        // 2. Smart Armor Plating after 1.5s without taking damage (or behind cover)
+        // 2. Smart Armor Plating after 2.6s without taking damage (and respecting between-action cooldown)
         if (this.platingTimer > 0) {
           this.platingTimer -= dt;
           this.updateVisualAnim(dt, false, 0);
@@ -1982,9 +1986,10 @@ class Enemy {
             this.operatorEquipment.plates -= 1;
             this.armor = Math.min(this.maxArmor || 100, (this.armor || 0) + 50);
             if (this.plateProp) this.plateProp.visible = false;
+            this.opActionCooldown = 1.55;
           }
-        } else if (this.armor < (this.maxArmor || 100) && this.operatorEquipment && this.operatorEquipment.plates > 0 && this.timeSinceDamaged >= 1.5) {
-          this.platingTimer = 2.6;
+        } else if ((this.opActionCooldown || 0) <= 0 && this.armor < (this.maxArmor || 100) && this.operatorEquipment && this.operatorEquipment.plates > 0 && this.timeSinceDamaged >= 2.6) {
+          this.platingTimer = 2.8;
         }
         // 3. Smart POI Looting: if bag is FULL & no plates/meds needed, DISREGARD loot; otherwise trade for needed plates/meds!
         const bagFull = Array.isArray(this.lootItems) && this.lootItems.length >= (this.bagCapacity || 8);
@@ -2302,12 +2307,13 @@ class Enemy {
         if (dMate > 2.1) {
           this._revivingMate = null;
           // Pop smoke on approach if exposed and carrying smoke!
-          if (this.smokeLeft > 0 && this.grenadeCooldown <= 0 && dMate < 18) {
+          if (this.smokeLeft > 0 && this.grenadeCooldown <= 0 && (this.opActionCooldown || 0) <= 0 && dMate < 18) {
             this.smokeLeft -= 1;
-            this.grenadeCooldown = 10.0;
+            this.grenadeCooldown = 14.0;
+            this.opActionCooldown = 1.8;
             this._throwOperatorGrenade(reviveMate.position, 'smoke');
           }
-          this._moveToward(reviveMate.position, this.speed * 1.25, dt);
+          this._moveToward(reviveMate.position, this.sprintSpeed || 6.7, dt);
           return;
         }
         const reviveDur = reviveMate.dead ? 7.5 : 4.0;
@@ -2326,16 +2332,16 @@ class Enemy {
             const len = Math.hypot(awayX, awayZ) || 1;
             dragDest = new THREE.Vector3(this.position.x + (awayX / len) * 3.5, this.position.y, this.position.z + (awayZ / len) * 3.5);
           }
-          const moved = this._moveToward(dragDest, 1.75, dt);
+          const moved = this._moveToward(dragDest, 1.55, dt);
           if (moved) {
             const dx = dragDest.x - this.position.x;
             const dz = dragDest.z - this.position.z;
             const dLen = Math.hypot(dx, dz) || 1;
-            reviveMate.dragToward(this.position.x - (dx / dLen) * 0.95, this.position.z - (dz / dLen) * 0.95, 2.2, dt);
+            reviveMate.dragToward(this.position.x - (dx / dLen) * 0.95, this.position.z - (dz / dLen) * 0.95, 1.9, dt);
           }
           this._isRevivingAlly = !moved;
           this._reviveProgress = reviveMate.reviveProgress;
-          this.updateVisualAnim(dt, moved, moved ? 1.75 : 0);
+          this.updateVisualAnim(dt, moved, moved ? 1.55 : 0);
         } else {
           this._isRevivingAlly = true;
           this._reviveProgress = reviveMate.reviveProgress;
@@ -2344,6 +2350,7 @@ class Enemy {
         }
         if (reviveMate.reviveProgress >= 1) {
           this._revivingMate = null;
+          this.opActionCooldown = 1.6;
           reviveMate.revive(reviveMate.dead ? 55 : 65, true);
         }
         return;
@@ -2357,14 +2364,14 @@ class Enemy {
 
       // 2. Team Support (when no immediate firefight): Drop Medkits for injured allies & Share Armor Plates with unplated allies!
       this._supportCooldown = Math.max(0, (this._supportCooldown || 0) - dt);
-      if (!target && this._supportCooldown <= 0) {
+      if (!target && this._supportCooldown <= 0 && (this.opActionCooldown || 0) <= 0) {
         // 2a. Drop a Medkit for an injured teammate
         if (injuredMate && Array.isArray(this.lootItems)) {
           const medIdx = this.lootItems.findIndex(it => it && (it.id === 'medkit' || it.id === 'bandage'));
           if (medIdx !== -1) {
             const dInj = Math.hypot(injuredMate.position.x - this.position.x, injuredMate.position.z - this.position.z);
             if (dInj > 3.0) {
-              this._moveToward(injuredMate.position, this.speed * 1.05, dt);
+              this._moveToward(injuredMate.position, this.speed * 0.85, dt);
               return;
             }
             const medItem = this.lootItems[medIdx];
@@ -2378,21 +2385,23 @@ class Enemy {
             if (injuredMate.startHeal) {
               injuredMate.startHeal(medItem.id === 'medkit' ? 'medkit' : 'bandage');
             }
-            this._supportCooldown = 8.0;
+            this._supportCooldown = 12.0;
+            this.opActionCooldown = 1.8;
           }
         }
         // 2b. Share Armor Plates with a squadmate who is out of plates!
         if (unplatedMate && this.operatorEquipment && (this.operatorEquipment.plates || 0) >= 2) {
           const dPl = Math.hypot(unplatedMate.position.x - this.position.x, unplatedMate.position.z - this.position.z);
           if (dPl > 3.2) {
-            this._moveToward(unplatedMate.position, this.speed * 1.05, dt);
+            this._moveToward(unplatedMate.position, this.speed * 0.85, dt);
             return;
           }
           this.operatorEquipment.plates -= 1;
           unplatedMate.operatorEquipment.plates = (unplatedMate.operatorEquipment.plates || 0) + 1;
           // Trigger ally to immediately plate up using the shared plate!
-          if (unplatedMate.platingTimer <= 0) unplatedMate.platingTimer = 2.6;
-          this._supportCooldown = 7.0;
+          if (unplatedMate.platingTimer <= 0) unplatedMate.platingTimer = 2.8;
+          this._supportCooldown = 11.0;
+          this.opActionCooldown = 1.8;
         }
       }
     }
@@ -2400,11 +2409,11 @@ class Enemy {
     if (target) {
       if (this.state !== 'COMBAT') {
         this.state = 'COMBAT';
-        this.fireTimer = 0.55;
+        this.fireTimer = this.isOperator ? (0.85 + Math.random() * 0.45) : 0.55;
         this.coverSpot = this._findBestCoverSpot(target.pos, 18);
-        this.coverSearchTimer = 2.4;
+        this.coverSearchTimer = 4.2;
         this.isPeeking = false;
-        this.coverPeekTimer = 0.85;
+        this.coverPeekTimer = 1.35 + Math.random() * 0.65;
         this._showAlertIndicator('!', 2.0);
         if (!this.isOperator && target.type === 'player') window.soundEngine.playAlert(true);
       }
@@ -2428,7 +2437,7 @@ class Enemy {
       }
     }
 
-    // === COMBAT (Player-Like Operators: Focus Target, Tactical Sprint, Slide, Lean, Plates & Grenades!) ===
+    // === COMBAT (Player-Like Operators: Deliberate Tactical Pacing, Cover Play, Plates & Grenades!) ===
     if (this.state === 'COMBAT' && target) {
       if (this.isOperator) {
         this.focusedTarget = { type: target.type, ref: target.ref };
@@ -2440,14 +2449,14 @@ class Enemy {
       const hasClearLOS = this._hasLineOfSight(aimCheckPos, 62);
       // Only stare toward target when we actually have unobstructed line-of-sight (never stare through walls!)
       if (hasClearLOS && !this.isTacSprinting) {
-        this._lerpYaw(Math.atan2(tPos.x - this.position.x, tPos.z - this.position.z), dt * 14);
+        this._lerpYaw(Math.atan2(tPos.x - this.position.x, tPos.z - this.position.z), dt * (this.isOperator ? 8.5 : 14));
       }
 
-      // 1. Active Tactical Slide update (Operator slides into cover or around corners!)
+      // 1. Active Tactical Slide update (Operator slides into cover at controlled speed!)
       if (this.isOperator && this.slideTimer > 0) {
         this.slideTimer = Math.max(0, this.slideTimer - dt);
         const sp = 1 - (this.slideTimer / 0.55);
-        const slideSpd = THREE.MathUtils.lerp(13.6, 4.6, sp * sp);
+        const slideSpd = THREE.MathUtils.lerp(9.2, 3.4, sp * sp);
         const vx = this.slideDir.x * slideSpd * dt;
         const vz = this.slideDir.z * slideSpd * dt;
         if (!this._collides(this.position.x + vx, this.position.z, 0.42)) {
@@ -2476,7 +2485,7 @@ class Enemy {
       }
 
       // 2. Survival Priority: Operator uses Armor Plates behind cover before re-engaging!
-      const needsPlate = this.isOperator && this.operatorEquipment && (this.operatorEquipment.plates || 0) > 0 &&
+      const needsPlate = this.isOperator && (this.opActionCooldown || 0) <= 0 && this.operatorEquipment && (this.operatorEquipment.plates || 0) > 0 &&
         (this.armor < Math.max(25, this.maxArmor - 38) || this.hp < this.maxHp * 0.65) && target.dist > 6.0;
 
       if (this.isOperator && this.platingTimer > 0) {
@@ -2492,61 +2501,67 @@ class Enemy {
       if (!this.coverSpot || this.coverSearchTimer <= 0) {
         const refreshed = this._findBestCoverSpot(tPos, 20);
         if (refreshed) this.coverSpot = refreshed;
-        this.coverSearchTimer = 2.6;
+        this.coverSearchTimer = 4.6 + Math.random() * 1.8;
       }
 
-      // If hurt and needs to plate: pop smoke if exposed, tactical sprint / slide into cover, then plate up!
+      // If hurt and needs to plate: pop smoke if exposed, move into cover, then plate up!
       if (needsPlate) {
         if (this.smokeLeft > 0 && this.grenadeCooldown <= 0 && target.dist < 28) {
           this.smokeLeft -= 1;
-          this.grenadeCooldown = 8.0;
+          this.grenadeCooldown = 14.0;
+          this.opActionCooldown = 1.9;
           const mid = this.position.clone().lerp(tPos, 0.35);
           this._throwOperatorGrenade(mid, 'smoke');
         }
         if (this.coverSpot) {
           const distCov = Math.hypot(this.coverSpot.coverPos.x - this.position.x, this.coverSpot.coverPos.z - this.position.z);
           if (distCov > 1.0) {
-            this.isTacSprinting = this.tacStamina > 12;
-            const moveSpd = this.isTacSprinting ? (this.tacSprintSpeed || 12.4) : (this.sprintSpeed || 9.6);
-            if (this.isTacSprinting) this.tacStamina = Math.max(0, this.tacStamina - 28 * dt);
+            this.isTacSprinting = !this.isProne && this.tacStamina > 24 && distCov > 4.5;
+            const moveSpd = this.isProne ? (this.proneSpeed || 1.15) : (this.isTacSprinting ? (this.tacSprintSpeed || 8.4) : (this.sprintSpeed || 6.7));
+            if (this.isTacSprinting) this.tacStamina = Math.max(0, this.tacStamina - 30 * dt);
             this._moveToward(this.coverSpot.coverPos, moveSpd, dt);
-            if (this.isTacSprinting && distCov < 4.2 && this.slideCooldown <= 0) {
+            if (this.isTacSprinting && distCov < 4.0 && this.slideCooldown <= 0) {
               this._startOperatorSlide(this.coverSpot.coverPos.clone().sub(this.position));
             }
             return;
           }
         }
         this.isTacSprinting = false;
-        this.platingTimer = 2.6;
+        this.platingTimer = 2.8;
         return;
       }
 
-      // 3. Occasional Frag Grenade throw during firefight (medium range 9..30m)
-      if (this.isOperator && this.grenadesLeft > 0 && this.grenadeCooldown <= 0 && target.dist > 9 && target.dist < 30 && Math.random() < 0.014) {
+      // 3. Occasional Frag Grenade throw during firefight (medium range 9..30m, longer cooldown & action pause!)
+      if (this.isOperator && (this.opActionCooldown || 0) <= 0 && this.grenadesLeft > 0 && this.grenadeCooldown <= 0 && target.dist > 9 && target.dist < 30 && Math.random() < 0.006) {
         this.grenadesLeft -= 1;
-        this.grenadeCooldown = 9.0 + Math.random() * 6.0;
+        this.grenadeCooldown = 14.0 + Math.random() * 8.0;
+        this.opActionCooldown = 2.0;
         this._throwOperatorGrenade(tPos, 'frag');
       }
 
       // 4. Movement, Tactical Sprint, Slide-Peek & Corner Leaning
       let targetLean = 0;
+      const actionHold = this.isOperator && (this.opActionCooldown || 0) > 0;
       if (this.coverSpot) {
         this.coverPeekTimer -= dt;
-        if (this.coverPeekTimer <= 0) {
+        if (this.coverPeekTimer <= 0 && !actionHold) {
           this.isPeeking = !this.isPeeking;
           if (this.isPeeking) this.leanDir = Math.random() < 0.5 ? -1 : 1;
-          this.coverPeekTimer = this.isPeeking ? (1.25 + Math.random() * 0.8) : (0.85 + Math.random() * 0.65);
+          this.coverPeekTimer = this.isPeeking ? (1.95 + Math.random() * 1.15) : (1.70 + Math.random() * 1.25);
         }
         const goal = this.isPeeking ? this.coverSpot.peekPos : this.coverSpot.coverPos;
         const distGoal = Math.hypot(goal.x - this.position.x, goal.z - this.position.z);
-        if (distGoal > 0.45) {
-          const useTac = this.isOperator && !this.isPeeking && distGoal > 3.5 && this.tacStamina > 18;
+        if (distGoal > 0.45 && !actionHold) {
+          const useTac = this.isOperator && !this.isProne && !this.isPeeking && distGoal > 5.5 && this.tacStamina > 28;
           this.isTacSprinting = useTac;
-          if (useTac) this.tacStamina = Math.max(0, this.tacStamina - 24 * dt);
-          else this.tacStamina = Math.min(100, (this.tacStamina || 0) + 18 * dt);
+          if (useTac) this.tacStamina = Math.max(0, this.tacStamina - 28 * dt);
+          else this.tacStamina = Math.min(100, (this.tacStamina || 0) + 14 * dt);
+          const goalSpd = this.isProne
+            ? (this.proneSpeed || 1.15)
+            : (useTac ? (this.tacSprintSpeed || 8.4) : (this.isPeeking ? 3.0 : (this.sprintSpeed || 6.7)));
           // Only face target while moving if actively peeking WITH unobstructed LOS; otherwise look where walking!
-          this._moveToward(goal, useTac ? (this.tacSprintSpeed || 12.4) : (this.isPeeking ? 4.3 : (this.sprintSpeed || 9.6)), dt, (hasClearLOS && this.isPeeking && !useTac) ? tPos : null);
-          if (this.isOperator && this.isPeeking && distGoal < 3.0 && this.slideCooldown <= 0 && Math.random() < 0.08) {
+          this._moveToward(goal, goalSpd, dt, (hasClearLOS && this.isPeeking && !useTac) ? tPos : null);
+          if (this.isOperator && !this.isProne && this.isPeeking && distGoal < 3.0 && this.slideCooldown <= 0 && Math.random() < 0.025) {
             this._startOperatorSlide(goal.clone().sub(this.position));
           }
         } else {
@@ -2555,19 +2570,22 @@ class Enemy {
           this.updateVisualAnim(dt, false, 0);
           if (this.isOperator && this.isPeeking && hasClearLOS) targetLean = this.leanDir * 0.24;
         }
-      } else if (target.dist > 18) {
-        this.isTacSprinting = this.isOperator && this.tacStamina > 15;
-        if (this.isTacSprinting) this.tacStamina = Math.max(0, this.tacStamina - 24 * dt);
-        else this.tacStamina = Math.min(100, (this.tacStamina || 0) + 18 * dt);
-        this._moveToward(tPos, this.isTacSprinting ? (this.tacSprintSpeed || 12.4) : (this.sprintSpeed || 9.6), dt, (hasClearLOS && !this.isTacSprinting) ? tPos : null);
-        if (this.isTacSprinting && target.dist < 22 && this.slideCooldown <= 0 && Math.random() < 0.04) {
+      } else if (target.dist > 18 && !actionHold) {
+        this.isTacSprinting = this.isOperator && !this.isProne && this.tacStamina > 28 && target.dist > 26;
+        if (this.isTacSprinting) this.tacStamina = Math.max(0, this.tacStamina - 28 * dt);
+        else this.tacStamina = Math.min(100, (this.tacStamina || 0) + 14 * dt);
+        const chaseSpd = this.isProne
+          ? (this.proneSpeed || 1.15)
+          : (this.isTacSprinting ? (this.tacSprintSpeed || 8.4) : (this.isOperator ? (this.speed || 4.5) : (this.sprintSpeed || 6.7)));
+        this._moveToward(tPos, chaseSpd, dt, (hasClearLOS && !this.isTacSprinting) ? tPos : null);
+        if (this.isTacSprinting && target.dist < 22 && this.slideCooldown <= 0 && Math.random() < 0.018) {
           this._startOperatorSlide(tPos.clone().sub(this.position));
         }
       } else if (this.isOperator) {
         this.isTacSprinting = false;
         this._animMoving = false;
         this.updateVisualAnim(dt, false, 0);
-        this.tacStamina = Math.min(100, (this.tacStamina || 0) + 20 * dt);
+        this.tacStamina = Math.min(100, (this.tacStamina || 0) + 16 * dt);
         if (hasClearLOS) targetLean = this.leanDir * 0.18;
       }
 
@@ -2590,8 +2608,19 @@ class Enemy {
 
       this.fireTimer -= dt;
       // STRICT LOS GATE: Never fire a single bullet through walls, closed doors, or hills!
-      if (this.fireTimer <= 0 && hasClearLOS && (!this.coverSpot || this.isPeeking)) {
-        this.fireTimer = this.fireInterval + Math.random() * 0.22;
+      if (this.fireTimer <= 0 && !actionHold && hasClearLOS && (!this.coverSpot || this.isPeeking)) {
+        if (this.isOperator) {
+          this._opBurstShots = (this._opBurstShots || 0) + 1;
+          const maxBurst = this.playstyle === 'marksman' ? 1 : 4;
+          if (this._opBurstShots >= maxBurst) {
+            this._opBurstShots = 0;
+            this.fireTimer = (this.playstyle === 'marksman' ? 1.55 : 1.05) + Math.random() * 0.75;
+          } else {
+            this.fireTimer = this.fireInterval + Math.random() * 0.30;
+          }
+        } else {
+          this.fireTimer = this.fireInterval + Math.random() * 0.22;
+        }
         const distToPlayer = player ? this.position.distanceTo(player.position) : 40;
         if (distToPlayer < 75) {
           let shotOpts;
@@ -2649,14 +2678,19 @@ class Enemy {
     }
 
     // === NON-COMBAT: OPERATOR LOOTING -> SQUAD OBJECTIVES (POI -> EXTRACT) & FORMATION COHESION ===
+    if (this.isOperator && (this.opActionCooldown || 0) > 0) {
+      this._animMoving = false;
+      this.updateVisualAnim(dt, false, 0);
+      return;
+    }
     if (this.isOperator && this._activeLootGoal) {
-      this._moveToward(this._activeLootGoal, this.speed * 0.88, dt);
+      this._moveToward(this._activeLootGoal, this.speed * 0.74, dt);
       return;
     }
     if (this.isOperator && squadGoal) {
       const distGoal = Math.hypot(squadGoal.x - this.position.x, squadGoal.z - this.position.z);
       if (distGoal > 2.2) {
-        this._moveToward(squadGoal, this.speed * 0.85, dt);
+        this._moveToward(squadGoal, this.speed * 0.72, dt);
       } else {
         this._animMoving = false;
         this.updateVisualAnim(dt, false, 0);
@@ -2665,11 +2699,12 @@ class Enemy {
     }
 
     if (this.state === 'ALERT' && this.lastKnownPlayerPos) {
-      this._moveToward(this.lastKnownPlayerPos, this.speed * 0.85, dt);
+      this._moveToward(this.lastKnownPlayerPos, this.speed * 0.72, dt);
     } else {
-      const moved = this._moveToward(this.patrolTarget, this.speed * 0.55, dt);
-      if (!moved || Math.random() < 0.005) {
+      const moved = this._moveToward(this.patrolTarget, this.speed * (this.isOperator ? 0.48 : 0.55), dt);
+      if (!moved || Math.random() < 0.003) {
         this.patrolTarget = this._pickPatrolPoint();
+        if (this.isOperator) this.opActionCooldown = 0.8 + Math.random() * 0.9;
       }
     }
   }

@@ -2769,7 +2769,10 @@ class Player {
       let speed = walkBase;
       if (this.isTacSprinting) speed = opStats.tacSprintSpeed || 12.4;
       else if (this.isSprinting) speed = opStats.sprintSpeed || 9.6;
-      else if (this.stance === 'prone') speed = opStats.proneSpeed || opStats.downedSpeed || 1.9;
+      else if (this.stance === 'prone') {
+        speed = opStats.proneSpeed || 1.15;
+        if (this.isADS) speed *= 0.85;
+      }
       else if (this.stance === 'crouch') {
         speed = opStats.crouchSpeed || 3.9;
         if (this.isADS) speed *= this.tacStance ? 0.96 : 0.85;
@@ -2906,10 +2909,10 @@ class Player {
 
     // Footsteps & weighty stride head-bob (suppressed while sliding)
     const horizSpeed = Math.hypot(this.velocity.x, this.velocity.z);
-    if (this.onGround && !this.isSliding && horizSpeed > 0.9) {
+    if (this.onGround && !this.isSliding && horizSpeed > (this.isProne ? 0.55 : 0.9)) {
       this.footstepTimer -= dt;
       if (this.footstepTimer <= 0) {
-        this.footstepTimer = this.isTacSprinting ? 0.30 : (this.isSprinting ? 0.38 : (this.isProne ? 0.95 : (this.isCrouching ? 0.72 : 0.56)));
+        this.footstepTimer = this.isTacSprinting ? 0.30 : (this.isSprinting ? 0.38 : (this.isProne ? 1.22 : (this.isCrouching ? 0.72 : 0.56)));
         if ((this.deadSilenceTimer || 0) <= 0) {
           const feetY = this.position.y - (this.currentEyeHeight || 1.65);
           const surf = (this.world && this.world.getTerrainHeight && feetY > this.world.getTerrainHeight(this.position.x, this.position.z) + 0.12)
@@ -2918,7 +2921,7 @@ class Player {
           window.soundEngine.playFootstep(this.isSprinting || this.isTacSprinting, surf);
         }
       }
-      const cadence = this.isTacSprinting ? 10.6 : (this.isSprinting ? 8.4 : (this.isProne ? 3.2 : (this.isCrouching ? 4.2 : 5.6)));
+      const cadence = this.isTacSprinting ? 10.6 : (this.isSprinting ? 8.4 : (this.isProne ? 2.3 : (this.isCrouching ? 4.2 : 5.6)));
       this.headBobTimer += dt * cadence;
       const bobScale = this.isADS ? 0.15 : 1.0;
       const ampY = (this.isTacSprinting ? 0.052 : (this.isSprinting ? 0.040 : (this.isProne ? 0.008 : (this.isCrouching ? 0.014 : 0.024)))) * bobScale;
