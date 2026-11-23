@@ -1274,8 +1274,21 @@ class GameUI {
 
     let latestAvailable = null;
     const raidBadge = document.getElementById('raid-update-badge');
-    const parseVer = (v) => String(v || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0);
+    const parseVer = (v) => {
+      if (window.GAME_DATA && window.GAME_DATA.parseVersion) {
+        const p = window.GAME_DATA.parseVersion(v);
+        return p ? [p.major, p.minor, p.patch] : [0, 0, 0];
+      }
+      const m = String(v || '').match(/(\d+)\.(\d+)\.(\d+)/) || String(v || '').replace(/^v/i, '').match(/(\d+)\.(\d+)/);
+      if (!m) return [0, 0, 0];
+      const nums = m.slice(1).map(n => parseInt(n, 10) || 0);
+      while (nums.length < 3) nums.push(0);
+      return nums;
+    };
     const isNewer = (remote, local) => {
+      if (window.GAME_DATA && window.GAME_DATA.isNewerVersion) {
+        return window.GAME_DATA.isNewerVersion(remote, local);
+      }
       if (!remote || !local || remote === local) return false;
       const r = parseVer(remote);
       const l = parseVer(local);
@@ -1345,8 +1358,8 @@ class GameUI {
       if (!txt) return null;
       const m1 = txt.match(/VERSION\s*:\s*['"]([^'"]+)['"]/);
       if (m1 && m1[1]) return m1[1];
-      const m2 = txt.match(/menu-version-badge[^>]*>\s*(v[0-9.]+)\s*</i);
-      return (m2 && m2[1]) || null;
+      const m2 = txt.match(/menu-version-badge[^>]*>\s*([^<]*?\d+\.\d+\.\d+[^<]*)\s*</i);
+      return (m2 && m2[1].trim()) || null;
     };
 
     let lastGhApiCheck = 0;
@@ -1360,8 +1373,8 @@ class GameUI {
         .then((data) => {
           const msg = data && data.commit && data.commit.message;
           if (!msg) return;
-          const m = msg.match(/\b(v\d+\.\d+)\b/i);
-          if (m && m[1]) reportRemoteVersion(m[1].toLowerCase());
+          const m = msg.match(/((?:Alpha|Beta)(?:\s+RC)?\s+)?0\.\d+\.\d+/i) || msg.match(/\b(v\d+\.\d+(?:\.\d+)?)\b/i);
+          if (m && m[1]) reportRemoteVersion(m[1].trim());
         })
         .catch(() => {});
     };
