@@ -646,7 +646,7 @@ class WeaponSystem {
       frontPivot.traverse((ch) => { if (ch.isMesh) ch.renderOrder = -20; });
       ironGroup.add(rearPivot, frontPivot);
     } else if (weaponId === 'ak47') {
-      // Authentic AK-47: rear tangent leaf sight block on front trunnion + hooded front sight block on barrel
+      // Authentic AK-47: rear tangent leaf sight block on front trunnion + open-post front sight block on barrel
       const rearPivot = new THREE.Group();
       rearPivot.position.set(0, 0.032, -0.095);
       const trunnionBlock = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.010, 0.036), steelSightMat);
@@ -660,7 +660,7 @@ class WeaponSystem {
       rearPivot.add(trunnionBlock, leafL, leafR, slider);
 
       const frontPivot = new THREE.Group();
-      frontPivot.position.set(0, 0.010, -0.495);
+      frontPivot.position.set(0, 0.010, -0.355);
       // Tapered AK front sight base connecting directly to barrel
       const fsbTower = new THREE.Mesh(new THREE.BoxGeometry(0.012, 0.026, 0.024), steelSightMat);
       fsbTower.position.set(0, 0.013, 0);
@@ -5961,7 +5961,7 @@ class WeaponSystem {
       awm338: 920,
       m24: 820,
       mosin9130: 780,
-      ak47: 680,
+      ak47: 715,
       mp5k: 390,
       m870: 340,
       g17: 355,
@@ -5973,7 +5973,7 @@ class WeaponSystem {
     if (mods.optic === 'sniper_8x' || mods.optic === 'lpvo_4x') muzzleVel *= 1.04;
     const gravity = 13.5; // Tuned tactical ballistic drop (m/s^2)
     // Effective flat-drop zero distance (meters before noticeable drop)
-    const zeroDist = def.id === 'awm338' ? 140 : (def.id === 'm24' || def.id === 'mosin9130' ? 115 : (def.id === 'ak47' ? 75 : 40));
+    const zeroDist = def.id === 'awm338' ? 140 : (def.id === 'm24' || def.id === 'mosin9130' ? 115 : (def.id === 'ak47' ? 65 : 40));
 
     // MW4 DMZ Sight-Aligned Aiming: align aim convergence ray with live physical sight sway & hit flinch during ADS!
     const camFwd = this._shotCamFwd.set(0, 0, -1);
