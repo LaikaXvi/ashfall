@@ -115,6 +115,7 @@
   let sunLight = null;
   let hemiLight = null;
   let rimFillLight = null;
+  let flashlight = null;
 
   window.applyGraphicsSettings = (gfx = window.GFX_SETTINGS || {}) => {
     const lod = gfx.lod ?? 3;
@@ -160,6 +161,12 @@
     }
     if (world && world.setGraphicsOptions) {
       world.setGraphicsOptions(gfx);
+    }
+    if (world && world.isBunkerMap) {
+      if (sunLight) { sunLight.castShadow = false; sunLight.intensity = 0; }
+      if (rimFillLight) rimFillLight.intensity = 0.1;
+      if (scene && scene.fog) scene.fog.density = 0.011;
+      if (camera) { camera.far = Math.min(camera.far, 215); camera.updateProjectionMatrix(); }
     }
   };
   let viewmodelScene = null;
@@ -364,6 +371,10 @@
   window.gamepadController = gamepad;
   window.isInRaid = () => inRaid;
   window.devExfilRaid = (opts) => devExfil(opts);
+  // Dev / test hooks (dev console & automated smoke tests)
+  window.devStartRaid = (zoneId, matchId = null, opts = {}) => startRaid(zoneId, matchId, opts);
+  window.devRaidState = () => ({ world, player, enemyManager, squadManager, scene, camera, inRaid, renderer });
+  window.devZavodCtx = () => getZavodCtx();
   let padPaused = false;
   gamepad.onStatusChange = (connected) => {
     if (inRaid) {
@@ -392,10 +403,24 @@
     if (matchmaking && matchmaking.active) matchmaking._resize();
   });
 
-  function startRaid(zoneId, matchId = null) {
+  function _hashSeed(str) {
+    let h = 2166136261;
+    const s2 = String(str || 'zavod');
+    for (let i = 0; i < s2.length; i++) { h ^= s2.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return (h >>> 0) || 9009;
+  }
+
+  function startRaid(zoneId, matchId = null, raidOpts = {}) {
     if (inRaid) return;
     window.soundEngine.init();
-    const zone = GAME_DATA.ZONES[zoneId] || GAME_DATA.ZONES.outpost;
+    const baseZone = GAME_DATA.ZONES[zoneId] || GAME_DATA.ZONES.outpost;
+    const zone = { ...baseZone };
+    if (zone.mapType === 'zavod') {
+      // Standalone ZAVOD-9 match: shared seed + sector assignment for the whole transferring squad
+      zone.seed = _hashSeed(matchId || (ui.partyId + '_' + zoneId));
+      zone.spawnWing = (raidOpts && raidOpts.wingId) || null;
+    }
+    if (window.ZavodBunker) window.ZavodBunker.reset();
 
     scene = new THREE.Scene();
     scene.background = new THREE.Color(zone.skyColor || 0x8ea0ab);
@@ -428,6 +453,23 @@
     rimFillLight = new THREE.DirectionalLight(0x8cb8e0, 0.48);
     rimFillLight.position.set(-140, 85, -130);
     scene.add(rimFillLight);
+
+    // Underground ZAVOD-9: no sun, cold sodium/concrete bounce, dense dark fog & a camera-mounted weapon light
+    flashlight = null;
+    if (zone.underground) {
+      scene.background = new THREE.Color(0x050607);
+      scene.fog = new THREE.FogExp2(0x0b0d0f, 0.011);
+      hemiLight.color.setHex(0xe2e6e4);
+      hemiLight.groundColor.setHex(0x7a7266);
+      hemiLight.intensity = 1.0;
+      sunLight.intensity = 0;
+      sunLight.castShadow = false;
+      rimFillLight.intensity = 0.1;
+      flashlight = new THREE.SpotLight(0xfff1d6, 1.4, 55, 0.55, 0.45, 1.0);
+      flashlight.castShadow = false;
+      scene.add(flashlight);
+      scene.add(flashlight.target);
+    }
 
     // Dedicated Viewmodel Layer (separate scene & depth pass so gun/hands NEVER clip through walls!)
     viewmodelScene = new THREE.Scene();
@@ -624,6 +666,8 @@
             );
           } else if (pkt.type === 'ping_remove') {
             if (pkt.pingId) removePingById(pkt.pingId, false);
+          } else if (typeof pkt.type === 'string' && pkt.type.startsWith('zavod_')) {
+            if (window.ZavodBunker) window.ZavodBunker.onRemoteEvent(pkt, getZavodCtx());
           } else if (pkt.type === 'lobby_chat') {
             if (ui && ui.receiveLobbyChatPacket) ui.receiveLobbyChatPacket(pkt);
           } else if (pkt.type === 'enemies_sync') {
@@ -818,7 +862,7 @@
                 weaponName: pkt.weaponName || 'AK-74M'
               };
               const res = player.takeDamage(pkt.dmg || 20, attackerInfo);
-              ui.updateHUD(player, raidTimeLeft, getActiveExtractProgress());
+              refreshHudNow();
               if (res === 'downed') {
                 ui.addKillFeedEntry({
                   killerName: attackerInfo.name,
@@ -888,7 +932,7 @@
       try {
         window.soundEngine.init();
         if (window.soundEngine.setIndoor) window.soundEngine.setIndoor(false);
-        if (window.soundEngine.startAmbient) window.soundEngine.startAmbient('wind');
+        if (window.soundEngine.startAmbient) window.soundEngine.startAmbient(zone.underground ? 'fob' : 'wind'); // ZAVOD-9: generator hum + air handling
       } catch (e) {}
     }
     isModalOpen = false;
@@ -993,9 +1037,44 @@
       }
     };
     ui.addFeedMessage(`Deployed to ${zone.name}`, '#69f0ae');
+    if (window.ZavodBunker) window.ZavodBunker.onRaidStart(world, getZavodCtx());
     if (ui && ui.syncUpdateBadges) ui.syncUpdateBadges();
-    canvas.requestPointerLock();
+    try { canvas.requestPointerLock(); } catch (e) {}
   }
+
+  // Immediate HUD refresh (correct updateHUD signature)
+  function refreshHudNow() {
+    if (!player || !world || !ui) return;
+    try { ui.updateHUD(player, world, raidTimeLeft, weaponSystem, throwableSystem, enemyManager, squadManager, raidXp); } catch (e) {}
+  }
+
+  // Shared context for the ZAVOD-9 controller (transfer, puzzles, environment)
+  function getZavodCtx() {
+    return {
+      world, player, ui, enemyManager, squadManager, scene, camera, hemiLight, sunLight, flashlight,
+      raidTimeLeft, isMatchHost,
+      sendEvent: (pkt) => { if (mpSession && mpSession.active) mpSession.sendEvent(pkt); },
+      transferToZavod,
+      refreshHud: () => refreshHudNow(),
+      onPlayerEliminated: () => { if (!squadManager || !squadManager.hasLivingAlly()) endRaid(false); }
+    };
+  }
+
+  // Koschei-style airlock transfer: extract from the current match & deploy into a NEW separate ZAVOD-9 match
+  function transferToZavod(wingId, matchId) {
+    if (!inRaid || !player) return;
+    endRaid(true, { skipSummary: true, transfer: true, keepPointerLock: true });
+    setTimeout(() => {
+      try {
+        startRaid('bunker', matchId, { wingId });
+      } catch (err) {
+        console.error('[ZAVOD] transfer failed', err);
+        if (window.ZavodBunker) window.ZavodBunker.hideLoading();
+        ui.showScreen('hideout');
+      }
+    }, 1400);
+  }
+  window.transferToZavod = transferToZavod;
 
   function devExfil(opts = {}) {
     if (!inRaid || !player) return false;
@@ -1029,15 +1108,18 @@
       ui.setChatRoomScope('fob', ui.partyId || ('p_' + ui._clientId), fobTitle);
     }
     if (ui && ui.updateLobbyChatVisibility) ui.updateLobbyChatVisibility();
-    if (document.pointerLockElement === canvas) {
+    if (document.pointerLockElement === canvas && !(opts && opts.keepPointerLock)) {
       document.exitPointerLock();
     }
+    const isTransfer = !!(opts && opts.transfer);
+    if (window.ZavodBunker) window.ZavodBunker.reset();
+    if (flashlight && scene) { scene.remove(flashlight); scene.remove(flashlight.target); flashlight = null; }
 
     const recovered = [];
     let totalVal = 0;
 
     if (extracted) {
-      ui.profile.extracts += 1;
+      if (!isTransfer) ui.profile.extracts += 1;
       // Persist all swapped/looted operator equipment & cash back to hideout profile
       ui.profile.credits = (ui.profile.credits || 0) + (player.cash || 0);
       totalVal += (player.cash || 0);
@@ -1089,6 +1171,10 @@
         totalVal += def.value * item.qty;
         if (def.type === 'ammo') {
           ui.profile.loadout.ammo[item.id] = (ui.profile.loadout.ammo[item.id] || 0) + item.qty;
+        } else if (isTransfer) {
+          // Koschei transfer: the whole backpack travels with the operator into the new match
+          if (!Array.isArray(ui.profile.loadout.backpackItems)) ui.profile.loadout.backpackItems = [];
+          ui.profile.loadout.backpackItems.push({ id: item.id, qty: item.qty, mods: item.mods || null, rarityOverride: item.rarityOverride || null });
         } else {
           ui.addToStash(item.id, item.qty, item.mods || null, item.rarityOverride || null);
         }
@@ -1114,7 +1200,7 @@
 
     ui.profile.xp = (ui.profile.xp || 0) + raidXp;
     if (ui.recordMissionProgress) {
-      if (extracted) {
+      if (extracted && !isTransfer) {
         ui.recordMissionProgress('extracts', 1);
         if (totalVal > 0) ui.recordMissionProgress('value', totalVal);
       }
@@ -1124,7 +1210,7 @@
       if (ui._ensureActiveDutyOperators) {
         const ops = ui._ensureActiveDutyOperators();
         const curOp = ops[ui.profile.activeOperatorIdx || 0];
-        if (curOp && extracted) {
+        if (curOp && extracted && !isTransfer) {
           const prevDt = ui._getDogtagInfo(curOp.exfilStreak || 0);
           curOp.exfilStreak = Math.min(10, (curOp.exfilStreak || 0) + 1);
           const nextDt = ui._getDogtagInfo(curOp.exfilStreak);
@@ -1613,91 +1699,17 @@
 
   function openNearbyInteractable() {
     if (!nearbyInteractable) return false;
-  function unlockBunkerDoor(wingId) {
-    if (!world.bunker) return;
-    for (const door of world.bunker.doors) {
-      if (door.wingId !== wingId) continue;
-      if (!door.locked) return;
-      door.locked = false;
-      if (door.mesh && door.mesh.material) door.mesh.material = door.matOpen || door.mesh.material;
-      ui.addFeedMessage(`${door.label} UNLOCKED — breach the plant`, '#69f0ae');
+    if (nearbyInteractable.type === 'zavod' && window.ZavodBunker) {
+      const handled = window.ZavodBunker.interact(nearbyInteractable, getZavodCtx());
+      window._lastInteractCheckMs = 0;
+      checkInteractions();
+      return handled;
     }
-  }
-
-  function solveBunkerPuzzle(station, stationIdx = 0) {
-    if (!station || !world.bunker) return false;
-    const hasItem = (id) => player.backpack && player.backpack.some(it => it && it.id === id && (it.qty || 1) > 0);
-    const takeItem = (id, qty = 1) => {
-      const idx = player.backpack.findIndex(it => it && it.id === id);
-      if (idx === -1) return false;
-      player.backpack[idx].qty -= qty;
-      if (player.backpack[idx].qty <= 0) player.backpack.splice(idx, 1);
-      return true;
-    };
-    if (station.kind === 'breaker' && !station.solved) {
-      if (!hasItem('bunker_battery') || !hasItem('jumper_cables')) {
-        ui.showCenterToast('NEED CAR BATTERY + JUMPER CABLES', '#ff5252');
-        ui.addFeedMessage('Archive breaker needs a car battery + jumper cables', '#ff5252');
-        return false;
-      }
-      takeItem('bunker_battery', 1);
-      takeItem('jumper_cables', 1);
-      station.solved = true;
-      if (station.mesh) station.mesh.visible = true;
-      ui.addFeedMessage('Archive breaker powered — inner door unlocked', '#69f0ae');
-      unlockBunkerDoor(station.wingId);
-      return true;
-    }
-    if (station.kind === 'valves') {
-      station.valvesTurned = station.valvesTurned || [false, false];
-      if (station.valvesTurned[stationIdx]) return true;
-      station.valvesTurned[stationIdx] = true;
-      if (window.soundEngine && window.soundEngine.playClick) { try { window.soundEngine.playClick(); } catch (e) {} }
-      if (station.valvesTurned.every(Boolean)) {
-        station.solved = true;
-        ui.addFeedMessage('Pump hall drained — inner door unlocked', '#69f0ae');
-        unlockBunkerDoor(station.wingId);
-      } else {
-        ui.addFeedMessage(`Drain valve ${stationIdx + 1}/2 turned — one more`, '#f5a623');
-      }
-      return true;
-    }
-    if (station.kind === 'fuse' && !station.solved) {
-      station.solved = true;
-      if (station.beams) for (const b of station.beams) b.visible = false;
-      ui.addFeedMessage('Laser tripwires disabled — inner door unlocked', '#69f0ae');
-      unlockBunkerDoor(station.wingId);
-      return true;
-    }
-    if (station.kind === 'airlocks') {
-      station.stagesDone = station.stagesDone || 0;
-      if (station.stagesDone >= 3) {
-        station.solved = true;
-        unlockBunkerDoor(station.wingId);
-        return true;
-      }
-      if (!hasItem('rad_filter')) {
-        ui.showCenterToast('NEED RADIATION FILTER', '#ff5252');
-        ui.addFeedMessage('Lab airlock needs a radiation filter', '#ff5252');
-        return false;
-      }
-      takeItem('rad_filter', 1);
-      station.stagesDone += 1;
-      ui.addFeedMessage(`Lab airlock ${station.stagesDone}/3 purged`, '#69f0ae');
-      if (station.stagesDone >= 3) {
-        station.solved = true;
-        unlockBunkerDoor(station.wingId);
-      }
-      return true;
-    }
-    return false;
-  }
-
     if (nearbyInteractable.type === 'munition_box' && nearbyInteractable.box && player && player.resupplyFromMunitionBox) {
       const msg = player.resupplyFromMunitionBox(nearbyInteractable.box);
       if (msg) ui.showNotice(msg, '#69f0ae');
       if (weaponSystem && weaponSystem.triggerGrabAnim) weaponSystem.triggerGrabAnim('item');
-      ui.updateHUD(player, raidTimeLeft, getActiveExtractProgress());
+      refreshHudNow();
       window._lastInteractCheckMs = 0;
       checkInteractions();
       return true;
@@ -1707,48 +1719,6 @@
       if (weaponSystem && weaponSystem.triggerGrabAnim) weaponSystem.triggerGrabAnim('container');
       window._lastInteractCheckMs = 0;
       checkInteractions();
-      return true;
-    }
-    if (nearbyInteractable.type === 'bunker_elevator' && world && world.teleportToBunker) {
-      if (world.teleportToBunker(player)) {
-        ui.addFeedMessage('Infil: ZAVOD-9 Bunker — clear your wing puzzle to breach the plant', '#69f0ae');
-        if (window.soundEngine && window.soundEngine.playClick) { try { window.soundEngine.playClick(); } catch (e) {} }
-        if (weaponSystem && weaponSystem.triggerGrabAnim) weaponSystem.triggerGrabAnim('container');
-        window._lastInteractCheckMs = 0;
-        nearbyInteractable = null;
-        checkInteractions();
-      }
-      return true;
-    }
-    if (nearbyInteractable.type === 'bunker_exfil' && world && world.teleportToSurface) {
-      if (world.teleportToSurface(player)) {
-        ui.addFeedMessage('Exfil: surface — Zavod-9 gate', '#69f0ae');
-        if (weaponSystem && weaponSystem.triggerGrabAnim) weaponSystem.triggerGrabAnim('container');
-        window._lastInteractCheckMs = 0;
-        nearbyInteractable = null;
-        checkInteractions();
-      }
-      return true;
-    }
-    if (nearbyInteractable.type === 'bunker_puzzle' && nearbyInteractable.station) {
-      const done = solveBunkerPuzzle(nearbyInteractable.station, nearbyInteractable.stationIdx || 0);
-      if (weaponSystem && weaponSystem.triggerGrabAnim) weaponSystem.triggerGrabAnim('container');
-      window._lastInteractCheckMs = 0;
-      checkInteractions();
-      return done;
-    }
-    if (nearbyInteractable.type === 'bunker_door' && nearbyInteractable.door) {
-      const door = nearbyInteractable.door;
-      if (door.locked) {
-        ui.showCenterToast('INNER DOOR SEALED — SOLVE THE WING PUZZLE', '#ff5252');
-      } else if (world.bunker) {
-        door.mesh.visible = false;
-        ui.addFeedMessage(`${door.label} breached — plant access open`, '#69f0ae');
-        if (window.soundEngine && window.soundEngine.playClick) { try { window.soundEngine.playClick(); } catch (e) {} }
-        nearbyInteractable = null;
-        window._lastInteractCheckMs = 0;
-        checkInteractions();
-      }
       return true;
     }
     if (nearbyInteractable.type === 'ground') {
@@ -2624,7 +2594,7 @@
             player.takeDamage(999, { name: 'A-10 CAS', weaponId: 'ks_airstrike', weaponName: 'A-10 Warthog 30mm' });
           }
         }
-        ui.updateHUD(player, raidTimeLeft, getActiveExtractProgress());
+        refreshHudNow();
       }
     }
   }
@@ -3841,50 +3811,12 @@
       }
     }
 
-    // ZAVOD-9 service elevator (surface -> underground bunker infil)
-    if (world.bunkerElevators) {
-      for (const el of world.bunkerElevators) {
-        const d = Math.hypot(player.position.x - el.position.x, player.position.z - el.position.z);
-        const dy = Math.abs(player.position.y - el.position.y);
-        if (d < 3.4 && dy < 3.2 && d < bestDist) {
-          bestDist = d;
-          nearbyInteractable = { type: 'bunker_elevator', elevator: el, label: 'INFIL ZAVOD-9 BUNKER (SERVICE ELEVATOR)' };
-        }
-      }
-    }
-    // Underground bunker: puzzle stations, inner doors, plant exfil elevator
-    if (world.bunker && player.position.y < -20) {
-      for (const st of world.bunker.stations) {
-        const pts = st.positions || (st.position ? [st.position] : []);
-        for (let si = 0; si < pts.length; si++) {
-          const p = pts[si];
-          const d = Math.hypot(player.position.x - p.x, player.position.z - p.z);
-          const dy = Math.abs(player.position.y - p.y);
-          if (d > 3.0 || dy > 2.6 || d >= bestDist) continue;
-          if (st.kind === 'valves' && st.valvesTurned && st.valvesTurned[si]) continue;
-          bestDist = d;
-          const lbl = st.kind === 'breaker' ? 'INSTALL BATTERY + CABLES (ARCHIVE BREAKER)'
-            : st.kind === 'valves' ? `TURN DRAIN VALVE ${si + 1}/2 (PUMP HALL)`
-            : st.kind === 'fuse' ? 'DISABLE LASER TRIPWIRES (BARRACKS FUSE BOX)'
-            : `OPEN AIRLOCK ${((st.stagesDone || 0) + 1)}/3 (LAB — NEEDS RAD FILTER)`;
-          nearbyInteractable = { type: 'bunker_puzzle', station: st, stationIdx: si, label: lbl };
-        }
-      }
-      for (const door of world.bunker.doors) {
-        const d = Math.hypot(player.position.x - door.position.x, player.position.z - door.position.z);
-        const dy = Math.abs(player.position.y - door.position.y);
-        if (d < 3.2 && dy < 2.8 && d < bestDist) {
-          bestDist = d;
-          nearbyInteractable = { type: 'bunker_door', door, label: door.locked ? `${door.label} (LOCKED — SOLVE WING PUZZLE)` : `${door.label} (SEALED — HOLD E TO FORCE)` };
-        }
-      }
-      const ex = world.bunker.exfil;
-      if (ex) {
-        const d = Math.hypot(player.position.x - ex.x, player.position.z - ex.z);
-        if (d < 3.2 && d < bestDist) {
-          bestDist = d;
-          nearbyInteractable = { type: 'bunker_exfil', label: 'EXFIL TO SURFACE (PLANT ELEVATOR)' };
-        }
+    // ZAVOD-9: Vostok service-elevator transfer + underground sector puzzle stations
+    if (window.ZavodBunker && world && (world.bunkerElevators || world.zavod)) {
+      const zi = window.ZavodBunker.findInteractable(world, player, bestDist);
+      if (zi) {
+        bestDist = zi.dist;
+        nearbyInteractable = zi.ia;
       }
     }
 
@@ -3959,7 +3891,7 @@
     }
 
     if (nearbyInteractable) {
-      if (nearbyInteractable.type === 'munition_box') {
+      if (nearbyInteractable.type === 'munition_box' || nearbyInteractable.type === 'zavod') {
         textEl.textContent = `[E] ${nearbyInteractable.label}`;
       } else if (nearbyInteractable.type === 'door') {
         textEl.textContent = `[E] ${nearbyInteractable.label}`;
@@ -3998,6 +3930,7 @@
   function checkExtraction(dt) {
     let activeZone = null;
     for (const ez of world.extractZones) {
+      if (ez.locked) continue;
       const d = Math.hypot(player.position.x - ez.position.x, player.position.z - ez.position.z);
       if (d <= ez.radius) {
         activeZone = ez;
@@ -4157,6 +4090,7 @@
           throwableSystem.update(dt, player, weaponSystem, enemyManager, onThrowableHit, null);
         }
         world.update(dt, now / 1000, player.position);
+        if (window.ZavodBunker) window.ZavodBunker.update(dt, getZavodCtx());
         // Keep directional sun shadow frustum centered on player (snapped every 2m to reduce shadow shimmer & matrix work)
         if (sunLight && sunLight.castShadow && player) {
           const sx = Math.round(player.position.x * 0.5) * 2;
