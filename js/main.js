@@ -11,104 +11,20 @@
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.08;
   }
+  window.mainWebGLRenderer = renderer;
 
-  // PS2 Low-Res Post Pipeline (Bayer 4x4 ordered dither + color quantization + gritty grade)
-  window.renderPipeline = (() => {
-    const getScale = () => {
-      const p = (window.GFX_SETTINGS && typeof window.GFX_SETTINGS.pixel === 'number') ? window.GFX_SETTINGS.pixel : 2;
-      return Math.max(1, Math.min(3, Math.round(p)));
-    };
-    let curScale = getScale();
-    let rtW = Math.max(1, Math.ceil(window.innerWidth / curScale));
-    let rtH = Math.max(1, Math.ceil(window.innerHeight / curScale));
-    const rt = new THREE.WebGLRenderTarget(rtW, rtH, {
-      minFilter: THREE.NearestFilter,
-      magFilter: THREE.NearestFilter,
-      format: THREE.RGBAFormat,
-      depthBuffer: true,
-      stencilBuffer: false
-    });
-    rt.texture.generateMipmaps = false;
-
-    const postScene = new THREE.Scene();
-    const postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-    const postMat = new THREE.ShaderMaterial({
-      uniforms: {
-        tDiffuse: { value: rt.texture },
-        uRes: { value: new THREE.Vector2(rtW, rtH) },
-        uScale: { value: curScale },
-        uLevels: { value: 48.0 },
-        uDither: { value: 0.75 }
-      },
-      vertexShader: `
-        varying vec2 vUv;
-        void main() {
-          vUv = uv;
-          gl_Position = vec4(position.xy, 0.0, 1.0);
-        }
-      `,
-      fragmentShader: `
-        uniform sampler2D tDiffuse;
-        uniform vec2 uRes;
-        uniform float uScale;
-        uniform float uLevels;
-        uniform float uDither;
-        varying vec2 vUv;
-        float b2(vec2 a) { a = floor(a); return fract(dot(a, vec2(0.5, a.y * 0.75))); }
-        float b4(vec2 a) { return b2(0.5 * a) * 0.25 + b2(a); }
-        void main() {
-          vec3 c = texture2D(tDiffuse, vUv).rgb * 1.08;
-          float d = b4(gl_FragCoord.xy / max(1.0, uScale)) - 0.5;
-          c = floor(clamp(c, 0.0, 1.0) * uLevels + d * uDither) / uLevels;
-          float lum = dot(c, vec3(0.299, 0.587, 0.114));
-          c = mix(c, vec3(lum), 0.18);
-          c *= vec3(1.02, 1.0, 0.94);
-          c = clamp((c - 0.5) * 1.08 + 0.5, 0.0, 1.0);
-          gl_FragColor = vec4(c, 1.0);
-        }
-      `,
-      depthTest: false,
-      depthWrite: false
-    });
-    const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), postMat);
-    postScene.add(quad);
-
-    const resize = () => {
-      curScale = getScale();
-      const s = curScale > 1 ? curScale : 1;
-      rtW = Math.max(1, Math.ceil(window.innerWidth / s));
-      rtH = Math.max(1, Math.ceil(window.innerHeight / s));
-      if (rt.width !== rtW || rt.height !== rtH) {
-        rt.setSize(rtW, rtH);
-      }
-      postMat.uniforms.uRes.value.set(rtW, rtH);
-      postMat.uniforms.uScale.value = curScale;
-    };
-
-    return {
-      get scale() { return curScale; },
-      resize,
-      begin() {
-        curScale = getScale();
-        postMat.uniforms.uScale.value = curScale;
-        renderer.setRenderTarget(curScale > 1 ? rt : null);
-        renderer.autoClear = false;
-        renderer.clear();
-      },
-      render(sc, cam, clearDepthFirst = false) {
-        if (!sc || !cam) return;
-        if (clearDepthFirst) renderer.clearDepth();
-        renderer.render(sc, cam);
-      },
-      end() {
-        if (curScale > 1) {
-          renderer.setRenderTarget(null);
-          renderer.clear();
-          renderer.render(postScene, postCam);
-        }
-      }
-    };
-  })();
+  // Unified GPU Post-Pipeline (PS2 Bayer dither + GPU NVG/Radiation/Underwater passes)
+  window.renderPipeline = (window.AshfallRenderer && window.AshfallRenderer.createRenderPipeline)
+    ? window.AshfallRenderer.createRenderPipeline(renderer)
+    : (() => ({
+        scale: 1,
+        resize() {},
+        setEffects() {},
+        resetEffects() {},
+        begin() { renderer.setRenderTarget(null); renderer.autoClear = false; renderer.clear(); },
+        render(sc, cam, clr) { if (sc && cam) { if (clr) renderer.clearDepth(); renderer.render(sc, cam); } },
+        end() {}
+      }))();
 
   let scene = null;
   let camera = null;
@@ -1113,6 +1029,7 @@
     }
     const isTransfer = !!(opts && opts.transfer);
     if (window.ZavodBunker) window.ZavodBunker.reset();
+    if (window.renderPipeline && window.renderPipeline.resetEffects) window.renderPipeline.resetEffects();
     if (flashlight && scene) { scene.remove(flashlight); scene.remove(flashlight.target); flashlight = null; }
 
     const recovered = [];
@@ -1180,6 +1097,10 @@
         }
         recovered.push(item);
       }
+      if (!isTransfer && recovered.some(it => it && it.id === 'zavod_weapons_case')) {
+        raidXp += 1500;
+        if (ui && ui.addFeedMessage) ui.addFeedMessage('★ ZAVOD-9 WEAPONS CASE EXTRACTED (+1,500 XP)', '#ffca28');
+      }
     } else if (!window.DEV_MODE) {
       // KIA / MIA: lose raid gear and backpack (skipped in Dev Mode)
       ui.profile.loadout = {
@@ -1221,10 +1142,18 @@
       }
       ui.saveProfile();
       if (ui && ui.syncUpdateBadges) ui.syncUpdateBadges();
+      if (window.AshfallRenderer && window.AshfallRenderer.disposeRaidResources) {
+        window.AshfallRenderer.disposeRaidResources({ scene, viewmodelScene, world });
+      }
+      scene = null; viewmodelScene = null; world = null; camera = null; viewmodelCamera = null;
       return;
     }
     ui.saveProfile();
     if (ui && ui.syncUpdateBadges) ui.syncUpdateBadges();
+    if (window.AshfallRenderer && window.AshfallRenderer.disposeRaidResources) {
+      window.AshfallRenderer.disposeRaidResources({ scene, viewmodelScene, world });
+    }
+    scene = null; viewmodelScene = null; world = null; camera = null; viewmodelCamera = null;
     ui.showSummary(extracted, raidElapsed, raidKills, recovered, totalVal);
   }
 
@@ -4432,9 +4361,11 @@
         window.LensFlareSystem.updateAndRender(camera, world, weaponSystem, flareBlocked);
       }
     } else {
-      // Update 3D Matchmaking Operator Stage + countdown if active
-      if (matchmaking && matchmaking.active) {
-        matchmaking.update(dt);
+      // Update 3D Gunsmith Workbench, Matchmaking Operator Stage, or FOB Social Hub on the unified renderer
+      if (gunsmith && gunsmith.isOpen && gunsmith.updateAndRender) {
+        gunsmith.updateAndRender(dt, renderer);
+      } else if (matchmaking && matchmaking.active) {
+        matchmaking.update(dt, renderer);
       } else if (hideoutBunker && !(gunsmith && gunsmith.isOpen)) {
         hideoutBunker.update(dt, renderer);
       }

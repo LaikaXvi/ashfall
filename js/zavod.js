@@ -67,7 +67,7 @@
             bd = d;
             const lbl = this.transfer
               ? `ZAVOD-9 TRANSFER IN ${Math.max(0, Math.ceil((this.transfer.endsAt - Date.now()) / 1000))}s — STAY IN THE LIFT`
-              : 'INFIL ZAVOD-9 COMPLEX (SERVICE ELEVATOR — NEW MATCH)';
+              : `INFIL ZAVOD-9 [${elv.shortTag || 'Z-9'}] — ${elv.name || 'SERVICE ELEVATOR'}`;
             best = { dist: d, ia: { type: 'zavod', sub: 'elevator', elevator: elv, label: lbl } };
           }
         }
@@ -93,8 +93,9 @@
     },
 
     _stationLabel(world, st) {
+      if (st.kind === 'shop_note') return `READ ${st.label}`;
       if (st.solved) {
-        if (st.kind === 'clue') return `${st.label} — DIGIT ${st.clueIdx + 1} = ${st.clueDigit}`;
+        if (st.kind === 'clue') return `${st.label} — ${st.clueSymbol || ('#' + (st.clueIdx + 1))} = ${st.clueDigit}`;
         return `${st.label} — DONE`;
       }
       if (this.channel && this.channel.station === st) {
@@ -132,11 +133,11 @@
         const allInside = humans.every(a => Math.hypot(a.position.x - elevator.position.x, a.position.z - elevator.position.z) < (elevator.cabRadius || TRANSFER_RADIUS) + 0.6);
         if (!allInside) secs = 30;
       }
-      const wingId = remote ? remote.wingId : wings[Math.floor(Math.random() * wings.length)];
+      const wingId = remote ? remote.wingId : (elevator.wingId || wings[Math.floor(Math.random() * wings.length)]);
       const matchId = remote ? remote.matchId : `${(ctx.ui && ctx.ui.partyId) || 'solo'}_zavod9_${Date.now().toString(36)}`;
       const endsAt = remote ? Date.now() + Math.max(1, remote.secs || 5) * 1000 : Date.now() + secs * 1000;
       this.transfer = { endsAt, wingId, matchId, elevator };
-      if (local && ctx.sendEvent) ctx.sendEvent({ type: 'zavod_transfer', secs, wingId, matchId });
+      if (local && ctx.sendEvent) ctx.sendEvent({ type: 'zavod_transfer', secs, wingId, matchId, elevId: elevator.id });
       if (window.soundEngine && window.soundEngine.playAlert) { try { window.soundEngine.playAlert(true); } catch (e) {} }
       ctx.ui.addFeedMessage(`ZAVOD-9 service elevator engaged — transfer in ${Math.round((endsAt - Date.now()) / 1000)}s. Everyone inside the lift goes to the new match.`, '#ffca28');
       return true;
@@ -217,12 +218,24 @@
     },
     _beginChannel(st, ctx) {
       const zv = ctx.world.zavod;
+      if (st.kind === 'shop_note') {
+        const txt = `SHOPKEEPER BARTER: ${(zv.shopBarter && zv.shopBarter.label) || 'Deposit server tapes in dead-drop slot'}`;
+        ctx.ui.showCenterToast(txt, '#ffca28');
+        ctx.ui.addFeedMessage(txt, '#ffca28');
+        return true;
+      }
       if (st.solved) {
-        if (st.kind === 'clue') ctx.ui.showCenterToast(`BOARD ${st.clueIdx + 1}: DIGIT ${st.clueIdx + 1} = ${st.clueDigit}`, '#b388ff');
+        if (st.kind === 'clue') ctx.ui.showCenterToast(`BOARD ${st.clueIdx + 1} (${st.clueSymbol || '#' + (st.clueIdx + 1)}): DIGIT = ${st.clueDigit}`, '#b388ff');
         return true;
       }
       if (!this._requirementsMet(zv, st)) {
         ctx.ui.showCenterToast(st.hint || 'LOCKED', '#ff5252');
+        return true;
+      }
+      if (!this._hasItems(ctx.player, st.mustCarry)) {
+        ctx.ui.showCenterToast(st.hint || 'SCANNER REQUIRED', '#ff5252');
+        const names = (st.mustCarry || []).map(n => (GAME_DATA.ITEMS[n.id] || { name: n.id }).name).join(' + ');
+        ctx.ui.addFeedMessage(`${st.label} requires holding: ${names}`, '#ff5252');
         return true;
       }
       if (!this._hasItems(ctx.player, st.needs)) {
@@ -249,7 +262,7 @@
       if (st.spinMesh) st.spinMesh.rotation.z += dt * 3.2;
       if (c.t >= (st.hold || 1)) {
         this.channel = null;
-        if (!this._hasItems(p, st.needs) || !this._requirementsMet(ctx.world.zavod, st)) return;
+        if (!this._hasItems(p, st.needs) || !this._hasItems(p, st.mustCarry) || !this._requirementsMet(ctx.world.zavod, st)) return;
         this._takeItems(p, st.needs);
         this.solveStation(st.id, ctx, false);
         if (ctx.sendEvent) ctx.sendEvent({ type: 'zavod_station', id: st.id });
@@ -286,15 +299,24 @@
         if (a.clearRad) { if (zv.rads[a.clearRad]) zv.rads[a.clearRad].active = false; }
         if (a.drain && zv.floods[a.drain]) zv.floods[a.drain].target = -0.5;
         if (a.lasersOff) for (const l of zv.lasers) if (l.group === a.lasersOff) { l.enabled = false; l.mesh.visible = false; }
+        if (a.disarmTrap) {
+          const tr = (zv.traps || []).find(t => t.id === a.disarmTrap);
+          if (tr && tr.armed) {
+            tr.armed = false;
+            if (tr.beamMesh) tr.beamMesh.visible = false;
+            if (tr.c4Vis) tr.c4Vis.visible = false;
+          }
+        }
         if (a.unlockExtract) {
           const ez = world.extractZones.find(e => e.name === a.unlockExtract);
           if (ez) { ez.locked = false; ez.ringMesh.visible = true; ez.beaconMesh.visible = true; }
         }
         if (a.clue !== undefined) {
           zv.clues[a.clue] = zv.vaultCode[a.clue];
+          const sym = (zv.vaultSymbols && zv.vaultSymbols[a.clue]) || ('#' + (a.clue + 1));
           const known = zv.vaultCode.map((d, k) => (zv.clues[k] !== undefined ? d : '_')).join(' ');
-          ctx.ui.showCenterToast(`VAULT CODE: ${known}`, '#b388ff');
-          ctx.ui.addFeedMessage(`Circuit board decoded — vault code digit ${a.clue + 1} = ${zv.vaultCode[a.clue]} (code: ${known})`, '#b388ff');
+          ctx.ui.showCenterToast(`R4D CIPHER ${sym} = ${zv.vaultCode[a.clue]} // CODE: ${known}`, '#b388ff');
+          ctx.ui.addFeedMessage(`R4D UV cipher decoded — ${sym} (${a.clue + 1}/3) = ${zv.vaultCode[a.clue]} (code: ${known})`, '#b388ff');
         }
         if (a.alarm) {
           const d = zv.doors.find(x => x.id === a.alarm);
@@ -325,15 +347,54 @@
         this.solveStation(pkt.id, ctx, true);
       } else if (pkt.type === 'zavod_barricade' && ctx.world && ctx.world.zavod) {
         this.breakBarricade(pkt.id, ctx, true);
-      } else if (pkt.type === 'zavod_transfer' && ctx.world && ctx.world.bunkerElevators && ctx.world.bunkerElevators[0]) {
-        this._startTransfer(ctx.world.bunkerElevators[0], ctx, false, pkt);
+      } else if (pkt.type === 'zavod_transfer' && ctx.world && ctx.world.bunkerElevators && ctx.world.bunkerElevators.length) {
+        const elv = ctx.world.bunkerElevators.find(e => e.id === pkt.elevId) || ctx.world.bunkerElevators[0];
+        this._startTransfer(elv, ctx, false, pkt);
+      }
+    },
+
+    detonateTrap(tr, ctx, fromRange = false) {
+      if (!tr || !tr.armed) return;
+      tr.armed = false;
+      if (tr.beamMesh) tr.beamMesh.visible = false;
+      if (tr.c4Vis) tr.c4Vis.visible = false;
+      const zv = ctx && ctx.world && ctx.world.zavod;
+      if (zv && tr.stationId) {
+        const st = zv.stations.find(s => s.id === tr.stationId);
+        if (st) st.solved = true;
+      }
+      if (window.soundEngine && window.soundEngine.playExplosion) { try { window.soundEngine.playExplosion(); } catch (e) {} }
+      if (ctx && ctx.enemyManager && ctx.enemyManager.alertNearby) ctx.enemyManager.alertNearby(tr.c4Pos, 45);
+      const p = ctx && ctx.player;
+      if (p && !p.dead && p.position.distanceTo(tr.c4Pos) < 3.4 && p.takeDamage) {
+        const res = p.takeDamage(52, { name: 'SNIPER C4 TRAP', weaponId: 'c4', weaponName: 'C4 TRIPWIRE' });
+        if (ctx.ui && ctx.ui.triggerDamageFlash) ctx.ui.triggerDamageFlash();
+        if (res === 'eliminated' && ctx.onPlayerEliminated) ctx.onPlayerEliminated();
+      }
+      if (ctx && ctx.ui) ctx.ui.showCenterToast('SNIPER C4 DETONATED', fromRange ? '#ffca28' : '#ff5252');
+    },
+
+    onBulletHit(pt) {
+      const ctx = this._lastCtx;
+      const zv = ctx && ctx.world && ctx.world.zavod;
+      if (!zv || !zv.traps || !pt) return;
+      for (const tr of zv.traps) {
+        if (tr.armed && tr.c4Pos && tr.c4Pos.distanceTo(pt) < 1.25) {
+          this.detonateTrap(tr, ctx, true);
+        }
       }
     },
 
     onExplosion(pos, radius = 6.5) {
       const ctx = this._lastCtx;
       const zv = ctx && ctx.world && ctx.world.zavod;
-      if (!zv || !zv.barricades || !pos) return;
+      if (!zv || !pos) return;
+      for (const tr of zv.traps || []) {
+        if (tr.armed && tr.c4Pos && tr.c4Pos.distanceTo(pos) <= Math.max(radius, 4.5)) {
+          this.detonateTrap(tr, ctx, true);
+        }
+      }
+      if (!zv.barricades) return;
       for (const b of zv.barricades) {
         if (b.broken) continue;
         const d = Math.hypot(b.x - pos.x, b.z - pos.z);
@@ -445,7 +506,7 @@
       const brEl = el('zavod-breath', 'position:fixed;bottom:148px;left:50%;transform:translateX(-50%);z-index:59;padding:6px 16px;background:rgba(8,22,30,0.88);border:1px solid #4fc3f7;color:#4fc3f7;font:bold 13px Consolas,monospace;pointer-events:none;display:none;');
       if (submerged) {
         const hasRebreather = p.headgear === 'zavod_rebreather' || (p.backpack || []).some(it => it && it.id === 'zavod_rebreather');
-        uwEl.style.display = 'block';
+        uwEl.style.display = window.renderPipeline ? 'none' : 'block';
         brEl.style.display = 'block';
         if (hasRebreather) {
           this._breath = Math.min(1.0, this._breath + dt * 0.5);
@@ -479,10 +540,37 @@
         this._breath = Math.min(1.0, this._breath + dt * 0.35);
         this._drownAcc = 0;
       }
-      // Dark-zone lighting, NVG & weapon-light
+      // Sniper Mezzanine C4 Laser Tripwires
+      for (const tr of zv.traps || []) {
+        if (!tr.armed || p.dead) continue;
+        if (Math.abs(p.position.z - tr.z) < 0.55 && p.position.x > tr.x0 && p.position.x < tr.x1 && Math.abs(feetY - tr.baseY) < 1.5) {
+          this.detonateTrap(tr, ctx, false);
+        }
+      }
+      // Dual Boss Defeat (The Rhinoceros + The Sniper) -> open Weapons Case Vault
+      if (!zv.caseVaultOpened && ctx.enemyManager && ctx.enemyManager.enemies) {
+        const bosses = ctx.enemyManager.enemies.filter(e => e && (e.tier === 'boss_rhino' || e.tier === 'boss_sniper'));
+        if (bosses.length > 0 && bosses.every(b => b.dead)) {
+          zv.caseVaultOpened = true;
+          this.openDoor(world, 'CASE_CAGE');
+          if (ctx.ui) {
+            ctx.ui.showCenterToast('RHINO & SNIPER ELIMINATED — WEAPONS CASE VAULT UNLOCKED', '#ffca28');
+            ctx.ui.addFeedMessage('Weapons Case Vault unsealed — claim the Koschei Weapons Case in Factory Hall!', '#ffca28');
+          }
+        }
+      }
+      // Dark-zone lighting, NVG, GPU Post-FX & weapon-light
       const dark = !!(reg && reg.dark);
       const nvg = p.headgear === 'nvg_goggles';
       this._setNvg(nvg && dark);
+      if (window.renderPipeline && window.renderPipeline.setEffects) {
+        window.renderPipeline.setEffects({
+          nvg: (nvg && dark) ? 1 : 0,
+          rad: (radActive && !p.dead) ? (p.headgear === 'gas_mask' ? 0.22 : 0.82) : 0,
+          underwater: submerged ? 1 : 0,
+          time: now
+        });
+      }
       const L = this._light || (this._light = { hemi: 1.0, fog: 0.011, spot: 1.4 });
       const tHemi = dark ? (nvg ? 1.35 : 0.13) : 1.02;
       const tFog = dark ? (nvg ? 0.012 : 0.030) : 0.011;
@@ -602,6 +690,7 @@
     _setNvg(on) {
       if (this._nvgOn === on) return;
       this._nvgOn = on;
+      if (window.renderPipeline) return;
       const c = document.getElementById('game-canvas');
       if (c) c.style.filter = on ? 'grayscale(1) sepia(1) hue-rotate(68deg) saturate(2.6) brightness(1.15) contrast(1.15)' : '';
     }

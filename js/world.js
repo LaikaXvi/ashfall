@@ -145,9 +145,12 @@ class WastelandWorld {
       // Northern Dam West & East Mountain Gorge Abutments
       { x: -172, z: -408, r: 22, h: 17.8 },
       { x:   88, z: -408, r: 22, h: 17.8 },
-      // ZAVOD-9 Mountain Complex plateau (carved into NW alpine massif)
-      { x: -555, z: -490, r: 46, h: 34.0 },
-      { x: -540, z: -447, r: 14, h: 34.0 }, // ZAVOD-9 service-elevator forecourt (flat apron in front of the lift door)
+      // ZAVOD-9 & 4 Koschei Bunker Entrance Pads across Vostok
+      { x: -555, z: -490, r: 46, h: 34.0 }, // ZAVOD-9 NW Mountain Complex plateau
+      { x: -540, z: -447, r: 14, h: 34.0 }, // A/2 Mountain Bunker lift forecourt
+      { x:  -88, z: -342, r: 14, h: 3.2 },  // B/1 Northern Dam Utility Hatch apron
+      { x:  214, z: -374, r: 12, h: 6.8 },  // A/1 Vostok City Parking Bunker
+      { x:  284, z: -228, r: 12, h: 5.8 },  // B/2 Industrial Rail Sub-Station Bunker
       // 4 Extraction Zone Pads
       { x: -485, z: -445, r: 16, h: 21.0 }, // NW Mountain Pass Helipad
       { x:  465, z: -185, r: 16, h: 6.4 },  // East Taiga Gate
@@ -267,14 +270,17 @@ class WastelandWorld {
       if (!list) return;
       for (let i = 0; i < list.length; i++) {
         const m = list[i];
-        if (!m || !m.geometry) continue;
-        if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
-        if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
-        if (!m.parent && m.matrix) m.matrixWorld.copy(m.matrix);
-        tmpBox.copy(m.geometry.boundingBox).applyMatrix4(m.matrixWorld);
-        m._bbMinX = tmpBox.min.x; m._bbMaxX = tmpBox.max.x;
-        m._bbMinY = tmpBox.min.y; m._bbMaxY = tmpBox.max.y;
-        m._bbMinZ = tmpBox.min.z; m._bbMaxZ = tmpBox.max.z;
+        if (!m) continue;
+        if (!m.isAABB) {
+          if (!m.geometry) continue;
+          if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+          if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
+          if (!m.parent && m.matrix) m.matrixWorld.copy(m.matrix);
+          tmpBox.copy(m.geometry.boundingBox).applyMatrix4(m.matrixWorld);
+          m._bbMinX = tmpBox.min.x; m._bbMaxX = tmpBox.max.x;
+          m._bbMinY = tmpBox.min.y; m._bbMaxY = tmpBox.max.y;
+          m._bbMinZ = tmpBox.min.z; m._bbMaxZ = tmpBox.max.z;
+        }
         const cx0 = Math.floor(m._bbMinX / cs);
         const cx1 = Math.floor(m._bbMaxX / cs);
         const cz0 = Math.floor(m._bbMinZ / cs);
@@ -384,6 +390,10 @@ class WastelandWorld {
     const invZ = Math.abs(dz) > 1e-8 ? 1 / dz : 0;
     const nearPad = near - 0.05;
     const farPad = far + 0.05;
+    let bestAABBDist = Infinity;
+    let bestAABBAxis = -1;
+    let bestAABBSign = 0;
+    let bestAABBObj = null;
 
     for (let s = 0; s < 120; s++) {
       const key = (cx << 16) ^ cz;
@@ -393,6 +403,48 @@ class WastelandWorld {
           const m = bucket[i];
           if (m._rqStamp === stamp) continue;
           m._rqStamp = stamp;
+
+          if (m.isAABB) {
+            if (ignoreRoot && m === ignoreRoot) continue;
+            let tmin = -1e30, tmax = 1e30, hitAxis = -1, hitSign = 0;
+            if (invX !== 0) {
+              const tx1 = (m._bbMinX - ox) * invX;
+              const tx2 = (m._bbMaxX - ox) * invX;
+              const sx = tx1 < tx2;
+              const tn = sx ? tx1 : tx2;
+              const tx = sx ? tx2 : tx1;
+              if (tn > tmin) { tmin = tn; hitAxis = 0; hitSign = sx ? -1 : 1; }
+              if (tx < tmax) tmax = tx;
+            } else if (ox < m._bbMinX || ox > m._bbMaxX) continue;
+            if (invY !== 0) {
+              const ty1 = (m._bbMinY - oy) * invY;
+              const ty2 = (m._bbMaxY - oy) * invY;
+              const sy = ty1 < ty2;
+              const tn = sy ? ty1 : ty2;
+              const ty = sy ? ty2 : ty1;
+              if (tn > tmin) { tmin = tn; hitAxis = 1; hitSign = sy ? -1 : 1; }
+              if (ty < tmax) tmax = ty;
+            } else if (oy < m._bbMinY || oy > m._bbMaxY) continue;
+            if (tmin > tmax) continue;
+            if (invZ !== 0) {
+              const tz1 = (m._bbMinZ - oz) * invZ;
+              const tz2 = (m._bbMaxZ - oz) * invZ;
+              const sz = tz1 < tz2;
+              const tn = sz ? tz1 : tz2;
+              const tz = sz ? tz2 : tz1;
+              if (tn > tmin) { tmin = tn; hitAxis = 2; hitSign = sz ? -1 : 1; }
+              if (tz < tmax) tmax = tz;
+            } else if (oz < m._bbMinZ || oz > m._bbMaxZ) continue;
+            if (tmax >= tmin && tmin >= near && tmin <= far && hitAxis >= 0 && tmin < bestAABBDist) {
+              const ny = hitAxis === 1 ? hitSign : 0;
+              if (ignoreFloorY > 0 && ny > ignoreFloorY) continue;
+              bestAABBDist = tmin;
+              bestAABBAxis = hitAxis;
+              bestAABBSign = hitSign;
+              bestAABBObj = m;
+            }
+            continue;
+          }
 
           const minX = m._bbMinX - 0.05, maxX = m._bbMaxX + 0.05;
           const minY = m._bbMinY - 0.05, maxY = m._bbMaxY + 0.05;
@@ -451,16 +503,25 @@ class WastelandWorld {
     }
 
     let bestHit = null;
+    if (bestAABBObj) {
+      bestHit = {
+        distance: bestAABBDist,
+        point: new THREE.Vector3(ox + dx * bestAABBDist, oy + dy * bestAABBDist, oz + dz * bestAABBDist),
+        face: { normal: new THREE.Vector3(bestAABBAxis === 0 ? bestAABBSign : 0, bestAABBAxis === 1 ? bestAABBSign : 0, bestAABBAxis === 2 ? bestAABBSign : 0) },
+        object: bestAABBObj
+      };
+    }
     if (cands.length > 0) {
       const ray = this._worldRay;
       ray.set(origin, dir);
       ray.near = near;
-      ray.far = far;
+      ray.far = bestHit ? bestHit.distance : far;
       const hits = this._rayHits;
       hits.length = 0;
       ray.intersectObjects(cands, false, hits);
       for (let i = 0; i < hits.length; i++) {
         const h = hits[i];
+        if (bestHit && h.distance >= bestHit.distance) break;
         if (ignoreFloorY > 0 && h.face && h.face.normal && h.face.normal.y > ignoreFloorY) continue;
         if (ignoreRoot) {
           let cur = h.object;
@@ -1479,6 +1540,9 @@ class WastelandWorld {
   }
 
   _createMaterials() {
+    if (window.AshfallRenderer && window.AshfallRenderer.getWorldMaterialSet) {
+      return window.AshfallRenderer.getWorldMaterialSet(window.mainWebGLRenderer || null);
+    }
     const concreteTex = this._texConcrete();
     const plasterTex = this._texPlaster();
     const brickTex = this._texBrick();
@@ -2175,19 +2239,8 @@ class WastelandWorld {
   }
 
   _addBox(x, y, z, w, h, d, material, addCollider = true) {
-    const geo = new THREE.BoxGeometry(w, h, d);
     const tile = (material && material.userData && material.userData.tile) || 2.0;
-    this._applyWorldUVs(geo, w, h, d, tile);
-    const mesh = new THREE.Mesh(geo, material);
-    mesh.position.set(x, y, z);
-    mesh.updateMatrix();
-    mesh.matrixAutoUpdate = false;
-    mesh.castShadow = h > 1.2 && w > 1.0;
-    mesh.receiveShadow = true;
-    this.scene.add(mesh);
-    this.shootableMeshes.push(mesh);
-    this.wallMeshes.push(mesh);
-
+    const cast = h > 1.2 && w > 1.0;
     if (addCollider) {
       this.colliders.push({
         minX: x - w / 2,
@@ -2199,8 +2252,36 @@ class WastelandWorld {
       });
     }
     if (this._batchingOpen && this._batchEntries) {
-      this._batchEntries.push({ geometry: geo, matrix: mesh.matrix.clone(), material, castShadow: mesh.castShadow, source: mesh });
+      const aabb = {
+        isAABB: true,
+        material,
+        position: new THREE.Vector3(x, y, z),
+        _bbMinX: x - w * 0.5, _bbMaxX: x + w * 0.5,
+        _bbMinY: y - h * 0.5, _bbMaxY: y + h * 0.5,
+        _bbMinZ: z - d * 0.5, _bbMaxZ: z + d * 0.5
+      };
+      this.shootableMeshes.push(aabb);
+      this.wallMeshes.push(aabb);
+      this._batchEntries.push({
+        isAABox: true,
+        x, y, z, w, h, d, tile,
+        material,
+        castShadow: cast
+      });
+      return aabb;
     }
+
+    const geo = new THREE.BoxGeometry(w, h, d);
+    this._applyWorldUVs(geo, w, h, d, tile);
+    const mesh = new THREE.Mesh(geo, material);
+    mesh.position.set(x, y, z);
+    mesh.updateMatrix();
+    mesh.matrixAutoUpdate = false;
+    mesh.castShadow = cast;
+    mesh.receiveShadow = true;
+    this.scene.add(mesh);
+    this.shootableMeshes.push(mesh);
+    this.wallMeshes.push(mesh);
     return mesh;
   }
 
@@ -2210,12 +2291,23 @@ class WastelandWorld {
       this._batchEntries = null;
       return;
     }
+    const unitBox = (window.AshfallRenderer && window.AshfallRenderer.GeoPool)
+      ? window.AshfallRenderer.GeoPool.unitBox()
+      : new THREE.BoxGeometry(1, 1, 1);
+    const ubPos = unitBox.attributes.position.array;
+    const ubNorm = unitBox.attributes.normal.array;
+    const ubUv = unitBox.attributes.uv.array;
+    const ubIdx = unitBox.index ? unitBox.index.array : null;
+    const ubVertCount = unitBox.attributes.position.count;
+    const ubIdxCount = ubIdx ? ubIdx.length : ubVertCount;
+
     const groups = new Map();
     for (let i = 0; i < this._batchEntries.length; i++) {
       const e = this._batchEntries[i];
-      if (!e || !e.geometry || !e.material) continue;
-      const ex = e.matrix.elements[12];
-      const ez = e.matrix.elements[14];
+      if (!e || !e.material) continue;
+      if (!e.isAABox && !e.geometry) continue;
+      const ex = e.isAABox ? e.x : e.matrix.elements[12];
+      const ez = e.isAABox ? e.z : e.matrix.elements[14];
       const bcs = this._batchCellSize || 96;
       const key = `${e.material.uuid}|${Math.floor(ex / bcs)}|${Math.floor(ez / bcs)}`;
       let bucket = groups.get(key);
@@ -2236,17 +2328,22 @@ class WastelandWorld {
       let totalIndices = 0;
       let anyCastShadow = false;
       for (const e of list) {
-        const g = e.geometry;
-        totalVerts += g.attributes.position.count;
-        totalIndices += g.index ? g.index.count : g.attributes.position.count;
-        if (e.castShadow) anyCastShadow = true;
-        if (e.source) {
-          e.source.matrixWorld.copy(e.source.matrix);
-          if (g && !g.boundingBox) g.computeBoundingBox();
-          if (g && !g.boundingSphere) g.computeBoundingSphere();
-          e.source.visible = false;
-          if (this.scene) this.scene.remove(e.source);
+        if (e.isAABox) {
+          totalVerts += ubVertCount;
+          totalIndices += ubIdxCount;
+        } else {
+          const g = e.geometry;
+          totalVerts += g.attributes.position.count;
+          totalIndices += g.index ? g.index.count : g.attributes.position.count;
+          if (e.source) {
+            e.source.matrixWorld.copy(e.source.matrix);
+            if (g && !g.boundingBox) g.computeBoundingBox();
+            if (g && !g.boundingSphere) g.computeBoundingSphere();
+            e.source.visible = false;
+            if (this.scene) this.scene.remove(e.source);
+          }
         }
+        if (e.castShadow) anyCastShadow = true;
       }
 
       const positions = new Float32Array(totalVerts * 3);
@@ -2257,6 +2354,35 @@ class WastelandWorld {
       let vOffset = 0;
       let iOffset = 0;
       for (const e of list) {
+        if (e.isAABox) {
+          const w = e.w, h = e.h, d = e.d, ex = e.x, ey = e.y, ez = e.z;
+          const invT = e.tile > 0 ? (1.0 / e.tile) : 0.5;
+          const dT = d * invT, hT = h * invT, wT = w * invT;
+          for (let i = 0; i < ubVertCount; i++) {
+            const vi3 = (vOffset + i) * 3;
+            const vi2 = (vOffset + i) * 2;
+            const i3 = i * 3, i2 = i * 2;
+            positions[vi3] = ubPos[i3] * w + ex;
+            positions[vi3 + 1] = ubPos[i3 + 1] * h + ey;
+            positions[vi3 + 2] = ubPos[i3 + 2] * d + ez;
+            normals[vi3] = ubNorm[i3];
+            normals[vi3 + 1] = ubNorm[i3 + 1];
+            normals[vi3 + 2] = ubNorm[i3 + 2];
+            const f = i >> 2;
+            const fw = f < 2 ? dT : wT;
+            const fh = (f === 2 || f === 3) ? dT : hT;
+            uvs[vi2] = ubUv[i2] * fw;
+            uvs[vi2 + 1] = ubUv[i2 + 1] * fh;
+          }
+          if (ubIdx) {
+            for (let k = 0; k < ubIdxCount; k++) indices[iOffset++] = ubIdx[k] + vOffset;
+          } else {
+            for (let k = 0; k < ubVertCount; k++) indices[iOffset++] = k + vOffset;
+          }
+          vOffset += ubVertCount;
+          continue;
+        }
+
         const g = e.geometry;
         const posAttr = g.attributes.position;
         const normAttr = g.attributes.normal;
@@ -2297,6 +2423,9 @@ class WastelandWorld {
           }
         }
         vOffset += posAttr.count;
+        if (e.disposeAfterBatch && g && !(g.userData && g.userData._ashShared)) {
+          g.dispose();
+        }
       }
 
       const merged = new THREE.BufferGeometry();
@@ -2304,11 +2433,13 @@ class WastelandWorld {
       merged.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
       merged.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
       merged.setIndex(new THREE.BufferAttribute(indices, 1));
+      merged.computeBoundingBox();
       merged.computeBoundingSphere();
 
       const batchMesh = new THREE.Mesh(merged, bucket.material);
       batchMesh.receiveShadow = true;
       batchMesh.castShadow = anyCastShadow;
+      batchMesh.frustumCulled = true;
       batchMesh.matrixAutoUpdate = false;
       batchMesh.updateMatrix();
       this.scene.add(batchMesh);
@@ -3300,13 +3431,13 @@ class WastelandWorld {
     return { group: g, baseY, totalH };
   }
 
-  _addServiceElevator(ex, ez) {
+  _addServiceElevator(ex, ez, opts = {}) {
     const baseY = this.getTerrainHeight(ex, ez);
     const conc = this._materials.concrete;
     const dark = this._materials.darkConcrete;
     const steel = this._materials.metal;
     // Walk-in concrete shaft house (8 x 8 m) with an open south doorway into the freight cab
-    const H = 20, W = 8, T = 0.6;
+    const H = opts.height || 8.0, W = 8, T = 0.6;
     this._addBox(ex, baseY + H / 2, ez - W / 2, W, H, T, conc, true);                 // north
     this._addBox(ex - W / 2, baseY + H / 2, ez, T, H, W, conc, true);                 // west
     this._addBox(ex + W / 2, baseY + H / 2, ez, T, H, W, conc, true);                 // east
@@ -3317,9 +3448,10 @@ class WastelandWorld {
     this._addBox(ex, baseY + 4.6, ez, W - T, 0.3, W - T, dark, false);                // cab ceiling
     this._addBox(ex, baseY + 0.08, ez, W - T, 0.16, W - T, steel, true);              // cab floor plate
     const g = new THREE.Group();
-    const doorGlow = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.18, 0.2), new THREE.MeshBasicMaterial({ color: 0xffc107 }));
+    const accentHex = opts.accentHex || 0xffc107;
+    const doorGlow = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.18, 0.2), new THREE.MeshBasicMaterial({ color: accentHex }));
     doorGlow.position.set(ex, baseY + 4.35, ez + W / 2 + 0.32);
-    const chev = new THREE.Mesh(new THREE.BoxGeometry(W + 0.2, 0.7, 0.15), new THREE.MeshBasicMaterial({ color: 0xff3d3d }));
+    const chev = new THREE.Mesh(new THREE.BoxGeometry(W + 0.2, 0.7, 0.15), new THREE.MeshBasicMaterial({ color: opts.stripHex || 0xff3d3d }));
     chev.position.set(ex, baseY + 5.6, ez + W / 2 + 0.36);
     const cabLight = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.08, 0.4), new THREE.MeshBasicMaterial({ color: 0xfff1cf }));
     cabLight.position.set(ex, baseY + 4.42, ez);
@@ -3329,12 +3461,21 @@ class WastelandWorld {
     g.add(doorGlow, chev, cabLight, panel);
     this.scene.add(g);
     if (this._addSignBoard) {
-      try { this._addSignBoard(ex, baseY + 7.2, ez + W / 2 + 0.42, 5.2, 1.9, 0, { title: 'ЗАВОД-9 ЛИФТ', sub: 'SERVICE ELEVATOR // ZAVOD-9 COMPLEX', accent: '#ffca28', bg: '#16191b' }); } catch (e) {}
+      try {
+        this._addSignBoard(ex, baseY + 7.0, ez + W / 2 + 0.42, 5.2, 1.9, 0, {
+          title: opts.title || 'ЗАВОД-9 ЛИФТ',
+          sub: opts.sub || 'SERVICE ELEVATOR // ZAVOD-9 COMPLEX',
+          accent: opts.accent || '#ffca28',
+          bg: '#16191b'
+        });
+      } catch (e) {}
     }
     const entry = {
-      id: 'zavod9_elevator',
+      id: opts.id || 'zavod9_elevator',
+      wingId: opts.wingId || null,
       kind: 'bunker_elevator',
-      name: 'ZAVOD-9 SERVICE ELEVATOR',
+      name: opts.name || 'ZAVOD-9 SERVICE ELEVATOR',
+      shortTag: opts.shortTag || (opts.wingId ? `${opts.wingId[0]}/${opts.wingId[1]}` : 'Z-9'),
       mesh: g,
       glowMesh: doorGlow,
       // Interaction & transfer volume = inside the freight cab
@@ -4569,10 +4710,28 @@ class WastelandWorld {
 
     this._spawnLogicalLooseLoot();
 
-    // === ZAVOD-9 MOUNTAIN FORTRESS (NW alpine corner, built into the mountainside) ===
-    // Stepped brutalist block + enclosed service elevator: Koschei-style transfer into the separate ZAVOD-9 match.
+    // === 4 KOSCHEI-STYLE ZAVOD-9 BUNKER ENTRANCES ACROSS VOSTOK ===
     this._addSovietBrutalistBlock(-545, -470, 46, 18, 6);
-    this._addServiceElevator(-540, -455);
+    this._addServiceElevator(-540, -455, {
+      id: 'zavod_a2', wingId: 'A2', height: 20,
+      name: 'ZAVOD-9 OASIS BUNKER [A/2 DRD]', shortTag: 'Z9 A/2',
+      title: 'ЗАВОД-9 // А/2', sub: 'DEFENSE RESEARCH AIRLOCK (OASIS ROUTE)', accent: '#e6e14a', accentHex: 0xe6e14a
+    });
+    this._addServiceElevator(214, -374, {
+      id: 'zavod_a1', wingId: 'A1', height: 8.5,
+      name: 'ZAVOD-9 PARKING BUNKER [A/1]', shortTag: 'Z9 A/1',
+      title: 'ЗАВОД-9 // А/1', sub: 'CITY PARKING AIRLOCK (INFO EXTRACTION)', accent: '#ffa726', accentHex: 0xffa726
+    });
+    this._addServiceElevator(-88, -342, {
+      id: 'zavod_b1', wingId: 'B1', height: 9.0,
+      name: 'ZAVOD-9 DAM FLOOD TUNNEL [B/1]', shortTag: 'Z9 B/1',
+      title: 'ЗАВОД-9 // Б/1', sub: 'DAM UTILITY TUNNEL (FLOODED BARRACKS)', accent: '#4fc3f7', accentHex: 0x4fc3f7
+    });
+    this._addServiceElevator(284, -228, {
+      id: 'zavod_b2', wingId: 'B2', height: 8.5,
+      name: 'ZAVOD-9 INDUSTRIAL TUNNEL [B/2]', shortTag: 'Z9 B/2',
+      title: 'ЗАВОД-9 // Б/2', sub: 'RAIL TUNNEL LIFT (EXTERNAL OPS HQ)', accent: '#ff5252', accentHex: 0xff5252
+    });
     this.pois.push({ name: 'ZAVOD-9 COMPLEX', x: -540, z: -468, color: '#ff5252', threat: 'extreme' });
     this._addLootContainer(-528, 0.16, -456, 'military', 'Zavod-9 Perimeter Arms Crate');
     this._addLootContainer(-551, 0.16, -455, 'hospital', 'Zavod-9 Gate Medical Cabinet');

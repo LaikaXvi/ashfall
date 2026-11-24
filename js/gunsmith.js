@@ -23,8 +23,8 @@ class GunsmithController {
   }
 
   _initScene() {
-    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, alpha: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer = null;
+    if (this.canvas) this.canvas.style.opacity = '0';
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x0c0e0d);
@@ -48,9 +48,16 @@ class GunsmithController {
     this.pivot = new THREE.Group();
     this.scene.add(this.pivot);
 
-    const dummyCam = new THREE.Object3D();
-    this.weaponBuilder = new WeaponSystem(this.scene, dummyCam);
-    this.pivot.add(this.weaponBuilder.viewmodelGroup);
+    this.weaponBuilder = null;
+  }
+
+  _ensureWeaponBuilder() {
+    if (!this.weaponBuilder && typeof WeaponSystem !== 'undefined') {
+      const dummyCam = new THREE.Object3D();
+      this.weaponBuilder = new WeaponSystem(this.scene, dummyCam);
+      this.pivot.add(this.weaponBuilder.viewmodelGroup);
+    }
+    return this.weaponBuilder;
   }
 
   _bindEvents() {
@@ -152,6 +159,8 @@ class GunsmithController {
     this.activeWeaponId = weaponId || L.primary || L.secondary || 'mp5k';
     this.zoom = GAME_DATA.ITEMS[this.activeWeaponId]?.slot === 'secondary' ? 0.78 : 1.15;
     this.isOpen = true;
+    document.body.classList.add('gunsmith-active');
+    this._ensureWeaponBuilder();
     this.setPreviewMode(false);
     this.setMode('attachments');
     this.ui.showScreen('gunsmith');
@@ -160,11 +169,11 @@ class GunsmithController {
     this.renderWeaponTabs();
     this.buildFloatingNodes();
     this.renderStats();
-    this._loop();
   }
 
   close() {
     this.isOpen = false;
+    document.body.classList.remove('gunsmith-active');
     this.previewMode = false;
     this.closeDrawer();
     this.ui.renderHideout();
@@ -200,9 +209,8 @@ class GunsmithController {
   }
 
   _resize() {
-    const rect = this.canvas.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) {
-      this.renderer.setSize(rect.width, rect.height, false);
+    const rect = this.canvas ? this.canvas.getBoundingClientRect() : null;
+    if (rect && rect.width > 0 && rect.height > 0) {
       this.camera.aspect = rect.width / rect.height;
       this.camera.updateProjectionMatrix();
     }
@@ -236,9 +244,11 @@ class GunsmithController {
   rebuildModel() {
     const def = GAME_DATA.ITEMS[this.activeWeaponId];
     if (!def) return;
+    const wb = this._ensureWeaponBuilder();
+    if (!wb) return;
     const mods = this.getModsFor(this.activeWeaponId);
-    this.weaponBuilder.buildViewmodel(def, mods, false);
-    this.weaponBuilder.viewmodelGroup.position.set(0, 0, def.slot === 'secondary' ? 0.0 : 0.14);
+    wb.buildViewmodel(def, mods, false);
+    wb.viewmodelGroup.position.set(0, 0, def.slot === 'secondary' ? 0.0 : 0.14);
     document.getElementById('gs-weapon-title').textContent = def.name.toUpperCase();
     document.getElementById('gs-weapon-desc').textContent = def.desc;
   }
@@ -488,16 +498,43 @@ class GunsmithController {
       </div>`;
   }
 
-  _loop() {
+  updateAndRender(dt = 0.016, sharedRenderer = window.mainWebGLRenderer) {
     if (!this.isOpen) return;
-    requestAnimationFrame(() => this._loop());
     if (this.previewMode && !this.dragging) {
-      this.rotY += 0.004;
+      this.rotY += Math.min(0.05, dt || 0.016) * 0.25;
     }
     this.pivot.rotation.y = this.rotY;
     this.pivot.rotation.x = this.rotX;
     this.camera.position.z = THREE.MathUtils.lerp(this.camera.position.z, this.zoom, 0.15);
-    this.renderer.render(this.scene, this.camera);
+
+    const r = sharedRenderer;
+    if (r && this.canvas) {
+      const rect = this.canvas.getBoundingClientRect();
+      if (rect.width > 1 && rect.height > 1) {
+        if (Math.abs(this.camera.aspect - rect.width / rect.height) > 0.005) {
+          this.camera.aspect = rect.width / rect.height;
+          this.camera.updateProjectionMatrix();
+        }
+        const W = window.innerWidth;
+        const H = window.innerHeight;
+        const vx = Math.max(0, Math.floor(rect.left));
+        const vy = Math.max(0, Math.floor(H - rect.bottom));
+        const vw = Math.max(1, Math.min(W - vx, Math.ceil(rect.width)));
+        const vh = Math.max(1, Math.min(H - vy, Math.ceil(rect.height)));
+        r.setRenderTarget(null);
+        r.autoClear = false;
+        r.setViewport(0, 0, W, H);
+        r.setScissor(0, 0, W, H);
+        r.setScissorTest(true);
+        r.setClearColor(0x080a0b, 1);
+        r.clear();
+        r.setViewport(vx, vy, vw, vh);
+        r.setScissor(vx, vy, vw, vh);
+        r.render(this.scene, this.camera);
+        r.setScissorTest(false);
+        r.setViewport(0, 0, W, H);
+      }
+    }
     this._updateNodePositions();
   }
 }

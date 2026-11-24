@@ -14,8 +14,8 @@ class MatchmakingStage {
 
   _initScene() {
     if (!this.canvas) return;
-    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer = null;
+    this.canvas.style.opacity = '0';
 
     this.scene = new THREE.Scene();
     this.scene.background = new THREE.Color(0x0d100f);
@@ -46,8 +46,15 @@ class MatchmakingStage {
     this.operatorsGroup = new THREE.Group();
     this.scene.add(this.operatorsGroup);
 
-    const dummyCam = new THREE.Object3D();
-    this.wpnBuilder = new WeaponSystem(this.scene, dummyCam);
+    this.wpnBuilder = null;
+  }
+
+  _ensureWeaponBuilder() {
+    if (!this.wpnBuilder && typeof WeaponSystem !== 'undefined') {
+      const dummyCam = new THREE.Object3D();
+      this.wpnBuilder = new WeaponSystem(this.scene, dummyCam);
+    }
+    return this.wpnBuilder;
   }
 
   _makeOverheadNameSprite(name, color = '#69f0ae') {
@@ -189,6 +196,8 @@ class MatchmakingStage {
     this.active = true;
     this.animTime = 0;
     this._launched = false;
+    document.body.classList.add('matchmaking-active');
+    this._ensureWeaponBuilder();
 
     this.refreshSquadUI(true);
     this._resize();
@@ -278,19 +287,19 @@ class MatchmakingStage {
 
   stop() {
     this.active = false;
+    document.body.classList.remove('matchmaking-active');
   }
 
   _resize() {
-    if (!this.canvas || !this.renderer) return;
-    const rect = this.canvas.parentElement.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) {
-      this.renderer.setSize(rect.width, rect.height, false);
+    if (!this.canvas) return;
+    const rect = this.canvas.parentElement ? this.canvas.parentElement.getBoundingClientRect() : null;
+    if (rect && rect.width > 0 && rect.height > 0) {
       this.camera.aspect = rect.width / rect.height;
       this.camera.updateProjectionMatrix();
     }
   }
 
-  update(dt) {
+  update(dt, sharedRenderer = window.mainWebGLRenderer) {
     if (!this.active) return;
     this.animTime += dt;
 
@@ -349,13 +358,38 @@ class MatchmakingStage {
       window.RigRegistry.syncAll(dt, this.camera);
     }
 
-    if (this.renderer && this.scene && this.camera) {
-      this.renderer.render(this.scene, this.camera);
+    if (sharedRenderer && this.scene && this.camera && this.canvas) {
+      const rect = this.canvas.getBoundingClientRect();
+      if (rect.width > 1 && rect.height > 1) {
+        if (Math.abs(this.camera.aspect - rect.width / rect.height) > 0.005) {
+          this.camera.aspect = rect.width / rect.height;
+          this.camera.updateProjectionMatrix();
+        }
+        const W = window.innerWidth;
+        const H = window.innerHeight;
+        const vx = Math.max(0, Math.floor(rect.left));
+        const vy = Math.max(0, Math.floor(H - rect.bottom));
+        const vw = Math.max(1, Math.min(W - vx, Math.ceil(rect.width)));
+        const vh = Math.max(1, Math.min(H - vy, Math.ceil(rect.height)));
+        sharedRenderer.setRenderTarget(null);
+        sharedRenderer.autoClear = false;
+        sharedRenderer.setViewport(0, 0, W, H);
+        sharedRenderer.setScissor(0, 0, W, H);
+        sharedRenderer.setScissorTest(true);
+        sharedRenderer.setClearColor(0x0d100f, 1);
+        sharedRenderer.clear();
+        sharedRenderer.setViewport(vx, vy, vw, vh);
+        sharedRenderer.setScissor(vx, vy, vw, vh);
+        sharedRenderer.render(this.scene, this.camera);
+        sharedRenderer.setScissorTest(false);
+        sharedRenderer.setViewport(0, 0, W, H);
+      }
     }
 
     if (allReady && this.countdown <= 0 && !this._launched) {
       this._launched = true;
       this.active = false;
+      document.body.classList.remove('matchmaking-active');
       if (multiSquad && this.ui.isPartyLeader() && this.ui.broadcastPartyDeploy) {
         this.ui.broadcastPartyDeploy(this.zoneId, this.matchId);
       }

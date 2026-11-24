@@ -34,6 +34,7 @@ window.ModelSystem = (() => {
     tex.magFilter = THREE.LinearFilter;
     tex.minFilter = THREE.LinearMipmapLinearFilter;
     tex.anisotropy = 4;
+    tex.userData = { _ashShared: true };
     _texCache[key] = tex;
     return tex;
   }
@@ -197,17 +198,18 @@ window.ModelSystem = (() => {
 
   function getWeaponMaterialSet(gunMat = null) {
     const tex = getWeaponTextures();
-    const key = gunMat ? `camo_${gunMat.uuid}` : 'stock';
+    const envMap = (window.AshfallRenderer && window.AshfallRenderer.getEnvMap) ? window.AshfallRenderer.getEnvMap() : null;
+    const key = gunMat ? `camo_${gunMat.uuid}` : `stock_${envMap ? envMap.uuid : '0'}`;
     if (_matCache[key]) return _matCache[key];
     const hasCamo = !!gunMat;
     const set = {
       steelMat: hasCamo ? gunMat : new THREE.MeshPhongMaterial({
         color: 0xffffff, map: tex.parkerized, bumpMap: tex.bumpBrush, bumpScale: 0.0014,
-        specular: 0x5c6876, shininess: 48
+        specular: 0x5c6876, shininess: 48, envMap, reflectivity: 0.22
       }),
       bluedMat: hasCamo ? gunMat : new THREE.MeshPhongMaterial({
         color: 0xffffff, map: tex.blued, bumpMap: tex.bumpBrush, bumpScale: 0.0011,
-        specular: 0x50627a, shininess: 58
+        specular: 0x50627a, shininess: 58, envMap, reflectivity: 0.26
       }),
       darkMat: new THREE.MeshPhongMaterial({
         color: 0xffffff, map: tex.polymer, bumpMap: tex.bumpStipple, bumpScale: 0.0022,
@@ -215,17 +217,17 @@ window.ModelSystem = (() => {
       }),
       magMat: new THREE.MeshPhongMaterial({
         color: 0xffffff, map: tex.brushedSteel, bumpMap: tex.bumpBrush, bumpScale: 0.0012,
-        specular: 0x8694a4, shininess: 68
+        specular: 0x8694a4, shininess: 68, envMap, reflectivity: 0.30
       }),
       bakeliteMat: new THREE.MeshPhongMaterial({
         color: 0xffffff, map: tex.bakelite, bumpMap: tex.bumpNoise, bumpScale: 0.0010,
         specular: 0x3b261b, shininess: 28
       }),
       brassMat: new THREE.MeshPhongMaterial({
-        color: 0xffffff, map: tex.brass, specular: 0xfff0b0, shininess: 92
+        color: 0xffffff, map: tex.brass, specular: 0xfff0b0, shininess: 92, envMap, reflectivity: 0.38
       }),
       copperMat: new THREE.MeshPhongMaterial({
-        color: 0xffffff, map: tex.copper, specular: 0xffb88c, shininess: 82
+        color: 0xffffff, map: tex.copper, specular: 0xffb88c, shininess: 82, envMap, reflectivity: 0.34
       }),
       woodMat: new THREE.MeshPhongMaterial({
         color: 0xffffff, map: tex.wood, bumpMap: tex.bumpNoise, bumpScale: 0.0015,
@@ -241,15 +243,20 @@ window.ModelSystem = (() => {
       }),
       boreMat: new THREE.MeshBasicMaterial({ color: 0x050607 }),
       chromeMat: new THREE.MeshPhongMaterial({
-        color: 0xcfd6de, specular: 0xffffff, shininess: 110
+        color: 0xcfd6de, specular: 0xffffff, shininess: 110, envMap, reflectivity: 0.45
       })
     };
+    Object.values(set).forEach((m) => { if (m) { if (!m.userData) m.userData = {}; m.userData._ashShared = true; } });
     _matCache[key] = set;
     return set;
   }
 
   function _cachedGeo(key, fn) {
-    if (!_geoCache[key]) _geoCache[key] = fn();
+    if (!_geoCache[key]) {
+      const g = fn();
+      if (g) { if (!g.userData) g.userData = {}; g.userData._ashShared = true; }
+      _geoCache[key] = g;
+    }
     return _geoCache[key];
   }
 
@@ -1566,6 +1573,7 @@ window.ModelSystem = (() => {
   return {
     getWeaponTextures,
     getWeaponMaterialSet,
+    mergeGeos: _mergeGeos,
     geoLatheZ,
     geoRoundedBox,
     geoExtrudeSide,

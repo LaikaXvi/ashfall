@@ -6721,6 +6721,20 @@ class GameUI {
     return `<svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="11" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2h-2V6h-4v2H8zm3 3h2v2h2v2h-2v2h-2v-2H9v-2h2v-2z"/></svg>`;
   }
 
+  _getWeaponsCasePos(player, world, squadManager) {
+    if (player && (player.backpack || []).some(it => it && it.id === 'zavod_weapons_case')) {
+      return { x: player.position.x, z: player.position.z, carried: true };
+    }
+    if (world && world.groundItems) {
+      for (const gi of world.groundItems) {
+        if (gi && !gi.picked && gi.itemId === 'zavod_weapons_case' && gi.position) {
+          return { x: gi.position.x, z: gi.position.z, carried: false };
+        }
+      }
+    }
+    return null;
+  }
+
   // ZAVOD-9 standalone map: Koschei-style floorplan (sector-coloured rooms, airlocks, puzzle nodes)
   _drawZavodFloorplan(ctx, toMap, scale, world, player, opts = {}) {
     const zv = world.zavod;
@@ -6784,6 +6798,14 @@ class GameUI {
       ctx.strokeStyle = 'rgba(255,40,40,0.8)';
       ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
     }
+    // Sniper Mezzanine C4 tripwires
+    for (const tr of zv.traps || []) {
+      if (!tr.armed) continue;
+      const a = toMap(tr.x0, tr.z), b = toMap(tr.x1, tr.z);
+      ctx.strokeStyle = '#ff6d00';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
     // Puzzle stations
     for (const st of zv.stations) {
       const p = toMap(st.x, st.z);
@@ -6794,6 +6816,37 @@ class GameUI {
       ctx.moveTo(p.x, p.y - 3.6); ctx.lineTo(p.x + 3.6, p.y); ctx.lineTo(p.x, p.y + 3.6); ctx.lineTo(p.x - 3.6, p.y);
       ctx.closePath();
       ctx.fill();
+    }
+    // Shopkeeper ($) & Factory Dual Bosses (☠)
+    {
+      const sp = toMap(68, -113);
+      if (sp.x >= -10 && sp.y >= -10 && sp.x <= W + 10 && sp.y <= H + 10) {
+        ctx.fillStyle = 'rgba(20,16,8,0.88)';
+        ctx.beginPath(); ctx.arc(sp.x, sp.y, opts.labels ? 7 : 5.5, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#ffca28'; ctx.lineWidth = 1.2; ctx.stroke();
+        ctx.fillStyle = '#ffca28';
+        ctx.font = `bold ${opts.labels ? 10 : 8}px Consolas, monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('$', sp.x, sp.y + 0.5);
+      }
+      const em = this._lastEnemyMgr;
+      if (em && em.enemies) {
+        for (const e of em.enemies) {
+          if (!e || e.dead || (e.tier !== 'boss_rhino' && e.tier !== 'boss_sniper')) continue;
+          const bp = toMap(e.position.x, e.position.z);
+          if (bp.x < -10 || bp.y < -10 || bp.x > W + 10 || bp.y > H + 10) continue;
+          ctx.fillStyle = 'rgba(32,8,8,0.9)';
+          ctx.beginPath(); ctx.arc(bp.x, bp.y, opts.labels ? 7.5 : 5.5, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = '#ff3d3d'; ctx.lineWidth = 1.3; ctx.stroke();
+          ctx.fillStyle = '#ff5252';
+          ctx.font = `bold ${opts.labels ? 10 : 8}px Consolas, monospace`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('☠', bp.x, bp.y + 0.5);
+        }
+      }
+      ctx.textBaseline = 'alphabetic';
     }
     if (opts.labels) {
       ctx.textAlign = 'center';
@@ -6808,7 +6861,7 @@ class GameUI {
       if (opts.doorLabels) {
         ctx.font = 'bold 9px Consolas, monospace';
         for (const d of zv.doors) {
-          if (!/^(A1|A2|B1|B2|C1|C2|D1|D2|L2|VAULT|ARCHIVE|YELLOW)$/.test(d.id)) continue;
+          if (!/^(A1|A2|B1|B2|C1|C2|D1|D2|L2|VAULT|ARCHIVE|YELLOW|SHOP|CASE_CAGE)$/.test(d.id)) continue;
           const p = toMap(d.x, d.z);
           ctx.fillStyle = d.open ? '#69f0ae' : '#ff8a8a';
           ctx.fillText(d.id, p.x, p.y - 6);
@@ -6822,6 +6875,7 @@ class GameUI {
   }
 
   _renderMinimap(player, world, enemyManager, squadManager) {
+    this._lastEnemyMgr = enemyManager;
     this._minimapFrame = ((this._minimapFrame || 0) + 1) % 3;
     if (this._minimapFrame !== 1) return;
     const canvas = document.getElementById('hud-minimap');
@@ -7009,6 +7063,40 @@ class GameUI {
       }
     }
 
+    // Koschei / ZAVOD-9 Bunker Entrances on Vostok
+    if (world.bunkerElevators && !world.isBunkerMap) {
+      for (const elv of world.bunkerElevators) {
+        const p = toMap(elv.position.x, elv.position.z);
+        if (p.x < -6 || p.y < -6 || p.x > W + 6 || p.y > H + 6) continue;
+        ctx.fillStyle = '#ffca28';
+        ctx.fillRect(p.x - 3.2, p.y - 3.2, 6.4, 6.4);
+        ctx.strokeStyle = '#111618';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(p.x - 3.2, p.y - 3.2, 6.4, 6.4);
+      }
+    }
+
+    // Live pulsing Weapons Case marker
+    {
+      const wc = this._getWeaponsCasePos(player, world, squadManager);
+      if (wc) {
+        const wp = toMap(wc.x, wc.z);
+        const pulse = (Math.sin(performance.now() * 0.006) + 1) * 0.5;
+        ctx.save();
+        ctx.strokeStyle = `rgba(255, 202, 40, ${(0.45 + pulse * 0.45).toFixed(2)})`;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.arc(wp.x, wp.y, 5.5 + pulse * 3.5, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = '#ffca28';
+        ctx.font = 'bold 9px Consolas, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('★', wp.x, wp.y + 0.5);
+        ctx.restore();
+      }
+    }
+
     // Allied Squadmates (Cyan dots)
     if (squadManager && squadManager.allies) {
       for (const ally of squadManager.allies) {
@@ -7106,6 +7194,7 @@ class GameUI {
   }
 
   _renderFullMap(player, world, enemyManager, squadManager) {
+    this._lastEnemyMgr = enemyManager;
     const canvas = document.getElementById('hud-tacmap-canvas');
     if (!canvas || !world) return;
     const zoneLbl = document.getElementById('tacmap-zone-name');
@@ -7406,6 +7495,63 @@ class GameUI {
         ctx.fillText(ez.name, p.x, p.y + 18);
       }
       ctx.restore();
+    }
+
+    // 6b. Koschei / ZAVOD-9 Bunker Entrances on Vostok
+    if (world.bunkerElevators && !isZavod) {
+      ctx.save();
+      ctx.font = 'bold 9.5px Consolas, monospace';
+      ctx.textAlign = 'center';
+      for (const elv of world.bunkerElevators) {
+        const p = toMap(elv.position.x, elv.position.z);
+        ctx.fillStyle = 'rgba(255, 202, 40, 0.20)';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.rotate(Math.PI / 4);
+        ctx.fillStyle = '#ffca28';
+        ctx.fillRect(-4.5, -4.5, 9, 9);
+        ctx.strokeStyle = '#0d1114';
+        ctx.lineWidth = 1.2;
+        ctx.strokeRect(-4.5, -4.5, 9, 9);
+        ctx.restore();
+        ctx.fillStyle = '#ffe082';
+        ctx.fillText(`Z9 ${elv.shortTag || ''}`.trim(), p.x, p.y + 18);
+      }
+      ctx.restore();
+    }
+
+    // 6c. Live Pulsing Koschei Weapons Case Marker
+    {
+      const wc = this._getWeaponsCasePos(player, world, squadManager);
+      if (wc) {
+        const wp = toMap(wc.x, wc.z);
+        const pulse = (Math.sin(performance.now() * 0.006) + 1) * 0.5;
+        ctx.save();
+        ctx.strokeStyle = `rgba(255, 202, 40, ${(0.5 + pulse * 0.45).toFixed(2)})`;
+        ctx.lineWidth = 2.0;
+        ctx.beginPath();
+        ctx.arc(wp.x, wp.y, 9 + pulse * 5, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(26, 20, 6, 0.9)';
+        ctx.beginPath();
+        ctx.arc(wp.x, wp.y, 8, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#ffca28';
+        ctx.lineWidth = 1.4;
+        ctx.stroke();
+        ctx.fillStyle = '#ffca28';
+        ctx.font = 'bold 11px Consolas, monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('★', wp.x, wp.y + 0.5);
+        ctx.textBaseline = 'alphabetic';
+        ctx.font = 'bold 9.5px Consolas, monospace';
+        ctx.fillText('CASE', wp.x, wp.y + 18);
+        ctx.restore();
+      }
     }
 
     // 7. 2D Pulsing UAV Radar Ring (150m radius radiating outward & dissipating) & Hostiles

@@ -198,6 +198,12 @@
         const board = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.2, 0.08), new THREE.MeshLambertMaterial({ color: 0x2c3a2e }));
         board.position.set(0, 1.6, 0);
         g.add(board);
+      } else if (kind === 'shop_note') {
+        const board = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.05, 0.08), new THREE.MeshLambertMaterial({ color: 0x1c2620 }));
+        board.position.set(0, 1.6, 0);
+        const rail = new THREE.Mesh(new THREE.BoxGeometry(1.56, 0.07, 0.11), MZ.wood);
+        rail.position.set(0, 1.06, 0);
+        g.add(board, rail);
       } else if (kind === 'pad') {
         const plat = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.4, 0.3, 20), MZ.darkSteel);
         plat.position.set(0, 0.15, 0);
@@ -298,6 +304,16 @@
       actions: [{ open: ['D2'] }, { alarm: 'D2' }] });
     addStation({ id: 'd1_fbtn', kind: 'button', sector: 'FACTORY', x: -26.6, z: -100, rotY: Math.PI / 2, label: 'D/1 EXIT CONTROL', hold: 0.8, actions: [{ open: ['D1'] }] });
     addStation({ id: 'd2_fbtn', kind: 'button', sector: 'FACTORY', x: 26.6, z: -100, rotY: -Math.PI / 2, label: 'D/2 EXIT CONTROL', hold: 0.8, actions: [{ open: ['D2'] }] });
+    // ===== Factory Admin: Shopkeeper Barter (dead-drop recipe + shutter) =====
+    Z.shopBarter = pick([
+      { needs: [{ id: 'server_tape_red', qty: 1 }, { id: 'aseptic_blocker', qty: 1 }], label: '1x Red Server Tape + 1x Aseptic Blocker' },
+      { needs: [{ id: 'server_tape_black', qty: 2 }, { id: 'bunker_fuse', qty: 1 }], label: '2x Black Server Tape + 1x Security Fuse' },
+      { needs: [{ id: 'server_tape_red', qty: 1 }, { id: 'server_tape_black', qty: 1 }], label: '1x Red Server Tape + 1x Black Server Tape' }
+    ]);
+    addStation({ id: 'shopkeeper_note', kind: 'shop_note', sector: 'FACTORY', x: 56.8, z: -108.5, rotY: -Math.PI / 2, label: 'SHOPKEEPER BARTER LIST' });
+    addStation({ id: 'shopkeeper_slot', kind: 'socket', sector: 'FACTORY', x: 56.8, z: -117.5, rotY: -Math.PI / 2, label: 'SHOPKEEPER DEAD-DROP SLOT', hold: 1.5,
+      needs: Z.shopBarter.needs, hint: 'Shopkeeper wants: ' + Z.shopBarter.label,
+      actions: [{ open: ['SHOP'] }, { msg: 'Shopkeeper barter accepted — shutter unlocked!' }] });
     // ===== Plant -> Alpha Cluster (battery + cables in the C panel) =====
     addStation({ id: 'c1_panel', kind: 'socket', sector: 'PLANT', x: -32, z: 73, rotY: Math.PI, label: 'C/1 POWER PANEL',
       needs: [{ id: 'bunker_battery', qty: 1 }, { id: 'jumper_cables', qty: 1 }], hold: 1.6, hint: 'Needs a Car Battery + Jumper Cables',
@@ -307,17 +323,25 @@
       actions: [{ open: ['C2'] }, { alarm: 'C2' }] });
     addStation({ id: 'c1_abtn', kind: 'button', sector: 'ALPHA', x: -26.6, z: 90, rotY: Math.PI / 2, label: 'C/1 EXIT CONTROL', hold: 0.8, actions: [{ open: ['C1'] }] });
     addStation({ id: 'c2_abtn', kind: 'button', sector: 'ALPHA', x: 26.6, z: 90, rotY: -Math.PI / 2, label: 'C/2 EXIT CONTROL', hold: 0.8, actions: [{ open: ['C2'] }] });
-    // ===== Alpha Cluster: code vault, L2 lift, archive (3 laptops) =====
+    // ===== Alpha Cluster: code vault (R4D UV cipher boards), L2 lift, archive (3 laptops) =====
     const code = [1 + Math.floor(rnd() * 9), Math.floor(rnd() * 10), Math.floor(rnd() * 10)];
+    const symbols = ['Δ', 'Ω', 'Ψ'];
     Z.vaultCode = code;
+    Z.vaultSymbols = symbols;
     const clueSpots = [[12, 167, Math.PI], [-74, 186, Math.PI / 2], [74, 232, -Math.PI / 2]];
     clueSpots.forEach(([x, z, rotY], k) => {
-      addStation({ id: `alpha_clue${k + 1}`, kind: 'clue', sector: 'ALPHA', x, z, rotY, label: `CIRCUIT DIAGRAM BOARD ${k + 1}`, hold: 1.4,
-        clueIdx: k, clueDigit: code[k], actions: [{ clue: k }] });
+      addStation({ id: `alpha_clue${k + 1}`, kind: 'clue', sector: 'ALPHA', x, z, rotY,
+        label: `UV CHALK CIPHER BOARD ${k + 1} (${symbols[k]})`, hold: 1.4,
+        clueIdx: k, clueDigit: code[k], clueSymbol: symbols[k],
+        mustCarry: [{ id: 'r4d_detector', qty: 1 }],
+        hint: 'Requires R4D UV Detector in backpack to reveal UV chalk cipher',
+        actions: [{ clue: k }] });
     });
     addStation({ id: 'alpha_keypad', kind: 'button', sector: 'ALPHA', x: -6, z: 244, rotY: Math.PI, label: 'CODE VAULT KEYPAD', hold: 2.0,
-      requires: ['alpha_clue1', 'alpha_clue2', 'alpha_clue3'], hint: 'Code unknown — read the 3 circuit diagram boards in Alpha Cluster',
+      requires: ['alpha_clue1', 'alpha_clue2', 'alpha_clue3'],
+      hint: 'Code unknown — scan the 3 UV chalk boards (Δ · Ω · Ψ) with an R4D Detector',
       actions: [{ open: ['VAULT'] }, { alarm: 'VAULT' }] });
+    this._zvSign('Δ · Ω · Ψ', 'R4D UV CIPHER SEQUENCE', -6, 3.2, 245.6, Math.PI, 2.8, 0.75, '#b388ff');
     addStation({ id: 'alpha_l2reader', kind: 'socket', sector: 'ALPHA', x: 74, z: 200, rotY: -Math.PI / 2, label: 'L2 KEYCARD READER',
       needs: [{ id: 'zavod_l2_keycard', qty: 1 }], hold: 1.2, hint: 'Needs an L2 Keycard (Factory foreman / plant control rooms)',
       actions: [{ open: ['L2'] }, { unlockExtract: 'L2 EXFIL LIFT' }, { msg: 'L2 opened — new exfil visible to ALL teams', global: true }] });
@@ -359,6 +383,29 @@
       }
       for (const zz of [30.4, 41.6]) this._zvGeo(new THREE.BoxGeometry(0.3, 2.2, 0.3), MZ.darkSteel, gx, 1.1, zz);
     });
+    // --- Sniper Mezzanine C4 Laser Tripwires (shoot C4 charge or disarm box at stair head) ---
+    Z.traps = [];
+    const trapMat = new THREE.MeshBasicMaterial({ color: 0xff3b1f, transparent: true, opacity: 0.9 });
+    for (const td of [
+      { id: 'sniper_trap_w', x0: -59.8, x1: -56.2, z: -188.5, y: 6.15, baseY: 5.6, c4X: -59.5, stationId: 'disarm_trap_w' },
+      { id: 'sniper_trap_e', x0: 56.2, x1: 59.8, z: -188.5, y: 6.15, baseY: 5.6, c4X: 59.5, stationId: 'disarm_trap_e' }
+    ]) {
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.035, 0.035), trapMat);
+      beam.position.set((td.x0 + td.x1) / 2, td.y, td.z);
+      this.scene.add(beam);
+      this._addBox(td.c4X, td.y, td.z, 0.42, 0.32, 0.28, MZ.hazard, true);
+      const c4Vis = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.14, 0.14), trapMat);
+      c4Vis.position.set(td.c4X, td.y + 0.2, td.z);
+      this.scene.add(c4Vis);
+      Z.traps.push({ ...td, c4Pos: new THREE.Vector3(td.c4X, td.y, td.z), beamMesh: beam, c4Vis, armed: true });
+      addStation({
+        id: td.stationId, kind: 'button', sector: 'FACTORY',
+        x: td.c4X < 0 ? -56.4 : 56.4, y: 4.4, z: -185.5,
+        rotY: td.c4X < 0 ? -Math.PI / 2 : Math.PI / 2,
+        label: td.c4X < 0 ? 'DISARM SNIPER C4 (WEST)' : 'DISARM SNIPER C4 (EAST)',
+        hold: 1.6, actions: [{ disarmTrap: td.id }, { msg: 'Sniper C4 tripwire disarmed' }]
+      });
+    }
 
     // --- Quest items (deterministic per match so every squad member sees the same spawns) ---
     const loose = (id, x, z, y = 0, tag = '') => {
@@ -405,6 +452,31 @@
     loose('zavod_laptop', 248, -84, 0, 'b1');
     loose('zavod_laptop', 220, 160, 4.2, 'b2');
     loose('zavod_laptop', pick([[-72, -50], [72, 50], [-72, 50]])[0], pick([[-38, -18], [40, 22]])[1], 0, 'plant');
+    // Weapons Case inside Factory Boss Vault (unlocked when both The Rhinoceros & The Sniper fall)
+    loose('zavod_weapons_case', -24, -208.4, 0, 'weapons_case');
+    // Shopkeeper Barter Booth rewards
+    loose('zavod_l2_keycard', 66, -110, 0, 'shop_l2');
+    loose('vest_3plate', 72, -108, 0, 'shop_vest');
+    loose('nvg_goggles', 72, -116, 0, 'shop_nvg');
+    loose('self_revive', 66, -116, 0, 'shop_rev');
+    // R4D UV Detectors for Alpha Cluster cipher boards
+    loose('r4d_detector', -12, 143, 0, 'alpha_sec');
+    loose('r4d_detector', 0, 184, 0, 'alpha_entry');
+    // Koschei Barter Tapes & Aseptic Blockers
+    loose('server_tape_red', 12, 125, 0, 'tr1');
+    loose('server_tape_red', -58, 210, 0, 'tr2');
+    loose('server_tape_red', 58, 218, 0, 'tr3');
+    loose('server_tape_black', 14, 128, 0, 'tb1');
+    loose('server_tape_black', -36, 232, 0, 'tb2');
+    loose('server_tape_black', 218, 180, 4.2, 'tb3');
+    loose('aseptic_blocker', -276, -226, 0, 'ab1');
+    loose('aseptic_blocker', -220, -210, 0, 'ab2');
+    loose('aseptic_blocker', 252, 208, 0, 'ab3');
+    // Night-vision goggles near all 4 sector entrances into the dark Chemical Plant
+    loose('nvg_goggles', -128, 38, 0, 'nvg_a1');
+    loose('nvg_goggles', -120, -37, 0, 'nvg_a2');
+    loose('nvg_goggles', 105, -39, 0, 'nvg_b1');
+    loose('nvg_goggles', 110, 36, 0, 'nvg_b2');
 
     // --- Signage (Building 21 colour-coded wayfinding + Soviet stencils) ---
     const signs = [
@@ -420,7 +492,16 @@
       ['ХИМЦЕХ ←', 'CHEMICAL PLANT', 170, 2.6, 41.6, Math.PI, '#ff5252'],
       ['ЗАВОД-9', 'WEAPONS MANUFACTURING', 0, 9.5, -199.6, 0, '#b0bec5'],
       ['АЛЬФА', 'ALPHA CLUSTER — DATA CORE', 0, 6.0, 176.3, 0, '#b388ff'],
-      ['ОПАСНО', 'RADIATION — SEAL REQUIRED', -276, 3.6, -215.7, 0, '#e6e14a']
+      ['ОПАСНО', 'RADIATION — SEAL REQUIRED', -276, 3.6, -215.7, 0, '#e6e14a'],
+      ['СЕВЕР — ЗАВОД D/1·D/2', 'NORTH -> FACTORY ADMIN', 0, 4.2, -75.5, 0, '#b0bec5'],
+      ['ЮГ — АЛЬФА C/1·C/2', 'SOUTH -> ALPHA CLUSTER', 0, 4.2, 75.5, Math.PI, '#b388ff'],
+      ['З-С — СЕКТОР А/2', 'NW -> DRD SECTOR A/2', -51.5, 4.2, -38, Math.PI / 2, '#e6e14a'],
+      ['З-Ю — СЕКТОР А/1', 'SW -> INFO SECTOR A/1', -51.5, 4.2, 38, Math.PI / 2, '#ffa726'],
+      ['В-С — СЕКТОР Б/1', 'NE -> BARRACKS B/1', 51.5, 4.2, -38, -Math.PI / 2, '#4fc3f7'],
+      ['В-Ю — СЕКТОР Б/2', 'SE -> EXT-OPS B/2', 51.5, 4.2, 38, -Math.PI / 2, '#ff5252'],
+      ['АДМИНИСТРАЦИЯ', 'FACTORY ADMIN — SHOPKEEPER EAST', 0, 3.8, -123.5, 0, '#ffca28'],
+      ['ТОРГОВЕЦ', 'SHOPKEEPER — DEAD-DROP BARTER', 57.5, 3.3, -113, -Math.PI / 2, '#ffca28'],
+      ['ОРУЖЕЙНЫЙ КЕЙС', 'WEAPONS CASE — DEFEAT RHINO & SNIPER', -24, 3.8, -199.5, 0, '#ffca28']
     ];
     for (const [t, s, x, y, z, rot, col] of signs) this._zvSign(t, s, x, y, z, rot, 4.4, 1.05, col);
 
@@ -494,11 +575,21 @@
       S(0, 150), S(-40, 186), S(40, 238), S(-60, 236, 'heavy'), S(60, 186)
     ];
     this.aiSpawnList = garrison;
-    this.bossSpawnPos = new THREE.Vector3(0, 0, -150);
-    this.bossGuardSpawns = [new THREE.Vector3(-30, 0, -140), new THREE.Vector3(30, 0, -140), new THREE.Vector3(0, 5.6, -195)];
+    this.bossSpawnPos = null;
+    this.bossSpawns = [
+      { pos: new THREE.Vector3(0, 0, -166), tier: 'boss_rhino' },
+      { pos: new THREE.Vector3(0, 5.6, -195), tier: 'boss_sniper' }
+    ];
+    this.bossGuardSpawns = [
+      new THREE.Vector3(-28, 0, -156),
+      new THREE.Vector3(28, 0, -156),
+      new THREE.Vector3(-42, 5.6, -195),
+      new THREE.Vector3(42, 5.6, -195)
+    ];
     this.pois = [
       { name: 'CHEMICAL PLANT', x: 0, z: -10, color: '#7cff9c', threat: 'high', mapLabel: false },
-      { name: 'FACTORY', x: 0, z: -130, color: '#b0bec5', threat: 'high', mapLabel: false },
+      { name: 'FACTORY', x: 0, z: -160, color: '#b0bec5', threat: 'high', mapLabel: false },
+      { name: 'SHOPKEEPER', x: 68, z: -113, color: '#ffca28', mapLabel: false },
       { name: 'ALPHA CLUSTER', x: 0, z: 200, color: '#b388ff', threat: 'high', mapLabel: false },
       { name: 'PLANT WEST', x: -76, z: 0, color: '#7cff9c', mapLabel: false },
       { name: 'PLANT EAST', x: 76, z: 0, color: '#7cff9c', mapLabel: false }
@@ -729,6 +820,25 @@
         }
         break;
       }
+      case 'factory_admin': {
+        if (ok(-18, -112, 2)) this._zvDesk(-18, -112, by, true, MZ);
+        if (ok(18, -112, 2)) this._zvDesk(18, -112, by, true, MZ);
+        this._addLootContainer(-44, 0, -106, 'office', 'Admin Filing Safe');
+        this._addLootContainer(44, 0, -106, 'military', 'Admin Security Locker');
+        break;
+      }
+      case 'shopkeeper': {
+        this._zvTable(63, -113, 0, 1.4, 6.0, MZ, MZ.steel);
+        this._zvShelf(76.5, -113, 0, false, MZ);
+        this._addLootContainer(74, 0, -113, 'boss_key_room', 'SHOPKEEPER PRIVATE STASH');
+        break;
+      }
+      case 'case_vault': {
+        this._addBox(-24, 0.45, -210, 2.2, 0.9, 1.4, MZ.darkSteel, true);
+        this._addLootContainer(-30, 0, -215, 'boss_key_room', 'Weapons Case Annex A');
+        this._addLootContainer(-18, 0, -215, 'boss_key_room', 'Weapons Case Annex B');
+        break;
+      }
       default: break;
     }
   };
@@ -807,7 +917,7 @@
 
   // Factory: assembly lines, CNC machining cells, weapon racks, crate stacks & boss arena
   P._zvFurnishFactory = function (G, MZ, rnd, H) {
-    for (const z of [-170, -156, -142, -128]) {
+    for (const z of [-176, -162, -148, -134]) {
       for (const seg of [[-66, -30], [-18, 18], [30, 66]]) {
         const x0 = seg[0], x1 = seg[1];
         const cx = (x0 + x1) / 2;
@@ -822,17 +932,17 @@
       }
     }
     // CNC machining cells along east & west walls
-    for (const z of [-182, -166, -150, -136, -122]) {
+    for (const z of [-182, -166, -150, -136, -132]) {
       for (const x of [-74, 74]) {
         this._addBox(x, 1.3, z, 3.4, 2.6, 2.4, MZ.paintBlue, true);
         this._zvGeo(new THREE.BoxGeometry(1.2, 0.8, 0.05), MZ.screen, x + (x < 0 ? 1.73 : -1.73), 1.6, z, Math.PI / 2);
       }
     }
     // Weapon racks / crates for loot
-    const lootSpots = [[-78, -114, 'military'], [78, -114, 'military'], [-40, -194, 'military'], [40, -194, 'military'], [0, -118, 'supply'], [-52, -150, 'supply'], [52, -150, 'military']];
+    const lootSpots = [[-78, -130, 'military'], [78, -130, 'military'], [-40, -194, 'military'], [40, -194, 'military'], [0, -130, 'supply'], [-52, -154, 'supply'], [52, -154, 'military']];
     for (const [x, z, k] of lootSpots) this._addLootContainer(x, 0, z, k, k === 'military' ? 'Factory Weapon Crate' : 'Factory Parts Crate');
     this._addLootContainer(-84, 5.6, -196, 'military', 'Mezzanine Arms Cache');
     this._addLootContainer(84, 5.6, -196, 'valuables', 'Foreman Strongbox');
-    for (const [x, z] of [[-12, -186], [12, -186], [-30, -120], [30, -120], [-46, -163], [46, -149]]) this._zvCrateStack(x, z, 0, MZ, 2);
+    for (const [x, z] of [[-12, -186], [12, -186], [-24, -130], [24, -130], [-46, -168], [46, -154]]) this._zvCrateStack(x, z, 0, MZ, 2);
   };
 })();

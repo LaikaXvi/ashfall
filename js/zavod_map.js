@@ -238,7 +238,7 @@
       floorEpoxy: tint(M.darkConcrete, 0x4f5a52, 5.0),
       floorTile: M.floorTile,
       floorLino: tint(M.interiorPlaster, 0x7f6a52, 3.0),
-      floorGrate: tint(M.metal, 0x55595d, 0.8),
+      floorGrate: M.grate || tint(M.metal, 0x55595d, 0.8),
       ceiling: tint(M.concrete, 0x5e5f5b, 5.0),
       ceilingTile: tint(M.whiteWall, 0xb9bbb2, 1.6),
       lightWarm: basic(0xfff1cf),
@@ -278,7 +278,14 @@
     mesh.updateMatrix();
     mesh.matrixAutoUpdate = false;
     if (this._batchingOpen && this._batchEntries) {
-      this._batchEntries.push({ geometry: geo, matrix: mesh.matrix.clone(), material: mat, castShadow: false, source: null });
+      this._batchEntries.push({
+        geometry: geo,
+        matrix: mesh.matrix.clone(),
+        material: mat,
+        castShadow: false,
+        source: null,
+        disposeAfterBatch: !opts.shoot && !(geo.userData && geo.userData._ashShared)
+      });
     } else {
       this.scene.add(mesh);
     }
@@ -318,7 +325,14 @@
     mesh.updateMatrix();
     mesh.matrixAutoUpdate = false;
     if (this._batchingOpen && this._batchEntries) {
-      this._batchEntries.push({ geometry: geo, matrix: mesh.matrix.clone(), material: mat, castShadow: false, source: null });
+      this._batchEntries.push({
+        geometry: geo,
+        matrix: mesh.matrix.clone(),
+        material: mat,
+        castShadow: false,
+        source: null,
+        disposeAfterBatch: !opts.shoot && !(geo.userData && geo.userData._ashShared)
+      });
     } else {
       this.scene.add(mesh);
     }
@@ -579,15 +593,37 @@
     const nx = Math.max(1, Math.round(w / spacing));
     const nz = Math.max(1, Math.round(d / spacing));
     const mat = r.dark ? MZ.lightRed : (r.lightMat ? MZ[r.lightMat] : (r.kind === 'lab' || r.kind === 'server' ? MZ.lightCool : MZ.lightWarm));
+    const unitBox = (window.AshfallRenderer && window.AshfallRenderer.GeoPool)
+      ? window.AshfallRenderer.GeoPool.unitBox()
+      : new THREE.BoxGeometry(1, 1, 1);
+    const along = w >= d;
     for (let a = 0; a < nx; a++) {
       for (let b = 0; b < nz; b++) {
         const px = x0 + (a + 0.5) * (w / nx);
         const pz = z0 + (b + 0.5) * (d / nz);
-        if (r.dark) {
-          this._zvGeo(new THREE.BoxGeometry(0.28, 0.18, 0.28), mat, px, y - 0.12, pz);
+        const sx = r.dark ? 0.28 : (along ? 1.5 : 0.28);
+        const sy = r.dark ? 0.18 : 0.07;
+        const sz = r.dark ? 0.28 : (along ? 0.28 : 1.5);
+        const py = r.dark ? y - 0.12 : y - 0.04;
+        if (this._batchingOpen && this._batchEntries) {
+          this._batchEntries.push({
+            geometry: unitBox,
+            matrix: new THREE.Matrix4().compose(
+              new THREE.Vector3(px, py, pz),
+              new THREE.Quaternion(),
+              new THREE.Vector3(sx, sy, sz)
+            ),
+            material: mat,
+            castShadow: false,
+            source: null
+          });
         } else {
-          const along = w >= d;
-          this._zvGeo(new THREE.BoxGeometry(along ? 1.5 : 0.28, 0.07, along ? 0.28 : 1.5), mat, px, y - 0.04, pz);
+          const m = new THREE.Mesh(unitBox, mat);
+          m.position.set(px, py, pz);
+          m.scale.set(sx, sy, sz);
+          m.updateMatrix();
+          m.matrixAutoUpdate = false;
+          this.scene.add(m);
         }
       }
     }
@@ -729,11 +765,11 @@
     G.link('plant_core', 'vent_ne', 2, { h: 2.2 });
     G.link('plant_core', 'vent_sw', 2, { h: 2.2 });
 
-    // Factory airlock corridors (D1 / D2 — Factory Key)
-    G.rect('fac_cw', -28, -110, -20, -76, cor('FACTORY', { ceil: 5, name: 'FACTORY ACCESS D1' }));
-    G.rect('fac_ce', 20, -110, 28, -76, cor('FACTORY', { ceil: 5, name: 'FACTORY ACCESS D2' }));
-    G.link('plant_core', 'fac_cw', 6, { h: 4.6, door: 'blast', id: 'D1', label: 'AIRLOCK D/1 — FACTORY' });
-    G.link('plant_core', 'fac_ce', 6, { h: 4.6, door: 'blast', id: 'D2', label: 'AIRLOCK D/2 — FACTORY' });
+    // Factory airlock corridors (D1 / D2 — Factory Key -> Factory Admin Hub)
+    G.rect('fac_cw', -28, -100, -20, -76, cor('FACTORY', { ceil: 5, name: 'FACTORY ACCESS D1' }));
+    G.rect('fac_ce', 20, -100, 28, -76, cor('FACTORY', { ceil: 5, name: 'FACTORY ACCESS D2' }));
+    G.link('plant_core', 'fac_cw', 6, { h: 4.6, door: 'blast', id: 'D1', label: 'AIRLOCK D/1 — FACTORY ADMIN' });
+    G.link('plant_core', 'fac_ce', 6, { h: 4.6, door: 'blast', id: 'D2', label: 'AIRLOCK D/2 — FACTORY ADMIN' });
 
     // Alpha Cluster airlock corridors (C1 / C2 — battery + cables panel)
     G.rect('alpha_cw', -28, 76, -20, 100, cor('ALPHA', { ceil: 5, name: 'ALPHA ACCESS C1' }));
@@ -741,14 +777,24 @@
     G.link('plant_core', 'alpha_cw', 6, { h: 4.6, door: 'blast', id: 'C1', label: 'AIRLOCK C/1 — ALPHA CLUSTER' });
     G.link('plant_core', 'alpha_ce', 6, { h: 4.6, door: 'blast', id: 'C2', label: 'AIRLOCK C/2 — ALPHA CLUSTER' });
 
-    // ===================== FACTORY — WEAPONS MANUFACTURING (north) =====================
-    G.rect('factory_hall', -90, -200, 90, -110, { sector: 'FACTORY', kind: 'factory', name: 'WEAPONS MANUFACTURING HALL', ceil: 14, extH: 14, wall: 'brut', floor: 'epoxy', wallPrio: 2 });
-    G.link('factory_hall', 'fac_cw', 8, { h: 5 });
-    G.link('factory_hall', 'fac_ce', 8, { h: 5 });
+    // ===================== FACTORY ADMIN + WEAPONS MANUFACTURING (north) =====================
+    G.rect('factory_admin', -58, -124, 58, -100, { sector: 'FACTORY', kind: 'factory_admin', name: 'FACTORY ADMIN WING', ceil: 5.5, wall: 'brut', floor: 'tile', wallPrio: 2 });
+    G.link('fac_cw', 'factory_admin', 6, { h: 4.5 });
+    G.link('fac_ce', 'factory_admin', 6, { h: 4.5 });
+    G.rect('factory_shop', 58, -124, 78, -102, { sector: 'FACTORY', kind: 'shopkeeper', name: 'SHOPKEEPER BARTER BOOTH', ceil: 4.2, wall: 'darkSteel', floor: 'concrete', lightMat: 'lightAmber' });
+    G.link('factory_admin', 'factory_shop', 4, { h: 3.4, door: 'blast', id: 'SHOP', label: 'SHOPKEEPER SHUTTER' });
+    G.rect('factory_admin_sec', -78, -124, -58, -102, room('FACTORY', 'security', 'ADMIN SECURITY POST', { ceil: 4.2, wall: 'paintBlue', floor: 'lino' }));
+    G.link('factory_admin', 'factory_admin_sec', 2, { door: 'hinge', label: 'Admin Security Post' });
+
+    G.rect('factory_hall', -90, -200, 90, -124, { sector: 'FACTORY', kind: 'factory', name: 'WEAPONS MANUFACTURING HALL', ceil: 14, extH: 14, wall: 'brut', floor: 'epoxy', wallPrio: 2 });
+    G.link('factory_admin', 'factory_hall', 8, { h: 4.8, at: [-32, -124] });
+    G.link('factory_admin', 'factory_hall', 8, { h: 4.8, at: [32, -124] });
     const mez = { layer: 1, baseY: 5.6, ceil: 8.4, sector: 'FACTORY', kind: 'mezzanine', name: 'FACTORY MEZZANINE', wall: 'brut', floor: 'grate', lights: false };
     G.rect('factory_mez', -90, -200, 90, -190, mez);
     G.rect('factory_mez', -90, -190, -80, -128, mez);
     G.rect('factory_mez', 80, -190, 90, -128, mez);
+    G.rect('factory_case_cage', -34, -220, -14, -200, { sector: 'FACTORY', kind: 'case_vault', name: 'WEAPONS CASE VAULT', ceil: 4.8, wall: 'darkSteel', floor: 'grate', lightMat: 'lightAmber' });
+    G.link('factory_hall', 'factory_case_cage', 6, { h: 4.2, door: 'blast', id: 'CASE_CAGE', label: 'WEAPONS CASE VAULT' });
     G.rect('factory_freight', -10, -222, 10, -200, { sector: 'FACTORY', kind: 'lift', name: 'FACTORY FREIGHT ELEVATOR', ceil: 6, wall: 'darkSteel', floor: 'grate', lightMat: 'lightAmber' });
     G.link('factory_hall', 'factory_freight', 10, { h: 5 });
     G.rect('factory_office', 54, -226, 90, -200, room('FACTORY', 'office', 'FOREMAN OFFICE', { ceil: 4 }));

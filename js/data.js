@@ -3,15 +3,15 @@
 // Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
 // With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'Alpha RC 0.2.81',
+  VERSION: 'Alpha RC 0.2.82',
   VERSION_INFO: {
     major: 0,
     minor: 2,
-    patch: 81,
+    patch: 82,
     channel: 'Alpha', // Alpha | Beta — never blank while major === 0
     stage: 'RC',     // RC = Release Candidate
     updated: 'Nov 24, 2026',
-    changelog: 'ZAVOD-9 Complex is now its own standalone match: the Vostok service elevator extracts your squad and deploys it into a separate underground map rebuilt on the Koschei Complex + Building 21 blueprint (4 isolated puzzle sectors, dark Chemical Plant, Factory, Alpha Cluster, 2-floor Ext-Ops HQ, lift exfils).',
+    changelog: 'Koschei Complex ZAVOD-9 expansion + Engine Remaster: 4 sector bunker entrances across Vostok, Factory Admin & Shopkeeper dead-drop barter, Dual Bosses (The Rhinoceros & The Sniper) with C4 laser tripwires and Weapons Case Vault, R4D UV Detector cipher boards, single-WebGL-context consolidation, GeoPool/PBR shader pipeline, and O(1) AABB slab raycaster.',
     get semver() { return `${this.major}.${this.minor}.${this.patch}`; },
     get label() { return `${this.channel} ${this.stage} ${this.major}.${this.minor}.${this.patch}`; }
   },
@@ -994,6 +994,64 @@ window.GAME_DATA = {
       stackable: false,
       desc: 'Encrypted field laptop. Uplink three at the Alpha Cluster platforms to open the sealed archive.'
     },
+    r4d_detector: {
+      id: 'r4d_detector',
+      name: 'R4D UV Detector',
+      type: 'quest',
+      category: 'quest',
+      rarity: 'epic',
+      value: 3200,
+      weight: 0.6,
+      stackable: false,
+      desc: 'Handheld ultraviolet forensics scanner. Required to decode hidden chalk cipher boards in the Alpha Cluster.'
+    },
+    server_tape_red: {
+      id: 'server_tape_red',
+      name: 'Red Server Tape',
+      type: 'valuable',
+      category: 'valuables',
+      rarity: 'epic',
+      value: 2600,
+      weight: 0.3,
+      stackable: true,
+      maxStack: 4,
+      desc: 'Encrypted Koschei mainframe magnetic reel. Sought by the Factory Admin Shopkeeper for high-tier barter trades.'
+    },
+    server_tape_black: {
+      id: 'server_tape_black',
+      name: 'Black Server Tape',
+      type: 'valuable',
+      category: 'valuables',
+      rarity: 'rare',
+      value: 1650,
+      weight: 0.3,
+      stackable: true,
+      maxStack: 4,
+      desc: 'Backup optical telemetry spool from Alpha Cluster server racks. Accepted in Shopkeeper barter orders.'
+    },
+    aseptic_blocker: {
+      id: 'aseptic_blocker',
+      name: 'Aseptic Blocker',
+      type: 'valuable',
+      category: 'medical',
+      rarity: 'epic',
+      value: 2900,
+      weight: 0.4,
+      stackable: true,
+      maxStack: 4,
+      desc: 'Experimental Russian bio-prophylactic compound from DRD Labs. High trade value with the Shopkeeper.'
+    },
+    zavod_weapons_case: {
+      id: 'zavod_weapons_case',
+      name: 'ZAVOD-9 Weapons Case',
+      type: 'valuable',
+      category: 'valuables',
+      rarity: 'legendary',
+      value: 25000,
+      weight: 4.5,
+      stackable: false,
+      desc: 'Heavy armored prototype weapons case seized from The Rhinoceros and The Sniper. Extract for +1,500 XP & massive payout!'
+    },
 
     // === SELF-REVIVE, KEYS & HIGH-VALUE VOSTOK VALUABLES ===
     self_revive: {
@@ -1386,7 +1444,8 @@ window.GAME_DATA = {
       { id: 'basic_chemicals', min: 1, max: 3, w: 14 },
       { id: 'syringe', min: 1, max: 2, w: 14 },
       { id: 'medkit', min: 1, max: 2, w: 18 },
-      { id: 'self_revive', min: 1, max: 1, w: 8 }
+      { id: 'self_revive', min: 1, max: 1, w: 8 },
+      { id: 'aseptic_blocker', min: 1, max: 1, w: 3 }
     ],
     medical: [
       { id: 'bandage', min: 1, max: 3, w: 24 },
@@ -1407,7 +1466,9 @@ window.GAME_DATA = {
       { id: 'back_room_inventory_list', min: 1, max: 2, w: 14 },
       { id: 'hourly_schedule', min: 1, max: 2, w: 16 },
       { id: 'classified_dossier', min: 1, max: 1, w: 4 },
-      { id: 'antique_watch', min: 1, max: 1, w: 5 }
+      { id: 'antique_watch', min: 1, max: 1, w: 5 },
+      { id: 'server_tape_black', min: 1, max: 1, w: 3 },
+      { id: 'server_tape_red', min: 1, max: 1, w: 2 }
     ],
     household: [
       { id: 'tools', min: 1, max: 2, w: 18 },

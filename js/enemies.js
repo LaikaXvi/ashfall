@@ -217,6 +217,32 @@ class Enemy {
       this.focusedTarget = null;
       this.targetLockTimer = 0;
       this.activeGrenades = [];
+    } else if (tier === 'boss_rhino') {
+      this.name = 'THE RHINOCEROS';
+      this.maxHp = 420;
+      this.maxArmor = 280;
+      this.armor = 280;
+      this.damage = 17;
+      this.fireInterval = 0.24;
+      this.accuracy = 0.08;
+      this.speed = 3.2;
+      this.armorColor = 0x26292e;
+      this.headColor = 0x1a1c1f;
+      this.weaponId = 'm870';
+      this.hasFrontShield = true;
+    } else if (tier === 'boss_sniper') {
+      this.name = 'THE SNIPER';
+      this.maxHp = 260;
+      this.maxArmor = 160;
+      this.armor = 160;
+      this.damage = 28;
+      this.fireInterval = 1.15;
+      this.accuracy = 0.02;
+      this.speed = 2.6;
+      this.armorColor = 0x2e362c;
+      this.headColor = 0x1c201a;
+      this.weaponId = 'awm338';
+      this.isElevatedSniper = true;
     } else if (tier === 'boss') {
       this.name = 'COMMANDER VULTURE';
       this.maxHp = 260;
@@ -349,13 +375,14 @@ class Enemy {
   _buildModel() {
     // Unified MW2 Skeletal Rig & Layered Animation System for ALL Enemy Operators & NPCs!
     if (window.MW2Rig && window.MW2Rig.buildCharacterRig) {
-      const archetype = this.isOperator ? 'operator' : (this.tier || 'scavenger');
+      const isBossTier = this.tier === 'boss' || this.tier === 'boss_rhino' || this.tier === 'boss_sniper';
+      const archetype = this.isOperator ? 'operator' : (isBossTier ? 'boss' : (this.tier || 'scavenger'));
       const vestId = this.isOperator
         ? ((this.operatorEquipment && this.operatorEquipment.armor) || 'vest_2')
-        : (this.tier === 'boss' || this.tier === 'boss_guard' || this.tier === 'heavy' ? 'vest_3' : (this.tier === 'raider' ? 'vest_2' : 'none'));
+        : (isBossTier || this.tier === 'boss_guard' || this.tier === 'heavy' ? 'vest_3' : (this.tier === 'raider' ? 'vest_2' : 'none'));
       const bagId = this.isOperator
         ? ((this.operatorEquipment && this.operatorEquipment.backpack) || 'bag_medium')
-        : (this.tier === 'boss' ? 'bag_large' : (this.tier === 'raider' ? 'bag_small' : 'none'));
+        : (isBossTier ? 'bag_large' : (this.tier === 'raider' ? 'bag_small' : 'none'));
       const built = window.MW2Rig.buildCharacterRig({
         archetype,
         uniformColor: this.armorColor || 0x3b4437,
@@ -382,6 +409,19 @@ class Enemy {
       built.chest.userData = { enemy: this, part: 'torso' };
       built.skull.userData = { enemy: this, part: 'head' };
       this.hitboxes.push(built.chest, built.skull);
+
+      // The Rhinoceros: front ballistic riot shield mounted on left forearm
+      if (this.hasFrontShield && built.leftArm && built.leftArm.elbow) {
+        const shMat = new THREE.MeshPhongMaterial({ color: 0x1e2226, specular: 0x5c6870, shininess: 44 });
+        const slitMat = new THREE.MeshBasicMaterial({ color: 0x76b8d8 });
+        const shield = new THREE.Mesh(new THREE.BoxGeometry(0.62, 1.24, 0.055), shMat);
+        shield.position.set(-0.08, -0.10, -0.20);
+        const viewport = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.09, 0.065), slitMat);
+        viewport.position.set(0, 0.34, 0);
+        shield.add(viewport);
+        built.leftArm.elbow.add(shield);
+        this._rhinoShield = shield;
+      }
 
       const wDef = GAME_DATA.ITEMS[this.weaponId];
       this.isPistol = !!(wDef && wDef.slot === 'secondary');
@@ -633,7 +673,16 @@ class Enemy {
     // Operators & Armored Boss Guards absorb incoming fire with their vest armor just like players!
     this.timeSinceDamaged = 0;
     if (this.mw2Anim) this.mw2Anim.triggerHitFlinch(Math.random() < 0.5 ? 1 : -1);
-    if ((this.isOperator || this.tier === 'boss_guard' || this.tier === 'boss') && this.armor > 0) {
+    const isBossUnit = this.tier === 'boss' || this.tier === 'boss_guard' || this.tier === 'boss_rhino' || this.tier === 'boss_sniper';
+    // Front-arc riot shield mitigation for The Rhinoceros while armor remains (flanking/headshots/explosives bypass)
+    if (this.hasFrontShield && this.armor > 0 && attackerPos && !(attackerInfo && attackerInfo.hitZone === 'head')) {
+      const fYaw = (this.group ? this.group.rotation.y : 0);
+      const ax = attackerPos.x - this.position.x, az = attackerPos.z - this.position.z;
+      const al = Math.hypot(ax, az) || 1;
+      const dot = (Math.sin(fYaw) * (ax / al)) + (Math.cos(fYaw) * (az / al));
+      if (dot > 0.35) amount = Math.max(2, Math.round(amount * 0.42));
+    }
+    if ((this.isOperator || isBossUnit) && this.armor > 0) {
       this.lastHitArmor = true;
       const absorbed = Math.min(this.armor, Math.round(amount * 0.78));
       this.armor = Math.max(0, this.armor - absorbed);
@@ -2936,14 +2985,21 @@ class EnemyManager {
       this.enemies.push(new Enemy(scene, world, sp.pos, sp.tier, null, weaponSystem));
     }
 
-    // 3. Spawn Sector Boss INSIDE the Boss Encampment's Multi-Floor Central Command Center
-    const bossPoi = (world.pois || []).find(p => (p.name || '').toLowerCase().includes('boss'));
-    const bx = bossPoi ? bossPoi.x + 2.5 : 312.5;
-    const bz = bossPoi ? bossPoi.z + 3.5 : -266.5;
-    const bossPos = (world.bossSpawnPos && world.bossSpawnPos.clone)
-      ? world.bossSpawnPos.clone()
-      : new THREE.Vector3(bx, world.getTerrainHeight ? world.getTerrainHeight(bx, bz) : 0, bz);
-    this.enemies.push(new Enemy(scene, world, bossPos, 'boss', null, weaponSystem));
+    // 3. Spawn Sector Boss(es)
+    if (Array.isArray(world.bossSpawns) && world.bossSpawns.length > 0) {
+      for (const bs of world.bossSpawns) {
+        if (!bs || !bs.pos) continue;
+        this.enemies.push(new Enemy(scene, world, bs.pos.clone(), bs.tier || 'boss', null, weaponSystem));
+      }
+    } else {
+      const bossPoi = (world.pois || []).find(p => (p.name || '').toLowerCase().includes('boss'));
+      const bx = bossPoi ? bossPoi.x + 2.5 : 312.5;
+      const bz = bossPoi ? bossPoi.z + 3.5 : -266.5;
+      const bossPos = (world.bossSpawnPos && world.bossSpawnPos.clone)
+        ? world.bossSpawnPos.clone()
+        : new THREE.Vector3(bx, world.getTerrainHeight ? world.getTerrainHeight(bx, bz) : 0, bz);
+      this.enemies.push(new Enemy(scene, world, bossPos, 'boss', null, weaponSystem));
+    }
 
     // 4. Spawn Armored Boss Guards inside/around the Command Center & Compound (drop higher-tier weapons!)
     const guardSpawns = (world.bossGuardSpawns && world.bossGuardSpawns.length > 0)

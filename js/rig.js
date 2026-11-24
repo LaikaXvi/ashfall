@@ -130,6 +130,26 @@
                     tryLoadIdx(idx + 1);
                     return;
                   }
+                  gltf.scene.traverse((obj) => {
+                    if (obj.geometry) {
+                      if (!obj.geometry.userData) obj.geometry.userData = {};
+                      obj.geometry.userData._ashShared = true;
+                    }
+                    if (obj.material) {
+                      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+                      mats.forEach((m) => {
+                        if (!m) return;
+                        if (!m.userData) m.userData = {};
+                        m.userData._ashShared = true;
+                        ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap'].forEach((k) => {
+                          if (m[k]) {
+                            if (!m[k].userData) m[k].userData = {};
+                            m[k].userData._ashShared = true;
+                          }
+                        });
+                      });
+                    }
+                  });
                   this.soldier = {
                     scene: gltf.scene,
                     animations: Array.isArray(gltf.animations) ? gltf.animations : []
@@ -1523,6 +1543,7 @@
         }
         skin._detached = 0;
         if (hidden) continue;
+        if (skin.bodyMesh && skin.bodyMesh.layers && skin.bodyMesh.layers.mask === 8) continue;
 
         let syncDt = dt;
         if (camPos) {

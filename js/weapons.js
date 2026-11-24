@@ -2289,7 +2289,44 @@ class WeaponSystem {
   }
 
   buildThirdPersonWeapon(weaponDef, mods = {}) {
-    // Snapshot 1st-person viewmodel references so building the 3rd-person prop never mutates them
+    const normMods = (window.GAME_DATA && window.GAME_DATA.normalizeWeaponMods)
+      ? window.GAME_DATA.normalizeWeaponMods(mods || {})
+      : (mods || {});
+    const camoKey = (mods && mods.camo && mods.camo !== 'none') ? mods.camo : '';
+    const cacheKey = `${weaponDef.id}|${camoKey}|${JSON.stringify(normMods)}`;
+    const protoMap = (WeaponSystem._tpProtoCache = WeaponSystem._tpProtoCache || new Map());
+
+    const cloneFromProto = (proto) => {
+      const grp = proto.group.clone(true);
+      let magMesh = null, spareMagMesh = null, boltMesh = null, foregripAnchor = null;
+      grp.traverse((o) => {
+        const role = o.userData && o.userData._tpRole;
+        if (role === 'mag') magMesh = o;
+        else if (role === 'spareMag') spareMagMesh = o;
+        else if (role === 'bolt') boltMesh = o;
+        else if (role === 'foregrip') foregripAnchor = o;
+      });
+      return {
+        group: grp,
+        weaponId: proto.weaponId,
+        isPistol: proto.isPistol,
+        hasVertGrip: proto.hasVertGrip,
+        foregripAnchor,
+        muzzlePos: proto.muzzlePos.clone(),
+        magMesh,
+        spareMagMesh,
+        boltMesh,
+        magRestPos: proto.magRestPos.clone(),
+        magRestRot: proto.magRestRot.clone(),
+        boltRestPos: proto.boltRestPos.clone(),
+        boltRestRot: proto.boltRestRot.clone()
+      };
+    };
+    if (protoMap.has(cacheKey)) {
+      return cloneFromProto(protoMap.get(cacheKey));
+    }
+
+    // Snapshot 1st-person viewmodel references so building the 3rd-person prototype never mutates them
     const saved = {
       currentMesh: this.currentMesh,
       hasVertGrip: !!this.hasVertGrip,
@@ -2325,21 +2362,80 @@ class WeaponSystem {
     const g = this.buildViewmodel(weaponDef, mods, false);
     this.viewmodelGroup.remove(g);
 
-    const tpData = {
+    // Strip hidden FP arm/hand groups & batch all static sub-meshes by material into ~3-5 draw calls!
+    [this.rightHand, this.leftHand, this.rightArm, this.leftArm, this.leftFist].forEach((h) => {
+      if (h && h.parent) h.parent.remove(h);
+    });
+    const dynRoots = new Set([this.magMesh, this.spareMagMesh, this.boltMesh, this.boltCarrierMesh, this.chamberRoundMesh].filter(Boolean));
+    if (this.magMesh) this.magMesh.userData._tpRole = 'mag';
+    if (this.spareMagMesh) this.spareMagMesh.userData._tpRole = 'spareMag';
+    if (this.boltMesh) this.boltMesh.userData._tpRole = 'bolt';
+    if (this.foregripAnchor) this.foregripAnchor.userData._tpRole = 'foregrip';
+
+    if (window.ModelSystem && typeof window.ModelSystem.mergeGeos === 'function') {
+      g.updateMatrixWorld(true);
+      const invRoot = new THREE.Matrix4().copy(g.matrixWorld).invert();
+      const relMat = new THREE.Matrix4();
+      const buckets = new Map();
+      const toRemove = [];
+      const isUnderDyn = (node) => {
+        let cur = node;
+        while (cur && cur !== g) {
+          if (dynRoots.has(cur) || cur === this.foregripAnchor) return true;
+          cur = cur.parent;
+        }
+        return false;
+      };
+      g.traverse((obj) => {
+        if (!obj.isMesh || !obj.geometry || !obj.material || !obj.visible) return;
+        if (isUnderDyn(obj)) return;
+        let p = obj.parent;
+        while (p && p !== g) { if (!p.visible) return; p = p.parent; }
+        const mat = Array.isArray(obj.material) ? obj.material[0] : obj.material;
+        if (!mat) return;
+        relMat.multiplyMatrices(invRoot, obj.matrixWorld);
+        const cg = obj.geometry.clone();
+        cg.applyMatrix4(relMat);
+        let b = buckets.get(mat.uuid);
+        if (!b) { b = { mat, geos: [] }; buckets.set(mat.uuid, b); }
+        b.geos.push(cg);
+        toRemove.push(obj);
+      });
+      if (toRemove.length > 4 && buckets.size > 0) {
+        toRemove.forEach((m) => { if (m.parent) m.parent.remove(m); });
+        for (const b of buckets.values()) {
+          const merged = window.ModelSystem.mergeGeos(b.geos);
+          b.geos.forEach((gg) => gg.dispose());
+          if (!merged.userData) merged.userData = {};
+          merged.userData._ashShared = true;
+          if (!b.mat.userData) b.mat.userData = {};
+          b.mat.userData._ashShared = true;
+          g.add(new THREE.Mesh(merged, b.mat));
+        }
+      }
+    }
+
+    // Mark remaining dynamic geometries & materials as shared prototype assets so raid disposal keeps cache intact
+    g.traverse((o) => {
+      if (o.geometry) { if (!o.geometry.userData) o.geometry.userData = {}; o.geometry.userData._ashShared = true; }
+      if (o.material) {
+        const ms = Array.isArray(o.material) ? o.material : [o.material];
+        ms.forEach((m) => { if (m) { if (!m.userData) m.userData = {}; m.userData._ashShared = true; } });
+      }
+    });
+
+    const proto = {
       group: g,
       weaponId: weaponDef.id,
       isPistol: weaponDef.slot === 'secondary',
       hasVertGrip: !!this.hasVertGrip,
-      foregripAnchor: this.foregripAnchor,
       muzzlePos: this.muzzleMesh.position.clone(),
-      magMesh: this.magMesh,
-      spareMagMesh: this.spareMagMesh,
-      boltMesh: this.boltMesh,
       magRestPos: this.magRestPos.clone(),
       magRestRot: this.magRestRot.clone(),
       boltRestPos: this.boltRestPos.clone(),
       boltRestRot: this.boltRestRot.clone()
     };
+    protoMap.set(cacheKey, proto);
 
     // Restore all 1st-person viewmodel references untouched
     this.currentMesh = saved.currentMesh;
@@ -2371,7 +2467,7 @@ class WeaponSystem {
     this.muzzleMesh.position.copy(saved.muzzlePos);
     this.muzzleFlash.position.copy(saved.flashPos);
 
-    return tpData;
+    return cloneFromProto(proto);
   }
 
   tickFireTimer(dt) {
@@ -6047,6 +6143,7 @@ class WeaponSystem {
         } else if (worldHit && worldDist <= segLen) {
           if (traceCount < this._tracePtsBuf.length) this._tracePtsBuf[traceCount++].copy(worldHit.point);
           this._spawnImpact(worldHit.point, 0xc8b898, 4);
+          if (window.ZavodBunker && window.ZavodBunker.onBulletHit) window.ZavodBunker.onBulletHit(worldHit.point);
           break;
         }
 

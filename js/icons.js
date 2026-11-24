@@ -132,11 +132,21 @@ class ItemIconRenderer {
     this.renderer.render(this.scene, this.camera);
     const dataUrl = this.canvas.toDataURL('image/png');
     this.cache[cacheKey] = dataUrl;
+    while (this.stage.children.length > 0) this.stage.remove(this.stage.children[0]);
+    if (window.AshfallRenderer && window.AshfallRenderer.disposeSceneGraph) {
+      window.AshfallRenderer.disposeSceneGraph(mesh);
+    }
     return dataUrl;
   }
 
   _mat(color, emissive = 0x000000, shininess = 42, specular = 0x5a6570) {
-    return new THREE.MeshPhongMaterial({ color, emissive, shininess, specular });
+    if (!this._matPool) this._matPool = new Map();
+    const k = `${color}|${emissive}|${shininess}|${specular}`;
+    if (this._matPool.has(k)) return this._matPool.get(k);
+    const m = new THREE.MeshPhongMaterial({ color, emissive, shininess, specular });
+    m.userData._ashShared = true;
+    this._matPool.set(k, m);
+    return m;
   }
 
   _get2DWeaponSpecs() {
@@ -1370,6 +1380,50 @@ class ItemIconRenderer {
       ant2.scale.y = 0.75;
       g.add(body, screen, ant1, ant2);
       g.rotation.set(0.18, -0.32, 0);
+      return g;
+    }
+    if (id === 'r4d_detector') {
+      const shell = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.34, 0.08), this._mat(0x283238, 0x000000, 62));
+      const uvWin = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.14, 0.09), this._mat(0xb388ff, 0x4527a0, 90, 0xe0c8ff));
+      uvWin.position.y = 0.06;
+      const lens = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.04, 14), this._mat(0x7c4dff, 0x311b92, 95));
+      lens.rotation.x = Math.PI / 2;
+      lens.position.set(0, -0.09, 0.04);
+      g.add(shell, uvWin, lens);
+      g.rotation.set(0.18, -0.35, 0.06);
+      return g;
+    }
+    if (id === 'zavod_weapons_case') {
+      const caseBody = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.24, 0.32), this._mat(0x26292b, 0x000000, 48));
+      const lidTrim = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.05, 0.34), this._mat(0xffca28, 0x3a2a00, 70));
+      lidTrim.position.y = 0.05;
+      const latchL = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.08, 0.35), this._mat(0xd9822b));
+      latchL.position.x = -0.17;
+      const latchR = latchL.clone();
+      latchR.position.x = 0.17;
+      g.add(caseBody, lidTrim, latchL, latchR);
+      g.rotation.set(0.32, -0.45, 0.08);
+      return g;
+    }
+    if (id === 'server_tape_red' || id === 'server_tape_black') {
+      const col = id === 'server_tape_red' ? 0xb71c1c : 0x202428;
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.22, 0.08), this._mat(col, 0x000000, 52));
+      const reelL = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.09, 12), this._mat(0xdce2e6));
+      reelL.rotation.x = Math.PI / 2;
+      reelL.position.x = -0.07;
+      const reelR = reelL.clone();
+      reelR.position.x = 0.07;
+      g.add(body, reelL, reelR);
+      g.rotation.set(0.22, -0.34, 0.08);
+      return g;
+    }
+    if (id === 'aseptic_blocker') {
+      const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.12, 0.32, 14), this._mat(0xe0e8e4, 0x000000, 55));
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.118, 0.118, 0.11, 14), this._mat(0x2e7d32, 0x09240b, 40));
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.07, 12), this._mat(0xffa726));
+      cap.position.y = 0.19;
+      g.add(bottle, band, cap);
+      g.rotation.set(0.24, -0.32, 0.05);
       return g;
     }
 
