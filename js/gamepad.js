@@ -724,8 +724,6 @@ class GamepadController {
   }
 
   _getMenuScope() {
-    const fobOv = document.getElementById('fob-enter-overlay');
-    if (fobOv && !fobOv.classList.contains('hidden')) return fobOv;
     const inGameSettings = document.getElementById('ingame-settings-overlay');
     if (inGameSettings && !inGameSettings.classList.contains('hidden')) return inGameSettings;
     const pauseOv = document.getElementById('pointer-lock-overlay');
@@ -770,6 +768,14 @@ class GamepadController {
     const pad = this._getPad();
     if (!pad) return;
 
+    if (this._lockUntilRelease && this._lockUntilRelease.size > 0) {
+      for (const idx of Array.from(this._lockUntilRelease)) {
+        if (!this._isDown(pad, idx)) {
+          this._lockUntilRelease.delete(idx);
+        }
+      }
+    }
+
     if (this._menuNavCooldown > 0) this._menuNavCooldown = Math.max(0, this._menuNavCooldown - dt);
 
     const lsDz = Number.isFinite(window.CONTROLLER_LS_DEADZONE) ? window.CONTROLLER_LS_DEADZONE : this.deadzone;
@@ -791,10 +797,10 @@ class GamepadController {
     }
 
     // Prioritize D-Pad (Left Stick fallback) using the Unified Amber Spatial Selector!
-    const dUp = this._isDown(pad, 12);
-    const dDown = this._isDown(pad, 13);
-    const dLeft = this._isDown(pad, 14);
-    const dRight = this._isDown(pad, 15);
+    const dUp = !this._lockUntilRelease.has(12) && this._isDown(pad, 12);
+    const dDown = !this._lockUntilRelease.has(13) && this._isDown(pad, 13);
+    const dLeft = !this._lockUntilRelease.has(14) && this._isDown(pad, 14);
+    const dRight = !this._lockUntilRelease.has(15) && this._isDown(pad, 15);
     const sUp = !dUp && !dDown && !dLeft && !dRight && ls.y < -0.58;
     const sDown = !dUp && !dDown && !dLeft && !dRight && ls.y > 0.58;
     const sLeft = !dUp && !dDown && !dLeft && !dRight && ls.x < -0.58;
@@ -949,7 +955,7 @@ class GamepadController {
   }
 
   // Full native gameplay controller support inside the walkable 3D Hideout bunker!
-  updateHideoutRoam(dt, hideoutBunker, { onOpenMenu, onInteractStation, ui } = {}) {
+  updateHideoutRoam(dt, hideoutBunker, { onOpenMenu, onOpenDeployStash, onInteractStation, ui } = {}) {
     const pad = this._getPad();
     if (!pad || !hideoutBunker) return;
 
@@ -968,6 +974,7 @@ class GamepadController {
     const rs = this._applyStickCurve(pad.axes[2] || 0, pad.axes[3] || 0, rsDz);
     const gb = window.GAMEPAD_BINDS || {};
     const bPause = gb.pause ?? 9;
+    const bBackpack = gb.backpack ?? 13;
     const bSprint = gb.sprint ?? 10;
     const bJump = gb.jump ?? 0;
     const bCrouch = gb.crouch ?? 1;
@@ -980,6 +987,17 @@ class GamepadController {
       hideoutBunker.padMoveY = 0;
       hideoutBunker.padSprint = false;
       if (onOpenMenu) onOpenMenu();
+      this._snapshot(pad);
+      return;
+    }
+
+    // D-Pad Down (13): Open Deploy Stash / Personal Inventory / Backpack screen!
+    if (!this._lockUntilRelease.has(bBackpack) && this._justPressed(pad, bBackpack)) {
+      this._lockUntilRelease.add(bBackpack);
+      hideoutBunker.padMoveX = 0;
+      hideoutBunker.padMoveY = 0;
+      hideoutBunker.padSprint = false;
+      if (onOpenDeployStash) onOpenDeployStash();
       this._snapshot(pad);
       return;
     }

@@ -14,26 +14,13 @@
   <!-- 3D Viewport -->
   <canvas id="game-canvas"></canvas>
 
-  <!-- DMZ-Style FOB Social Hub Entry Overlay (shown on boot over live 3D hangar & helipad) -->
-  <div id="fob-enter-overlay" class="fob-enter-overlay">
-    <div class="fob-enter-card">
-      <div class="fob-enter-eyebrow">SECTOR 7 // FORWARD OPERATING BASE</div>
-      <h1 class="fob-enter-title">ASHFALL <span class="accent">// FOB</span></h1>
-      <p class="fob-enter-sub">SOCIAL HUB · ARMORY · CONTRACTS · GUNSMITH · EXFIL HELIPAD</p>
-      <div class="fob-enter-actions">
-        <button id="btn-enter-fob" class="btn-primary fob-enter-btn">ENTER FOB [CLICK / SPACE]</button>
-        <button id="btn-fob-menu" class="btn-small fob-menu-btn">OPEN TAC-MENU [M]</button>
-      </div>
-    </div>
-  </div>
-
   <!-- Walkable 3D Hideout HUD (Visible in Free-Roam Hideout Mode) -->
-  <div id="hideout-roam-hud" class="hideout-roam-hud hidden">
+  <div id="hideout-roam-hud" class="hideout-roam-hud">
     <div id="hideout-station-markers" class="hideout-station-markers hidden"></div>
     <div class="hideout-roam-topbar">
-      <button id="btn-exit-hideout-roam" class="btn-small topbar-back-btn">← MENU [ESC / M]</button>
+      <button id="btn-exit-hideout-roam" class="btn-small topbar-back-btn">MENU [ESC]</button>
       <span id="fob-host-banner" class="hideout-roam-hint" style="border-color:rgba(105,240,174,0.45);color:#69f0ae;">YOUR FOB (1/3)</span>
-      <span class="hideout-roam-hint">WASD WALK · SHIFT SPRINT · [E] / CLICK INTERACT WITH STATIONS</span>
+      <span class="hideout-roam-hint">WASD WALK · [TAB] / D-PAD ↓ STASH &amp; LOADOUT · [E] / CLICK INTERACT · [ESC] MENU</span>
     </div>
     <div id="hideout-roam-crosshair" class="hideout-roam-crosshair"></div>
     <div id="hideout-interact-prompt" class="hideout-interact-prompt hidden"></div>
@@ -72,11 +59,11 @@
   <button id="raid-update-badge" class="menu-update-badge raid-update-badge hidden" title="Safe Dev Exfil (keeps all found-in-raid items &amp; gear) and reload into the latest version">NEW VERSION — EXFIL &amp; UPDATE</button>
 
   <!-- ==================== MAIN MENU & UTILITY TABS ==================== -->
-  <div id="hideout-screen" class="screen active">
+  <div id="hideout-screen" class="screen active hideout-roam-mode">
     <!-- IMPORTANT: Update version in GAME_DATA.VERSION_INFO (js/data.js) and here with EVERY new commit — 0.X.XX pre-release only! -->
     <div class="menu-version-stack">
       <button id="menu-update-badge" class="menu-update-badge hidden" title="Click to reload into the latest version">NEW VERSION AVAILABLE</button>
-      <div id="menu-version-badge" class="menu-version-badge">Alpha RC 0.2.89</div>
+      <div id="menu-version-badge" class="menu-version-badge">Alpha RC 0.2.90</div>
     </div>
     <!-- Minimal Sub-Menu Top Bar (Top-Left Back Button only — no redundant nav band) -->
     <header id="menu-topbar" class="hideout-header glass-panel">
@@ -1440,7 +1427,7 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION_INFO with every new commit — 0.X.XX only!) -->
-  <script src="js/data.js?v=0289"></script>
+  <script src="js/data.js?v=0290"></script>
   <script src="js/renderer.js?v=0289"></script>
   <script src="js/rig.js?v=0289"></script>
   <script src="js/animation.js?v=0277"></script>
@@ -1459,12 +1446,12 @@
   <script src="js/squad.js?v=0281"></script>
   <script src="js/multiplayer.js?v=264"></script>
   <script src="js/player.js?v=0277"></script>
-  <script src="js/gamepad.js?v=264"></script>
+  <script src="js/gamepad.js?v=0290"></script>
   <script src="js/gunsmith.js?v=0289"></script>
   <script src="js/matchmaking.js?v=0289"></script>
   <script src="js/hideout.js?v=0277"></script>
-  <script src="js/ui.js?v=0289"></script>
+  <script src="js/ui.js?v=0290"></script>
   <script src="js/console.js?v=0281"></script>
-  <script src="js/main.js?v=0289"></script>
+  <script src="js/main.js?v=0290"></script>
 </body>
 </html>

@@ -118,23 +118,22 @@
   const hideoutBunker = (typeof HideoutBunker !== 'undefined') ? new HideoutBunker() : null;
   window.hideoutBunker = hideoutBunker;
   let hideoutHadPointerLock = false;
+  let _fobEscOpenedMenuUntil = 0;
   let _lastFobPosBroadcast = 0;
 
-  function dismissFobOverlay(enterRoam = true) {
-    const ov = document.getElementById('fob-enter-overlay');
-    if (ov) ov.classList.add('hidden');
-    if (window.soundEngine) {
-      try {
-        window.soundEngine.init();
-        if (window.soundEngine.playUiConfirm) window.soundEngine.playUiConfirm();
-      } catch (e) {}
-    }
-    if (enterRoam) {
+  function openDeployStashFromFob() {
+    if (!ui || inRaid || (gunsmith && gunsmith.isOpen)) return;
+    const sum = document.getElementById('summary-screen');
+    if (sum && sum.classList.contains('active')) return;
+    if (ui.activeMenuTab === 'matchmaking') return;
+    if (hideoutBunker && !hideoutBunker.activeRoam && ui.activeMenuTab === 'deploy') {
+      if (ui._deployWeaponPick && ui.closeDeployWeaponPickMode) ui.closeDeployWeaponPickMode();
+      ui.openMenuTab('home');
       enterHideoutRoam();
-    } else {
-      exitHideoutRoam(true);
+      return;
     }
-    if (ui && ui.revealLobbyChat) ui.revealLobbyChat(5);
+    exitHideoutRoam(false);
+    ui.openMenuTab('deploy');
   }
 
   function openFobStation(station) {
@@ -158,40 +157,28 @@
     }
   }
 
-  // Boot directly into DMZ-style FOB Entry Overlay over live 3D Hangar & Helipad
-  window.addEventListener('keydown', () => { window._lastInputMode = 'kbm'; });
-  window.addEventListener('mousedown', () => { window._lastInputMode = 'kbm'; });
-  const _fobOvInit = document.getElementById('fob-enter-overlay');
-  if (_fobOvInit && hideoutBunker) {
-    const hs = document.getElementById('hideout-screen');
-    if (hs) hs.classList.add('hideout-roam-mode');
-    const btnEnterFob = document.getElementById('btn-enter-fob');
-    const btnFobMenu = document.getElementById('btn-fob-menu');
-    if (btnEnterFob) btnEnterFob.addEventListener('click', () => dismissFobOverlay(true));
-    if (btnFobMenu) btnFobMenu.addEventListener('click', () => dismissFobOverlay(false));
-    if (window.RigAssets && typeof window.RigAssets.load === 'function') {
-      if (btnEnterFob) {
-        btnEnterFob.disabled = true;
-        btnEnterFob.textContent = 'LOADING OPERATOR ASSETS…';
+  // Boot directly into the walkable 3D FOB over live Hangar & Helipad; prime WebAudio on first user input
+  function _primeFobAudioOnce() {
+    if (window._fobAudioPrimed || !window.soundEngine) return;
+    window._fobAudioPrimed = true;
+    try {
+      window.soundEngine.init();
+      if (!inRaid && hideoutBunker && hideoutBunker.activeRoam && window.soundEngine.startFobAmbience) {
+        window.soundEngine.startFobAmbience();
       }
-      if (btnFobMenu) btnFobMenu.disabled = true;
-      window.RigAssets.load().then(() => {
-        if (btnEnterFob) {
-          btnEnterFob.disabled = false;
-          btnEnterFob.textContent = 'ENTER FOB [CLICK / SPACE]';
-        }
-        if (btnFobMenu) {
-          btnFobMenu.disabled = false;
-          btnFobMenu.textContent = 'OPEN TAC-MENU [M]';
-        }
-        if (hideoutBunker && hideoutBunker.rebuildAvatars) {
-          hideoutBunker.rebuildAvatars();
-        }
-        if (window.itemIcons && window.itemIcons.loadItemModels) {
-          window.itemIcons.loadItemModels();
-        }
-      });
-    }
+    } catch (e) {}
+  }
+  window.addEventListener('keydown', () => { window._lastInputMode = 'kbm'; _primeFobAudioOnce(); });
+  window.addEventListener('mousedown', () => { window._lastInputMode = 'kbm'; _primeFobAudioOnce(); });
+  if (window.RigAssets && typeof window.RigAssets.load === 'function') {
+    window.RigAssets.load().then(() => {
+      if (hideoutBunker && hideoutBunker.rebuildAvatars) {
+        hideoutBunker.rebuildAvatars();
+      }
+      if (window.itemIcons && window.itemIcons.loadItemModels) {
+        window.itemIcons.loadItemModels();
+      }
+    });
   }
 
   function enterHideoutRoam() {
@@ -230,7 +217,8 @@
     const roamHud = document.getElementById('hideout-roam-hud');
     if (hideoutScreen) hideoutScreen.classList.remove('hideout-roam-mode');
     if (roamHud) roamHud.classList.add('hidden');
-    if (openMenu && !inRaid && ui && ui.activeMenuTab === 'home') {
+    if (openMenu && !inRaid && ui) {
+      if (ui.activeMenuTab !== 'home') ui.openMenuTab('home');
       requestAnimationFrame(() => ui.ensureInitialSelection());
     }
   }
@@ -239,6 +227,8 @@
   if (walkBtn) walkBtn.addEventListener('click', () => enterHideoutRoam());
   const exitRoamBtn = document.getElementById('btn-exit-hideout-roam');
   if (exitRoamBtn) exitRoamBtn.addEventListener('click', () => exitHideoutRoam(true));
+
+  if (hideoutBunker) enterHideoutRoam();
 
   window.addEventListener('resize', () => {
     if (hideoutBunker) hideoutBunker.onResize();
@@ -249,6 +239,7 @@
       if (document.pointerLockElement === canvas) {
         hideoutHadPointerLock = true;
       } else if (hideoutHadPointerLock && !(ui && ui.isChatInputActive)) {
+        _fobEscOpenedMenuUntil = performance.now() + 250;
         exitHideoutRoam(true);
       }
     }
@@ -987,6 +978,7 @@
         console.error('[ZAVOD] transfer failed', err);
         if (window.ZavodBunker) window.ZavodBunker.hideLoading();
         ui.showScreen('hideout');
+        enterHideoutRoam();
       }
     }, 1400);
   }
@@ -1189,6 +1181,7 @@
     ui.openMenuTab('home');
     ui.renderHideout();
     ui.showScreen('hideout');
+    enterHideoutRoam();
   });
 
   const btnCloseLoot = document.getElementById('btn-close-loot');
@@ -1346,26 +1339,22 @@
   window.addEventListener('keydown', (e) => {
     if (devConsole && devConsole.isOpen) return;
     if (!inRaid) {
+      const sumEl = document.getElementById('summary-screen');
+      if (sumEl && sumEl.classList.contains('active')) return;
       const tag = document.activeElement && document.activeElement.tagName;
       const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
-      const fobOv = document.getElementById('fob-enter-overlay');
-      if (fobOv && !fobOv.classList.contains('hidden')) {
-        const btnEnter = document.getElementById('btn-enter-fob');
-        if (btnEnter && btnEnter.disabled) return;
-        if (e.code === 'Space' || e.code === 'Enter') {
-          e.preventDefault();
-          dismissFobOverlay(true);
-        } else if (e.code === 'KeyM' || e.code === 'Escape') {
-          e.preventDefault();
-          dismissFobOverlay(false);
-        }
+      const kb = window.KEYBINDS || {};
+      if (!typing && !(ui && ui.isChatInputActive) && !(ui && ui._rebindCleanup) && !(gunsmith && gunsmith.isOpen) &&
+          (e.code === 'Tab' || e.code === (kb.backpack || 'Tab'))) {
+        e.preventDefault();
+        if (!e.repeat) openDeployStashFromFob();
         return;
       }
       if (hideoutBunker && hideoutBunker.activeRoam) {
         hideoutBunker.keys[e.code] = true;
-        const kb = window.KEYBINDS || {};
-        if (e.code === 'Escape' || e.code === 'KeyM') {
+        if (e.code === 'Escape') {
           e.preventDefault();
+          _fobEscOpenedMenuUntil = performance.now() + 250;
           exitHideoutRoam(true);
           return;
         }
@@ -1393,9 +1382,34 @@
         ui.closeDeployWeaponPickMode();
         return;
       }
-      if (e.code === 'Escape' && !gunsmith.isOpen && ui.activeMenuTab !== 'home') {
-        ui.openMenuTab('home');
-        enterHideoutRoam();
+      if (e.code === 'Escape' && !(gunsmith && gunsmith.isOpen)) {
+        if (performance.now() < _fobEscOpenedMenuUntil) return;
+        const opCtx = document.getElementById('op-context-menu');
+        if (opCtx && !opCtx.classList.contains('hidden')) {
+          if (ui && ui.closeOperatorContextMenu) ui.closeOperatorContextMenu();
+          else opCtx.classList.add('hidden');
+          return;
+        }
+        const popout = document.getElementById('item-popout');
+        if (popout && !popout.classList.contains('hidden')) {
+          if (ui && ui.hideItemPopout) ui.hideItemPopout();
+          else popout.classList.add('hidden');
+          return;
+        }
+        if (ui && ui.activeMenuTab === 'keybinds') {
+          ui.openMenuTab('settings');
+          return;
+        }
+        if (ui && ui.activeMenuTab === 'map') {
+          ui.openMenuTab('deploy');
+          return;
+        }
+        if (ui && ui.activeMenuTab !== 'matchmaking') {
+          e.preventDefault();
+          if (ui.activeMenuTab !== 'home') ui.openMenuTab('home');
+          enterHideoutRoam();
+          return;
+        }
       }
       return;
     }
@@ -4405,6 +4419,7 @@
       if (hideoutBunker && hideoutBunker.activeRoam) {
         gamepad.updateHideoutRoam(dt, hideoutBunker, {
           onOpenMenu: () => exitHideoutRoam(true),
+          onOpenDeployStash: () => openDeployStashFromFob(),
           onInteractStation: (st) => openFobStation(st),
           ui
         });

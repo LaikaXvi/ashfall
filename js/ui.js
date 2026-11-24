@@ -10649,14 +10649,12 @@ class GameUI {
     const sumOpen = !!(sum && sum.classList.contains('active'));
     const igSet = document.getElementById('ingame-settings-overlay');
     const igSetOpen = !!(igSet && !igSet.classList.contains('hidden'));
-    const fobEnter = document.getElementById('fob-enter-overlay');
-    const fobEnterOpen = !!(fobEnter && !fobEnter.classList.contains('hidden'));
     const hideout = document.getElementById('hideout-screen');
     const hideoutRoam = !!(hideout && hideout.classList.contains('hideout-roam-mode'));
     const onSubMenu = !inRaidNow && !hideoutRoam && this.activeMenuTab !== 'home' && this.activeMenuTab !== 'matchmaking';
 
-    // When dismissing the FOB entry screen or returning from post-raid summary into the FOB, show chat for 5s!
-    const entryGateOpen = !!(sumOpen || fobEnterOpen);
+    // When returning from post-raid summary into the FOB, show chat for 5s!
+    const entryGateOpen = !!sumOpen;
     if (this._wasEntryGateOpen && !entryGateOpen) {
       this._chatVisibleUntil = performance.now() + 5000;
       if (this._chatAutoHideTimeout) clearTimeout(this._chatAutoHideTimeout);
@@ -10666,7 +10664,7 @@ class GameUI {
     }
     this._wasEntryGateOpen = entryGateOpen;
 
-    const shouldSuppress = lootOpen || gsOpen || sumOpen || igSetOpen || fobEnterOpen || onSubMenu;
+    const shouldSuppress = lootOpen || gsOpen || sumOpen || igSetOpen || onSubMenu;
     const timerActive = (this._chatVisibleUntil || 0) > performance.now();
     const keepOpenForUser = !!(this.isChatInputActive || (inRaidNow && this.isTacMapOpen));
     const autoHidden = !shouldSuppress && !keepOpenForUser && !timerActive;
