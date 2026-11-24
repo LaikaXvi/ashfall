@@ -546,6 +546,7 @@ class SquadMate {
     if (!this.world.extractZones || this.world.extractZones.length === 0) return null;
     let best = null, bestD = Infinity;
     for (const z of this.world.extractZones) {
+      if (z.locked) continue;
       const d = this.position.distanceTo(z.position);
       if (d < bestD) { bestD = d; best = z; }
     }
