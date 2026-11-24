@@ -238,7 +238,7 @@
     if (!inRaid && hideoutBunker && hideoutBunker.activeRoam) {
       if (document.pointerLockElement === canvas) {
         hideoutHadPointerLock = true;
-      } else if (hideoutHadPointerLock && !(ui && ui.isChatInputActive)) {
+      } else if (hideoutHadPointerLock && !(ui && ui.isChatInputActive) && !(ui && ui.socialDrawerOpen)) {
         _fobEscOpenedMenuUntil = performance.now() + 250;
         exitHideoutRoam(true);
       }
@@ -319,6 +319,7 @@
 
   function startRaid(zoneId, matchId = null, raidOpts = {}) {
     if (inRaid) return;
+    if (ui && ui.socialDrawerOpen && ui.toggleSocialDrawer) ui.toggleSocialDrawer(false);
     window.soundEngine.init();
     const baseZone = GAME_DATA.ZONES[zoneId] || GAME_DATA.ZONES.outpost;
     const zone = { ...baseZone };
@@ -1344,6 +1345,12 @@
       const tag = document.activeElement && document.activeElement.tagName;
       const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
       const kb = window.KEYBINDS || {};
+      if (e.code === 'Escape' && ui && ui.closeNotifCtx && ui.closeNotifCtx()) return;
+      if (e.code === 'Escape' && ui && ui.socialDrawerOpen) {
+        e.preventDefault();
+        ui.toggleSocialDrawer(false);
+        return;
+      }
       if (!typing && !(ui && ui.isChatInputActive) && !(ui && ui._rebindCleanup) && !(gunsmith && gunsmith.isOpen) &&
           (e.code === 'Tab' || e.code === (kb.backpack || 'Tab'))) {
         e.preventDefault();
@@ -1371,8 +1378,6 @@
         hideoutBunker.keys[e.code] = true;
         return;
       }
-      if (e.code === 'Escape' && ui && ui.closeNotifCtx && ui.closeNotifCtx()) return;
-      if (ui && ui.socialDrawerOpen && (e.code === 'Escape')) { ui.toggleSocialDrawer(false); return; }
       if (!typing && !gunsmith.isOpen && ui && ui.cycleMenuTab && (e.code === 'KeyQ' || e.code === 'KeyE')) {
         e.preventDefault();
         ui.cycleMenuTab(e.code === 'KeyE' ? 1 : -1);
@@ -4416,7 +4421,7 @@
         }
       }
       // Enable full controller navigation in Main Menu, Stash, Operator, Settings, Gunsmith & Summary screens!
-      if (hideoutBunker && hideoutBunker.activeRoam) {
+      if (hideoutBunker && hideoutBunker.activeRoam && !(ui && ui.socialDrawerOpen)) {
         gamepad.updateHideoutRoam(dt, hideoutBunker, {
           onOpenMenu: () => exitHideoutRoam(true),
           onOpenDeployStash: () => openDeployStashFromFob(),

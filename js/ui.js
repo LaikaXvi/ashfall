@@ -203,6 +203,8 @@ class GameUI {
   _getNavScope() {
     const wpnModal = document.getElementById('weapon-staging-modal');
     if (wpnModal && !wpnModal.classList.contains('hidden')) return wpnModal;
+    const socDrawer = document.getElementById('social-drawer');
+    if (this.socialDrawerOpen && socDrawer && socDrawer.classList.contains('open')) return socDrawer;
     const inGameSettings = document.getElementById('ingame-settings-overlay');
     if (inGameSettings && !inGameSettings.classList.contains('hidden')) return inGameSettings;
     const pauseOv = document.getElementById('pointer-lock-overlay');
@@ -2845,7 +2847,22 @@ class GameUI {
     const scrim = document.getElementById('social-drawer-scrim');
     if (d) d.classList.toggle('open', open);
     if (scrim) scrim.classList.toggle('hidden', !open);
-    if (open) { this._dockLobbyChat(); this.renderSocial(); }
+    if (open) {
+      if (document.pointerLockElement) {
+        try { document.exitPointerLock(); } catch (e) {}
+      }
+      if (this.drawerTab === 'chat') this._dockLobbyChat();
+      else this._undockLobbyChat();
+      this.renderSocial();
+      requestAnimationFrame(() => this.ensureInitialSelection());
+    } else {
+      this._undockLobbyChat();
+      this._relockGameplayPointerIfNeeded();
+      const hideout = document.getElementById('hideout-screen');
+      if (hideout && !hideout.classList.contains('hideout-roam-mode')) {
+        requestAnimationFrame(() => this.ensureInitialSelection());
+      }
+    }
   }
   setDrawerTab(name) {
     this.drawerTab = name;
@@ -2854,7 +2871,8 @@ class GameUI {
       const el = document.getElementById(`drawer-pane-${p}`);
       if (el) el.classList.toggle('hidden', p !== name);
     }
-    if (name === 'chat') { this._dockLobbyChat(); this.clearWhisperNotifs(); }
+    if (name === 'chat' && this.socialDrawerOpen) { this._dockLobbyChat(); this.clearWhisperNotifs(); }
+    else { this._undockLobbyChat(); }
   }
   _normalizePartyVisibility() {
     const v = this.profile && this.profile.social && this.profile.social.partyVisibility;
@@ -3030,6 +3048,16 @@ class GameUI {
       const slot = document.getElementById('drawer-chat-slot');
       const chat = document.getElementById('lobby-chat-panel');
       if (slot && chat && chat.parentElement !== slot) slot.appendChild(chat);
+    } catch (e) {}
+  }
+  _undockLobbyChat() {
+    try {
+      const chat = document.getElementById('lobby-chat-panel');
+      if (chat && chat.parentElement !== document.body) {
+        const anchor = document.getElementById('raid-update-badge');
+        if (anchor && anchor.parentElement === document.body) document.body.insertBefore(chat, anchor);
+        else document.body.appendChild(chat);
+      }
     } catch (e) {}
   }
   _partyEmblem(name, color) {

@@ -724,6 +724,8 @@ class GamepadController {
   }
 
   _getMenuScope() {
+    const socDrawer = document.getElementById('social-drawer');
+    if (socDrawer && socDrawer.classList.contains('open')) return socDrawer;
     const inGameSettings = document.getElementById('ingame-settings-overlay');
     if (inGameSettings && !inGameSettings.classList.contains('hidden')) return inGameSettings;
     const pauseOv = document.getElementById('pointer-lock-overlay');
@@ -885,6 +887,8 @@ class GamepadController {
 
       if (nctx && !nctx.classList.contains('hidden')) {
         if (ui && ui.closeNotifCtx) ui.closeNotifCtx();
+      } else if (ui && ui.socialDrawerOpen && ui.toggleSocialDrawer) {
+        ui.toggleSocialDrawer(false);
       } else if (opCtx && !opCtx.classList.contains('hidden')) {
         opCtx.classList.add('hidden');
       } else if (opSkin && !opSkin.classList.contains('hidden')) {

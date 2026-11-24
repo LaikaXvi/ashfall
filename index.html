@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ASHFALL // 3D Extraction Looter-Shooter</title>
-  <link rel="stylesheet" href="css/style.css?v=0289" />
+  <link rel="stylesheet" href="css/style.css?v=0291" />
   <!-- Three.js r128 UMD for zero-build compatibility (works on both http:// and file://) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="js/vendor/GLTFLoader.js?v=240"></script>
@@ -58,12 +58,72 @@
   <!-- Global In-Raid Update Notifier (visible during raids; performs safe Dev Exfil & refresh) -->
   <button id="raid-update-badge" class="menu-update-badge raid-update-badge hidden" title="Safe Dev Exfil (keeps all found-in-raid items &amp; gear) and reload into the latest version">NEW VERSION — EXFIL &amp; UPDATE</button>
 
+  <!-- Party & Social slide-out (right side, top-level overlay outside scaled menu container) -->
+  <aside id="social-drawer" class="social-drawer" aria-label="Party and Social">
+    <div class="drawer-head glass-panel">
+      <div class="drawer-title">COMMS // SQUAD</div>
+      <div class="drawer-tabs">
+        <button class="drawer-tab-btn" data-drawer="chat">CHAT<span id="badge-chat" class="tab-badge hidden">0</span></button>
+        <button class="drawer-tab-btn" data-drawer="notifs">NOTIFICATIONS<span id="badge-notifs" class="tab-badge hidden">0</span></button>
+        <button class="drawer-tab-btn active" data-drawer="party">PARTY</button>
+        <button class="drawer-tab-btn" data-drawer="friends">FRIENDS<span id="badge-friends" class="tab-badge hidden">0</span></button>
+      </div>
+      <button id="btn-close-drawer" class="btn-small" title="Close [R3 / Esc]">X</button>
+    </div>
+    <div id="drawer-pane-party" class="drawer-pane">
+      <div class="party-box">
+        <div class="party-head">
+          <span id="drawer-party-title" class="party-label">YOUR PARTY (1/3)</span>
+          <button id="drawer-btn-leave-party" class="btn-small hidden">LEAVE</button>
+        </div>
+        <div id="drawer-party-members" class="party-members"></div>
+      </div>
+      <div class="party-vis-row">
+        <span class="party-vis-label">PARTY PRIVACY</span>
+        <div id="party-vis-seg" class="seg-row">
+          <button class="seg-btn" data-vis="open">OPEN</button>
+          <button class="seg-btn active" data-vis="invite">INVITE ONLY</button>
+          <button class="seg-btn" data-vis="closed">CLOSED</button>
+        </div>
+      </div>
+      <div id="drawer-social-toast" class="social-toast hidden"></div>
+    </div>
+    <div id="drawer-pane-chat" class="drawer-pane hidden">
+      <div class="drawer-sub">WHISPER - direct message an online operator</div>
+      <div class="whisper-row">
+        <input id="whisper-to" maxlength="22" placeholder="User#1234" />
+        <input id="whisper-text" maxlength="220" placeholder="Message..." />
+        <button id="btn-whisper-send" class="btn-small">SEND</button>
+      </div>
+      <div id="whisper-list" class="whisper-list"></div>
+      <div class="drawer-sub">FOB / PARTY CHAT</div>
+      <div id="drawer-chat-slot" class="drawer-chat-slot"></div>
+    </div>
+    <div id="drawer-pane-notifs" class="drawer-pane hidden">
+      <div class="drawer-sub">NOTIFICATIONS — pending requests, invites &amp; unread whispers</div>
+      <div id="notif-list" class="notif-list"></div>
+    </div>
+    <div id="drawer-pane-friends" class="drawer-pane hidden">
+      <div id="drawer-social-tabs" class="trader-tabs" style="margin:0 0 8px;">
+        <button class="tab-btn active" data-social="friends">FRIENDS (<span id="drawer-friends-count">0</span>)</button>
+        <button class="tab-btn" data-social="online">ONLINE (<span id="drawer-online-count">0</span>)</button>
+      </div>
+      <div class="add-friend-bar">
+        <input id="drawer-input-add-friend" type="text" maxlength="22" placeholder="Search/Add User#1234..." />
+        <button id="drawer-btn-add-friend" class="btn-small">+ ADD</button>
+      </div>
+      <div id="drawer-social-list" class="item-list social-list"></div>
+    </div>
+    <div id="notif-ctx-menu" class="notif-ctx-menu hidden"></div>
+  </aside>
+  <div id="social-drawer-scrim" class="social-drawer-scrim hidden"></div>
+
   <!-- ==================== MAIN MENU & UTILITY TABS ==================== -->
   <div id="hideout-screen" class="screen active hideout-roam-mode">
     <!-- IMPORTANT: Update version in GAME_DATA.VERSION_INFO (js/data.js) and here with EVERY new commit — 0.X.XX pre-release only! -->
     <div class="menu-version-stack">
       <button id="menu-update-badge" class="menu-update-badge hidden" title="Click to reload into the latest version">NEW VERSION AVAILABLE</button>
-      <div id="menu-version-badge" class="menu-version-badge">Alpha RC 0.2.90</div>
+      <div id="menu-version-badge" class="menu-version-badge">Alpha RC 0.2.91</div>
     </div>
     <!-- Minimal Sub-Menu Top Bar (Top-Left Back Button only — no redundant nav band) -->
     <header id="menu-topbar" class="hideout-header glass-panel">
@@ -100,66 +160,6 @@
         <span class="party-widget-meta"><span id="party-widget-level" class="party-widget-level">LVL 1</span><span class="party-widget-hint">[R3]</span></span>
       </button>
     </header>
-
-    <!-- Party & Social slide-out (right side) -->
-    <aside id="social-drawer" class="social-drawer" aria-label="Party and Social">
-      <div class="drawer-head glass-panel">
-        <div class="drawer-title">COMMS // SQUAD</div>
-        <div class="drawer-tabs">
-          <button class="drawer-tab-btn" data-drawer="chat">CHAT<span id="badge-chat" class="tab-badge hidden">0</span></button>
-          <button class="drawer-tab-btn" data-drawer="notifs">NOTIFICATIONS<span id="badge-notifs" class="tab-badge hidden">0</span></button>
-          <button class="drawer-tab-btn active" data-drawer="party">PARTY</button>
-          <button class="drawer-tab-btn" data-drawer="friends">FRIENDS<span id="badge-friends" class="tab-badge hidden">0</span></button>
-        </div>
-        <button id="btn-close-drawer" class="btn-small" title="Close [R3 / Esc]">X</button>
-      </div>
-      <div id="drawer-pane-party" class="drawer-pane">
-        <div class="party-box">
-          <div class="party-head">
-            <span id="drawer-party-title" class="party-label">YOUR PARTY (1/3)</span>
-            <button id="drawer-btn-leave-party" class="btn-small hidden">LEAVE</button>
-          </div>
-          <div id="drawer-party-members" class="party-members"></div>
-        </div>
-        <div class="party-vis-row">
-          <span class="party-vis-label">PARTY PRIVACY</span>
-          <div id="party-vis-seg" class="seg-row">
-            <button class="seg-btn" data-vis="open">OPEN</button>
-            <button class="seg-btn active" data-vis="invite">INVITE ONLY</button>
-            <button class="seg-btn" data-vis="closed">CLOSED</button>
-          </div>
-        </div>
-        <div id="drawer-social-toast" class="social-toast hidden"></div>
-      </div>
-      <div id="drawer-pane-chat" class="drawer-pane hidden">
-        <div class="drawer-sub">WHISPER - direct message an online operator</div>
-        <div class="whisper-row">
-          <input id="whisper-to" maxlength="22" placeholder="User#1234" />
-          <input id="whisper-text" maxlength="220" placeholder="Message..." />
-          <button id="btn-whisper-send" class="btn-small">SEND</button>
-        </div>
-        <div id="whisper-list" class="whisper-list"></div>
-        <div class="drawer-sub">FOB / PARTY CHAT</div>
-        <div id="drawer-chat-slot" class="drawer-chat-slot"></div>
-      </div>
-      <div id="drawer-pane-notifs" class="drawer-pane hidden">
-        <div class="drawer-sub">NOTIFICATIONS — pending requests, invites & unread whispers</div>
-        <div id="notif-list" class="notif-list"></div>
-      </div>
-      <div id="drawer-pane-friends" class="drawer-pane hidden">
-        <div id="drawer-social-tabs" class="trader-tabs" style="margin:0 0 8px;">
-          <button class="tab-btn active" data-social="friends">FRIENDS (<span id="drawer-friends-count">0</span>)</button>
-          <button class="tab-btn" data-social="online">ONLINE (<span id="drawer-online-count">0</span>)</button>
-        </div>
-        <div class="add-friend-bar">
-          <input id="drawer-input-add-friend" type="text" maxlength="22" placeholder="Search/Add User#1234..." />
-          <button id="drawer-btn-add-friend" class="btn-small">+ ADD</button>
-        </div>
-        <div id="drawer-social-list" class="item-list social-list"></div>
-      </div>
-    <div id="notif-ctx-menu" class="notif-ctx-menu hidden"></div>
-    </aside>
-    <div id="social-drawer-scrim" class="social-drawer-scrim hidden"></div>
     <!-- VIEW 0: OVERHAULED AAA TACTICAL LOBBY -->
     <section id="menu-view-home" class="menu-home-stage">
       <!-- Top Telemetry Bar -->
@@ -1427,7 +1427,7 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION_INFO with every new commit — 0.X.XX only!) -->
-  <script src="js/data.js?v=0290"></script>
+  <script src="js/data.js?v=0291"></script>
   <script src="js/renderer.js?v=0289"></script>
   <script src="js/rig.js?v=0289"></script>
   <script src="js/animation.js?v=0277"></script>
@@ -1446,12 +1446,12 @@
   <script src="js/squad.js?v=0281"></script>
   <script src="js/multiplayer.js?v=264"></script>
   <script src="js/player.js?v=0277"></script>
-  <script src="js/gamepad.js?v=0290"></script>
+  <script src="js/gamepad.js?v=0291"></script>
   <script src="js/gunsmith.js?v=0289"></script>
   <script src="js/matchmaking.js?v=0289"></script>
   <script src="js/hideout.js?v=0277"></script>
-  <script src="js/ui.js?v=0290"></script>
+  <script src="js/ui.js?v=0291"></script>
   <script src="js/console.js?v=0281"></script>
-  <script src="js/main.js?v=0290"></script>
+  <script src="js/main.js?v=0291"></script>
 </body>
 </html>
