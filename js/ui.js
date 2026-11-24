@@ -3232,9 +3232,6 @@ class GameUI {
         }
       });
     }
-    document.querySelectorAll('.menu-tab-btn').forEach((btn) => {
-      btn.classList.toggle('active', btn.dataset.tab === tabName);
-    });
     document.querySelectorAll('.subnav-btn').forEach((btn) => {
       btn.addEventListener('click', () => this.openMenuTab(btn.dataset.tab));
     });
