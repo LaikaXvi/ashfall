@@ -258,7 +258,7 @@
       screen: basic(0x2aa36a),
       screenBlue: basic(0x3a86c8),
       toxic: new THREE.MeshPhongMaterial({ color: 0x4fbf3a, emissive: 0x1f5512, shininess: 80, transparent: true, opacity: 0.86 }),
-      water: new THREE.MeshPhongMaterial({ color: 0x23414a, specular: 0x8fb8c8, shininess: 90, transparent: true, opacity: 0.78, depthWrite: false }),
+      water: new THREE.MeshPhongMaterial({ color: 0x23414a, specular: 0x8fb8c8, shininess: 90, transparent: true, opacity: 0.78, depthWrite: false, side: THREE.DoubleSide }),
       stripe: {
         PLANT: basic(0x7cff9c), A1: basic(0xffa726), A2: basic(0xe6e14a),
         B1: basic(0x4fc3f7), B2: basic(0xff5252), FACTORY: basic(0xb0bec5), ALPHA: basic(0xb388ff)
@@ -698,7 +698,7 @@
     const G = new ZavodGrid();
     this.zavod = {
       grid: G, MZ, seed, rnd,
-      doors: [], stations: [], lasers: [], floods: {}, rads: {}, wings: [], sectors: [],
+      doors: [], barricades: [], stations: [], lasers: [], floods: {}, rads: {}, wings: [], sectors: [],
       flags: {}, clues: {}, vaultCode: null, extracts: [], loose: [], signs: []
     };
     this._zvLayout(G, MZ);
@@ -911,6 +911,21 @@
     G.rect('b1_lock', 100, -44, 110, -30, { sector: 'B1', kind: 'airlock', name: 'B/1 PLANT AIRLOCK', ceil: 5, wall: 'darkSteel', floor: 'grate' });
     G.link('b1_lock', 'b1l_w3', 6, { h: 3.2 });
     G.link('b1_lock', 'plant_en', 6, { h: 4.6, door: 'blast', id: 'B1', label: 'AIRLOCK B/1' });
+    // B/1 Flooded Secret Path (explosive breach -> submerged vault -> Rebreather -> Factory shortcut)
+    G.rect('b1_breach', 178, -110, 190, -82, cor('B1', { name: 'SEALED SERVICE ALCOVE' }));
+    G.link('b1_c2', 'b1_breach', 6, { h: 3.4 });
+    const b1sec = { sector: 'B1', kind: 'secret_flood', wall: 'darkSteel', floor: 'concrete', ceil: 3.2, flood: 'b1_secret' };
+    G.rect('b1_secret_entry', 176, -136, 192, -110, { ...b1sec, name: 'SUBMERGED BREACH TUNNEL' });
+    G.link('b1_breach', 'b1_secret_entry', 4, { h: 3.0, door: 'planks', id: 'B1_PLANKS', label: 'BOARDED BREACH WALL' });
+    G.rect('b1_secret_hub', 144, -172, 196, -136, { ...b1sec, kind: 'armory', name: 'SUBMERGED SECRET VAULT' });
+    G.link('b1_secret_entry', 'b1_secret_hub', 6, { h: 3.0 });
+    G.rect('b1_secret_alcove', 166, -196, 196, -172, { ...b1sec, kind: 'storage', name: 'SUNKEN LOCKER ROOM' });
+    G.link('b1_secret_hub', 'b1_secret_alcove', 6, { h: 3.0 });
+    G.rect('b1_secret_air', 120, -168, 144, -142, { sector: 'B1', kind: 'airlock', name: 'BARRACKS SECRET EXIT AIRLOCK', ceil: 4.5, wall: 'darkSteel', floor: 'grate' });
+    G.link('b1_secret_hub', 'b1_secret_air', 4, { h: 3.2 });
+    G.rect('b1_secret_pass', 90, -160, 120, -150, cor('B1', { ceil: 4.2, wall: 'darkSteel', name: 'FACTORY SECRET PASSAGE' }));
+    G.link('b1_secret_air', 'b1_secret_pass', 6, { h: 4.0, door: 'blast', id: 'B1_SECRET', label: 'BARRACKS SECRET EXIT — FACTORY' });
+    G.link('b1_secret_pass', 'factory_hall', 6, { h: 4.2 });
 
     // ===================== B/2 — EXTERNAL OPS (SE, al-Qatala) — 2-floor HQ (Building 21) =====================
     const b2 = (kind, name, extra = {}) => room('B2', kind, name, { wall: 'paintRed', floor: 'lino', ceil: 4.2, extH: 8.4, ceilTile: true, ...extra });
