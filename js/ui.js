@@ -6925,22 +6925,15 @@ class GameUI {
     const zoomBadge = document.getElementById('tacmap-zoom-badge');
     if (zoomBadge) zoomBadge.textContent = `${zoom.toFixed(1)}x`;
 
-    // 1. Base Red Zone fill across entire canvas
+    // 1. Smooth DMZ-style Crimson Red Zone fill across entire canvas
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = '#240b0b';
+    ctx.fillStyle = '#220a0b';
     ctx.fillRect(0, 0, W, H);
-
-    // Diagonal hazard hatching in the Red Zone
-    ctx.save();
-    ctx.strokeStyle = 'rgba(255, 55, 55, 0.22)';
-    ctx.lineWidth = 2;
-    for (let i = -H; i < W + H; i += 14) {
-      ctx.beginPath();
-      ctx.moveTo(i, 0);
-      ctx.lineTo(i - H, H);
-      ctx.stroke();
-    }
-    ctx.restore();
+    const rzGrad = ctx.createRadialGradient(W * 0.5, H * 0.5, W * 0.08, W * 0.5, H * 0.5, W * 0.78);
+    rzGrad.addColorStop(0, 'rgba(84, 26, 24, 0.85)');
+    rzGrad.addColorStop(1, 'rgba(28, 8, 9, 0.95)');
+    ctx.fillStyle = rzGrad;
+    ctx.fillRect(0, 0, W, H);
 
     // 2. Custom Organic Sector Silhouette (NW Headland, North Hydro Dam Saddle, NNE Lobe, East Bluff, SE Estuary & SW Peninsula)
     const tl = toMap(-halfSize, -halfSize);
@@ -6959,7 +6952,7 @@ class GameUI {
       }
     };
 
-    // Clip all interior landmass, topographic contours, rivers, Hydro Dam, grid & roads strictly inside MAP_BOUNDARY!
+    // Clip all interior landmass, topographic contours, rivers, Hydro Dam & roads strictly inside MAP_BOUNDARY!
     ctx.save();
     traceBoundaryFull();
     ctx.clip();
@@ -6986,19 +6979,6 @@ class GameUI {
     drawTopoContour(225, -345, 128, 108, -0.42, 'rgba(68, 112, 60, 0.38)');  // NNE Island/Peninsula Lobe
     drawTopoContour(325, 25, 195, 310, 0.08, 'rgba(64, 106, 56, 0.34)');     // East Landmass & Meander Bulge
     drawTopoContour(150, 95, 115, 95, -0.12, 'rgba(72, 116, 62, 0.28)');     // Central-East Meander Peninsula
-
-    // Tactical 100m coordinate grid across the playable silhouette
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.065)';
-    ctx.lineWidth = 1;
-    const gridStep = 100;
-    for (let g = -Math.floor(halfSize / gridStep) * gridStep; g <= halfSize; g += gridStep) {
-      const p1 = toMap(g, -halfSize - 40);
-      const p2 = toMap(g, halfSize + 40);
-      ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
-      const q1 = toMap(-halfSize - 40, g);
-      const q2 = toMap(halfSize + 40, g);
-      ctx.beginPath(); ctx.moveTo(q1.x, q1.y); ctx.lineTo(q2.x, q2.y); ctx.stroke();
-    }
 
     // 3a. Variable-Width Hydrography: Dam Tailwater -> Wide Central Confluence Basin + NE Tributary -> SSW Bend -> SE Outlet
     if (world.RIVER_POLYGONS && world.RIVER_POLYGONS.length > 0) {
@@ -7104,29 +7084,37 @@ class GameUI {
     }
     ctx.restore();
 
-    // 4. Bold Outer Silhouette Casing + Crisp Crimson Red Zone Perimeter Border & Warnings
+    // 4. Bold Outer Silhouette Casing + Subtle Shoreline Rim + DMZ 10x10 Sector Grid (A-J x 0-9 across [-800..+800])
     ctx.save();
     ctx.lineJoin = 'round';
     traceBoundaryFull();
-    ctx.strokeStyle = 'rgba(8, 12, 10, 0.92)';
-    ctx.lineWidth = 5.2;
+    ctx.strokeStyle = 'rgba(10, 12, 14, 0.94)';
+    ctx.lineWidth = 5.4;
     ctx.stroke();
 
     traceBoundaryFull();
-    ctx.strokeStyle = '#ff3d3d';
-    ctx.lineWidth = 2.2;
+    ctx.strokeStyle = 'rgba(255, 72, 72, 0.72)';
+    ctx.lineWidth = 1.6;
     ctx.stroke();
 
-    ctx.font = 'bold 10px Consolas, monospace';
-    ctx.fillStyle = 'rgba(255, 107, 107, 0.88)';
-    ctx.textAlign = 'center';
-    const swWarn = toMap(-455, 455);
-    if (swWarn.x > 70 && swWarn.x < W - 70 && swWarn.y > 18 && swWarn.y < H - 14) {
-      ctx.fillText('RED ZONE // OUT OF BOUNDS', swWarn.x, swWarn.y);
-    }
-    const nWarn = toMap(25, -535);
-    if (nWarn.x > 70 && nWarn.x < W - 70 && nWarn.y > 16 && nWarn.y < H - 14) {
-      ctx.fillText('RED ZONE // OUT OF BOUNDS', nWarn.x, nWarn.y);
+    const gridExt = Math.max(800, halfSize + 180);
+    const cellWorld = (gridExt * 2) / 10;
+    for (let i = 1; i < 10; i++) {
+      const gCoord = -gridExt + i * cellWorld;
+      const vTop = toMap(gCoord, -gridExt);
+      const vBot = toMap(gCoord, gridExt);
+      const hLeft = toMap(-gridExt, gCoord);
+      const hRight = toMap(gridExt, gCoord);
+
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.22)';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.moveTo(vTop.x, vTop.y); ctx.lineTo(vBot.x, vBot.y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(hLeft.x, hLeft.y); ctx.lineTo(hRight.x, hRight.y); ctx.stroke();
+
+      ctx.strokeStyle = 'rgba(232, 240, 246, 0.18)';
+      ctx.lineWidth = 1.0;
+      ctx.beginPath(); ctx.moveTo(vTop.x, vTop.y); ctx.lineTo(vBot.x, vBot.y); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(hLeft.x, hLeft.y); ctx.lineTo(hRight.x, hRight.y); ctx.stroke();
     }
     ctx.restore();
 
@@ -7313,6 +7301,45 @@ class GameUI {
       ctx.stroke();
       ctx.restore();
     }
+
+    // 11. DMZ-Style Top (A-J) & Left (0-9) Coordinate Header Strips
+    const rulerW = 20;
+    const gridExtRuler = Math.max(800, halfSize + 180);
+    const cellWorldRuler = (gridExtRuler * 2) / 10;
+    const activeCol = Math.floor((player.position.x + gridExtRuler) / cellWorldRuler);
+    const activeRow = Math.floor((player.position.z + gridExtRuler) / cellWorldRuler);
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(20, 24, 28, 0.92)';
+    ctx.fillRect(0, 0, W, rulerW);
+    ctx.fillRect(0, rulerW, rulerW, H - rulerW);
+    ctx.strokeStyle = 'rgba(130, 48, 46, 0.72)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(rulerW, rulerW); ctx.lineTo(W, rulerW);
+    ctx.moveTo(rulerW, rulerW); ctx.lineTo(rulerW, H);
+    ctx.stroke();
+
+    ctx.font = 'bold 10.5px Consolas, monospace';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (let c = 0; c < 10; c++) {
+      const cxWorld = -gridExtRuler + (c + 0.5) * cellWorldRuler;
+      const cxPx = toMap(cxWorld, 0).x;
+      if (cxPx >= rulerW + 6 && cxPx <= W - 6) {
+        ctx.fillStyle = c === activeCol ? '#ffffff' : 'rgba(200, 210, 218, 0.84)';
+        ctx.fillText(String.fromCharCode(65 + c), cxPx, rulerW * 0.5 + 0.5);
+      }
+    }
+    for (let r = 0; r < 10; r++) {
+      const czWorld = -gridExtRuler + (r + 0.5) * cellWorldRuler;
+      const cyPx = toMap(0, czWorld).y;
+      if (cyPx >= rulerW + 6 && cyPx <= H - 6) {
+        ctx.fillStyle = r === activeRow ? '#ffffff' : 'rgba(200, 210, 218, 0.84)';
+        ctx.fillText(String(r), rulerW * 0.5, cyPx);
+      }
+    }
+    ctx.restore();
   }
 
   _getStanceSVG(stance) {
@@ -9617,7 +9644,7 @@ class GameUI {
   // ==================== v2.64 TAC-MAP ZOOM/PAN/RADIAL, INVENTORY ITEM PING & SCOPED BLURRED CHAT ====================
   getTacMapViewExtent(world = null) {
     const halfSize = (world && world.mapHalfSize) || 620;
-    const baseExtent = halfSize + 48;
+    const baseExtent = Math.max(800, halfSize + 180);
     const zoom = THREE.MathUtils.clamp(this.tacMapZoom || 1.0, 1.0, 4.5);
     return { halfSize, baseExtent, zoom, viewExtent: baseExtent / zoom };
   }
