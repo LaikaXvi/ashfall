@@ -10942,10 +10942,10 @@ class GameUI {
     const chNow = this.chatChannel || { kind: 'party', target: null };
     if (chNow.kind === 'whisper' && chNow.target) {
       this.sendWhisper(chNow.target, trimmed);
-      const inRaidNow = typeof window.isInRaid === 'function' ? !!window.isInRaid() : false;
-      const hideout = document.getElementById('hideout-screen');
-      const hideoutRoam = !!(hideout && hideout.classList.contains('hideout-roam-mode'));
-      if ((inRaidNow && !this.isTacMapOpen) || hideoutRoam) { const inp = document.getElementById('lobby-chat-input'); if (inp) inp.blur(); this._relockGameplayPointerIfNeeded(); }
+      const inRaidW = typeof window.isInRaid === 'function' ? !!window.isInRaid() : false;
+      const hideoutW = document.getElementById('hideout-screen');
+      const hideoutRoamW = !!(hideoutW && hideoutW.classList.contains('hideout-roam-mode'));
+      if ((inRaidW && !this.isTacMapOpen) || hideoutRoamW) { const inp = document.getElementById('lobby-chat-input'); if (inp) inp.blur(); this._relockGameplayPointerIfNeeded(); }
       return;
     }
     const inRaidNow = typeof window.isInRaid === 'function' ? !!window.isInRaid() : false;
