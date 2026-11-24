@@ -2256,8 +2256,13 @@
     const hardLimit = B + 45;
     player.position.x = THREE.MathUtils.clamp(player.position.x, -hardLimit, hardLimit);
     player.position.z = THREE.MathUtils.clamp(player.position.z, -hardLimit, hardLimit);
+    if (world.clampToHardBoundary) {
+      world.clampToHardBoundary(player.position, 42);
+    }
 
-    const outDist = Math.max(Math.abs(player.position.x) - B, Math.abs(player.position.z) - B);
+    const outDist = world.getOutOfBoundsDist
+      ? world.getOutOfBoundsDist(player.position.x, player.position.z)
+      : Math.max(Math.abs(player.position.x) - B, Math.abs(player.position.z) - B);
     if (outDist > 0 && !player.dead) {
       redZoneTimer += dt;
       const warnLimit = 6.0;

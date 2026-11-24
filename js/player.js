@@ -2883,9 +2883,9 @@ class Player {
         speed *= 1.12;
       }
 
-      // Wading through river / lake / ocean shallows drags movement; deep water blocks sprinting
+      // Wading through river / confluence shallows drags movement; bridge decks & dry land stay 100% full speed!
       if (this.world && this.world.getWaterDepth) {
-        const wDepth = this.world.getWaterDepth(this.position.x, this.position.z);
+        const wDepth = this.world.getWaterDepth(this.position.x, this.position.z, this.position.y - this.currentEyeHeight);
         if (wDepth > 0.05) {
           const wadeK = wDepth > 1.15 ? 0.22 : (wDepth > 0.55 ? 0.45 : 0.7);
           speed *= wadeK;

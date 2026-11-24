@@ -6660,106 +6660,106 @@ class GameUI {
       y: cy + (wz - player.position.z) * scale
     });
 
-    // Red Zone (Out-of-Bounds area surrounding the ±190m playable sector)
-    const halfSize = (world && world.mapHalfSize) || 190;
-    const tl = toMap(-halfSize, -halfSize);
-    const br = toMap(halfSize, halfSize);
+    // Custom Organic Map Silhouette, Red Zone Exterior, Variable-Width Rivers, Dam & Roads on Minimap!
+    const halfSize = (world && world.mapHalfSize) || 620;
+    const traceBoundaryMini = () => {
+      ctx.beginPath();
+      if (world.MAP_BOUNDARY && world.MAP_BOUNDARY.length >= 3) {
+        world.MAP_BOUNDARY.forEach(([bx, bz], i) => {
+          const p = toMap(bx, bz);
+          if (i === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        });
+        ctx.closePath();
+      } else {
+        const tl = toMap(-halfSize, -halfSize);
+        const br = toMap(halfSize, halfSize);
+        ctx.rect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+      }
+    };
+
+    // Shade Red Zone strictly OUTSIDE the organic map boundary using evenodd fill
     ctx.save();
+    ctx.beginPath();
+    ctx.rect(-8, -8, W + 16, H + 16);
+    if (world.MAP_BOUNDARY && world.MAP_BOUNDARY.length >= 3) {
+      world.MAP_BOUNDARY.forEach(([bx, bz], i) => {
+        const p = toMap(bx, bz);
+        if (i === 0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+      });
+      ctx.closePath();
+    }
     ctx.fillStyle = 'rgba(255, 38, 38, 0.28)';
-    // Shade outside the playable square (4 surrounding bands clipped to canvas)
-    ctx.fillRect(0, 0, W, Math.max(0, tl.y));
-    ctx.fillRect(0, Math.min(H, br.y), W, Math.max(0, H - br.y));
-    ctx.fillRect(0, Math.max(0, tl.y), Math.max(0, tl.x), Math.max(0, Math.min(H, br.y) - Math.max(0, tl.y)));
-    ctx.fillRect(Math.min(W, br.x), Math.max(0, tl.y), Math.max(0, W - br.x), Math.max(0, Math.min(H, br.y) - Math.max(0, tl.y)));
-    // Crisp Red Zone boundary outline
-    ctx.strokeStyle = '#ff3d3d';
-    ctx.lineWidth = 1.6;
-    ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+    ctx.fill('evenodd');
     ctx.restore();
 
-    // Hydrography & Roads on Player-Centered Minimap (strictly clipped inside playable sector)
-    if (world.RIVER_A && world.LAKE) {
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
-      ctx.clip();
+    // Clip interior landmass, rivers, Hydro Dam & roads strictly inside MAP_BOUNDARY
+    ctx.save();
+    traceBoundaryMini();
+    ctx.clip();
 
-      // Southern beach + SE ocean peninsula contour (leaves NE sector z < 165 completely dry!)
-      const traceCoast = () => {
-        ctx.beginPath();
-        const firstZ = 562 - (-halfSize - 160) * 0.075 + Math.sin(-halfSize * 0.012) * 10;
-        const p0 = toMap(-halfSize, firstZ);
-        ctx.moveTo(p0.x, p0.y);
-        for (let x = -halfSize + 25; x <= 468; x += 25) {
-          const bz = 562 - (x - 160) * 0.075 + Math.sin(x * 0.012) * 10;
-          const p = toMap(x, bz);
-          ctx.lineTo(p.x, p.y);
-        }
-        for (let z = 538; z >= 165; z -= 24) {
-          const pt = Math.max(0, Math.min(1, (z - 165) / 155));
-          const ps = pt * pt * (3 - 2 * pt);
-          const ex = 650 - ps * 182 + Math.sin(z * 0.016) * 8;
-          const p = toMap(ex, z);
-          ctx.lineTo(p.x, p.y);
-        }
-        const seTop = toMap(halfSize + 40, 165);
-        const seBot = toMap(halfSize + 40, halfSize + 40);
-        const swBot = toMap(-halfSize - 40, halfSize + 40);
-        ctx.lineTo(seTop.x, seTop.y);
-        ctx.lineTo(seBot.x, seBot.y);
-        ctx.lineTo(swBot.x, swBot.y);
-        ctx.closePath();
-      };
-      traceCoast();
-      ctx.strokeStyle = 'rgba(194, 178, 128, 0.45)';
-      ctx.lineWidth = Math.max(2, 18 * scale);
-      ctx.stroke();
-      ctx.fillStyle = 'rgba(43, 94, 114, 0.88)';
-      ctx.fill();
+    // Subtle green tactical landmass tint inside playable silhouette
+    ctx.fillStyle = 'rgba(46, 74, 42, 0.45)';
+    ctx.fillRect(0, 0, W, H);
 
-      // Rivers
-      ctx.strokeStyle = '#3f7f96';
-      ctx.lineWidth = Math.max(2.5, 24 * scale);
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      for (const line of [world.RIVER_A, world.RIVER_B]) {
-        if (!line || !line.length) continue;
+    // Variable-width river & confluence polygons
+    if (world.RIVER_POLYGONS && world.RIVER_POLYGONS.length > 0) {
+      for (const poly of world.RIVER_POLYGONS) {
+        if (!poly || poly.length < 3) continue;
         ctx.beginPath();
-        line.forEach(([wx, wz], i) => {
+        poly.forEach(([wx, wz], i) => {
           const p = toMap(wx, wz);
           if (i === 0) ctx.moveTo(p.x, p.y);
           else ctx.lineTo(p.x, p.y);
         });
+        ctx.closePath();
+        ctx.strokeStyle = 'rgba(162, 152, 108, 0.34)';
+        ctx.lineWidth = Math.max(1.5, 8 * scale);
         ctx.stroke();
+        ctx.fillStyle = '#2d6c88';
+        ctx.fill();
       }
+    }
 
-      // Lake
-      const lp = toMap(world.LAKE.x, world.LAKE.z);
-      ctx.fillStyle = '#387287';
-      ctx.beginPath();
-      ctx.ellipse(lp.x, lp.y, world.LAKE.rx * scale, world.LAKE.rz * scale, 0, 0, Math.PI * 2);
-      ctx.fill();
+    // North-Center Concrete Hydro Dam footprint
+    if (world.DAM_BOUNDS) {
+      const db = world.DAM_BOUNDS;
+      const dTL = toMap(db.minX, db.minZ);
+      const dBR = toMap(db.maxX, db.maxZ);
+      ctx.fillStyle = '#737b80';
+      ctx.fillRect(dTL.x, dTL.y, dBR.x - dTL.x, dBR.y - dTL.y);
+      ctx.strokeStyle = '#aab4ba';
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(dTL.x, dTL.y, dBR.x - dTL.x, dBR.y - dTL.y);
+      // Crest road band
+      const cA = toMap(db.minX, -408);
+      const cB = toMap(db.maxX, -408);
+      ctx.strokeStyle = 'rgba(210, 218, 222, 0.55)';
+      ctx.lineWidth = Math.max(1.5, 14 * scale);
+      ctx.beginPath(); ctx.moveTo(cA.x, cA.y); ctx.lineTo(cB.x, cB.y); ctx.stroke();
+    }
 
-      // Main highways & connector roads on minimap
-      ctx.strokeStyle = 'rgba(148, 156, 150, 0.34)';
-      const drawMiniRoad = (x1, z1, x2, z2, rw) => {
+    // Tactical road & bridge network
+    if (world.ROADS && world.ROADS.length > 0) {
+      ctx.strokeStyle = 'rgba(156, 166, 160, 0.40)';
+      ctx.lineCap = 'round';
+      for (const [x1, z1, x2, z2, rw] of world.ROADS) {
         const a = toMap(x1, z1);
         const b = toMap(x2, z2);
-        ctx.lineWidth = Math.max(1.2, rw * scale);
+        ctx.lineWidth = Math.max(1.2, (rw || 9) * scale);
         ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-      };
-      drawMiniRoad(0, -560, 0, 560, 11);
-      drawMiniRoad(-560, 20, 560, 20, 11);
-      drawMiniRoad(-320, -240, -60, -340, 8);
-      drawMiniRoad(-60, -340, 310, -270, 8);
-      drawMiniRoad(310, -270, 340, 20, 8);
-      drawMiniRoad(340, 20, 270, 290, 8);
-      drawMiniRoad(270, 290, 0, 312, 8);
-      drawMiniRoad(0, 312, -260, 310, 8);
-      drawMiniRoad(-260, 310, -370, 50, 8);
-      drawMiniRoad(-370, 50, -320, -240, 8);
-      ctx.restore();
+      }
     }
+    ctx.restore();
+
+    // Crisp perimeter border stroke
+    ctx.save();
+    traceBoundaryMini();
+    ctx.strokeStyle = '#ff3d3d';
+    ctx.lineWidth = 1.7;
+    ctx.stroke();
+    ctx.restore();
 
     // POIs
     if (world.pois) {
@@ -6920,83 +6920,102 @@ class GameUI {
     }
     ctx.restore();
 
-    // 2. Playable Sector Interior (±190m)
+    // 2. Custom Organic Sector Silhouette (NW Headland, North Hydro Dam Saddle, NNE Lobe, East Bluff, SE Estuary & SW Peninsula)
     const tl = toMap(-halfSize, -halfSize);
     const br = toMap(halfSize, halfSize);
-    ctx.fillStyle = '#121815';
-    ctx.fillRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+    const traceBoundaryFull = () => {
+      ctx.beginPath();
+      if (world.MAP_BOUNDARY && world.MAP_BOUNDARY.length >= 3) {
+        world.MAP_BOUNDARY.forEach(([bx, bz], i) => {
+          const p = toMap(bx, bz);
+          if (i === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        });
+        ctx.closePath();
+      } else {
+        ctx.rect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+      }
+    };
 
-    // Clip all interior terrain, water, grid & road layers strictly inside the ±620m playable sector!
+    // Clip all interior landmass, topographic contours, rivers, Hydro Dam, grid & roads strictly inside MAP_BOUNDARY!
     ctx.save();
-    ctx.beginPath();
-    ctx.rect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+    traceBoundaryFull();
     ctx.clip();
 
-    // Tactical 100m coordinate grid across the full 1240m x 1240m playable sector
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.055)';
+    // Lush tactical green landmass interior matching reference outline lobes
+    ctx.fillStyle = '#253d22';
+    ctx.fillRect(tl.x - 80, tl.y - 80, (br.x - tl.x) + 160, (br.y - tl.y) + 160);
+
+    // Subtle topographic elevation highlights on the 3 major green landmass lobes
+    const drawTopoContour = (wx, wz, rx, rz, rot, col) => {
+      const c = toMap(wx, wz);
+      ctx.save();
+      ctx.translate(c.x, c.y);
+      ctx.rotate(rot);
+      ctx.fillStyle = col;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, rx * scale, rz * scale, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    };
+    drawTopoContour(-335, -240, 215, 260, -0.18, 'rgba(64, 106, 56, 0.34)'); // NW / West Highlands
+    drawTopoContour(-285, 85, 195, 225, 0.32, 'rgba(58, 98, 52, 0.28)');     // SW Ridge
+    drawTopoContour(165, 470, 245, 95, 0.16, 'rgba(60, 102, 54, 0.30)');     // Southern Peninsula Arm
+    drawTopoContour(225, -345, 128, 108, -0.42, 'rgba(68, 112, 60, 0.38)');  // NNE Island/Peninsula Lobe
+    drawTopoContour(325, 25, 195, 310, 0.08, 'rgba(64, 106, 56, 0.34)');     // East Landmass & Meander Bulge
+    drawTopoContour(150, 95, 115, 95, -0.12, 'rgba(72, 116, 62, 0.28)');     // Central-East Meander Peninsula
+
+    // Tactical 100m coordinate grid across the playable silhouette
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.065)';
     ctx.lineWidth = 1;
     const gridStep = 100;
     for (let g = -Math.floor(halfSize / gridStep) * gridStep; g <= halfSize; g += gridStep) {
-      const p1 = toMap(g, -halfSize);
-      const p2 = toMap(g, halfSize);
+      const p1 = toMap(g, -halfSize - 40);
+      const p2 = toMap(g, halfSize + 40);
       ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
-      const q1 = toMap(-halfSize, g);
-      const q2 = toMap(halfSize, g);
+      const q1 = toMap(-halfSize - 40, g);
+      const q2 = toMap(halfSize + 40, g);
       ctx.beginPath(); ctx.moveTo(q1.x, q1.y); ctx.lineTo(q2.x, q2.y); ctx.stroke();
     }
 
-    // 3a. Hydrography: NE river -> lake -> SE outlet river -> southern sandy beach -> SE ocean peninsula
-    if (world.RIVER_A && world.LAKE) {
-      const traceCoastFull = () => {
+    // 3a. Variable-Width Hydrography: Dam Tailwater -> Wide Central Confluence Basin + NE Tributary -> SSW Bend -> SE Outlet
+    if (world.RIVER_POLYGONS && world.RIVER_POLYGONS.length > 0) {
+      // Pass 1: Subtle sandy/gravelly riverbank rim
+      for (const poly of world.RIVER_POLYGONS) {
+        if (!poly || poly.length < 3) continue;
         ctx.beginPath();
-        const firstZ = 562 - (-halfSize - 160) * 0.075 + Math.sin(-halfSize * 0.012) * 10;
-        const p0 = toMap(-halfSize, firstZ);
-        ctx.moveTo(p0.x, p0.y);
-        for (let x = -halfSize + 18; x <= 468; x += 18) {
-          const bz = 562 - (x - 160) * 0.075 + Math.sin(x * 0.012) * 10;
-          const p = toMap(x, bz);
-          ctx.lineTo(p.x, p.y);
-        }
-        for (let z = 538; z >= 165; z -= 18) {
-          const pt = Math.max(0, Math.min(1, (z - 165) / 155));
-          const ps = pt * pt * (3 - 2 * pt);
-          const ex = 650 - ps * 182 + Math.sin(z * 0.016) * 8;
-          const p = toMap(ex, z);
-          ctx.lineTo(p.x, p.y);
-        }
-        const seTop = toMap(halfSize + 40, 165);
-        const seBot = toMap(halfSize + 40, halfSize + 40);
-        const swBot = toMap(-halfSize - 40, halfSize + 40);
-        ctx.lineTo(seTop.x, seTop.y);
-        ctx.lineTo(seBot.x, seBot.y);
-        ctx.lineTo(swBot.x, swBot.y);
-        ctx.closePath();
-      };
-      // Golden sandy shoreline band + deep coastal sea fill
-      traceCoastFull();
-      ctx.strokeStyle = 'rgba(194, 178, 128, 0.42)';
-      ctx.lineWidth = Math.max(2.5, 22 * scale);
-      ctx.stroke();
-      ctx.fillStyle = '#1d4152';
-      ctx.fill();
-
-      // Rivers (with subtle wet bank trim)
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      for (const line of [world.RIVER_A, world.RIVER_B]) {
-        if (!line || !line.length) continue;
-        ctx.strokeStyle = 'rgba(145, 138, 98, 0.28)';
-        ctx.lineWidth = Math.max(3.2, 34 * scale);
-        ctx.beginPath();
-        line.forEach(([wx, wz], i) => {
+        poly.forEach(([wx, wz], i) => {
           const p = toMap(wx, wz);
           if (i === 0) ctx.moveTo(p.x, p.y);
           else ctx.lineTo(p.x, p.y);
         });
+        ctx.closePath();
+        ctx.strokeStyle = 'rgba(170, 158, 112, 0.38)';
+        ctx.lineWidth = Math.max(2.2, 10 * scale);
+        ctx.lineJoin = 'round';
         ctx.stroke();
-
-        ctx.strokeStyle = '#2d667a';
-        ctx.lineWidth = Math.max(2.2, 24 * scale);
+      }
+      // Pass 2: Seamless variable-width water fill across main river & NE tributary confluence
+      for (const poly of world.RIVER_POLYGONS) {
+        if (!poly || poly.length < 3) continue;
+        ctx.beginPath();
+        poly.forEach(([wx, wz], i) => {
+          const p = toMap(wx, wz);
+          if (i === 0) ctx.moveTo(p.x, p.y);
+          else ctx.lineTo(p.x, p.y);
+        });
+        ctx.closePath();
+        ctx.fillStyle = '#296c92';
+        ctx.fill();
+      }
+      // Subtle thalweg current highlight along river centerlines
+      ctx.save();
+      ctx.strokeStyle = 'rgba(115, 195, 235, 0.18)';
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = Math.max(1.2, 10 * scale);
+      for (const line of [world.RIVER_A, world.RIVER_B]) {
+        if (!line || !line.length) continue;
         ctx.beginPath();
         line.forEach(([wx, wz], i) => {
           const p = toMap(wx, wz);
@@ -7005,49 +7024,88 @@ class GameUI {
         });
         ctx.stroke();
       }
-
-      // Lake basin + sandy rim
-      const lp = toMap(world.LAKE.x, world.LAKE.z);
-      ctx.strokeStyle = 'rgba(166, 155, 112, 0.32)';
-      ctx.lineWidth = Math.max(2, 12 * scale);
-      ctx.fillStyle = '#295b6e';
-      ctx.beginPath();
-      ctx.ellipse(lp.x, lp.y, world.LAKE.rx * scale, world.LAKE.rz * scale, 0, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.fill();
+      ctx.restore();
     }
 
-    // 3b. Actual 1240m Highway & Connector Road Network (drawn ABOVE water so highway bridges show clearly!)
-    ctx.strokeStyle = 'rgba(155, 164, 158, 0.42)';
-    ctx.lineCap = 'round';
-    const drawRoad = (x1, z1, x2, z2, rw) => {
-      const a = toMap(x1, z1);
-      const b = toMap(x2, z2);
-      ctx.lineWidth = Math.max(1.5, rw * scale);
-      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-    };
-    drawRoad(0, -560, 0, 560, 11);
-    drawRoad(-560, 20, 560, 20, 11);
-    drawRoad(-320, -240, -60, -340, 8);
-    drawRoad(-60, -340, 310, -270, 8);
-    drawRoad(310, -270, 340, 20, 8);
-    drawRoad(340, 20, 270, 290, 8);
-    drawRoad(270, 290, 0, 312, 8);
-    drawRoad(0, 312, -260, 310, 8);
-    drawRoad(-260, 310, -370, 50, 8);
-    drawRoad(-370, 50, -320, -240, 8);
+    // 3b. Monumental North-Center Concrete Hydroelectric Dam (matching gray "dam" block in outline)
+    if (world.DAM_BOUNDS) {
+      const db = world.DAM_BOUNDS;
+      const dTL = toMap(db.minX, db.minZ);
+      const dBR = toMap(db.maxX, db.maxZ);
+      const dW = dBR.x - dTL.x;
+      const dH = dBR.y - dTL.y;
+
+      // Concrete dam body + spillway apron
+      ctx.fillStyle = '#767f86';
+      ctx.fillRect(dTL.x, dTL.y, dW, dH);
+
+      // Stepped spillway shading & 6 concrete buttress ribs
+      const spTop = toMap(db.minX, -396);
+      const spBot = toMap(db.maxX, -334);
+      ctx.fillStyle = 'rgba(42, 48, 54, 0.28)';
+      ctx.fillRect(spTop.x, spTop.y, spBot.x - spTop.x, spBot.y - spTop.y);
+      ctx.strokeStyle = 'rgba(205, 214, 220, 0.42)';
+      ctx.lineWidth = Math.max(1.2, 3.2 * scale);
+      for (const bx of [-72, -32, 8, 48, 88, 128]) {
+        const b1 = toMap(bx, -398);
+        const b2 = toMap(bx, -332);
+        ctx.beginPath(); ctx.moveTo(b1.x, b1.y); ctx.lineTo(b2.x, b2.y); ctx.stroke();
+      }
+
+      // Walkable Dam Crest Highway Deck (z = -408)
+      const cA = toMap(db.minX - 24, -408);
+      const cB = toMap(db.maxX + 24, -408);
+      ctx.strokeStyle = 'rgba(218, 226, 232, 0.72)';
+      ctx.lineWidth = Math.max(2.2, 16 * scale);
+      ctx.beginPath(); ctx.moveTo(cA.x, cA.y); ctx.lineTo(cB.x, cB.y); ctx.stroke();
+
+      ctx.strokeStyle = '#b4bfc6';
+      ctx.lineWidth = 1.6;
+      ctx.strokeRect(dTL.x, dTL.y, dW, dH);
+    }
+
+    // 3c. Connected Highway & Walkable Concrete River Bridges (drawn ABOVE water so bridge crossings stand out!)
+    if (world.ROADS && world.ROADS.length > 0) {
+      ctx.lineCap = 'round';
+      for (const [x1, z1, x2, z2, rw] of world.ROADS) {
+        const a = toMap(x1, z1);
+        const b = toMap(x2, z2);
+        const wPx = Math.max(1.8, (rw || 9) * scale);
+        ctx.strokeStyle = 'rgba(18, 24, 22, 0.55)';
+        ctx.lineWidth = wPx + 1.8;
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+
+        ctx.strokeStyle = 'rgba(176, 184, 178, 0.52)';
+        ctx.lineWidth = wPx;
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+      }
+    }
     ctx.restore();
 
-    // 4. Crisp Crimson Red Zone Boundary Border & Labels
+    // 4. Bold Outer Silhouette Casing + Crisp Crimson Red Zone Perimeter Border & Warnings
     ctx.save();
+    ctx.lineJoin = 'round';
+    traceBoundaryFull();
+    ctx.strokeStyle = 'rgba(8, 12, 10, 0.92)';
+    ctx.lineWidth = 5.2;
+    ctx.stroke();
+
+    traceBoundaryFull();
     ctx.strokeStyle = '#ff3d3d';
-    ctx.lineWidth = 2.5;
-    ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+    ctx.lineWidth = 2.2;
+    ctx.stroke();
+
     ctx.font = 'bold 10px Consolas, monospace';
-    ctx.fillStyle = '#ff6b6b';
+    ctx.fillStyle = 'rgba(255, 107, 107, 0.88)';
     ctx.textAlign = 'center';
-    if (tl.y > 14) ctx.fillText('RED ZONE // OUT OF BOUNDS', W * 0.5, tl.y * 0.58);
-    if (br.y < H - 14) ctx.fillText('RED ZONE // OUT OF BOUNDS', W * 0.5, br.y + (H - br.y) * 0.62);
+    const swWarn = toMap(-455, 455);
+    if (swWarn.x > 70 && swWarn.x < W - 70 && swWarn.y > 18 && swWarn.y < H - 14) {
+      ctx.fillText('RED ZONE // OUT OF BOUNDS', swWarn.x, swWarn.y);
+    }
+    const nWarn = toMap(25, -535);
+    if (nWarn.x > 70 && nWarn.x < W - 70 && nWarn.y > 16 && nWarn.y < H - 14) {
+      ctx.fillText('RED ZONE // OUT OF BOUNDS', nWarn.x, nWarn.y);
+    }
     ctx.restore();
 
     // 5. Labeled POIs
@@ -7057,6 +7115,16 @@ class GameUI {
       ctx.textAlign = 'center';
       for (const poi of world.pois) {
         const p = toMap(poi.x, poi.z);
+        if (poi.name === 'HYDRO DAM') {
+          ctx.fillStyle = 'rgba(14, 18, 20, 0.78)';
+          ctx.fillRect(p.x - 36, p.y - 8, 72, 15);
+          ctx.strokeStyle = '#cfd8dc';
+          ctx.lineWidth = 1.1;
+          ctx.strokeRect(p.x - 36, p.y - 8, 72, 15);
+          ctx.fillStyle = '#ffffff';
+          ctx.fillText('HYDRO DAM', p.x, p.y + 3);
+          continue;
+        }
         ctx.fillStyle = poi.color || 'rgba(255,255,255,0.28)';
         ctx.globalAlpha = 0.28;
         ctx.fillRect(p.x - 16, p.y - 12, 32, 24);
@@ -9526,7 +9594,7 @@ class GameUI {
 
   // ==================== v2.64 TAC-MAP ZOOM/PAN/RADIAL, INVENTORY ITEM PING & SCOPED BLURRED CHAT ====================
   getTacMapViewExtent(world = null) {
-    const halfSize = (world && world.mapHalfSize) || 190;
+    const halfSize = (world && world.mapHalfSize) || 620;
     const baseExtent = halfSize + 48;
     const zoom = THREE.MathUtils.clamp(this.tacMapZoom || 1.0, 1.0, 4.5);
     return { halfSize, baseExtent, zoom, viewExtent: baseExtent / zoom };

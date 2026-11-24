@@ -22,46 +22,113 @@ class WastelandWorld {
     this.activeSmokes = [];
     this.spawnPoints = [];    // Enemy patrol/spawn positions
     this.operatorSpawns = []; // Ring perimeter (250m apart) + intermittent low-threat POI infil points
-    this.mapHalfSize = 620;   // Expanded 1240m x 1240m tactical sector (>=250m between POIs)
+    this.mapHalfSize = 620;   // Custom organic sector silhouette within ±620m frame
     this.skyDome = null;
     this.fogLayers = [];
 
-    // Realistic hydrography: NE river -> south -> SW into lake -> SE river -> southern beach -> SE ocean peninsula
+    // Custom organic map perimeter traced 1:1 from design outline (NW headland, North Dam saddle, NNE lobe, East bluff, SE estuary & SW diagonal peninsula)
+    this.MAP_BOUNDARY = [
+      [-515, -565], [-435, -583], [-345, -571], [-251, -536], [-173, -501],
+      [-110, -481], [-52, -474], [14, -473], [84, -476], [151, -480],
+      [222, -487], [291, -497], [357, -504], [422, -494], [485, -469],
+      [545, -436], [592, -394], [610, -333], [592, -263], [545, -205],
+      [519, -141], [513, -75], [512, 1], [514, 75], [518, 152],
+      [523, 234], [528, 311], [521, 384], [502, 454], [465, 513],
+      [407, 548], [339, 563], [262, 569], [184, 574], [105, 575],
+      [33, 558], [-27, 524], [-79, 480], [-128, 426], [-189, 379],
+      [-257, 350], [-329, 328], [-398, 294], [-464, 236], [-526, 158],
+      [-575, 75], [-604, -18], [-607, -107], [-589, -204], [-565, -306],
+      [-550, -411], [-538, -502]
+    ];
+
+    // North-Center Hydroelectric Dam footprint (gray "dam" landmark in outline)
+    this.DAM_BOUNDS = { minX: -92, maxX: 148, minZ: -476, maxZ: -322, cx: 28, cz: -395 };
+
+    // Variable-width hydrography matching outline:
+    //  - RIVER_A (Main): Dam spillway tailwater -> Wide Central Confluence Basin -> SSW elbow -> ESE sweep -> SE outlet
+    //  - RIVER_B (NE Tributary): Enters NE border -> curves SW between NNE lobe & East landmass -> merges into Confluence!
     this.RIVER_A_CTRL = [
-      [595, -620], [515, -455], [440, -280], [395, -120], [255, -45], [198, 95], [164, 215], [160, 330]
+      [24, -320, 44],
+      [18, -245, 34],
+      [22, -175, 44],
+      [10, -105, 68],
+      [-8, -28, 76],
+      [-32, 35, 52],
+      [-64, 112, 36],
+      [-46, 192, 36],
+      [52, 246, 32],
+      [195, 282, 28],
+      [345, 326, 28],
+      [468, 374, 32],
+      [555, 408, 35],
+      [685, 458, 42]
     ];
     this.RIVER_B_CTRL = [
-      [212, 442], [250, 500], [298, 558], [348, 620]
+      [345, -650, 20],
+      [364, -515, 21],
+      [384, -425, 23],
+      [362, -335, 24],
+      [320, -255, 26],
+      [232, -196, 30],
+      [122, -154, 34],
+      [20, -132, 46]
     ];
-    this.LAKE = { x: 165, z: 390, rx: 96, rz: 68, feather: 34 };
-    this.RIVER_A_START_Y = 4.0;
-    this.LAKE_WATER_Y = 0.42;
-    this.OCEAN_WATER_Y = 0.12;
-    this.RIVER_WATER_Y = 0.5;
-    this._riverA = this._buildSmoothRiverData(this.RIVER_A_CTRL, 6);
-    this._riverB = this._buildSmoothRiverData(this.RIVER_B_CTRL, 6);
+    this.MAIN_START_WATER_Y = 1.55;
+    this.CONFLUENCE_WATER_Y = 0.85;
+    this.OUTLET_WATER_Y = 0.18;
+    this.NE_START_WATER_Y = 3.80;
+    this.LAKE_WATER_Y = 0.85;
+    this.OCEAN_WATER_Y = 0.18;
+    this.RIVER_WATER_Y = 0.85;
+    this._riverA = this._buildSmoothRiverData(this.RIVER_A_CTRL, 8);
+    this._riverB = this._buildSmoothRiverData(this.RIVER_B_CTRL, 8);
     this.RIVER_A = this._riverA.pts;
     this.RIVER_B = this._riverB.pts;
+    this.RIVER_POLYGONS = [];
     this.waterMeshes = [];
 
-    // Pre-registered flat terrain pads for every POI & extraction zone (smoothly leveled into the hills!)
+    // Connected tactical road & bridge network across all 3 landmass lobes + Dam Crest
+    this.ROADS = [
+      [-450, -495, -340, -330, 9],
+      [-340, -330, -118, -408, 10],
+      [174, -408, 215, -345, 10],
+      [215, -345, 395, -145, 9],
+      [-340, -330, -365, -20, 10],
+      [-365, -20, -128, 72, 10],
+      [-128, 72, 135, 95, 10],
+      [135, 95, 375, 135, 10],
+      [395, -145, 375, 135, 9],
+      [-365, -20, -165, 305, 9],
+      [-165, 305, -65, 355, 10],
+      [-65, 355, 135, 95, 9],
+      [-65, 355, 85, 495, 9],
+      [85, 495, 245, 455, 9],
+      [245, 455, 355, 505, 8],
+      [245, 455, 375, 135, 9]
+    ];
+
+    // Pre-registered flat terrain pads for every POI & extraction zone (100% dry inside green landmass lobes!)
     this._poiPads = [
-      { x: 0, z: 0, r: 34, h: 1.5 },          // WAREHOUSE (Central Logistics Hub + Catwalk)
-      { x: -320, z: -240, r: 32, h: 6.5 },    // COMPOUND (NW Military Base)
-      { x: 340, z: 20, r: 38, h: 3.0 },       // CLINIC (East Meadow - Large Multi-Room Hospital + Canopy)
-      { x: -295, z: 310, r: 34, h: 2.0 },     // POLICE STATION (Large 2-Story Precinct)
-      { x: -195, z: 315, r: 36, h: 2.0 },     // FIRE STATION (Large 3-Bay Garage + 8m x 8m Watch Tower)
-      { x: 310, z: -270, r: 52, h: 9.5 },     // BOSS CAMP (Large 70m x 64m Walled Compound & Command HQ)
-      { x: 270, z: 290, r: 26, h: 5.5 },      // RADIO OUTPOST (SE Low-Threat Hilltop)
-      { x: -370, z: 50, r: 32, h: 0.5 },      // RAIL YARD (West Valley Depot)
-      { x: -60, z: -340, r: 26, h: 10.0 },    // NORTH BUNKER (Northern Ridge)
-      // Extraction pads
-      { x: 0, z: -560, r: 16, h: 7.5 },
-      { x: 560, z: -40, r: 16, h: 3.5 },
-      { x: -560, z: 120, r: 16, h: 1.5 },
-      { x: 40, z: 560, r: 16, h: 2.0 },
-      // South Highway Checkpoint pad
-      { x: 0, z: 320, r: 22, h: 2.0 }
+      { x: 135, z: 95, r: 34, h: 3.4 },         // WAREHOUSE (Central-East River Meander Peninsula)
+      { x: -340, z: -330, r: 32, h: 7.2 },      // COMPOUND (NW Highlands Base)
+      { x: 375, z: 135, r: 38, h: 4.2 },        // CLINIC (East Landmass Hospital + Canopy)
+      { x: -165, z: 305, r: 34, h: 3.0 },       // POLICE STATION (SW Bend 2-Story Precinct)
+      { x: -65, z: 355, r: 36, h: 3.0 },        // FIRE STATION (South Bend 3-Bay Garage + Watch Tower)
+      { x: 395, z: -145, r: 52, h: 9.0 },       // BOSS CAMP (Upper-East Fortified Compound & Command HQ)
+      { x: 245, z: 455, r: 26, h: 5.2 },        // RADIO OUTPOST (SE Peninsula Hilltop)
+      { x: -365, z: -20, r: 32, h: 2.6 },       // RAIL YARD (West Valley Freight Depot)
+      { x: 215, z: -345, r: 26, h: 11.2 },      // NORTH BUNKER (NNE Island Lobe Overlook)
+      // Dam West & East Approach Abutments
+      { x: -120, z: -408, r: 24, h: 12.8 },
+      { x: 176, z: -408, r: 24, h: 12.8 },
+      // Extraction pads (4 corners of custom silhouette)
+      { x: -450, z: -495, r: 16, h: 8.5 },
+      { x: 465, z: -45, r: 16, h: 5.0 },
+      { x: -535, z: -60, r: 16, h: 3.5 },
+      { x: 355, z: 505, r: 16, h: 4.2 },
+      // Southern Peninsula Infil & Checkpoint pads
+      { x: 85, z: 495, r: 18, h: 3.6 },
+      { x: 85, z: 395, r: 20, h: 3.2 }
     ];
 
     this._colliderCellSize = 18;
@@ -82,8 +149,8 @@ class WastelandWorld {
     this._batchStaticGeometry();
     this.buildColliderGrid();
 
-    const spawnY = this.getTerrainHeight(0, 485);
-    this.playerSpawn = new THREE.Vector3(0, spawnY + 1.7, 485);
+    const spawnY = this.getTerrainHeight(85, 495);
+    this.playerSpawn = new THREE.Vector3(85, spawnY + 1.7, 495);
   }
 
   buildColliderGrid() {
@@ -165,15 +232,86 @@ class WastelandWorld {
     return this._evalAnalyticalTerrainHeight(x, z);
   }
 
-  _buildSmoothRiverData(ctrlPts, subdiv = 6) {
+  isInsideBoundary(x, z) {
+    const poly = this.MAP_BOUNDARY;
+    if (!poly || poly.length < 3) return Math.abs(x) <= this.mapHalfSize && Math.abs(z) <= this.mapHalfSize;
+    let inside = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i][0], zi = poly[i][1];
+      const xj = poly[j][0], zj = poly[j][1];
+      if (((zi > z) !== (zj > z)) && (x < ((xj - xi) * (z - zi)) / ((zj - zi) || 1e-9) + xi)) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  }
+
+  // Signed distance outside MAP_BOUNDARY (> 0 = in Red Zone outside polygon, <= 0 = inside playable sector)
+  getOutOfBoundsDist(x, z) {
+    const poly = this.MAP_BOUNDARY;
+    if (!poly || poly.length < 3) {
+      return Math.max(Math.abs(x) - this.mapHalfSize, Math.abs(z) - this.mapHalfSize);
+    }
+    let bestSq = Infinity;
+    for (let i = 0; i < poly.length; i++) {
+      const ax = poly[i][0], az = poly[i][1];
+      const bx = poly[(i + 1) % poly.length][0], bz = poly[(i + 1) % poly.length][1];
+      const dx = bx - ax, dz = bz - az;
+      const lenSq = dx * dx + dz * dz || 1;
+      let t = ((x - ax) * dx + (z - az) * dz) / lenSq;
+      if (t < 0) t = 0;
+      else if (t > 1) t = 1;
+      const px = ax + dx * t - x;
+      const pz = az + dz * t - z;
+      const dSq = px * px + pz * pz;
+      if (dSq < bestSq) bestSq = dSq;
+    }
+    const dist = Math.sqrt(bestSq);
+    return this.isInsideBoundary(x, z) ? -dist : dist;
+  }
+
+  clampToHardBoundary(pos, maxOut = 42) {
+    const poly = this.MAP_BOUNDARY;
+    if (!pos || !poly || poly.length < 3) return;
+    if (this.isInsideBoundary(pos.x, pos.z)) return;
+    let bestSq = Infinity;
+    let nearX = pos.x, nearZ = pos.z;
+    for (let i = 0; i < poly.length; i++) {
+      const ax = poly[i][0], az = poly[i][1];
+      const bx = poly[(i + 1) % poly.length][0], bz = poly[(i + 1) % poly.length][1];
+      const dx = bx - ax, dz = bz - az;
+      const lenSq = dx * dx + dz * dz || 1;
+      let t = ((pos.x - ax) * dx + (pos.z - az) * dz) / lenSq;
+      if (t < 0) t = 0;
+      else if (t > 1) t = 1;
+      const cx = ax + dx * t;
+      const cz = az + dz * t;
+      const dSq = (pos.x - cx) * (pos.x - cx) + (pos.z - cz) * (pos.z - cz);
+      if (dSq < bestSq) {
+        bestSq = dSq;
+        nearX = cx;
+        nearZ = cz;
+      }
+    }
+    const dist = Math.sqrt(bestSq);
+    if (dist > maxOut && dist > 1e-4) {
+      const k = maxOut / dist;
+      pos.x = nearX + (pos.x - nearX) * k;
+      pos.z = nearZ + (pos.z - nearZ) * k;
+    }
+  }
+
+  _buildSmoothRiverData(ctrlPts, subdiv = 8) {
     const pts = [];
     const n = ctrlPts.length;
     const catmull = (p0, p1, p2, p3, t) => {
       const t2 = t * t;
       const t3 = t2 * t;
+      const w0 = p0[2] || 18, w1 = p1[2] || 18, w2 = p2[2] || 18, w3 = p3[2] || 18;
       return [
         0.5 * ((2 * p1[0]) + (-p0[0] + p2[0]) * t + (2 * p0[0] - 5 * p1[0] + 4 * p2[0] - p3[0]) * t2 + (-p0[0] + 3 * p1[0] - 3 * p2[0] + p3[0]) * t3),
-        0.5 * ((2 * p1[1]) + (-p0[1] + p2[1]) * t + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3)
+        0.5 * ((2 * p1[1]) + (-p0[1] + p2[1]) * t + (2 * p0[1] - 5 * p1[1] + 4 * p2[1] - p3[1]) * t2 + (-p0[1] + 3 * p1[1] - 3 * p2[1] + p3[1]) * t3),
+        Math.max(10, 0.5 * ((2 * w1) + (-w0 + w2) * t + (2 * w0 - 5 * w1 + 4 * w2 - w3) * t2 + (-w0 + 3 * w1 - 3 * w2 + w3) * t3))
       ];
     };
     for (let i = 0; i < n - 1; i++) {
@@ -181,12 +319,12 @@ class WastelandWorld {
       const p1 = ctrlPts[i];
       const p2 = ctrlPts[i + 1];
       const p3 = ctrlPts[Math.min(n - 1, i + 2)];
-      const steps = i === n - 2 ? subdiv : subdiv;
-      for (let s = 0; s < steps; s++) {
-        pts.push(catmull(p0, p1, p2, p3, s / steps));
+      for (let s = 0; s < subdiv; s++) {
+        pts.push(catmull(p0, p1, p2, p3, s / subdiv));
       }
     }
-    pts.push([ctrlPts[n - 1][0], ctrlPts[n - 1][1]]);
+    const last = ctrlPts[n - 1];
+    pts.push([last[0], last[1], last[2] || 18]);
     const cumLen = [0];
     let total = 0;
     for (let i = 1; i < pts.length; i++) {
@@ -200,11 +338,13 @@ class WastelandWorld {
     const pts = riverData.pts;
     const cum = riverData.cumLen;
     const total = riverData.totalLen;
-    let bestDistSq = Infinity;
+    let bestMargin = Infinity;
+    let bestDist = Infinity;
+    let bestHalfW = 24;
     let bestS = 0;
     for (let i = 0; i < pts.length - 1; i++) {
-      const ax = pts[i][0], az = pts[i][1];
-      const bx = pts[i + 1][0], bz = pts[i + 1][1];
+      const ax = pts[i][0], az = pts[i][1], aw = pts[i][2] || 24;
+      const bx = pts[i + 1][0], bz = pts[i + 1][1], bw = pts[i + 1][2] || 24;
       const dx = bx - ax, dz = bz - az;
       const lenSq = dx * dx + dz * dz || 1;
       let t = ((x - ax) * dx + (z - az) * dz) / lenSq;
@@ -212,24 +352,39 @@ class WastelandWorld {
       else if (t > 1) t = 1;
       const px = ax + dx * t - x;
       const pz = az + dz * t - z;
-      const dSq = px * px + pz * pz;
-      if (dSq < bestDistSq) {
-        bestDistSq = dSq;
+      const d = Math.hypot(px, pz);
+      const hw = aw + (bw - aw) * t;
+      const margin = d - hw;
+      if (margin < bestMargin) {
+        bestMargin = margin;
+        bestDist = d;
+        bestHalfW = hw;
         const segLen = cum[i + 1] - cum[i];
         bestS = (cum[i] + t * segLen) / total;
       }
     }
-    return { dist: Math.sqrt(bestDistSq), s: bestS };
+    return { dist: bestDist, halfW: bestHalfW, margin: bestMargin, s: bestS };
   }
 
   _riverWaterYA(s) {
     const c = Math.max(0, Math.min(1, s));
-    return this.LAKE_WATER_Y + (this.RIVER_A_START_Y - this.LAKE_WATER_Y) * Math.pow(1 - c, 1.15);
+    if (c <= 0.12) {
+      const u = c / 0.12;
+      const e = u * u * (3 - 2 * u);
+      return this.MAIN_START_WATER_Y + (this.CONFLUENCE_WATER_Y - this.MAIN_START_WATER_Y) * e;
+    }
+    if (c <= 0.28) {
+      return this.CONFLUENCE_WATER_Y;
+    }
+    const u = (c - 0.28) / 0.72;
+    return this.CONFLUENCE_WATER_Y + (this.OUTLET_WATER_Y - this.CONFLUENCE_WATER_Y) * u;
   }
 
   _riverWaterYB(s) {
     const c = Math.max(0, Math.min(1, s));
-    return this.LAKE_WATER_Y + (this.OCEAN_WATER_Y - this.LAKE_WATER_Y) * c;
+    const u = Math.min(1, c / 0.88);
+    const e = u * u * (3 - 2 * u);
+    return this.NE_START_WATER_Y + (this.CONFLUENCE_WATER_Y - this.NE_START_WATER_Y) * e;
   }
 
   _distToPolyline(x, z, pts) {
@@ -248,115 +403,76 @@ class WastelandWorld {
     return best;
   }
 
-  _oceanDist(x, z) {
-    // Signed distance offshore in meters (>0 = ocean water, 0 = shoreline, <0 = dry beach/inland)
-    const beachZ = 562 - (x - 160) * 0.075 + Math.sin(x * 0.012) * 10;
-    const southDist = z - beachZ;
-    let eastDist = -999;
-    if (z > 150) {
-      const pt = Math.max(0, Math.min(1, (z - 165) / 155));
-      const ps = pt * pt * (3 - 2 * pt);
-      const eastShoreX = 650 - ps * 182 + Math.sin(z * 0.016) * 8;
-      eastDist = x - eastShoreX;
-    }
-    return Math.max(southDist, eastDist);
+  _oceanDist() {
+    return -999;
   }
 
-  _oceanFactor(x, z) {
-    return this._oceanDist(x, z) / 110;
+  _oceanFactor() {
+    return -9;
   }
 
   _evalAnalyticalTerrainHeight(x, z) {
-    // Broad rolling wasteland hills & elevated northern ridge
-    const ridgeN = Math.max(0, (-z - 140) / 480) * 9.5;
-    const h1 = Math.sin(x * 0.0068 + 0.4) * mathCosZ(z) * 7.8;
-    const h2 = Math.sin((x + z) * 0.0115) * 3.4 + Math.cos((x - z * 1.1) * 0.014) * 2.2;
-    const h3 = Math.sin(x * 0.029) * Math.sin(z * 0.027) * 0.85;
+    // Broad rolling wasteland hills & elevated northern highlands
+    const ridgeN = Math.max(0, (-z - 120) / 460) * 10.2;
+    const h1 = Math.sin(x * 0.0068 + 0.4) * Math.cos(z * 0.0062 - 0.3) * 7.2;
+    const h2 = Math.sin((x + z) * 0.0115) * 3.1 + Math.cos((x - z * 1.1) * 0.014) * 2.0;
+    const h3 = Math.sin(x * 0.029) * Math.sin(z * 0.027) * 0.80;
+    let baseH = Math.max(2.2, 3.0 + ridgeN + h1 + h2 + h3);
 
-    function mathCosZ(zv) {
-      return Math.cos(zv * 0.0062 - 0.3);
-    }
-
-    let h = 2.4 + ridgeN + h1 + h2 + h3;
-
-    // 1. Lake basin FIRST (strictly bounded [0..1] elliptical bowl + smooth shoreline feather — zero spikes!)
-    const L = this.LAKE;
-    const ex = (x - L.x) / (L.rx + L.feather);
-    const ez = (z - L.z) / (L.rz + L.feather);
-    const eDist = Math.hypot(ex, ez);
-    const innerLake = Math.hypot((x - L.x) / L.rx, (z - L.z) / L.rz);
-    if (eDist < 1) {
-      if (innerLake <= 1) {
-        const bowl = 1 - innerLake * innerLake;
-        h = Math.min(h, this.LAKE_WATER_Y - 0.35 - bowl * 1.95);
-      } else {
-        const innerAtOuter = eDist / innerLake;
-        const u = Math.max(0, Math.min(1, (eDist - innerAtOuter) / Math.max(0.02, 1 - innerAtOuter)));
-        const prof = u * u * (3 - 2 * u);
-        const shoreRim = Math.max(this.LAKE_WATER_Y + 0.58, h);
-        h = (this.LAKE_WATER_Y - 0.35) * (1 - prof) + shoreRim * prof;
+    // 1. Variable-width River A (Dam tailwater -> Central Confluence Basin -> SSW/ESE meander -> SE estuary)
+    //    & River B (NE Tributary) carved independently and combined via Math.min for seamless Y-confluence!
+    const carveBranch = (proj, wY) => {
+      const bankW = 28;
+      if (proj.margin >= bankW) return baseH;
+      if (proj.margin <= 0) {
+        const frac = proj.dist / Math.max(1, proj.halfW);
+        const maxDepth = 1.38 + Math.min(0.85, Math.max(0, proj.halfW - 26) * 0.016);
+        return wY - (maxDepth - (maxDepth - 0.44) * frac * frac);
       }
-    }
+      const u = Math.max(0, Math.min(1, proj.margin / bankW));
+      const prof = u * u * (3 - 2 * u);
+      const rimBase = Math.max(wY + 0.68, baseH);
+      return (wY - 0.44) * (1 - prof) + rimBase * prof;
+    };
 
-    // 2. Southern sandy beach gradient & SE ocean peninsula seabed
-    const oDist = this._oceanDist(x, z);
-    if (oDist > -44) {
-      if (oDist <= 0) {
-        const u = Math.max(0, Math.min(1, (oDist + 44) / 44));
-        const prof = u * u * (3 - 2 * u);
-        const beachTarget = this.OCEAN_WATER_Y + 0.06;
-        h = h * (1 - prof) + beachTarget * prof;
-      } else {
-        const sub = Math.min(1, oDist / 95);
-        const seaBed = this.OCEAN_WATER_Y - 0.16 - sub * (1.75 + sub * 2.35);
-        h = Math.min(h, seaBed);
-      }
-    }
-
-    // 3. NE river valley & submerged channel cutting cleanly through hills & lakeshore rim into the lake!
     const rA = this._projectOntoRiver(x, z, this._riverA);
-    if (rA.dist < 42) {
-      const wY = this._riverWaterYA(rA.s);
-      const chanW = 12.5;
-      if (rA.dist <= chanW) {
-        const edgeFrac = rA.dist / chanW;
-        const bedY = wY - (1.32 - 0.85 * edgeFrac * edgeFrac);
-        h = innerLake <= 1 ? Math.min(h, bedY) : bedY;
-      } else {
-        const u = Math.max(0, Math.min(1, (rA.dist - chanW) / (42 - chanW)));
-        const prof = u * u * (3 - 2 * u);
-        const rimBase = Math.max(wY + 0.55, h);
-        const bankY = (wY - 0.47) * (1 - prof) + rimBase * prof;
-        h = innerLake <= 1.05 ? Math.min(h, bankY) : bankY;
-      }
-    }
-
-    // 4. Lake SE outlet river channel cutting cleanly from the lake across the beach into the ocean!
     const rB = this._projectOntoRiver(x, z, this._riverB);
-    if (rB.dist < 36) {
-      const wY = this._riverWaterYB(rB.s);
-      const chanW = 12.0;
-      if (rB.dist <= chanW) {
-        const edgeFrac = rB.dist / chanW;
-        const bedY = wY - (1.18 - 0.78 * edgeFrac * edgeFrac);
-        h = Math.min(h, bedY);
-      } else {
-        const u = Math.max(0, Math.min(1, (rB.dist - chanW) / (36 - chanW)));
-        const prof = u * u * (3 - 2 * u);
-        const rimBase = Math.max(wY + 0.45, h);
-        const bankY = (wY - 0.40) * (1 - prof) + rimBase * prof;
-        h = (innerLake <= 1.05 || oDist > -4) ? Math.min(h, bankY) : bankY;
+    const hA = carveBranch(rA, this._riverWaterYA(rA.s));
+    const hB = carveBranch(rB, this._riverWaterYB(rB.s));
+    let h = Math.min(hA, hB);
+
+    // 2. North-Center Hydroelectric Dam Gorge & Lower Powerhouse Apron (x in [-96..152], z in [-480..-324])
+    const db = this.DAM_BOUNDS;
+    if (db && x >= db.minX - 24 && x <= db.maxX + 24 && z >= db.minZ - 18 && z <= db.maxZ + 8) {
+      let lx = 1.0;
+      if (x < db.minX) lx = Math.max(0, (x - (db.minX - 24)) / 24);
+      else if (x > db.maxX) lx = Math.max(0, ((db.maxX + 24) - x) / 24);
+      let lz = 1.0;
+      if (z < db.minZ) lz = Math.max(0, (z - (db.minZ - 18)) / 18);
+      else if (z > db.maxZ - 2) lz = Math.max(0, ((db.maxZ + 6) - z) / 8);
+      const wDam = (lx * lx * (3 - 2 * lx)) * (lz * lz * (3 - 2 * lz));
+      if (wDam > 0.001) {
+        let damTargetH;
+        if (z <= -402) {
+          damTargetH = 12.8;
+        } else if (z <= -362) {
+          const u = (z - (-402)) / 40;
+          damTargetH = 12.8 + (3.2 - 12.8) * (u * u * (3 - 2 * u));
+        } else {
+          damTargetH = 3.2;
+        }
+        h = h * (1 - wDam) + damTargetH * wDam;
       }
     }
 
-    // Smoothly blend toward flat pads around POIs & Extraction Zones
+    // 3. Smoothly blend toward flat pads around POIs & Extraction Zones
     if (this._poiPads) {
       for (let i = 0; i < this._poiPads.length; i++) {
         const pad = this._poiPads[i];
         const dx = x - pad.x;
         const dz = z - pad.z;
         const dist = Math.hypot(dx, dz);
-        const outer = pad.r + 28;
+        const outer = pad.r + 26;
         if (dist < outer) {
           if (dist <= pad.r) return pad.h;
           const t = (dist - pad.r) / (outer - pad.r);
@@ -468,9 +584,15 @@ class WastelandWorld {
       side: THREE.DoubleSide
     });
     const mistSpots = [
-      [-180, 140, 220], [160, 150, 240], [-340, 60, 200],
-      [280, -140, 210], [-220, -160, 190], [60, 280, 230],
-      [-60, -210, 200], [420, 180, 210], [-420, -260, 210]
+      [25, -265, 210],    // Hydro Dam tailwater gorge mist
+      [4, -55, 250],      // Wide Central Confluence Basin
+      [265, -225, 200],   // NE Tributary valley
+      [-55, 135, 220],    // SSW River Bend
+      [255, 305, 220],    // SE Estuary channel
+      [-345, -45, 210],   // West Rail Yard valley
+      [-235, 185, 210],   // SW Highland slope
+      [285, 25, 220],     // East Landmass meadow
+      [115, 445, 200]     // Southern Peninsula mist
     ];
     for (const [mx, mz, size] of mistSpots) {
       const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size), mistMat);
@@ -1068,17 +1190,13 @@ class WastelandWorld {
       if (slope > 0.16) {
         tmpCol.lerp(colSlope, THREE.MathUtils.clamp((slope - 0.16) * 2.6, 0, 0.78));
       }
-      // Southern beach sand + submerged riverbed / lakebed / ocean floor tinting
-      const oDist = this._oceanDist(vx, vz);
-      if (oDist > -38 && vy < 2.6) {
-        const sandK = Math.max(0, Math.min(1, (oDist + 38) / 36));
-        tmpCol.lerp(colSand, sandK * 0.92);
-      }
+      // Sandy/silty riverbank & submerged riverbed tinting
       const wSurf = this.getWaterSurfaceY(vx, vz);
       if (wSurf !== null) {
         const subDepth = wSurf - vy;
-        if (subDepth > -0.35) {
-          tmpCol.lerp(colWet, 0.48);
+        if (subDepth > -0.65 && subDepth <= 0.05) {
+          tmpCol.lerp(colSand, 0.36);
+          tmpCol.lerp(colWet, 0.42);
         }
         if (subDepth > 0.02) {
           const dk = Math.max(0, Math.min(1, subDepth / 2.2));
@@ -1101,11 +1219,30 @@ class WastelandWorld {
     this.scene.add(ground);
     this.shootableMeshes.push(ground);
 
-    // Terrain-conforming segmented asphalt/dirt highways connecting POIs across the 1240m sector
-    // Automatically arches bridge decks cleanly above rivers so highways never dip underwater!
+    // Terrain-conforming segmented asphalt highways + walkable 3D concrete river bridges!
+    const evalRoadY = (wx, wz) => {
+      let wy = this.getTerrainHeight(wx, wz) + 0.09;
+      const bridgeRamp = 18;
+      const rA = this._projectOntoRiver(wx, wz, this._riverA);
+      if (rA.margin < bridgeRamp) {
+        const u = Math.max(0, rA.margin / bridgeRamp);
+        const bridgeK = Math.cos(u * Math.PI * 0.5);
+        const bridgeY = this._riverWaterYA(rA.s) + 1.08;
+        wy = Math.max(wy, wy * (1 - bridgeK) + bridgeY * bridgeK);
+      }
+      const rB = this._projectOntoRiver(wx, wz, this._riverB);
+      if (rB.margin < bridgeRamp) {
+        const u = Math.max(0, rB.margin / bridgeRamp);
+        const bridgeK = Math.cos(u * Math.PI * 0.5);
+        const bridgeY = this._riverWaterYB(rB.s) + 1.08;
+        wy = Math.max(wy, wy * (1 - bridgeK) + bridgeY * bridgeK);
+      }
+      return wy;
+    };
+
     const addTerrainRoad = (x1, z1, x2, z2, width = 10) => {
       const len = Math.hypot(x2 - x1, z2 - z1);
-      const steps = Math.max(16, Math.round(len / 9));
+      const steps = Math.max(16, Math.round(len / 7));
       const geo = new THREE.PlaneGeometry(width, len, 2, steps);
       geo.rotateX(-Math.PI / 2);
       const angle = Math.atan2(x2 - x1, z2 - z1);
@@ -1119,20 +1256,7 @@ class WastelandWorld {
         const lz = pa.getZ(i);
         const wx = cx + lx * cosA + lz * sinA;
         const wz = cz - lx * sinA + lz * cosA;
-        let wy = this.getTerrainHeight(wx, wz) + 0.09;
-        const rA = this._projectOntoRiver(wx, wz, this._riverA);
-        if (rA.dist < 24) {
-          const bridgeK = Math.cos((rA.dist / 24) * Math.PI * 0.5);
-          const bridgeY = this._riverWaterYA(rA.s) + 0.72;
-          wy = Math.max(wy, wy * (1 - bridgeK) + bridgeY * bridgeK);
-        }
-        const rB = this._projectOntoRiver(wx, wz, this._riverB);
-        if (rB.dist < 22) {
-          const bridgeK = Math.cos((rB.dist / 22) * Math.PI * 0.5);
-          const bridgeY = this._riverWaterYB(rB.s) + 0.72;
-          wy = Math.max(wy, wy * (1 - bridgeK) + bridgeY * bridgeK);
-        }
-        pa.setXYZ(i, wx, wy, wz);
+        pa.setXYZ(i, wx, evalRoadY(wx, wz), wz);
       }
       geo.computeVertexNormals();
       const uvAttr = geo.attributes && geo.attributes.uv;
@@ -1147,55 +1271,66 @@ class WastelandWorld {
       mesh.receiveShadow = true;
       this.scene.add(mesh);
       this.shootableMeshes.push(mesh);
+
+      // Build walkable concrete bridge deck colliders, side curbs & riverbed piers wherever road crosses water!
+      const cSteps = Math.max(4, Math.ceil(len / 2.2));
+      let pierCounter = 0;
+      for (let s = 0; s <= cSteps; s++) {
+        const t = s / cSteps;
+        const sx = x1 + (x2 - x1) * t;
+        const sz = z1 + (z2 - z1) * t;
+        const rA = this._projectOntoRiver(sx, sz, this._riverA);
+        const rB = this._projectOntoRiver(sx, sz, this._riverB);
+        if (rA.margin < 16 || rB.margin < 16) {
+          const deckY = evalRoadY(sx, sz);
+          const terrY = this.getTerrainHeight(sx, sz);
+          if (deckY > terrY + 0.16) {
+            const halfSpan = width * 0.48;
+            this.colliders.push({
+              minX: sx - halfSpan, maxX: sx + halfSpan,
+              minY: deckY - 0.45, maxY: deckY,
+              minZ: sz - halfSpan, maxZ: sz + halfSpan
+            });
+            this._addDecor(sx, deckY - 0.24, sz, width + 0.6, 0.42, 2.5, this._materials.darkConcrete, angle);
+            if ((rA.margin < 2 || rB.margin < 2) && (pierCounter++ % 7 === 3)) {
+              const pierH = Math.max(1.2, deckY - terrY + 0.6);
+              this._addBox(sx - cosA * (width * 0.36), deckY - 0.25 - pierH * 0.5, sz + sinA * (width * 0.36), 1.1, pierH, 1.1, this._materials.concrete, true);
+              this._addBox(sx + cosA * (width * 0.36), deckY - 0.25 - pierH * 0.5, sz - sinA * (width * 0.36), 1.1, pierH, 1.1, this._materials.concrete, true);
+            }
+          }
+        }
+      }
     };
 
-    // Main N-S and E-W cross-sector highways + perimeter connector roads between POIs
-    addTerrainRoad(0, -560, 0, 560, 11);
-    addTerrainRoad(-560, 20, 560, 20, 11);
-    addTerrainRoad(-320, -240, -60, -340, 8);
-    addTerrainRoad(-60, -340, 310, -270, 8);
-    addTerrainRoad(310, -270, 340, 20, 8);
-    addTerrainRoad(340, 20, 270, 290, 8);
-    addTerrainRoad(270, 290, 0, 312, 8);
-    addTerrainRoad(0, 312, -260, 310, 8);
-    addTerrainRoad(-260, 310, -370, 50, 8);
-    addTerrainRoad(-370, 50, -320, -240, 8);
+    for (const [rx1, rz1, rx2, rz2, rw] of this.ROADS) {
+      addTerrainRoad(rx1, rz1, rx2, rz2, rw);
+    }
 
     this._buildWater();
   }
 
   getWaterSurfaceY(x, z) {
     let level = -Infinity;
-    const oDist = this._oceanDist(x, z);
-    if (oDist > -2) {
-      level = Math.max(level, this.OCEAN_WATER_Y);
-    }
-    const L = this.LAKE;
-    const ex = (x - L.x) / (L.rx + 8);
-    const ez = (z - L.z) / (L.rz + 8);
-    if (Math.hypot(ex, ez) < 1) {
-      level = Math.max(level, this.LAKE_WATER_Y);
-    }
     const rA = this._projectOntoRiver(x, z, this._riverA);
-    if (rA.dist < 15.5) {
+    if (rA.margin < 3.0) {
       level = Math.max(level, this._riverWaterYA(rA.s));
     }
     const rB = this._projectOntoRiver(x, z, this._riverB);
-    if (rB.dist < 14.5) {
+    if (rB.margin < 3.0) {
       level = Math.max(level, this._riverWaterYB(rB.s));
     }
     return level === -Infinity ? null : level;
   }
 
-  getWaterDepth(x, z) {
+  getWaterDepth(x, z, feetY = null) {
     const level = this.getWaterSurfaceY(x, z);
     if (level === null) return 0;
-    const t = this.getTerrainHeight(x, z);
+    const t = (feetY !== null && Number.isFinite(feetY)) ? feetY : this.getTerrainHeight(x, z);
     return Math.max(0, level - t);
   }
 
-  isInDeepWater(x, z) {
-    return this.getWaterDepth(x, z) > 1.15;
+  isInDeepWater(x, z, feetY = null) {
+    return this.getWaterDepth(x, z, feetY) > 1.15;
   }
 
   _buildWater() {
@@ -1209,17 +1344,18 @@ class WastelandWorld {
       polygonOffsetFactor: -1,
       polygonOffsetUnits: -2
     });
-    const riverMat = mkWater(0x3b7282, 0.80);
-    const lakeMat = mkWater(0x336273, 0.83);
-    const oceanMat = mkWater(0x254f63, 0.88);
+    const riverMat = mkWater(0x316b82, 0.84);
+    this.RIVER_POLYGONS = [];
 
-    // Smooth sloped river ribbon mesh matching exact downstream water surface profile!
-    const buildSlopedRibbon = (riverData, halfW, evalYFn, mat) => {
+    // Smooth variable-width sloped river & confluence basin ribbon mesh!
+    const buildVariableSlopedRibbon = (riverData, evalYFn, mat) => {
       const pts = riverData.pts;
       const cum = riverData.cumLen;
       const total = riverData.totalLen;
       const verts = [];
       const idx = [];
+      const leftBank2D = [];
+      const rightBank2D = [];
       for (let i = 0; i < pts.length; i++) {
         const p = pts[i];
         const q = pts[Math.min(pts.length - 1, i + 1)];
@@ -1231,15 +1367,21 @@ class WastelandWorld {
         dz /= len;
         const nx = -dz;
         const nz = dx;
+        const hw = (p[2] || 20) + 2.0;
         const s = cum[i] / total;
         const wy = evalYFn(s);
-        verts.push(p[0] - nx * halfW, wy, p[1] - nz * halfW);
-        verts.push(p[0] + nx * halfW, wy, p[1] + nz * halfW);
+        const lx = p[0] - nx * hw, lz = p[1] - nz * hw;
+        const rx = p[0] + nx * hw, rz = p[1] + nz * hw;
+        verts.push(lx, wy, lz);
+        verts.push(rx, wy, rz);
+        leftBank2D.push([lx, lz]);
+        rightBank2D.push([rx, rz]);
         if (i > 0) {
           const b = i * 2;
           idx.push(b - 2, b - 1, b, b - 1, b + 1, b);
         }
       }
+      this.RIVER_POLYGONS.push(leftBank2D.concat(rightBank2D.reverse()));
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
       g.setIndex(idx);
@@ -1251,41 +1393,8 @@ class WastelandWorld {
       return m;
     };
 
-    buildSlopedRibbon(this._riverA, 14.5, (s) => this._riverWaterYA(s), riverMat);
-    buildSlopedRibbon(this._riverB, 14.0, (s) => this._riverWaterYB(s), riverMat);
-
-    // Elliptical Lake surface mesh
-    const lakeGeo = new THREE.CircleGeometry(1, 56);
-    lakeGeo.rotateX(-Math.PI / 2);
-    lakeGeo.scale(this.LAKE.rx + 5, 1, this.LAKE.rz + 5);
-    const lakeMesh = new THREE.Mesh(lakeGeo, lakeMat);
-    lakeMesh.position.set(this.LAKE.x, this.LAKE_WATER_Y, this.LAKE.z);
-    lakeMesh.renderOrder = 2;
-    this.scene.add(lakeMesh);
-    this.waterMeshes.push(lakeMesh);
-
-    // Contoured Coastal Ocean Mesh (flat at OCEAN_WATER_Y offshore, tucked 3.5m underground inland so it NEVER pokes through valleys!)
-    const oxMin = -820, oxMax = 820, ozMin = 120, ozMax = 820;
-    const oSegX = 96, oSegZ = 48;
-    const oceanGeo = new THREE.PlaneGeometry(oxMax - oxMin, ozMax - ozMin, oSegX, oSegZ);
-    oceanGeo.rotateX(-Math.PI / 2);
-    const oPos = oceanGeo.attributes.position;
-    const ocx = (oxMin + oxMax) * 0.5;
-    const ocz = (ozMin + ozMax) * 0.5;
-    for (let i = 0; i < oPos.count; i++) {
-      const wx = oPos.getX(i) + ocx;
-      const wz = oPos.getZ(i) + ocz;
-      const oDist = this._oceanDist(wx, wz);
-      const wy = oDist > -12
-        ? this.OCEAN_WATER_Y
-        : (this.getTerrainHeight(wx, wz) - 3.5);
-      oPos.setXYZ(i, wx, wy, wz);
-    }
-    oceanGeo.computeVertexNormals();
-    const oceanMesh = new THREE.Mesh(oceanGeo, oceanMat);
-    oceanMesh.renderOrder = 2;
-    this.scene.add(oceanMesh);
-    this.waterMeshes.push(oceanMesh);
+    buildVariableSlopedRibbon(this._riverA, (s) => this._riverWaterYA(s), riverMat);
+    buildVariableSlopedRibbon(this._riverB, (s) => this._riverWaterYB(s), riverMat);
   }
 
   _buildForestAndFoliage() {
@@ -1296,23 +1405,43 @@ class WastelandWorld {
       return seed / 4294967296;
     };
 
-    const isClearForNature = (x, z, padMargin = 8) => {
-      if (Math.abs(x) > this.mapHalfSize + 140 || Math.abs(z) > this.mapHalfSize + 140) return false;
-      // Keep forests out of rivers, lake & ocean
-      if (this.getWaterDepth && this.getWaterDepth(x, z) > 0.25) return false;
-      // Keep clear of main N-S & E-W highways
-      if (Math.abs(x) < 12 || Math.abs(z - 20) < 12) return false;
+    const isNearAnyRoad = (x, z, clearance = 11) => {
+      if (!this.ROADS) return false;
+      for (let i = 0; i < this.ROADS.length; i++) {
+        const [ax, az, bx, bz, rw] = this.ROADS[i];
+        const dx = bx - ax, dz = bz - az;
+        const lSq = dx * dx + dz * dz || 1;
+        let t = ((x - ax) * dx + (z - az) * dz) / lSq;
+        if (t < 0) t = 0;
+        else if (t > 1) t = 1;
+        const d = Math.hypot(x - (ax + dx * t), z - (az + dz * t));
+        if (d < (rw || 9) * 0.5 + clearance) return true;
+      }
+      return false;
+    };
+
+    const isClearForNature = (x, z, padMargin = 8, strictInside = false) => {
+      if (Math.abs(x) > this.mapHalfSize + 120 || Math.abs(z) > this.mapHalfSize + 120) return false;
+      const outD = this.getOutOfBoundsDist(x, z);
+      if (strictInside ? (outD > -4) : (outD > 95)) return false;
+      // Keep forests out of rivers & confluence basin
+      if (this.getWaterDepth && this.getWaterDepth(x, z) > 0.15) return false;
+      // Keep clear of Hydroelectric Dam structure
+      const db = this.DAM_BOUNDS;
+      if (db && x >= db.minX - 18 && x <= db.maxX + 18 && z >= db.minZ - 14 && z <= db.maxZ + 18) return false;
+      // Keep clear of tactical roads & bridges
+      if (isNearAnyRoad(x, z, 8)) return false;
       // Keep clear of POI & Extraction pads
       for (let i = 0; i < this._poiPads.length; i++) {
         const p = this._poiPads[i];
         if (Math.hypot(x - p.x, z - p.z) < p.r + padMargin) return false;
       }
-      // Keep clear of operator spawn ring points
+      // Keep clear of operator spawn points
       for (let i = 0; i < this.operatorSpawns.length; i++) {
         const sp = this.operatorSpawns[i];
         if (Math.hypot(x - sp.x, z - sp.z) < 14) return false;
       }
-      if (Math.hypot(x - 0, z - 485) < 18) return false;
+      if (Math.hypot(x - 85, z - 495) < 18) return false;
       return true;
     };
 
@@ -1436,7 +1565,7 @@ class WastelandWorld {
         livePineInst.setMatrixAt(placedLive++, dummy.matrix);
       }
 
-      if (Math.abs(x) <= this.mapHalfSize && Math.abs(z) <= this.mapHalfSize) {
+      if (this.getOutOfBoundsDist(x, z) <= 45) {
         const cr = 0.36 * s;
         this.colliders.push({
           minX: x - cr, maxX: x + cr,
@@ -1471,10 +1600,10 @@ class WastelandWorld {
     grassInst.castShadow = false;
 
     let placedGrass = 0;
-    for (let tries = 0; tries < 7500 && placedGrass < grassCount; tries++) {
+    for (let tries = 0; tries < 9500 && placedGrass < grassCount; tries++) {
       const x = (rand() * 2 - 1) * this.mapHalfSize;
       const z = (rand() * 2 - 1) * this.mapHalfSize;
-      if (!isClearForNature(x, z, 2)) continue;
+      if (!isClearForNature(x, z, 2, true)) continue;
       const y = this.getTerrainHeight(x, z);
       const s = 0.72 + rand() * 0.75;
       dummy.position.set(x, y - 0.03, z);
@@ -1503,10 +1632,10 @@ class WastelandWorld {
     fernInst.castShadow = false;
 
     let placedFerns = 0;
-    for (let tries = 0; tries < 2800 && placedFerns < fernCount; tries++) {
+    for (let tries = 0; tries < 3600 && placedFerns < fernCount; tries++) {
       const x = (rand() * 2 - 1) * this.mapHalfSize;
       const z = (rand() * 2 - 1) * this.mapHalfSize;
-      if (!isClearForNature(x, z, 3)) continue;
+      if (!isClearForNature(x, z, 3, true)) continue;
       const y = this.getTerrainHeight(x, z);
       const s = 0.75 + rand() * 0.65;
       dummy.position.set(x, y - 0.04, z);
@@ -1532,10 +1661,10 @@ class WastelandWorld {
     rockInst.receiveShadow = true;
 
     let placedRocks = 0;
-    for (let tries = 0; tries < 900 && placedRocks < rockCount; tries++) {
-      const x = (rand() * 2 - 1) * (this.mapHalfSize - 25);
-      const z = (rand() * 2 - 1) * (this.mapHalfSize - 25);
-      if (!isClearForNature(x, z, 8)) continue;
+    for (let tries = 0; tries < 1400 && placedRocks < rockCount; tries++) {
+      const x = (rand() * 2 - 1) * (this.mapHalfSize - 15);
+      const z = (rand() * 2 - 1) * (this.mapHalfSize - 15);
+      if (!isClearForNature(x, z, 8, true)) continue;
       const y = this.getTerrainHeight(x, z);
       const s = 0.75 + rand() * 1.15;
       dummy.position.set(x, y + 0.55 * s, z);
@@ -2015,6 +2144,22 @@ class WastelandWorld {
       ctx.fillStyle = '#ffd54f';
       ctx.font = '700 24px Consolas, Arial, sans-serif';
       ctx.fillText('STATION 07 // RESCUE', 168, 134);
+    } else if (type === 'dam') {
+      ctx.fillStyle = '#24292e';
+      ctx.fillRect(0, 0, 512, 192);
+      ctx.strokeStyle = '#4fc3f7';
+      ctx.lineWidth = 8;
+      ctx.strokeRect(8, 8, 496, 176);
+      ctx.fillStyle = '#f5a623';
+      ctx.fillRect(16, 16, 480, 14);
+      ctx.fillStyle = '#eef4f7';
+      ctx.font = '900 58px Consolas, Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('HYDRO DAM', 256, 84);
+      ctx.fillStyle = '#4fc3f7';
+      ctx.font = '700 24px Consolas, Arial, sans-serif';
+      ctx.fillText('SECTOR 04 // TURBINE & SPILLWAY', 256, 138);
     } else {
       ctx.fillStyle = '#181a1d';
       ctx.fillRect(0, 0, 512, 192);
@@ -2720,19 +2865,29 @@ class WastelandWorld {
   }
 
   _buildMapLayout() {
-    // Open Sector Perimeter — Visual 3D Red Zone hazard warning beacons at ±620m (1240m x 1240m!)
-    const B = this.mapHalfSize || 620;
+    // Organic Sector Perimeter — Visual 3D Red Zone hazard warning beacons tracing MAP_BOUNDARY!
     const postMat = new THREE.MeshLambertMaterial({ color: 0x2a2c2e });
     const bulbMat = new THREE.MeshBasicMaterial({ color: 0xff3d3d });
-    for (let p = -B; p <= B; p += 88) {
-      const pts = [[p, -B], [p, B], [-B, p], [B, p]];
-      for (const [px, pz] of pts) {
-        const py = this.getTerrainHeight(px, pz);
-        const post = new THREE.Mesh(new THREE.BoxGeometry(0.35, 3.2, 0.35), postMat);
-        post.position.set(px, py + 1.6, pz);
-        const bulb = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 0.55), bulbMat);
-        bulb.position.set(px, py + 3.4, pz);
-        this.scene.add(post, bulb);
+    if (this.MAP_BOUNDARY && this.MAP_BOUNDARY.length >= 3) {
+      let distAcc = 0;
+      const poly = this.MAP_BOUNDARY;
+      for (let i = 0; i < poly.length; i++) {
+        const [ax, az] = poly[i];
+        const [bx, bz] = poly[(i + 1) % poly.length];
+        const segLen = Math.hypot(bx - ax, bz - az) || 1;
+        while (distAcc < segLen) {
+          const t = distAcc / segLen;
+          const px = ax + (bx - ax) * t;
+          const pz = az + (bz - az) * t;
+          const py = this.getTerrainHeight(px, pz);
+          const post = new THREE.Mesh(new THREE.BoxGeometry(0.35, 3.2, 0.35), postMat);
+          post.position.set(px, py + 1.6, pz);
+          const bulb = new THREE.Mesh(new THREE.BoxGeometry(0.55, 0.55, 0.55), bulbMat);
+          bulb.position.set(px, py + 3.4, pz);
+          this.scene.add(post, bulb);
+          distAcc += 78;
+        }
+        distAcc -= segLen;
       }
     }
 
@@ -2794,11 +2949,11 @@ class WastelandWorld {
       this._addBox(tx, by + h * 0.98, tz, w * 0.42, 0.18, d + 0.3, this._materials.crateMil, false);
     };
 
-    // === 8 DRAMATICALLY EXPANDED TACTICAL POIs (>= 278m BETWEEN EVERY PAIR OF POIs!) ===
+    // === 9 TACTICAL POIs TAILORED TO THE 3 LANDMASS LOBES & NORTH HYDRO DAM ===
 
-    // 1. Military Compound (NW Sector: -320, -240)
+    // 1. Military Compound (NW Highlands Lobe: -340, -330)
     {
-      const cx = -320, cz = -240;
+      const cx = -340, cz = -330;
       this._addBuilding(cx, cz, 18, 16, 5.0, 'east', null, (by, bh) => {
         // West Armory Wing
         this._addPartition(cx - 4.0, cz - 8.0, cx - 4.0, cz + 8.0, by, bh, [
@@ -2830,9 +2985,9 @@ class WastelandWorld {
       this._addBarrier(cx + 15, cz + 9, true);
     }
 
-    // 2. Large Multi-Room Field Hospital & Clinic (East Meadow: 340, 20) — 28m x 20m White Hospital + Ambulance Canopy + 6 Patient Rooms!
+    // 2. Large Multi-Room Field Hospital & Clinic (East Landmass: 375, 135) — 28m x 20m White Hospital + Ambulance Canopy + 6 Patient Rooms!
     {
-      const cx = 340, cz = 20;
+      const cx = 375, cz = 135;
       const by = this.getTerrainHeight(cx, cz);
       this._addBuilding(cx, cz, 28, 20, 4.8, 'west', this._materials.whiteWall);
       this.pois.push({ name: 'CLINIC', x: cx, z: cz, color: '#69f0ae', threat: 'medium' });
@@ -2862,7 +3017,7 @@ class WastelandWorld {
         for (const rx of [cx - 4.5, cx + 2.5, cx + 9.5]) {
           this._addBox(rx - 3.5, by + 2.25, roomZ, 0.24, 4.5, 7.6, this._materials.whiteWall, true);
           this._addBox(rx + 1.0, by + 2.25, wallZ, 4.4, 4.5, 0.24, this._materials.whiteWall, true);
-          const roomNum = side === -1 ? (rx < 340 ? 'Exam 1' : (rx < 345 ? 'ICU 1' : 'Trauma')) : (rx < 340 ? 'Exam 2' : (rx < 345 ? 'Ward B' : 'Pharmacy'));
+          const roomNum = side === -1 ? (rx < cx ? 'Exam 1' : (rx < cx + 5 ? 'ICU 1' : 'Trauma')) : (rx < cx ? 'Exam 2' : (rx < cx + 5 ? 'Ward B' : 'Pharmacy'));
           this._addDoor(rx - 2.3, by + 0.16, wallZ, 1.75, 2.6, 0, `${roomNum} Door`, 'wood');
           addHospitalBed(rx + 0.6, by, bedZ, 0);
         }
@@ -2883,9 +3038,9 @@ class WastelandWorld {
       this._addBarrier(cx - 22, cz - 7, false);
     }
 
-    // 3A. Large 2-Story Police Precinct Headquarters (SW West Pad: -295, 310 — 24m x 18m w/ Front Portico & Wide Central Stairs!)
+    // 3A. Large 2-Story Police Precinct Headquarters (SW Bend: -165, 305 — 24m x 18m w/ Front Portico & Wide Central Stairs!)
     {
-      const pcx = -295, pcz = 310;
+      const pcx = -165, pcz = 305;
       const pby = this.getTerrainHeight(pcx, pcz);
       this.pois.push({ name: 'POLICE STATION', x: pcx, z: pcz, color: '#42a5f5', threat: 'low' });
 
@@ -2974,9 +3129,9 @@ class WastelandWorld {
       });
     }
 
-    // 3B. Large 3-Bay Fire Station + Living Wing + Spacious 8m x 8m Climbable Watch Tower (SW East Pad: -195, 315)
+    // 3B. Large 3-Bay Fire Station + Living Wing + Spacious 8m x 8m Climbable Watch Tower (South Bend: -65, 355)
     {
-      const fcx = -195, fcz = 315;
+      const fcx = -65, fcz = 355;
       const fby = this.getTerrainHeight(fcx, fcz);
       this.pois.push({ name: 'FIRE STATION', x: fcx, z: fcz, color: '#ef5350', threat: 'low' });
 
@@ -3052,9 +3207,9 @@ class WastelandWorld {
       this._addLootContainer(tcx + 1.8, 13.35, tcz - 1.8, 'military', 'Fire Tower Overwatch Case');
     }
 
-    // 4. Massive Boss Encampment Compound (NE: 310, -270 — 70m x 64m Walls, 4 Corner Guard Towers, Barracks, 3 Tents & 24m x 20m 2-Story Command HQ!)
+    // 4. Massive Boss Encampment Compound (Upper-East Landmass: 395, -145 — 70m x 64m Walls, 4 Corner Guard Towers, Barracks, 3 Tents & 2-Story Command HQ!)
     {
-      const cx = 310, cz = -270;
+      const cx = 395, cz = -145;
       const by = this.getTerrainHeight(cx, cz);
       this.pois.push({ name: 'BOSS CAMP', x: cx, z: cz, color: '#ffc107', threat: 'boss' });
 
@@ -3174,26 +3329,26 @@ class WastelandWorld {
       this._addContainer(cx + 20, cz - 24, 0, this._materials.rustOlive);
     }
 
-    // 5. Enlarged Central Logistics Warehouse (Crossroads Hub: 0, 0 — 28m x 18m w/ Walkable Catwalk Mezzanine!)
+    // 5. Enlarged Central Logistics Warehouse (East River Meander Peninsula: 135, 95 — 28m x 18m w/ Walkable Catwalk Mezzanine!)
     {
-      const cx = 0, cz = 0;
+      const cx = 135, cz = 95;
       const by = this.getTerrainHeight(cx, cz);
       this._addBuilding(cx, cz, 28, 18, 6.2, 'south', null, (wBy, wH) => {
         // SW Foreman Office
-        this._addPartition(-8.5, 2.5, -8.5, 9.0, wBy, wH, [
-          { at: 5.5, w: 1.7, door: 'wood', label: 'Foreman Office' }
+        this._addPartition(cx - 8.5, cz + 2.5, cx - 8.5, cz + 9.0, wBy, wH, [
+          { at: cz + 5.5, w: 1.7, door: 'wood', label: 'Foreman Office' }
         ]);
-        this._addPartition(-14.0, 2.5, -8.5, 2.5, wBy, wH, []);
-        addDeskProp(-11.6, wBy + 0.16, 5.2);
-        this._addLootContainer(-12.2, 0.16, 7.4, 'supply', "Foreman's Office Safe");
+        this._addPartition(cx - 14.0, cz + 2.5, cx - 8.5, cz + 2.5, wBy, wH, []);
+        addDeskProp(cx - 11.6, wBy + 0.16, cz + 5.2);
+        this._addLootContainer(cx - 12.2, 0.16, cz + 7.4, 'supply', "Foreman's Office Safe");
 
         // Supply Pallet Stacks for Interior Cover
-        this._addBox(-5.5, wBy + 0.7, 5.0, 2.4, 1.4, 1.2, this._materials.crateSup, true);
-        this._addBox(5.5, wBy + 0.7, 5.0, 2.4, 1.4, 1.2, this._materials.crateSup, true);
+        this._addBox(cx - 5.5, wBy + 0.7, cz + 5.0, 2.4, 1.4, 1.2, this._materials.crateSup, true);
+        this._addBox(cx + 5.5, wBy + 0.7, cz + 5.0, 2.4, 1.4, 1.2, this._materials.crateSup, true);
 
-        // Catwalk Railing (x: -12.5..8.0 and 10.4..12.5, leaving 2.4m arrival gap at stairs!)
-        this._addBox(-2.25, wBy + 3.85, -5.05, 20.5, 1.0, 0.08, this._materials.metal, true);
-        this._addBox(11.45, wBy + 3.85, -5.05, 2.1, 1.0, 0.08, this._materials.metal, true);
+        // Catwalk Railing (leaving 2.4m arrival gap at stairs!)
+        this._addBox(cx - 2.25, wBy + 3.85, cz - 5.05, 20.5, 1.0, 0.08, this._materials.metal, true);
+        this._addBox(cx + 11.45, wBy + 3.85, cz - 5.05, 2.1, 1.0, 0.08, this._materials.metal, true);
       });
       this.pois.push({ name: 'WAREHOUSE', x: cx, z: cz, color: '#ff9800', threat: 'low' });
       // Interior Walkable Steel Catwalk Mezzanine along North Wall + Gentle Stairs
@@ -3213,9 +3368,9 @@ class WastelandWorld {
       ]);
     }
 
-    // 6. Fuel & Radio Outpost (SE Low-Threat Hilltop: 270, 290)
+    // 6. Fuel & Radio Outpost (SE Peninsula Hilltop: 245, 455)
     {
-      const cx = 270, cz = 290;
+      const cx = 245, cz = 455;
       this._addBuilding(cx, cz, 14, 12, 4.4, 'west', null, (rBy, rH) => {
         this._addPartition(cx + 3.4, cz - 6.0, cx + 3.4, cz + 6.0, rBy, rH, [
           { at: cz + 1.0, w: 1.7, door: 'wood', label: 'Comms Room Door' }
@@ -3231,9 +3386,9 @@ class WastelandWorld {
       this._addContainer(cx - 14, cz + 12, 1, this._materials.rustRed);
     }
 
-    // 7. Rail Yard / Container Depot (West Valley: -370, 50)
+    // 7. Rail Yard / Container Depot (West Valley: -365, -20)
     {
-      const cx = -370, cz = 50;
+      const cx = -365, cz = -20;
       this.pois.push({ name: 'RAIL YARD', x: cx, z: cz, color: '#ef5350', threat: 'medium' });
       this._addContainer(cx, cz - 10, 1, this._materials.rustRed);
       this._addContainer(cx, cz + 2, 1, this._materials.rustBlue);
@@ -3246,9 +3401,9 @@ class WastelandWorld {
       ], 0);
     }
 
-    // 8. Northern Watchtower Bunker (North Highland Ridge: -60, -340)
+    // 8. Northern Watchtower Bunker (NNE Island Lobe Overlook: 215, -345)
     {
-      const cx = -60, cz = -340;
+      const cx = 215, cz = -345;
       this._addBuilding(cx, cz, 12, 10, 4.5, 'south', null, (bBy, bH) => {
         // Interior blast wall forcing flank routes left/right on entry
         this._addBox(cx, bBy + bH * 0.5, cz + 2.2, 4.0, bH, 0.35, this._materials.concrete, true);
@@ -3263,22 +3418,93 @@ class WastelandWorld {
       this._addBarrier(cx + 8, cz + 10, true);
     }
 
-    // === MID-FIELD CHECKPOINTS, HIGHWAY COVER & SHIPPING CONTAINERS ===
-    // South Highway Checkpoint (first tactical stop north of south ring spawn)
-    this._addBarrier(-8, 326, true);
-    this._addBarrier(8, 314, true);
-    this._addContainer(-16, 318, 0, this._materials.rustOlive);
-    this._addLootContainer(-12, 0, 322, 'supply', 'Highway Checkpoint Crate');
+    // 9. Monumental North-Center Hydroelectric Dam (28, -395 — Spanning Gorge x in [-92..148], z in [-474..-322]!)
+    {
+      const dcx = 28, crestZ = -408, crestY = 16.5, lowerY = 3.2;
+      this.pois.push({ name: 'HYDRO DAM', x: dcx, z: -385, color: '#90a4ae', threat: 'high' });
+
+      // A. Towering Gravity-Dam Core, Walkable 240m Crest Highway Deck & West/East Approach Ramps
+      this._addBox(dcx, (crestY + lowerY) * 0.5, crestZ, 240, crestY - lowerY + 0.4, 16.0, this._materials.concrete, true);
+      this._addBox(dcx, 12.9, -444, 240, 0.6, 56, this._materials.darkConcrete, true);
+      // North & South Crest Parapets (leaving clean 4m stair openings at x = -58 and x = +114 on south face!)
+      this._addBox(dcx, crestY + 0.6, crestZ - 7.8, 240, 1.2, 0.45, this._materials.darkConcrete, true);
+      this._addBox(-76, crestY + 0.6, crestZ + 7.8, 32, 1.2, 0.45, this._materials.darkConcrete, true);
+      this._addBox(dcx, crestY + 0.6, crestZ + 7.8, 166, 1.2, 0.45, this._materials.darkConcrete, true);
+      this._addBox(132, crestY + 0.6, crestZ + 7.8, 32, 1.2, 0.45, this._materials.darkConcrete, true);
+      // Gentle road-width approach ramps onto the 16.5m Dam Crest from NW (-116) & NNE (+172) abutments
+      addStaircase(-116, 12.8, crestZ, 16, 12.0, crestY - 12.8, 24.0, 'east');
+      addStaircase(172, 12.8, crestZ, 16, 12.0, crestY - 12.8, 24.0, 'west');
+
+      // Overhead Crest Gantry Arch, Signboards & Tactical Crest Cover
+      this._addBox(dcx - 6.2, crestY + 3.4, crestZ, 1.2, 6.8, 4.2, this._materials.bossDark, true);
+      this._addBox(dcx + 6.2, crestY + 3.4, crestZ, 1.2, 6.8, 4.2, this._materials.bossDark, true);
+      this._addBox(dcx, crestY + 6.4, crestZ, 15.6, 1.4, 4.8, this._materials.bossDark, true);
+      this._addSignBoard(dcx, crestY + 8.6, crestZ + 2.6, 11.4, 3.8, 0, 'dam');
+      this._addSignBoard(dcx, crestY + 8.6, crestZ - 2.6, 11.4, 3.8, Math.PI, 'dam');
+      this._addBox(-24, crestY + 1.4, crestZ - 3.6, 6.5, 2.8, 2.6, this._materials.rustBlue, true);
+      this._addBox(82, crestY + 1.4, crestZ + 3.6, 6.5, 2.8, 2.6, this._materials.rustOlive, true);
+      this._addLootContainer(dcx - 8.5, crestY - this.getTerrainHeight(dcx - 8.5, crestZ - 4.5) + 0.02, crestZ - 4.5, 'military', 'Dam Crest Overwatch Case');
+      this._addLootContainer(80, crestY - this.getTerrainHeight(80, crestZ - 3.5) + 0.02, crestZ - 3.5, 'supply', 'Dam Maintenance Crate');
+
+      // B. Stepped Downstream Concrete Spillway Face, 6 Buttress Piers & Whitewater Tailwater Apron
+      this._addBox(dcx, 12.6, -396, 236, 4.4, 9.0, this._materials.concrete, true);
+      this._addBox(dcx, 9.4, -387, 236, 4.2, 10.0, this._materials.darkConcrete, true);
+      this._addBox(dcx, 6.2, -376, 236, 3.8, 12.0, this._materials.concrete, true);
+      for (const px of [-82, -38, 6, 50, 94, 138]) {
+        this._addBox(px, 10.2, -384, 3.4, 12.6, 34.0, this._materials.bossDark, true);
+      }
+      const foamMat = new THREE.MeshBasicMaterial({ color: 0xdbeff5, transparent: true, opacity: 0.72 });
+      for (const sx of [-16, 28, 72]) {
+        const foam = new THREE.Mesh(new THREE.PlaneGeometry(18, 10), foamMat);
+        foam.rotation.x = -Math.PI / 2;
+        foam.position.set(sx, this.MAIN_START_WATER_Y + 0.06, -320);
+        this.scene.add(foam);
+      }
+
+      // C. Mid-Height Dam Gallery Walkway (y = 9.85m) + Dual Wide Exterior Concrete Staircases (3.2m -> 9.85m -> 16.5m)
+      const midY = 9.85;
+      this._addBox(dcx, midY - 0.15, -378, 192, 0.35, 4.6, this._materials.darkConcrete, true);
+      addStaircase(-58, lowerY, -356, 25, 3.0, midY - lowerY, 19.5, 'north');
+      addStaircase(-58, midY, -380.5, 25, 3.0, crestY - midY, 19.5, 'north');
+      addStaircase(114, lowerY, -356, 25, 3.0, midY - lowerY, 19.5, 'north');
+      addStaircase(114, midY, -380.5, 25, 3.0, crestY - midY, 19.5, 'north');
+
+      // D. Walkable Lower Hydro Powerhouse & Turbine Hall (28, -342 — 28m x 14m at y = 3.2m!)
+      const pbx = 28, pbz = -342;
+      const pby = this.getTerrainHeight(pbx, pbz);
+      this._addBuilding(pbx, pbz, 28, 14, 5.4, 'south', this._materials.concrete, (hBy, hH) => {
+        // 3 Cylindrical Hydro-Turbine Generator Units + Control Room Partition
+        for (const tx of [pbx - 8.5, pbx - 1.5, pbx + 5.5]) {
+          this._addBox(tx, hBy + 1.15, pbz - 2.2, 3.2, 2.0, 3.2, this._materials.metal, true);
+          this._addBox(tx, hBy + 2.35, pbz - 2.2, 1.8, 0.45, 1.8, this._materials.hazardAmber, false);
+        }
+        this._addPartition(pbx + 8.8, pbz - 7.0, pbx + 8.8, pbz + 7.0, hBy, hH, [
+          { at: pbz + 2.5, w: 1.8, door: 'steel', label: 'Turbine Control Door' }
+        ]);
+        addDeskProp(pbx + 11.4, hBy + 0.16, pbz - 4.2);
+        this._addLootContainer(pbx + 11.8, 0.16, pbz + 4.8, 'military', 'Dam Control Vault Case');
+      });
+      this._addGunLocker(pbx - 12.8, pbz + 2.2, Math.PI / 2, 'military', 'Powerhouse Security Locker');
+      this._addLootContainer(pbx - 11.2, 0.16, pbz - 5.0, 'supply', 'Turbine Hall Parts Crate');
+      this._addWallFirstAidKit(pbx + 4.2, pbz + 6.55, 'south', 'Powerhouse First Aid Kit');
+    }
+
+    // === MID-FIELD CHECKPOINTS, HIGHWAY COVER & SHIPPING CONTAINERS (100% ON DRY LOBES) ===
+    // South Peninsula Checkpoint (north of player infil)
+    this._addBarrier(77, 400, true);
+    this._addBarrier(93, 390, true);
+    this._addContainer(68, 395, 0, this._materials.rustOlive);
+    this._addLootContainer(72, 0, 399, 'supply', 'Peninsula Checkpoint Crate');
 
     const midContainers = [
-      [18, 120, 0, this._materials.rustRed],
-      [-22, -140, 1, this._materials.rustBlue],
-      [165, 24, 0, this._materials.rustOlive],
-      [-175, 16, 1, this._materials.rustRed],
-      [160, -145, 0, this._materials.rustBlue],
-      [-165, -135, 1, this._materials.rustOlive],
-      [140, 160, 1, this._materials.rustRed],
-      [-140, 175, 0, this._materials.rustBlue]
+      [-245, -180, 0, this._materials.rustRed],
+      [-240, 145, 1, this._materials.rustBlue],
+      [255, 95, 0, this._materials.rustOlive],
+      [-455, -180, 1, this._materials.rustRed],
+      [285, -40, 0, this._materials.rustBlue],
+      [-285, -75, 1, this._materials.rustOlive],
+      [255, 205, 1, this._materials.rustRed],
+      [155, 465, 0, this._materials.rustBlue]
     ];
     for (const [cx, cz, rot, mat] of midContainers) {
       this._addContainer(cx, cz, rot, mat);
@@ -3286,8 +3512,8 @@ class WastelandWorld {
     }
 
     const barriers = [
-      [-8, 180, true], [8, 160, true], [-8, -180, true], [8, -220, true],
-      [180, 14, false], [-180, 26, false], [120, 295, true], [-120, 300, true]
+      [-125, 76, true], [48, 86, true], [-245, -90, true], [295, -242, true],
+      [255, 112, false], [-255, 130, false], [165, 472, true], [-115, 330, true]
     ];
     for (const [bx, bz, horiz] of barriers) {
       this._addBarrier(bx, bz, horiz);
@@ -3295,57 +3521,56 @@ class WastelandWorld {
 
     this._spawnLogicalLooseLoot();
 
-    // === 4 SPREAD-OUT EXTRACTION ZONES (OUTER RIM) ===
-    this._addExtractZone('NORTH HELIPAD', 0, -560, 6.5);
-    this._addExtractZone('EAST BUNKER GATE', 560, -40, 6.5);
-    this._addExtractZone('WEST CONVOY EXIT', -560, 120, 6.5);
-    this._addExtractZone('SOUTH BRIDGE', 40, 560, 6.5);
+    // === 4 SPREAD-OUT EXTRACTION ZONES MATCHING CUSTOM SILHOUETTE ===
+    this._addExtractZone('NW RIDGE HELIPAD', -450, -495, 6.5);
+    this._addExtractZone('EAST BLUFF GATE', 465, -45, 6.5);
+    this._addExtractZone('WEST CLIFF CONVOY', -535, -60, 6.5);
+    this._addExtractZone('SOUTH PENINSULA PIER', 355, 505, 6.5);
 
-    // === OPERATOR SQUAD SPAWN RING (250m APART!) + INTERMITTENT LOW-THREAT INTERIOR POI SPAWNS ===
-    // 12 ring points at R = 485m -> chord distance = 2 * 485 * sin(PI/12) = 251.0m apart!
-    // Index 0 (angle = PI/2 -> (0, 485)) is the player squad spawn; indices 1..11 are enemy operator squad ring spawns.
+    // === OPERATOR SQUAD PERIMETER SPAWNS (100% INSIDE MAP_BOUNDARY & DRY!) ===
     this.operatorSpawns = [];
-    const ringR = 485;
-    const ringCount = 12;
     const ensureDrySpawn = (sx, sz) => {
       let cx = sx;
       let cz = sz;
-      for (let step = 0; step < 18; step++) {
-        if (this.getWaterDepth(cx, cz) <= 0.03) break;
-        const dist = Math.hypot(cx, cz) || 1;
-        // Nudge radially inward (or away from lake center if near lake) onto dry ground
-        const dlx = cx - this.LAKE.x;
-        const dlz = cz - this.LAKE.z;
-        const dLake = Math.hypot(dlx / (this.LAKE.rx + 18), dlz / (this.LAKE.rz + 18));
-        if (dLake < 1.08) {
-          const dlLen = Math.hypot(dlx, dlz) || 1;
-          cx += (dlx / dlLen) * 18;
-          cz += (dlz / dlLen) * 18;
-        } else {
-          cx -= (cx / dist) * 18;
-          cz -= (cz / dist) * 18;
-        }
+      for (let step = 0; step < 24; step++) {
+        const outD = this.getOutOfBoundsDist(cx, cz);
+        const wD = this.getWaterDepth(cx, cz);
+        const inDam = this.DAM_BOUNDS && cx >= this.DAM_BOUNDS.minX - 10 && cx <= this.DAM_BOUNDS.maxX + 10 && cz >= this.DAM_BOUNDS.minZ - 10 && cz <= this.DAM_BOUNDS.maxZ + 10;
+        if (outD < -24 && wD <= 0.03 && !inDam) break;
+        // Pull smoothly toward nearest dry lobe centroid
+        const targetX = cx < -40 ? -310 : (cz > 280 ? 120 : 320);
+        const targetZ = cz < -180 ? -290 : (cz > 280 ? 430 : 60);
+        const dx = targetX - cx;
+        const dz = targetZ - cz;
+        const dLen = Math.hypot(dx, dz) || 1;
+        cx += (dx / dLen) * 20;
+        cz += (dz / dLen) * 20;
       }
       return new THREE.Vector3(Math.round(cx), this.getTerrainHeight(cx, cz), Math.round(cz));
     };
-    for (let i = 1; i < ringCount; i++) {
-      const ang = Math.PI / 2 + (i * Math.PI * 2) / ringCount;
-      const sx = Math.round(Math.cos(ang) * ringR);
-      const sz = Math.round(Math.sin(ang) * ringR);
+
+    const perimCandidates = [
+      [-475, -430], [-255, -455], [250, -435], [505, -315],
+      [455, -80], [455, 225], [385, 475], [-25, 455],
+      [-265, 265], [-475, 115], [-525, -165]
+    ];
+    for (const [sx, sz] of perimCandidates) {
       this.operatorSpawns.push(ensureDrySpawn(sx, sz));
     }
-    // Intermittent interior spawns at low-threat POIs (Police/Fire outskirts, Radio Outpost outskirts, Warehouse south ridge)
     const lowThreatInteriorSpawns = [
-      [-225, 295],  // Near Police/Fire (low threat)
-      [255, 255],   // Near Radio Outpost north bluff (dry, low threat)
-      [32, 34]      // Near Central Warehouse outskirts (low threat)
+      [-125, 315],  // Near Police/Fire (low threat)
+      [215, 435],   // Near Radio Outpost (low threat)
+      [168, 118]    // Near Central-East Warehouse (low threat)
     ];
     for (const [ix, iz] of lowThreatInteriorSpawns) {
       this.operatorSpawns.push(ensureDrySpawn(ix, iz));
     }
 
     // === GENERAL PATROL / SPAWN POINTS ACROSS ALL SECTORS ===
-    this.spawnPoints = this.pois.map(p => new THREE.Vector3(p.x + 12, this.getTerrainHeight(p.x + 12, p.z + 10), p.z + 10));
+    this.spawnPoints = this.pois.map((p) => {
+      const sp = ensureDrySpawn(p.x + 14, p.z + 14);
+      return new THREE.Vector3(sp.x, this.getTerrainHeight(sp.x, sp.z), sp.z);
+    });
   }
 
   getSurfaceHeightAt(x, z, referenceY = null) {
@@ -3825,20 +4050,20 @@ class WastelandWorld {
   }
 
   _spawnLogicalLooseLoot() {
-    // Outdoor field tables near highway checkpoints & mid-field cover
-    this._addWorkbenchTable(-12.5, 326.5, 0, [
+    // Outdoor field tables near dry lobe checkpoints & bridge approaches
+    this._addWorkbenchTable(76.0, 404.0, 0, [
       { id: 'scrap_metal', qty: 2 }, { id: 'bandage', qty: 1 }
     ], 0);
-    this._addWorkbenchTable(22.5, 122.0, Math.PI / 2, [
+    this._addWorkbenchTable(-132.0, 76.0, Math.PI / 2, [
       { id: 'gunpowder', qty: 2 }, { id: 'ammo_9x18', qty: 20 }
     ], 0);
-    this._addWorkbenchTable(168.0, 27.5, 0, [
+    this._addWorkbenchTable(258.0, 102.0, 0, [
       { id: 'ammo_545', qty: 24 }, { id: 'polymer_parts', qty: 2 }
     ], 0);
-    this._addWorkbenchTable(-172.0, 19.5, Math.PI / 2, [
+    this._addWorkbenchTable(-248.0, -96.0, Math.PI / 2, [
       { id: 'armor_plate', qty: 1 }, { id: 'frag_grenade', qty: 1 }
     ], 0);
-    this._addWorkbenchTable(144.0, 163.0, 0, [
+    this._addWorkbenchTable(260.0, 212.0, 0, [
       { id: 'medkit', qty: 1 }, { id: 'ammo_9x19', qty: 24 }
     ], 0);
   }
@@ -4045,6 +4270,8 @@ class WastelandWorld {
 
   isWalkableForAI(x, z, feetY = 0, r = 0.40) {
     if (Math.abs(x) > this.mapHalfSize - 4 || Math.abs(z) > this.mapHalfSize - 4) return false;
+    if (this.getOutOfBoundsDist && this.getOutOfBoundsDist(x, z) > -5) return false;
+    if (this.isInDeepWater && this.isInDeepWater(x, z, feetY)) return false;
     const list = this.getNearbyColliders ? this.getNearbyColliders(x, z, r + 0.45) : this.colliders;
     for (let i = 0; i < list.length; i++) {
       const c = list[i];
