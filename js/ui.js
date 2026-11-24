@@ -2626,7 +2626,33 @@ class GameUI {
         }
         listEl.appendChild(row);
       }
+    this._mirrorSocialToDrawer();
     }
+  }
+
+  _mirrorSocialToDrawer() {
+    try {
+      const srcTitle = document.getElementById('party-title');
+      const dstTitle = document.getElementById('drawer-party-title');
+      if (srcTitle && dstTitle) dstTitle.textContent = srcTitle.textContent;
+      const src = document.getElementById('party-members');
+      const dst = document.getElementById('drawer-party-members');
+      if (src && dst) { dst.innerHTML = ''; for (const n of src.childNodes) dst.appendChild(n.cloneNode(true)); }
+      const srcLeave = document.getElementById('btn-leave-party');
+      const dstLeave = document.getElementById('drawer-btn-leave-party');
+      if (srcLeave && dstLeave) {
+        dstLeave.classList.toggle('hidden', srcLeave.classList.contains('hidden'));
+        dstLeave.textContent = srcLeave.textContent;
+      }
+      const srcList = document.getElementById('social-list');
+      const dstList = document.getElementById('drawer-social-list');
+      if (srcList && dstList) { dstList.innerHTML = ''; for (const n of srcList.childNodes) dstList.appendChild(n.cloneNode(true)); }
+      const dToast = document.getElementById('drawer-social-toast');
+      const sToast = document.getElementById('social-toast');
+      if (dToast && sToast && !sToast.classList.contains('hidden')) { dToast.textContent = sToast.textContent; dToast.classList.remove('hidden'); }
+      document.querySelectorAll('#party-vis-seg .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.vis === this.partyVisibility));
+      this.renderPartyWidget();
+    } catch (e) {}
   }
 
   _loadProfile() {
