@@ -2718,7 +2718,7 @@ class GameUI {
     const isHome = tabName === 'home';
     const topbar = document.getElementById('menu-topbar');
     const homeView = document.getElementById('menu-view-home');
-    if (topbar) topbar.classList.toggle('hidden', isHome);
+    if (topbar) topbar.classList.remove('hidden');
     if (homeView) homeView.classList.toggle('hidden', !isHome);
 
     ['deploy', 'traders', 'map', 'matchmaking', 'workbench', 'stash', 'operator', 'missions', 'settings', 'keybinds'].forEach((t) => {
