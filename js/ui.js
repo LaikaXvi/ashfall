@@ -1212,6 +1212,74 @@ class GameUI {
     return id;
   }
 
+  // ==================== PROTOTYPE ACCOUNT SYSTEM (cross-device identity) ====================
+  _initAccount() {
+    const KEY = 'ashfall_account_v1';
+    this._accountKey = KEY;
+    let acc = null;
+    try { acc = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) {}
+    if (!acc || !acc.accountId) {
+      const tagId = String(1000 + Math.floor(Math.random() * 9000));
+      acc = { accountId: 'ACC-' + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase(), username: (this.profile && this.profile.social && this.profile.social.username) || 'NOMAD', tagId, xp: (this.profile && this.profile.xp) || 0, createdAt: Date.now(), updatedAt: Date.now(), settings: {} };
+      try { localStorage.setItem(KEY, JSON.stringify(acc)); } catch (e) {}
+    }
+    try {
+      const soc = this.profile && this.profile.social;
+      if (soc && acc.username && acc.tagId && (!soc.tagId || !/#\d{4}$/.test(soc.callsign || ''))) {
+        soc.username = acc.username; soc.tagId = acc.tagId; soc.callsign = `${acc.username}#${acc.tagId}`;
+      }
+    } catch (e) {}
+    this.account = acc;
+    this.syncAccountFromProfile();
+  }
+
+  accountLevelForXp(xp) { return 1 + Math.floor(Math.max(0, xp || 0) / 200); }
+  syncAccountFromProfile() {
+    if (!this.account) return;
+    try {
+      const p = this.profile || {};
+      this.account.xp = p.xp || 0;
+      this.account.level = this.accountLevelForXp(p.xp || 0);
+      if (p.social && p.social.username) this.account.username = p.social.username;
+      if (p.social && p.social.tagId) this.account.tagId = p.social.tagId;
+      this.account.settings = { keybinds: { ...(window.KEYBINDS || {}) }, gamepadBinds: { ...(window.GAMEPAD_BINDS || {}) } };
+      this.account.updatedAt = Date.now();
+      localStorage.setItem(this._accountKey || 'ashfall_account_v1', JSON.stringify(this.account));
+    } catch (e) {}
+  }
+  exportAccountCode() {
+    this.syncAccountFromProfile();
+    const payload = { v: 1, account: this.account, profile: this.profile };
+    return btoa(unescape(encodeURIComponent(JSON.stringify(payload)))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  importAccountCode(code) {
+    const clean = (code || '').trim().replace(/\s+/g, '');
+    if (!clean) { this._showSocialToast('Paste an account code first.'); return false; }
+    let payload = null;
+    try {
+      const b64 = clean.replace(/-/g, '+').replace(/_/g, '/');
+      payload = JSON.parse(decodeURIComponent(escape(atob(b64))));
+    } catch (e) { this._showSocialToast('Invalid account code.'); return false; }
+    if (!payload || !payload.account || !payload.account.accountId || !payload.profile) { this._showSocialToast('Invalid account code.'); return false; }
+    try {
+      localStorage.setItem(this._accountKey || 'ashfall_account_v1', JSON.stringify(payload.account));
+      localStorage.setItem(this.storageKey, JSON.stringify(payload.profile));
+    } catch (e) { this._showSocialToast('Import failed: storage unavailable.'); return false; }
+    window.location.reload();
+    return true;
+  }
+  renderAccountSettings() {
+    const idEl = document.getElementById('setting-account-id');
+    if (idEl && this.account) idEl.textContent = this.account.accountId;
+    const lvEl = document.getElementById('setting-account-level');
+    if (lvEl) {
+      const xp = (this.profile && this.profile.xp) || 0;
+      const lv = this.accountLevelForXp(xp);
+      lvEl.textContent = `LVL ${lv} · ${xp} XP (next: ${lv * 200} XP)`;
+    }
+    const nmEl = document.getElementById('setting-account-user');
+    if (nmEl) nmEl.textContent = (this.profile && this.profile.social && this.profile.social.callsign) || '';
+  }
   _ensureIdentity() {
     if (!this.profile.social) {
       this.profile.social = { username: 'NOMAD', tagId: '', callsign: '', friends: [] };
