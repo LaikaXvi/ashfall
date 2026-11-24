@@ -144,23 +144,23 @@ window.GAME_DATA = {
       color: 0x26292c,
       desc: '9x19mm submachine gun. High ROF, CQB dominant.'
     },
-    ak74m: {
-      id: 'ak74m',
-      name: 'AK-74M Carbine',
+    ak47: {
+      id: 'ak47',
+      name: 'AK-47 Assault Rifle',
       type: 'weapon',
       slot: 'primary',
       rarity: 'rare',
       value: 8500,
-      weight: 3.4,
-      ammoType: 'ammo_545',
+      weight: 3.5,
+      ammoType: 'ammo_739',
       magSize: 30,
-      damage: 36,
+      damage: 38,
       fireRate: 0.105,
       auto: true,
       reloadTime: 2.2,
       spread: 0.022,
       adsSpread: 0.004,
-      recoil: 0.028,
+      recoil: 0.031,
       adsFov: 50,
       adsZoom: 1.45,
       adsTime: 0.260,
@@ -170,10 +170,10 @@ window.GAME_DATA = {
       idleSway: 1.00,
       gunKick: 1.05,
       flinchRes: 1.00,
-      range: 140,
+      range: 130,
       pellets: 1,
       color: 0x3b2f26,
-      desc: '5.45x39mm assault rifle. Rugged wasteland workhorse.'
+      desc: '7.62x39mm milled-receiver classic. Hard-hitting wasteland legend.'
     },
     m870: {
       id: 'm870',
@@ -330,9 +330,9 @@ window.GAME_DATA = {
       buyQty: 30,
       desc: 'Light SMG & pistol cartridges. Stacks up to 120.'
     },
-    ammo_545: {
-      id: 'ammo_545',
-      name: '5.45mm Heavy Ammo',
+    ammo_739: {
+      id: 'ammo_739',
+      name: '7.62x39mm Rifle Ammo',
       type: 'ammo',
       rarity: 'common',
       value: 28,
@@ -340,7 +340,7 @@ window.GAME_DATA = {
       stackable: true,
       maxStack: 120,
       buyQty: 30,
-      desc: 'Heavy assault rifle cartridges. Stacks up to 120.'
+      desc: 'Intermediate assault rifle cartridges. Stacks up to 120.'
     },
     ammo_12g: {
       id: 'ammo_12g',
@@ -606,7 +606,7 @@ window.GAME_DATA = {
       weight: 0.28,
       stackable: true,
       maxStack: 10,
-      desc: 'Cleaned small-caliber brass cartridge cases for reloading 9mm & 5.45mm.'
+      desc: 'Cleaned small-caliber brass cartridge cases for reloading 9mm & 7.62x39mm.'
     },
     heavy_gunpowder: {
       id: 'heavy_gunpowder',
@@ -1313,11 +1313,11 @@ window.GAME_DATA = {
       ingredients: [{ id: 'chemicals', qty: 14 }, { id: 'tools', qty: 1 }]
     },
     {
-      id: 'craft_ammo_545',
-      outputId: 'ammo_545',
+      id: 'craft_ammo_739',
+      outputId: 'ammo_739',
       outputQty: 60,
-      name: '60x 5.45mm Heavy Ammo',
-      desc: 'Reload 60 assault rifle cartridges from brass casings & gunpowder.',
+      name: '60x 7.62x39mm Rifle Ammo',
+      desc: 'Reload 60 intermediate cartridges from brass casings & gunpowder.',
       ingredients: [{ id: 'brass_casings', qty: 2 }, { id: 'gunpowder', qty: 2 }]
     },
     {
@@ -1379,8 +1379,8 @@ window.GAME_DATA = {
   ],
 
   TRADER_STOCK: {
-    weapons: ['pm9', 'g17', 'mp5k', 'm870', 'ak74m', 'mosin9130', 'm24', 'awm338'],
-    ammo: ['ammo_9x18', 'ammo_9x19', 'ammo_12g', 'ammo_545', 'ammo_762', 'ammo_rocket'],
+    weapons: ['pm9', 'g17', 'mp5k', 'm870', 'ak47', 'mosin9130', 'm24', 'awm338'],
+    ammo: ['ammo_9x18', 'ammo_9x19', 'ammo_12g', 'ammo_739', 'ammo_762', 'ammo_rocket'],
     gear: [
       'bandage', 'sterile_bandage', 'painkillers', 'medkit', 'self_revive',
       'gas_mask', 'nvg_goggles', 'zavod_rebreather', 'armor_plate',
@@ -1511,7 +1511,7 @@ window.GAME_DATA = {
       { id: 'concussion_grenade', min: 1, max: 2, w: 8 },
       { id: 'metallic_alloy', min: 1, max: 2, w: 9 },
       { id: 'reactive_metals', min: 1, max: 1, w: 5 },
-      { id: 'ammo_545', min: 20, max: 45, w: 14 },
+      { id: 'ammo_739', min: 20, max: 45, w: 14 },
       { id: 'ammo_762', min: 8, max: 18, w: 9 },
       { id: 'armor_plate', min: 1, max: 3, w: 12 },
       { id: 'vest_2plate_gel', min: 1, max: 1, w: 6 },
@@ -1522,7 +1522,7 @@ window.GAME_DATA = {
       { id: 'gas_mask', min: 1, max: 1, w: 4 },
       { id: 'nvg_goggles', min: 1, max: 1, w: 3 },
       { id: 'zavod_rebreather', min: 1, max: 1, w: 5 },
-      { id: 'ak74m', min: 1, max: 1, w: 6 },
+      { id: 'ak47', min: 1, max: 1, w: 6 },
       { id: 'mosin9130', min: 1, max: 1, w: 5 },
       { id: 'm24', min: 1, max: 1, w: 4 },
       { id: 'awm338', min: 1, max: 1, w: 2 },
@@ -1569,7 +1569,7 @@ window.GAME_DATA = {
       'vest_2plate_gel', 'bag_medium', 'decorative_bowl', 'ancient_coin', 'nylon_cloth_roll',
       'kevlar_padding', 'metallic_alloy', 'sterile_bandage', 'syringe', 'medkit', 'ammo_762'
     ],
-    boss_legendary_weapons: ['ak74m', 'm24', 'awm338', 'mosin9130', 'mp5k', 'm870']
+    boss_legendary_weapons: ['ak47', 'm24', 'awm338', 'mosin9130', 'mp5k', 'm870']
   },
 
   normalizeWeaponMods(mods) {
