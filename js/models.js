@@ -424,8 +424,8 @@ window.ModelSystem = (() => {
       grp.add(hull, brass);
       return grp;
     }
-    const r = isPistol ? 0.0046 : 0.0056;
-    const len = isPistol ? 0.019 : 0.042;
+    const r = isPistol ? 0.0046 : (caliber === 'x39' ? 0.0057 : 0.0056);
+    const len = isPistol ? 0.019 : (caliber === 'x39' ? 0.0386 : 0.042);
     const caseGeo = _cachedGeo(`round_case_${caliber}`, () => {
       const g = new THREE.CylinderGeometry(r * 0.88, r, len, 10);
       g.rotateX(Math.PI / 2);
