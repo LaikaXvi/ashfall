@@ -2168,6 +2168,7 @@ class GameUI {
   }
 
   acceptFriendRequest(fromName) {
+    this.closeNotifCtx();
     const keyUp = (fromName || '').trim().toUpperCase();
     if (!keyUp) return;
     const social = this.profile.social;
@@ -2196,6 +2197,7 @@ class GameUI {
   }
 
   declineFriendRequest(fromName) {
+    this.closeNotifCtx();
     const keyUp = (fromName || '').trim().toUpperCase();
     if (!keyUp) return;
     const social = this.profile.social;
@@ -2895,7 +2897,7 @@ class GameUI {
     if (!chatOpen) this._showSocialToast(`Whisper from ${entry.from}`);
   }
   renderWhispers() {
-    try { if (this.profile && this.profile.social) { this.profile.social.whispers = (this.whispers || []).slice(-40); } } catch (e) {}
+    this.persistSocial();
     const el = document.getElementById('whisper-list');
     if (!el) return;
     el.innerHTML = '';
@@ -2954,11 +2956,9 @@ class GameUI {
       }
     }
     this.updateNotifBadges();
-    this.persistNotifStore();
+    this.persistSocial();
   }
-  persistNotifStore() {
-    try { if (this.profile && this.profile.social) { this.profile.social.notifications = (this.notifications || []).slice(-30); this.profile.social.whispers = (this.whispers || []).slice(-40); } } catch (e) {}
-  }
+  persistNotifStore() { this.persistSocial(); }
   updateNotifBadges() {
     const total = (this.notifications || []).length;
     const whis = this.notifications.filter((n) => n.kind === 'whisper').length;
