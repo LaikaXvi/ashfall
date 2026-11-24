@@ -867,9 +867,12 @@ class GamepadController {
       const opTraits = document.getElementById('op-traits-modal');
       const opRecruit = document.getElementById('op-recruit-modal');
       const popout = document.getElementById('item-popout');
+      const nctx = document.getElementById('notif-ctx-menu');
       const sumScreen = document.getElementById('summary-screen');
 
-      if (opCtx && !opCtx.classList.contains('hidden')) {
+      if (nctx && !nctx.classList.contains('hidden')) {
+        if (ui && ui.closeNotifCtx) ui.closeNotifCtx();
+      } else if (opCtx && !opCtx.classList.contains('hidden')) {
         opCtx.classList.add('hidden');
       } else if (opSkin && !opSkin.classList.contains('hidden')) {
         opSkin.classList.add('hidden');
