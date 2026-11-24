@@ -29,6 +29,9 @@
     _laserCd: 0,
     _light: null,
     _nvgOn: false,
+    _breath: 1.0,
+    _drownAcc: 0,
+    _lastCtx: null,
 
     reset() {
       this.transfer = null;
@@ -40,8 +43,14 @@
       this._setNvg(false);
       const b = document.getElementById('zavod-banner');
       if (b) b.style.display = 'none';
+      this._breath = 1.0;
+      this._drownAcc = 0;
       const rad = document.getElementById('zavod-rad');
       if (rad) rad.style.display = 'none';
+      const uw = document.getElementById('zavod-underwater');
+      if (uw) uw.style.display = 'none';
+      const br = document.getElementById('zavod-breath');
+      if (br) br.style.display = 'none';
     },
 
     // -------------------------------------------------------------------------------
@@ -72,6 +81,13 @@
           bd = d;
           best = { dist: d, ia: { type: 'zavod', sub: 'station', station: st, label: this._stationLabel(world, st) } };
         }
+        for (const bar of zv.barricades || []) {
+          if (bar.broken) continue;
+          const d = Math.hypot(player.position.x - bar.x, player.position.z - bar.z);
+          if (d > 3.2 || d >= bd || Math.abs(feetY - (bar.baseY || 0)) > 2.2) continue;
+          bd = d;
+          best = { dist: d, ia: { type: 'zavod', sub: 'barricade', barricade: bar, label: `${bar.label} — BREACH WITH EXPLOSIVE [F]` } };
+        }
       }
       return best;
     },
@@ -94,6 +110,10 @@
       if (!ia || ia.type !== 'zavod') return false;
       if (ia.sub === 'elevator') return this._startTransfer(ia.elevator, ctx, true);
       if (ia.sub === 'station') return this._beginChannel(ia.station, ctx);
+      if (ia.sub === 'barricade') {
+        if (ctx.ui) ctx.ui.showCenterToast('USE AN EXPLOSIVE (FRAG GRENADE [F]) TO BREACH THE PLANKS', '#ffca28');
+        return true;
+      }
       return false;
     },
 
@@ -303,15 +323,47 @@
       if (!pkt) return;
       if (pkt.type === 'zavod_station' && ctx.world && ctx.world.zavod) {
         this.solveStation(pkt.id, ctx, true);
+      } else if (pkt.type === 'zavod_barricade' && ctx.world && ctx.world.zavod) {
+        this.breakBarricade(pkt.id, ctx, true);
       } else if (pkt.type === 'zavod_transfer' && ctx.world && ctx.world.bunkerElevators && ctx.world.bunkerElevators[0]) {
         this._startTransfer(ctx.world.bunkerElevators[0], ctx, false, pkt);
       }
+    },
+
+    onExplosion(pos, radius = 6.5) {
+      const ctx = this._lastCtx;
+      const zv = ctx && ctx.world && ctx.world.zavod;
+      if (!zv || !zv.barricades || !pos) return;
+      for (const b of zv.barricades) {
+        if (b.broken) continue;
+        const d = Math.hypot(b.x - pos.x, b.z - pos.z);
+        if (d <= Math.max(radius, 5.5) && Math.abs((pos.y || 0) - (b.baseY || 0)) < 4.0) {
+          this.breakBarricade(b.id, ctx, false);
+        }
+      }
+    },
+
+    breakBarricade(id, ctx, fromRemote = false) {
+      const zv = ctx && ctx.world && ctx.world.zavod;
+      const b = zv && (zv.barricades || []).find(x => x.id === id);
+      if (!b || b.broken) return;
+      b.broken = true;
+      b.collider.minY = 9000; b.collider.maxY = 9001;
+      if (b.proxy) b.proxy.layers.set(9);
+      if (b.group) b.group.visible = false;
+      if (window.soundEngine && window.soundEngine.playDoorOpen) { try { window.soundEngine.playDoorOpen(false); } catch (e) {} }
+      if (ctx.ui) {
+        ctx.ui.showCenterToast('BARRICADE BREACHED — SUBMERGED TUNNEL OPEN', '#4fc3f7');
+        ctx.ui.addFeedMessage('Breach wall destroyed — submerged B/1 secret tunnel accessible (Rebreather advised)', '#4fc3f7');
+      }
+      if (!fromRemote && ctx.sendEvent) ctx.sendEvent({ type: 'zavod_barricade', id });
     },
 
     // -------------------------------------------------------------------------------
     // Per-frame update
     // -------------------------------------------------------------------------------
     update(dt, ctx) {
+      this._lastCtx = ctx;
       const world = ctx.world;
       if (!world) return;
       if (world.bunkerElevators) this._updateTransfer(ctx);
@@ -385,6 +437,47 @@
       } else {
         radEl.style.display = 'none';
         this._radAcc = 0;
+      }
+      // Underwater / Rebreather breath mechanic (B/1 submerged secret chamber)
+      const waterY = world.getWaterSurfaceY ? world.getWaterSurfaceY(p.position.x, p.position.z) : null;
+      const submerged = !!(waterY !== null && !p.dead && waterY > p.position.y - 0.12);
+      const uwEl = el('zavod-underwater', 'position:fixed;inset:0;z-index:55;pointer-events:none;background:radial-gradient(circle at center,rgba(12,68,90,0.34),rgba(5,26,38,0.68));display:none;');
+      const brEl = el('zavod-breath', 'position:fixed;bottom:148px;left:50%;transform:translateX(-50%);z-index:59;padding:6px 16px;background:rgba(8,22,30,0.88);border:1px solid #4fc3f7;color:#4fc3f7;font:bold 13px Consolas,monospace;pointer-events:none;display:none;');
+      if (submerged) {
+        const hasRebreather = p.headgear === 'zavod_rebreather' || (p.backpack || []).some(it => it && it.id === 'zavod_rebreather');
+        uwEl.style.display = 'block';
+        brEl.style.display = 'block';
+        if (hasRebreather) {
+          this._breath = Math.min(1.0, this._breath + dt * 0.5);
+          this._drownAcc = 0;
+          brEl.style.borderColor = '#4fc3f7';
+          brEl.style.color = '#4fc3f7';
+          brEl.textContent = 'REBREATHER ACTIVE — O2 FILTERING';
+        } else {
+          this._breath = Math.max(0, this._breath - dt / 12.0);
+          const secs = Math.ceil(this._breath * 12);
+          if (this._breath > 0) {
+            brEl.style.borderColor = secs <= 4 ? '#ff5252' : '#ffca28';
+            brEl.style.color = secs <= 4 ? '#ff5252' : '#ffca28';
+            brEl.textContent = `HOLDING BREATH: ${secs}s (REBREATHER ADVISED)`;
+          } else {
+            brEl.style.borderColor = '#ff5252';
+            brEl.style.color = '#ff5252';
+            brEl.textContent = 'DROWNING! SURFACE OR EQUIP REBREATHER (−12 HP/s)';
+            this._drownAcc += dt * 12;
+            if (this._drownAcc >= 3 && p.takeDamage) {
+              const dmg = Math.floor(this._drownAcc);
+              this._drownAcc -= dmg;
+              const res = p.takeDamage(dmg, { name: 'DROWNING', weaponId: 'water', weaponName: 'SUBMERGED WATER' });
+              if (res === 'eliminated' && ctx.onPlayerEliminated) ctx.onPlayerEliminated();
+            }
+          }
+        }
+      } else {
+        uwEl.style.display = 'none';
+        brEl.style.display = 'none';
+        this._breath = Math.min(1.0, this._breath + dt * 0.35);
+        this._drownAcc = 0;
       }
       // Dark-zone lighting, NVG & weapon-light
       const dark = !!(reg && reg.dark);
