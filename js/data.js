@@ -3,11 +3,11 @@
 // Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
 // With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'Alpha RC 0.2.80',
+  VERSION: 'Alpha RC 0.2.81',
   VERSION_INFO: {
     major: 0,
     minor: 2,
-    patch: 80,
+    patch: 81,
     channel: 'Alpha', // Alpha | Beta — never blank while major === 0
     stage: 'RC',     // RC = Release Candidate
     updated: 'Nov 24, 2026',
@@ -872,6 +872,15 @@ window.GAME_DATA = {
       weight: 0.65,
       desc: 'Panoramic quad-tube night vision goggles for low-light operations.'
     },
+    zavod_rebreather: {
+      id: 'zavod_rebreather',
+      name: 'Tactical Rebreather',
+      type: 'headgear',
+      rarity: 'rare',
+      value: 2800,
+      weight: 0.9,
+      desc: 'Closed-circuit underwater breathing apparatus. Lets you dive through fully flooded ZAVOD-9 chambers.'
+    },
 
     // === ZAVOD-9 COMPLEX QUEST ITEMS (Koschei-style sector puzzles) ===
     bunker_battery: {
@@ -929,6 +938,28 @@ window.GAME_DATA = {
       weight: 0.05,
       stackable: false,
       desc: 'Defense Research Division exit key (B). With key A it opens the yellow hermetic seal straight to the Factory.'
+    },
+    b1_key_a: {
+      id: 'b1_key_a',
+      name: 'Barracks Exit Key A',
+      type: 'key',
+      category: 'quest',
+      rarity: 'epic',
+      value: 1800,
+      weight: 0.05,
+      stackable: false,
+      desc: 'Flooded Barracks exit key (A) from the main dorms. Pair with Key B at the Barracks secret airlock to reach the Factory.'
+    },
+    b1_key_b: {
+      id: 'b1_key_b',
+      name: 'Barracks Exit Key B',
+      type: 'key',
+      category: 'quest',
+      rarity: 'epic',
+      value: 2400,
+      weight: 0.05,
+      stackable: false,
+      desc: 'Flooded Barracks exit key (B) from the submerged secret vault behind the boarded breach wall. Pair with Key A to reach the Factory.'
     },
     zavod_factory_key: {
       id: 'zavod_factory_key',
@@ -1294,7 +1325,7 @@ window.GAME_DATA = {
     ammo: ['ammo_9x18', 'ammo_9x19', 'ammo_12g', 'ammo_545', 'ammo_762', 'ammo_rocket'],
     gear: [
       'bandage', 'sterile_bandage', 'painkillers', 'medkit', 'self_revive',
-      'gas_mask', 'nvg_goggles', 'armor_plate',
+      'gas_mask', 'nvg_goggles', 'zavod_rebreather', 'armor_plate',
       'vest_1plate', 'vest_2plate', 'vest_2plate_gel', 'vest_2plate_helmet', 'vest_3plate',
       'bag_small', 'bag_medium', 'bag_large', 'bag_weapon',
       'fu_ammo_box', 'fu_dead_silence', 'fu_trophy',
@@ -1429,6 +1460,7 @@ window.GAME_DATA = {
       { id: 'bag_weapon', min: 1, max: 1, w: 3 },
       { id: 'gas_mask', min: 1, max: 1, w: 4 },
       { id: 'nvg_goggles', min: 1, max: 1, w: 3 },
+      { id: 'zavod_rebreather', min: 1, max: 1, w: 5 },
       { id: 'ak74m', min: 1, max: 1, w: 6 },
       { id: 'mosin9130', min: 1, max: 1, w: 5 },
       { id: 'm24', min: 1, max: 1, w: 4 },
