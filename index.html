@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ASHFALL // 3D Extraction Looter-Shooter</title>
-  <link rel="stylesheet" href="css/style.css?v=0284" />
+  <link rel="stylesheet" href="css/style.css?v=0285" />
   <!-- Three.js r128 UMD for zero-build compatibility (works on both http:// and file://) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="js/vendor/GLTFLoader.js?v=240"></script>
@@ -60,6 +60,7 @@
     </div>
     <div id="lobby-chat-body" class="lc-body">
       <div id="lobby-chat-messages" class="lc-messages"></div>
+      <div class="lc-footer"><span id="lobby-chat-channel" class="lc-channel">[Party]</span><span class="lc-channel-hint">TAB / L3: CHANNEL · HOLD START: CHAT</span></div>
       <form id="lobby-chat-form" class="lc-input-row" autocomplete="off">
         <input id="lobby-chat-input" class="lc-input" type="text" maxlength="220" autocomplete="off" spellcheck="false" placeholder="Press [Enter] to chat in lobby..." />
         <button id="btn-lobby-chat-send" class="lc-send-btn" type="submit">SEND</button>
@@ -75,7 +76,7 @@
     <!-- IMPORTANT: Update version in GAME_DATA.VERSION_INFO (js/data.js) and here with EVERY new commit — 0.X.XX pre-release only! -->
     <div class="menu-version-stack">
       <button id="menu-update-badge" class="menu-update-badge hidden" title="Click to reload into the latest version">NEW VERSION AVAILABLE</button>
-      <div id="menu-version-badge" class="menu-version-badge">Alpha RC 0.2.84</div>
+      <div id="menu-version-badge" class="menu-version-badge">Alpha RC 0.2.85</div>
     </div>
     <!-- Minimal Sub-Menu Top Bar (Top-Left Back Button only — no redundant nav band) -->
     <header id="menu-topbar" class="hideout-header glass-panel">
@@ -555,6 +556,20 @@
                   <div style="display:flex;align-items:center;gap:6px;">
                     <input id="setting-username" type="text" maxlength="14" placeholder="Username..." style="width:128px;padding:5px 8px;background:#0e1211;border:1px solid var(--border);color:var(--text-main);font-family:var(--font-mono);font-size:11px;" />
                     <button id="btn-save-username" class="btn-small">SAVE</button>
+                  </div>
+                </div>
+                <div class="setting-row">
+                  <div>
+                    <div class="setting-title">ASHFALL ACCOUNT (PROTOTYPE)</div>
+                    <div class="setting-desc">ID: <b id="setting-account-id" style="color:#69f0ae;">—</b> · Operator: <b id="setting-account-user" style="color:#ffca28;">—</b><br/>Level: <b id="setting-account-level" style="color:#4fc3f7;">LVL 1</b> · progress, identity & settings travel with your account code</div>
+                  </div>
+                  <div style="display:flex;flex-direction:column;gap:6px;align-items:stretch;min-width:220px;">
+                    <textarea id="account-code-box" rows="2" placeholder="Paste account code to sign in..." style="width:100%;padding:5px 8px;background:#0e1211;border:1px solid var(--border);color:var(--text-main);font-family:var(--font-mono);font-size:10px;resize:vertical;"></textarea>
+                    <div style="display:flex;gap:6px;">
+                      <button id="btn-account-export" class="btn-small">EXPORT CODE</button>
+                      <button id="btn-account-import" class="btn-small">SIGN IN</button>
+                      <button id="btn-account-new" class="btn-small" title="Forget this device account and start fresh">NEW</button>
+                    </div>
                   </div>
                 </div>
 
@@ -1425,31 +1440,31 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION_INFO with every new commit — 0.X.XX only!) -->
-  <script src="js/data.js?v=0284"></script>
-  <script src="js/renderer.js?v=0284"></script>
-  <script src="js/rig.js?v=0284"></script>
+  <script src="js/data.js?v=0285"></script>
+  <script src="js/renderer.js?v=0285"></script>
+  <script src="js/rig.js?v=0285"></script>
   <script src="js/animation.js?v=0277"></script>
-  <script src="js/models.js?v=0284"></script>
+  <script src="js/models.js?v=0285"></script>
   <script src="js/net.js?v=123"></script>
   <script src="js/sfx_samples.js?v=21"></script>
   <script src="js/audio.js?v=0275"></script>
-  <script src="js/world.js?v=0284"></script>
-  <script src="js/zavod_map.js?v=0284"></script>
-  <script src="js/zavod_populate.js?v=0284"></script>
-  <script src="js/zavod.js?v=0284"></script>
-  <script src="js/weapons.js?v=0284"></script>
-  <script src="js/icons.js?v=0284"></script>
+  <script src="js/world.js?v=0285"></script>
+  <script src="js/zavod_map.js?v=0285"></script>
+  <script src="js/zavod_populate.js?v=0285"></script>
+  <script src="js/zavod.js?v=0285"></script>
+  <script src="js/weapons.js?v=0285"></script>
+  <script src="js/icons.js?v=0285"></script>
   <script src="js/throwables.js?v=260"></script>
-  <script src="js/enemies.js?v=0284"></script>
+  <script src="js/enemies.js?v=0285"></script>
   <script src="js/squad.js?v=0281"></script>
   <script src="js/multiplayer.js?v=264"></script>
   <script src="js/player.js?v=0277"></script>
   <script src="js/gamepad.js?v=264"></script>
-  <script src="js/gunsmith.js?v=0284"></script>
-  <script src="js/matchmaking.js?v=0284"></script>
+  <script src="js/gunsmith.js?v=0285"></script>
+  <script src="js/matchmaking.js?v=0285"></script>
   <script src="js/hideout.js?v=0277"></script>
-  <script src="js/ui.js?v=0284"></script>
+  <script src="js/ui.js?v=0285"></script>
   <script src="js/console.js?v=0281"></script>
-  <script src="js/main.js?v=0284"></script>
+  <script src="js/main.js?v=0285"></script>
 </body>
 </html>
