@@ -4404,7 +4404,8 @@
       if (hideoutBunker && hideoutBunker.activeRoam) {
         gamepad.updateHideoutRoam(dt, hideoutBunker, {
           onOpenMenu: () => exitHideoutRoam(true),
-          onInteractStation: (st) => openFobStation(st)
+          onInteractStation: (st) => openFobStation(st),
+          ui
         });
       } else {
         gamepad.updateMenu(dt, { ui, gunsmith });
