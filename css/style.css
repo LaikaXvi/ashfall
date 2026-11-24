@@ -7996,3 +7996,7 @@ body.matchmaking-active #hideout-screen::before {
 .notif-ctx-title { font: 700 11px var(--font-mono); color: var(--text-main); }
 .notif-ctx-menu .btn-small { text-align: left; }
 #drawer-social-tabs { display: flex; gap: 6px; }
+
+.lc-footer { display: flex; align-items: center; justify-content: space-between; padding: 3px 10px 5px; }
+.lc-channel { font: 700 11px var(--font-mono); color: #ffca28; background: rgba(255,202,40,0.10); border: 1px solid rgba(255,202,40,0.4); padding: 2px 8px; }
+.lc-channel-hint { font: 400 9px var(--font-mono); color: var(--text-dim); letter-spacing: 0.5px; }
