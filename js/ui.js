@@ -2351,6 +2351,7 @@ class GameUI {
   }
 
   acceptPendingPartyInvite() {
+    this.closeNotifCtx();
     const inv = this.pendingPartyInvite;
     if (!inv) return;
     this.pendingPartyInvite = null;
@@ -2405,6 +2406,7 @@ class GameUI {
   }
 
   declinePendingPartyInvite() {
+    this.closeNotifCtx();
     this.pendingPartyInvite = null;
     this.clearNotifsFor('party_invite');
     this.renderSocial();
