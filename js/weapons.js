@@ -3386,76 +3386,161 @@ class WeaponSystem {
     } else {
       if (this.downedLegsGroup) this.downedLegsGroup.visible = false;
       if (player.ledgeState) {
-        // Two-handed progressive ledge-grab: stow weapon & drive the sculpted character model arms via RiggedFPArms!
-        this.viewmodelGroup.visible = false;
+        // Two-handed progressive ledge-grab: stow weapon & weld sculpted character hands onto the world ledge!
         if (this.plateRig) this.plateRig.visible = false;
         if (this.medRig) this.medRig.visible = false;
         if (this.tacFistRig) this.tacFistRig.visible = false;
         if (this.reviveRig) this.reviveRig.visible = false;
+        const ls = player.ledgeState;
+        const p = ls.pullProgress || 0;
+        // Hands stay 100% locked onto the world ledge through hang + hoist + mantle press (p <= 0.68),
+        // then push off cleanly (0.68..0.90) as the operator stands up onto the obstacle top!
+        const grabLock = ls.phase === 'grabbing'
+          ? Math.min(1, ls.grabT / 0.52) * Math.min(1, ls.grabT / 0.52) * (3 - 2 * Math.min(1, ls.grabT / 0.52))
+          : 1.0;
+        const releaseRaw = THREE.MathUtils.clamp((p - 0.68) / 0.22, 0, 1);
+        const releaseEase = releaseRaw * releaseRaw * (3 - 2 * releaseRaw);
+        const lockBlend = grabLock * (1 - releaseEase);
+        const showHands = !player.isThirdPerson && p < 0.88;
+        const drawWeaponT = THREE.MathUtils.clamp((p - 0.80) / 0.20, 0, 1);
+
         if (this.ledgeHandsGroup && this.ledgeHandsParts && this.vmCamera && this.camera) {
-          this.ledgeHandsGroup.visible = !player.isThirdPerson;
-          const ls = player.ledgeState;
+          this.ledgeHandsGroup.visible = showHands;
           const edge = ls.edgePos || ls.hangPos;
-          const grabOffset = ls.phase === 'grabbing' ? (1 - Math.pow(1 - ls.grabT, 2)) : 1;
-          const ledgeWorldPos = new THREE.Vector3(
-            edge.x - (ls.inwardX || 0) * THREE.MathUtils.lerp(0.18, 0.02, grabOffset),
-            edge.y + THREE.MathUtils.lerp(-0.28, 0.0, grabOffset),
-            edge.z - (ls.inwardZ || 0) * THREE.MathUtils.lerp(0.18, 0.02, grabOffset)
-          );
+          const inX = ls.inwardX || 0;
+          const inZ = ls.inwardZ || 0;
+          const ledgeInward = new THREE.Vector3(inX, 0, inZ);
+          if (ledgeInward.lengthSq() < 1e-5) ledgeInward.set(-Math.sin(ls.ledgeYaw || 0), 0, -Math.cos(ls.ledgeYaw || 0));
+          ledgeInward.normalize();
+          const ledgeOutward = ledgeInward.clone().negate();
+          const worldUp = new THREE.Vector3(0, 1, 0);
+          const ledgeRight = new THREE.Vector3().crossVectors(ledgeInward, worldUp).normalize();
+          const pressT = THREE.MathUtils.clamp(p / 0.58, 0, 1);
+          const pressEase = pressT * pressT * (3 - 2 * pressT);
+          const span = ls.edgeHalfWidth || 0.20;
+
           const ledgeWorldQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, ls.ledgeYaw || 0, 0));
 
-          // Sync vmCamera to live camera transform & place ledgeHandsGroup in vmCamera space anchored to the world ledge lip
+          // Sync vmCamera to live camera transform & place ledgeHandsGroup directly on the world ledge lip
           this.camera.updateMatrixWorld(true);
           this.vmCamera.position.copy(this.camera.position);
           this.vmCamera.quaternion.copy(this.camera.quaternion);
           this.vmCamera.updateMatrixWorld(true);
           const camQInv = this.vmCamera.quaternion.clone().invert();
-          this.ledgeHandsGroup.position.copy(this.vmCamera.worldToLocal(ledgeWorldPos));
+          this.ledgeHandsGroup.position.copy(this.vmCamera.worldToLocal(edge.clone()));
           this.ledgeHandsGroup.quaternion.copy(camQInv).multiply(ledgeWorldQuat);
 
-          // Aim sculpted character forearms from torso shoulders straight to the ledge-anchored gloved wrists
-          const p = ls.pullProgress || 0;
-          const pEase = p * p * (3 - 2 * p);
-          const shY = THREE.MathUtils.lerp(-0.34, 0.34, pEase);
-          const shZ = THREE.MathUtils.lerp(0.42, 0.16, pEase);
-          const strain = ls.phase === 'pulling' ? Math.sin(p * Math.PI * 3) * 0.014 : 0;
+          const shY = THREE.MathUtils.lerp(-0.34, 0.34, pressEase);
+          const shZ = THREE.MathUtils.lerp(0.36, 0.14, pressEase);
           for (const arm of [this.ledgeHandsParts.leftArm, this.ledgeHandsParts.rightArm]) {
-            arm.hand.position.set(arm.side * 0.21, 0.020 + arm.side * strain * 0.5, -0.025);
-            arm.hand.rotation.set(-0.18 - pEase * 0.14, arm.side * -0.06, arm.side * 0.04);
-            if (arm.hand.userData) arm.hand.userData.activeStyle = arm.styleName;
-            const shoulderLocal = new THREE.Vector3(arm.side * 0.25, shY + (arm.side * strain), shZ);
-            const wristLocal = new THREE.Vector3(arm.side * 0.21, 0.012, 0.015);
+            const sSign = arm.side;
+            const inwardLip = THREE.MathUtils.lerp(0.014, 0.048, pressEase);
+            const pushDownY = releaseEase * -0.18;
+            const pushBackIn = releaseEase * -0.06;
+            const palmWorld = edge.clone()
+              .addScaledVector(ledgeRight, sSign * span)
+              .addScaledVector(worldUp, 0.015 + pushDownY)
+              .addScaledVector(ledgeInward, inwardLip + pushBackIn);
+            // Dynamic world-ledge hand basis: fingers across top surface, dorsal back UP + slightly toward climber (never collinear with forearm!)
+            const fWorld = new THREE.Vector3()
+              .addScaledVector(ledgeInward, THREE.MathUtils.lerp(0.95, 0.92, pressEase))
+              .addScaledVector(worldUp, THREE.MathUtils.lerp(-0.22, -0.10, pressEase))
+              .addScaledVector(ledgeRight, -sSign * THREE.MathUtils.lerp(0.06, 0.14, pressEase))
+              .normalize();
+            const backWorld = new THREE.Vector3()
+              .addScaledVector(worldUp, THREE.MathUtils.lerp(0.86, 0.95, pressEase))
+              .addScaledVector(ledgeOutward, THREE.MathUtils.lerp(0.48, 0.22, pressEase))
+              .addScaledVector(ledgeRight, sSign * 0.18)
+              .normalize();
+            // Singularity-free elbow pole in world ledge space (outward from wall + lateral + downward)
+            const poleOffsetWorld = new THREE.Vector3()
+              .addScaledVector(ledgeOutward, THREE.MathUtils.lerp(0.42, 0.46, pressEase))
+              .addScaledVector(ledgeRight, sSign * THREE.MathUtils.lerp(0.36, 0.46, pressEase))
+              .addScaledVector(worldUp, THREE.MathUtils.lerp(-0.36, -0.18, pressEase));
+
+            arm.hand.position.set(sSign * span, 0.015 + pushDownY, -(inwardLip + pushBackIn));
+            arm.hand.rotation.set(-0.14 - pressEase * 0.10, sSign * -0.06, sSign * 0.04);
+            if (arm.hand.userData) {
+              arm.hand.userData.activeStyle = pressEase > 0.52
+                ? (sSign > 0 ? 'ledgePressR' : 'ledgePressL')
+                : arm.styleName;
+              arm.hand.userData.climbLock = {
+                blend: lockBlend,
+                pressT: pressEase,
+                palmWorld,
+                fWorld,
+                backWorld,
+                poleOffsetWorld,
+                bodyYaw: ls.ledgeYaw ?? player.yaw,
+                isMantle: false
+              };
+            }
+            const shoulderLocal = new THREE.Vector3(sSign * 0.22, shY, shZ);
+            const wristLocal = new THREE.Vector3(sSign * span, 0.012 + pushDownY, -(inwardLip + pushBackIn) + 0.035);
             this._currentAimHand = arm.hand;
             this._aimArm(arm.forearm, shoulderLocal, wristLocal);
           }
         }
-        return;
+        if (drawWeaponT <= 0.01 || player.isThirdPerson) {
+          this.viewmodelGroup.visible = false;
+          return;
+        }
+        // Smoothly raise weapon viewmodel from low-ready during final stand-up (p = 0.80..1.00)
+        this.viewmodelGroup.visible = !this.isHealing;
+        this.viewmodelGroup.position.y = THREE.MathUtils.lerp(-0.36, -0.20, drawWeaponT);
+        this.viewmodelGroup.rotation.x = THREE.MathUtils.lerp(-0.32, 0, drawWeaponT);
+      } else if (this.ledgeHandsGroup) {
+        this.ledgeHandsGroup.visible = false;
+        if (this.ledgeHandsParts) {
+          if (this.ledgeHandsParts.leftArm.hand.userData) this.ledgeHandsParts.leftArm.hand.userData.climbLock = null;
+          if (this.ledgeHandsParts.rightArm.hand.userData) this.ledgeHandsParts.rightArm.hand.userData.climbLock = null;
+        }
       }
-      if (this.ledgeHandsGroup) this.ledgeHandsGroup.visible = false;
-      if (player.isUsingDesignator) {
-        // Stow / hide weapon completely while Airstrike Binoculars / Laser Designator are equipped!
-        this.viewmodelGroup.visible = false;
-        if (this.plateRig) this.plateRig.visible = false;
-        if (this.medRig) this.medRig.visible = false;
-        if (this.tacFistRig) this.tacFistRig.visible = false;
-        if (this.reviveRig) this.reviveRig.visible = false;
-        return;
-      }
-      // Teammate Combat Syringe Revive Animation (hides weapon & plays 2-handed MW19/DMZ syringe injection!)
-      if (this._updateReviveAnim(dt, player)) {
-        return;
-      }
-      if (!this.isThirdPerson && !this.isHealing) {
-        this.viewmodelGroup.visible = true;
+      if (!player.ledgeState) {
+        if (player.isUsingDesignator) {
+          // Stow / hide weapon completely while Airstrike Binoculars / Laser Designator are equipped!
+          this.viewmodelGroup.visible = false;
+          if (this.plateRig) this.plateRig.visible = false;
+          if (this.medRig) this.medRig.visible = false;
+          if (this.tacFistRig) this.tacFistRig.visible = false;
+          if (this.reviveRig) this.reviveRig.visible = false;
+          return;
+        }
+        // Teammate Combat Syringe Revive Animation (hides weapon & plays 2-handed MW19/DMZ syringe injection!)
+        if (this._updateReviveAnim(dt, player)) {
+          return;
+        }
+        if (!this.isThirdPerson && !this.isHealing) {
+          this.viewmodelGroup.visible = true;
+        }
       }
     }
 
-    // Hip-height mantle quick weapon dip & supporting hand obstacle grab
+    // Hip-height mantle weapon tuck & world-locked left-palm obstacle vault!
     let mantleGrabArc = 0;
+    let mantleContactW = 0;
     if (player.mantleState && this.viewmodelGroup) {
-      mantleGrabArc = Math.sin(player.mantleState.t * Math.PI);
-      this.viewmodelGroup.position.y = THREE.MathUtils.lerp(this.viewmodelGroup.position.y, -0.22 - mantleGrabArc * 0.14, Math.min(1, dt * 18));
-      this.viewmodelGroup.rotation.x = THREE.MathUtils.lerp(this.viewmodelGroup.rotation.x, -0.24 * mantleGrabArc, Math.min(1, dt * 18));
+      const ms = player.mantleState;
+      const mt = ms.t || 0;
+      mantleGrabArc = Math.sin(mt * Math.PI);
+      if (mt < 0.12) {
+        const k = mt / 0.12;
+        mantleContactW = k * k * (3 - 2 * k);
+      } else if (mt <= 0.62) {
+        mantleContactW = 1.0;
+      } else if (mt < 0.90) {
+        const k = (mt - 0.62) / 0.28;
+        mantleContactW = 1 - k * k * (3 - 2 * k);
+      }
+      // Anatomically release palm once shoulders rise past natural downward arm press height above the ledge (or skip palm plant on low knee-high step-ups)
+      if (typeof ms.ledgeY === 'number') {
+        const eyeAboveLedge = player.position.y - ms.ledgeY;
+        const reachGate = THREE.MathUtils.clamp((0.96 - eyeAboveLedge) / 0.18, 0, 1);
+        mantleContactW *= reachGate * reachGate * (3 - 2 * reachGate);
+      }
+      this.viewmodelGroup.position.x = THREE.MathUtils.lerp(this.viewmodelGroup.position.x, 0.045 * mantleGrabArc, Math.min(1, dt * 18));
+      this.viewmodelGroup.position.y = THREE.MathUtils.lerp(this.viewmodelGroup.position.y, -0.22 - mantleGrabArc * 0.11, Math.min(1, dt * 18));
+      this.viewmodelGroup.rotation.x = THREE.MathUtils.lerp(this.viewmodelGroup.rotation.x, -0.22 * mantleGrabArc, Math.min(1, dt * 18));
       this.viewmodelGroup.rotation.z = THREE.MathUtils.lerp(this.viewmodelGroup.rotation.z, -0.26 * mantleGrabArc, Math.min(1, dt * 18));
     }
 
@@ -4144,10 +4229,33 @@ class WeaponSystem {
 
       this.leftHand.visible = true;
       this.rightHand.visible = true;
+      if (this.leftHand.userData) this.leftHand.userData.climbLock = null;
+      if (this.rightHand.userData) this.rightHand.userData.climbLock = null;
       this.leftHand.position.lerp(lTarget, fRate);
       this.leftHand.rotation.x = THREE.MathUtils.lerp(this.leftHand.rotation.x, lRotX, fRate);
       this.leftHand.rotation.y = THREE.MathUtils.lerp(this.leftHand.rotation.y, lRotY, fRate);
       this.leftHand.rotation.z = THREE.MathUtils.lerp(this.leftHand.rotation.z, lRotZ, fRate);
+      if (mantleContactW > 0.01 && player.mantleState && player.mantleState.edgePos && this.leftHand.userData) {
+        const ms = player.mantleState;
+        const ledgeInward = new THREE.Vector3(ms.inwardX || 0, 0, ms.inwardZ || 0);
+        if (ledgeInward.lengthSq() < 1e-5) ledgeInward.set(-Math.sin(ms.ledgeYaw || player.yaw), 0, -Math.cos(ms.ledgeYaw || player.yaw));
+        ledgeInward.normalize();
+        const ledgeOutward = ledgeInward.clone().negate();
+        const worldUp = new THREE.Vector3(0, 1, 0);
+        const ledgeRight = new THREE.Vector3().crossVectors(ledgeInward, worldUp).normalize();
+        const latOff = Math.min(0.16, ms.edgeHalfWidth || 0.18);
+        this.leftHand.userData.activeStyle = 'ledgePressL';
+        this.leftHand.userData.climbLock = {
+          blend: mantleContactW,
+          pressT: 1.0,
+          palmWorld: ms.edgePos.clone().addScaledVector(ledgeRight, -latOff).addScaledVector(worldUp, 0.016).addScaledVector(ledgeInward, 0.045),
+          fWorld: new THREE.Vector3().addScaledVector(ledgeInward, 0.92).addScaledVector(worldUp, -0.10).addScaledVector(ledgeRight, 0.14).normalize(),
+          backWorld: new THREE.Vector3().addScaledVector(worldUp, 0.95).addScaledVector(ledgeOutward, 0.22).addScaledVector(ledgeRight, -0.18).normalize(),
+          poleOffsetWorld: new THREE.Vector3().addScaledVector(ledgeOutward, 0.44).addScaledVector(ledgeRight, -0.42).addScaledVector(worldUp, -0.22),
+          bodyYaw: ms.ledgeYaw ?? player.yaw,
+          isMantle: true
+        };
+      }
 
       this.rightHand.position.lerp(rTarget, fRate);
       this.rightHand.rotation.x = THREE.MathUtils.lerp(this.rightHand.rotation.x, rRotX, fRate);
@@ -4192,18 +4300,63 @@ class WeaponSystem {
           this.leftFist.visible = false;
           this.leftFist.position.copy(this.leftHand.position);
         }
-        if (mantleGrabArc > 0.04) {
-          // Supporting left hand leaves gun to grab & push off the top edge of the hip-height obstacle!
-          if (this.leftHand.userData) this.leftHand.userData.activeStyle = 'slapOpen';
-          const grabTarget = new THREE.Vector3(
-            this.leftHandRestPos.x - 0.18 * mantleGrabArc,
-            this.leftHandRestPos.y - 0.10 * mantleGrabArc,
-            this.leftHandRestPos.z - 0.24 * mantleGrabArc
-          );
-          this.leftHand.position.lerp(grabTarget, Math.min(1, dt * 22));
-          this.leftHand.rotation.x = THREE.MathUtils.lerp(this.leftHand.rotation.x, -0.85 * mantleGrabArc, Math.min(1, dt * 20));
-          this.leftHand.rotation.y = THREE.MathUtils.lerp(this.leftHand.rotation.y, 0.35 * mantleGrabArc, Math.min(1, dt * 20));
-          this.leftHand.rotation.z = THREE.MathUtils.lerp(this.leftHand.rotation.z, 0.45 * mantleGrabArc, Math.min(1, dt * 20));
+        if (this.leftHand.userData) {
+          this.leftHand.userData.climbLock = null;
+        }
+        if (mantleContactW > 0.01 && player.mantleState && player.mantleState.edgePos) {
+          // Supporting left hand locks in WORLD SPACE onto the top edge of the obstacle while vaulting!
+          const ms = player.mantleState;
+          const ledgeInward = new THREE.Vector3(ms.inwardX || 0, 0, ms.inwardZ || 0);
+          if (ledgeInward.lengthSq() < 1e-5) ledgeInward.set(-Math.sin(ms.ledgeYaw || player.yaw), 0, -Math.cos(ms.ledgeYaw || player.yaw));
+          ledgeInward.normalize();
+          const ledgeOutward = ledgeInward.clone().negate();
+          const worldUp = new THREE.Vector3(0, 1, 0);
+          const ledgeRight = new THREE.Vector3().crossVectors(ledgeInward, worldUp).normalize();
+          const latOff = Math.min(0.16, ms.edgeHalfWidth || 0.18);
+          const palmWorld = ms.edgePos.clone()
+            .addScaledVector(ledgeRight, -latOff)
+            .addScaledVector(worldUp, 0.016)
+            .addScaledVector(ledgeInward, 0.045);
+          const fWorld = new THREE.Vector3()
+            .addScaledVector(ledgeInward, 0.92)
+            .addScaledVector(worldUp, -0.10)
+            .addScaledVector(ledgeRight, 0.14)
+            .normalize();
+          const backWorld = new THREE.Vector3()
+            .addScaledVector(worldUp, 0.95)
+            .addScaledVector(ledgeOutward, 0.22)
+            .addScaledVector(ledgeRight, -0.18)
+            .normalize();
+          const poleOffsetWorld = new THREE.Vector3()
+            .addScaledVector(ledgeOutward, 0.44)
+            .addScaledVector(ledgeRight, -0.42)
+            .addScaledVector(worldUp, -0.22);
+
+          if (this.leftHand.userData) {
+            this.leftHand.userData.activeStyle = 'ledgePressL';
+            this.leftHand.userData.climbLock = {
+              blend: mantleContactW,
+              pressT: 1.0,
+              palmWorld,
+              fWorld,
+              backWorld,
+              poleOffsetWorld,
+              bodyYaw: ms.ledgeYaw ?? player.yaw,
+              isMantle: true
+            };
+          }
+          if (this.camera && this.vmCamera && this.currentMesh) {
+            this.camera.updateMatrixWorld(true);
+            this.vmCamera.position.copy(this.camera.position);
+            this.vmCamera.quaternion.copy(this.camera.quaternion);
+            this.vmCamera.updateMatrixWorld(true);
+            this.currentMesh.updateMatrixWorld(true);
+            const localLedge = this.currentMesh.worldToLocal(palmWorld.clone());
+            this.leftHand.position.lerpVectors(this.leftHandRestPos, localLedge, mantleContactW);
+          }
+          this.leftHand.rotation.x = THREE.MathUtils.lerp(this.leftHand.rotation.x, -0.55 * mantleContactW, Math.min(1, dt * 20));
+          this.leftHand.rotation.y = THREE.MathUtils.lerp(this.leftHand.rotation.y, 0.22 * mantleContactW, Math.min(1, dt * 20));
+          this.leftHand.rotation.z = THREE.MathUtils.lerp(this.leftHand.rotation.z, 0.30 * mantleContactW, Math.min(1, dt * 20));
         } else if (proneHandPushArc > 0.04) {
           // Supporting left hand leaves gun to plant on the ground / push off while entering or exiting prone!
           if (this.leftHand.userData) this.leftHand.userData.activeStyle = 'slapOpen';
@@ -4238,6 +4391,7 @@ class WeaponSystem {
               this.leftHand.userData.activeStyle === 'grabReach' ||
               this.leftHand.userData.activeStyle === 'grabClose' ||
               this.leftHand.userData.activeStyle === 'slapOpen' ||
+              this.leftHand.userData.activeStyle === 'ledgePressL' ||
               this.leftHand.userData.activeStyle === 'foregrip' ||
               this.leftHand.userData.activeStyle === 'supportRifle'
             ) {

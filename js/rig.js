@@ -361,6 +361,120 @@
       return (out || new THREE.Quaternion()).setFromRotationMatrix(_m3);
     },
 
+    // Dedicated anatomical twist distributor across Shoulder (humerus hinge) -> Elbow (forearm roll) -> Wrist:
+    // Eliminates sideways elbow shear, ±180° atan2 branch-cut flips, and candy-wrapper skin/UV contortion!
+    _atShW: new THREE.Vector3(),
+    _atElW: new THREE.Vector3(),
+    _atPreHdW: new THREE.Vector3(),
+    _atHdW: new THREE.Vector3(),
+    _atToL: new THREE.Vector3(),
+    _atFromL: new THREE.Vector3(),
+    _atUpDir: new THREE.Vector3(),
+    _atForeDir: new THREE.Vector3(),
+    _atOlecW: new THREE.Vector3(),
+    _atOcP: new THREE.Vector3(),
+    _atOtP: new THREE.Vector3(),
+    _atFbW: new THREE.Vector3(),
+    _atFbP: new THREE.Vector3(),
+    _atHbP: new THREE.Vector3(),
+    _atRfP: new THREE.Vector3(),
+    _atBwP: new THREE.Vector3(),
+    _atCross: new THREE.Vector3(),
+    _atPerp: new THREE.Vector3(),
+    _atQU: new THREE.Quaternion(),
+    _atQL: new THREE.Quaternion(),
+    _atQRot: new THREE.Quaternion(),
+
+    alignArmChainTwist(bArm, bFore, bHand, pole, hb, fW, backW, side, isClimbArm = false) {
+      if (!bArm || !bFore || !bHand) return;
+      bFore.updateMatrixWorld(true);
+      bFore.getWorldPosition(this._atElW);
+      bHand.getWorldPosition(this._atPreHdW);
+      this._atToL.subVectors(this._atPreHdW, this._atElW);
+
+      // 1. Align humerus anatomical olecranon (Mixamo LeftArm +Z, RightArm -Z) toward outer elbow bend plane (pole)
+      bArm.getWorldPosition(this._atShW);
+      this._atUpDir.subVectors(this._atElW, this._atShW);
+      if (this._atUpDir.lengthSq() > 1e-6 && this._atToL.lengthSq() > 1e-6) {
+        this._atUpDir.normalize();
+        bArm.getWorldQuaternion(this._atQU);
+        this._atOlecW.set(0, 0, side === 'left' ? 1 : -1).applyQuaternion(this._atQU);
+        this._atOcP.copy(this._atOlecW).addScaledVector(this._atUpDir, -this._atOlecW.dot(this._atUpDir));
+        this._atOtP.subVectors(pole, this._atShW);
+        this._atOtP.addScaledVector(this._atUpDir, -this._atOtP.dot(this._atUpDir));
+        if (this._atOcP.lengthSq() > 1e-5 && this._atOtP.lengthSq() > 1e-5) {
+          this._atOcP.normalize();
+          this._atOtP.normalize();
+          const hSin = this._atCross.crossVectors(this._atOcP, this._atOtP).dot(this._atUpDir);
+          const hCos = THREE.MathUtils.clamp(this._atOcP.dot(this._atOtP), -1, 1);
+          const hClamped = THREE.MathUtils.clamp(Math.atan2(hSin, hCos), -1.08, 1.08) * 0.82;
+          this._atQRot.setFromAxisAngle(this._atUpDir, hClamped);
+          this.setWorldQuat(bArm, this._atQRot.multiply(this._atQU));
+          bArm.updateMatrixWorld(true);
+          bFore.getWorldPosition(this._atElW);
+          bHand.getWorldPosition(this._atHdW);
+          this._atFromL.subVectors(this._atHdW, this._atElW);
+          this.rotateBoneWorld(bFore, this._atFromL, this._atToL);
+        }
+      }
+
+      // 2. Clamp wrist flexion/extension & distribute clamped pronation/supination across forearm + wrist
+      bFore.updateMatrixWorld(true);
+      bFore.getWorldPosition(this._atElW);
+      bHand.getWorldPosition(this._atHdW);
+      this._atForeDir.subVectors(this._atHdW, this._atElW);
+      if (this._atForeDir.lengthSq() < 1e-6) return;
+      this._atForeDir.normalize();
+
+      const maxBend = isClimbArm ? 0.68 : 0.73;
+      const dotF = THREE.MathUtils.clamp(fW.dot(this._atForeDir), -1, 1);
+      if (Math.acos(dotF) > maxBend) {
+        this._atPerp.copy(fW).addScaledVector(this._atForeDir, -dotF);
+        if (this._atPerp.lengthSq() > 1e-6) {
+          this._atPerp.normalize();
+          fW.copy(this._atForeDir).multiplyScalar(Math.cos(maxBend)).addScaledVector(this._atPerp, Math.sin(maxBend)).normalize();
+        } else {
+          fW.copy(this._atForeDir);
+        }
+      }
+
+      if (hb) {
+        bFore.getWorldQuaternion(this._atQL);
+        this._atFbW.copy(hb.bLocal).applyQuaternion(this._atQL);
+        this._atFbP.copy(this._atFbW).addScaledVector(this._atForeDir, -this._atFbW.dot(this._atForeDir));
+        this._atHbP.copy(backW).addScaledVector(this._atForeDir, -backW.dot(this._atForeDir));
+        if (this._atFbP.lengthSq() > 1e-5 && this._atHbP.lengthSq() > 1e-5) {
+          this._atFbP.normalize();
+          this._atHbP.normalize();
+          const rSin = this._atCross.crossVectors(this._atFbP, this._atHbP).dot(this._atForeDir);
+          const rCos = THREE.MathUtils.clamp(this._atFbP.dot(this._atHbP), -1, 1);
+          const maxRoll = isClimbArm ? 1.26 : 1.45;
+          const rClamped = THREE.MathUtils.clamp(Math.atan2(rSin, rCos), -maxRoll, maxRoll) * 0.68;
+          this._atQRot.setFromAxisAngle(this._atForeDir, rClamped);
+          this.setWorldQuat(bFore, this._atQRot.multiply(this._atQL));
+          bFore.updateMatrixWorld(true);
+        }
+
+        // 3. Guard residual wrist roll relative to rolled forearm dorsal axis (prevents candy-wrapper wrist!)
+        bFore.getWorldQuaternion(this._atQL);
+        this._atFbW.copy(hb.bLocal).applyQuaternion(this._atQL);
+        this._atRfP.copy(this._atFbW).addScaledVector(fW, -this._atFbW.dot(fW));
+        this._atBwP.copy(backW).addScaledVector(fW, -backW.dot(fW));
+        if (this._atRfP.lengthSq() > 1e-5 && this._atBwP.lengthSq() > 1e-5) {
+          this._atRfP.normalize();
+          this._atBwP.normalize();
+          const wSin = this._atCross.crossVectors(this._atRfP, this._atBwP).dot(fW);
+          const wCos = THREE.MathUtils.clamp(this._atRfP.dot(this._atBwP), -1, 1);
+          const wAng = Math.atan2(wSin, wCos);
+          const maxWristTwist = isClimbArm ? 0.63 : 1.38;
+          if (Math.abs(wAng) > maxWristTwist) {
+            this._atQRot.setFromAxisAngle(fW, THREE.MathUtils.clamp(wAng, -maxWristTwist, maxWristTwist));
+            backW.copy(this._atRfP).applyQuaternion(this._atQRot).normalize();
+          }
+        }
+      }
+    },
+
     buildFingerCurl(B, side) {
       const handBone = B[side + 'hand'];
       const mid = B[side + 'handmiddle1'];
@@ -1230,7 +1344,7 @@
       solveLeg('left');
       solveLeg('right');
 
-      // 8. Arms: stateless 2-bone IK from proxy shoulder/elbow/wrist + chirality-safe hand orientation
+      // 8. Arms: stateless 2-bone IK from proxy shoulder/elbow/wrist + world-locked ledge override + twist-aligned chain
       const solveArm = (side) => {
         const armProxy = side === 'left' ? r.leftArm : r.rightArm;
         const bUp = B[side + 'arm'];
@@ -1241,17 +1355,12 @@
         const shW = armProxy.shoulder.getWorldPosition(new THREE.Vector3());
         const elW = armProxy.elbow.getWorldPosition(new THREE.Vector3());
         const wrW = armProxy.wrist.getWorldPosition(new THREE.Vector3());
-        const mid = shW.add(wrW).multiplyScalar(0.5);
+        const mid = shW.clone().add(wrW).multiplyScalar(0.5);
         const out = elW.clone().sub(mid);
         if (out.lengthSq() < 1e-6) {
           out.set(side === 'left' ? -0.4 : 0.4, -0.3, 0.4);
         }
-        const pole = elW.add(out);
-        RigIK.solveTwoBone(
-          bUp, bLow, bHand, wrW, pole,
-          this.bindLocal && this.bindLocal[side + 'arm'],
-          this.bindLocal && this.bindLocal[side + 'forearm']
-        );
+        const pole = elW.clone().add(out);
 
         const wrQ = armProxy.wrist.getWorldQuaternion(new THREE.Quaternion());
         const fW = new THREE.Vector3(0, -1, 0).applyQuaternion(wrQ).normalize();
@@ -1260,50 +1369,34 @@
           : new THREE.Vector3(-0.35, 0, 0.94);
         const backW = backLocal.applyQuaternion(wrQ).normalize();
 
-        // MW4 Kinetic 3P Arm IK: 42° anatomical wrist clamp + 72% forearm pronation/supination twist alignment!
-        bForeSafeTwist: {
-          bLow.updateMatrixWorld(true);
-          const forePosW = bLow.getWorldPosition(new THREE.Vector3());
-          const handPosW = bHand.getWorldPosition(new THREE.Vector3());
-          const foreDir = handPosW.sub(forePosW);
-          if (foreDir.lengthSq() < 1e-6) break bForeSafeTwist;
-          foreDir.normalize();
-          const dotF = THREE.MathUtils.clamp(fW.dot(foreDir), -1, 1);
-          const bendAng = Math.acos(dotF);
-          const maxBend = 0.73;
-          if (bendAng > maxBend) {
-            const perp = fW.clone().addScaledVector(foreDir, -dotF);
-            if (perp.lengthSq() > 1e-6) {
-              perp.normalize();
-              fW.copy(foreDir).multiplyScalar(Math.cos(maxBend)).addScaledVector(perp, Math.sin(maxBend)).normalize();
-            } else {
-              fW.copy(foreDir);
-            }
-          }
-          const foreWQ = bLow.getWorldQuaternion(new THREE.Quaternion());
-          const hb = this.handBasis[side];
-          if (hb) {
-            const foreBackW = hb.bLocal.clone().applyQuaternion(foreWQ);
-            const fbProj = foreBackW.addScaledVector(foreDir, -foreBackW.dot(foreDir));
-            const hbProj = backW.clone().addScaledVector(foreDir, -backW.dot(foreDir));
-            if (fbProj.lengthSq() > 1e-5 && hbProj.lengthSq() > 1e-5) {
-              fbProj.normalize();
-              hbProj.normalize();
-              const sinA = new THREE.Vector3().crossVectors(fbProj, hbProj).dot(foreDir);
-              const cosA = THREE.MathUtils.clamp(fbProj.dot(hbProj), -1, 1);
-              const rollAng = Math.atan2(sinA, cosA);
-              const qRoll = new THREE.Quaternion().setFromAxisAngle(foreDir, rollAng * 0.72);
-              RigIK.setWorldQuat(bLow, qRoll.multiply(foreWQ));
-              bLow.updateMatrixWorld(true);
-            }
-          }
+        const cw = r._climbWorldHands && r._climbWorldHands[side];
+        const cb = cw ? THREE.MathUtils.clamp(cw.blend || 0, 0, 1) : 0;
+        if (cb > 0.001) {
+          fW.lerp(cw.fWorld, cb).normalize();
+          backW.lerp(cw.backWorld, cb).normalize();
+          const climbWristW = cw.palmWorld.clone().addScaledVector(cw.fWorld, -0.047);
+          wrW.lerp(climbWristW, cb);
+          bUp.parent.updateWorldMatrix(true, false);
+          bUp.updateMatrixWorld(true);
+          const climbPoleW = bUp.getWorldPosition(new THREE.Vector3()).add(cw.poleOffsetWorld);
+          pole.lerp(climbPoleW, cb);
         }
+
+        RigIK.solveTwoBone(
+          bUp, bLow, bHand, wrW, pole,
+          this.bindLocal && this.bindLocal[side + 'arm'],
+          this.bindLocal && this.bindLocal[side + 'forearm']
+        );
+
+        RigIK.alignArmChainTwist(bUp, bLow, bHand, pole, this.handBasis[side], fW, backW, side, cb > 0.25);
 
         const handQ = RigIK.handBasisQuat(this.handBasis[side], fW, backW, _q3);
         RigIK.setWorldQuat(bHand, handQ);
 
         if (s.dead || s.isDowned) {
           RigIK.applyFingerCurl(this.fingerCurls[side], [0.25, 0.25, 0.2], 0.2);
+        } else if (cb > 0.25 && cw.curl) {
+          RigIK.applyFingerCurl(this.fingerCurls[side], cw.curl, cw.thumb !== undefined ? cw.thumb : 0.45);
         } else if (s.isTacSprinting && side === 'left') {
           RigIK.applyFingerCurl(this.fingerCurls[side], [1.56, 1.78, 1.12], 1.0);
         } else {
@@ -1415,8 +1508,10 @@
     medGauzeGripR:     { f: new THREE.Vector3(-0.42,  0.24, -0.87), back: new THREE.Vector3( 0.76,  0.56, -0.33), palmOffset: new THREE.Vector3( 0.022,  0.008,  0.014), curl: [1.04, 1.16, 0.80], thumb: 0.76 },
     grabReach:      { f: new THREE.Vector3( 0.28, -0.26, -0.92), back: new THREE.Vector3(-0.36,  0.88, -0.30), palmOffset: new THREE.Vector3(-0.008,  0.010, 0.004), curl: [0.24, 0.28, 0.20], thumb: 0.30 },
     grabClose:      { f: new THREE.Vector3( 0.32, -0.18, -0.93), back: new THREE.Vector3(-0.46,  0.82, -0.34), palmOffset: new THREE.Vector3(-0.010,  0.006, 0.004), curl: [1.28, 1.40, 0.90], thumb: 0.88 },
-    ledgeGrabL:     { f: new THREE.Vector3( 0.08, -0.32, -0.94), back: new THREE.Vector3(-0.14,  0.94, -0.31), palmOffset: new THREE.Vector3(-0.008,  0.012, 0.004), curl: [1.14, 1.26, 0.82], thumb: 0.68 },
-    ledgeGrabR:     { f: new THREE.Vector3(-0.08, -0.32, -0.94), back: new THREE.Vector3( 0.14,  0.94, -0.31), palmOffset: new THREE.Vector3( 0.008,  0.012, 0.004), curl: [1.14, 1.26, 0.82], thumb: 0.68 }
+    ledgeGrabL:     { f: new THREE.Vector3( 0.06, -0.22, -0.97), back: new THREE.Vector3(-0.16,  0.88,  0.45), palmOffset: new THREE.Vector3(-0.004,  0.008, 0.002), curl: [0.76, 0.90, 0.64], thumb: 0.54 },
+    ledgeGrabR:     { f: new THREE.Vector3(-0.06, -0.22, -0.97), back: new THREE.Vector3( 0.16,  0.88,  0.45), palmOffset: new THREE.Vector3( 0.004,  0.008, 0.002), curl: [0.76, 0.90, 0.64], thumb: 0.54 },
+    ledgePressL:    { f: new THREE.Vector3( 0.14, -0.10, -0.985), back: new THREE.Vector3(-0.18, 0.95,  0.22), palmOffset: new THREE.Vector3(-0.004,  0.010, 0.002), curl: [0.20, 0.24, 0.16], thumb: 0.28 },
+    ledgePressR:    { f: new THREE.Vector3(-0.14, -0.10, -0.985), back: new THREE.Vector3( 0.18, 0.95,  0.22), palmOffset: new THREE.Vector3( 0.004,  0.010, 0.002), curl: [0.20, 0.24, 0.16], thumb: 0.28 }
   };
 
   function isEffectivelyVisible(obj, stopAt) {
@@ -1582,6 +1677,12 @@
         rightforearm: B.rightforearm ? B.rightforearm.quaternion.clone() : null,
         righthand: B.righthand ? B.righthand.quaternion.clone() : null
       };
+      this.bindBonePos = {
+        leftforearm: B.leftforearm ? B.leftforearm.position.clone() : null,
+        lefthand: B.lefthand ? B.lefthand.position.clone() : null,
+        rightforearm: B.rightforearm ? B.rightforearm.position.clone() : null,
+        righthand: B.righthand ? B.righthand.position.clone() : null
+      };
 
       const pArm2 = B.rightarm.getWorldPosition(new THREE.Vector3());
       const pFore2 = B.rightforearm.getWorldPosition(new THREE.Vector3());
@@ -1661,11 +1762,18 @@
             return false;
           }
 
+          if (this.bindBonePos) {
+            if (this.bindBonePos[side + 'forearm']) bFore.position.copy(this.bindBonePos[side + 'forearm']);
+            if (this.bindBonePos[side + 'hand']) bHand.position.copy(this.bindBonePos[side + 'hand']);
+          }
+
           pose.armGroup.parent.updateWorldMatrix(true, false);
           const shoulderW = pose.armGroup.parent.localToWorld(pose.shoulderLocal.clone());
           const wristW = pose.armGroup.parent.localToWorld(pose.wristLocal.clone());
 
           const handObj = pose.handObj;
+          const climbLock = (handObj && handObj.userData) ? handObj.userData.climbLock : null;
+          const cb = climbLock ? THREE.MathUtils.clamp(climbLock.blend || 0, 0, 1) : 0;
           const styleKey = (handObj && handObj.userData && (handObj.userData.activeStyle || handObj.userData.handStyle)) || 'grip';
           const style = FP_HAND_STYLES[styleKey] || FP_HAND_STYLES.grip;
 
@@ -1764,12 +1872,6 @@
             wristTarget = anchor.clone().addScaledVector(clampedToWrist.multiplyScalar(1 / clampedDist), maxReach);
           }
 
-          if (bArm.parent) {
-            bArm.parent.updateWorldMatrix(true, false);
-            bArm.position.copy(bArm.parent.worldToLocal(anchor.clone()));
-            bArm.updateMatrixWorld(true);
-          }
-
           // MW4 Kinetic Dynamic Elbow Pole: tucks ribs cleanly on ADS, 45° Tactical Stance cant, Corner Lean & CQB Wall Push!
           const cantTuck = THREE.MathUtils.clamp(-vmRoll * sideSign * 0.22, -0.14, 0.16);
           const poleOut = isPlatingArm
@@ -1786,49 +1888,68 @@
             .addScaledVector(camDown, poleDown)
             .addScaledVector(camBack, poleBack);
 
+          // World-Space Ledge Lock Override (Climb & Mantle):
+          // Welds palm 100.0% onto the obstacle top edge (0.0mm slip under all FOV settings!) while keeping
+          // the shoulder behind/below the frustum and extending segment bones to natural 1:1 human reach!
+          if (cb > 0.001 && climbLock.palmWorld) {
+            fW.lerp(climbLock.fWorld, cb).normalize();
+            backW.lerp(climbLock.backWorld, cb).normalize();
+
+            let climbPalmW = climbLock.palmWorld.clone();
+            const worldCam = ws && ws.camera;
+            if (worldCam && Math.abs((cam.fov || 75) - (worldCam.fov || 75)) > 0.05) {
+              const pCam = cam.worldToLocal(climbPalmW);
+              if (pCam.z < -0.04) {
+                const fovRatio = halfTanY / Math.max(0.04, Math.tan(THREE.MathUtils.degToRad((worldCam.fov || 75) * 0.5)));
+                pCam.x *= fovRatio;
+                pCam.y *= fovRatio;
+              }
+              climbPalmW = cam.localToWorld(pCam);
+            }
+            const climbWrist = climbPalmW.addScaledVector(fW, -this.palmCenterDist);
+            wristTarget.lerp(climbWrist, cb);
+
+            const bYaw = typeof climbLock.bodyYaw === 'number' ? climbLock.bodyYaw : 0;
+            const bodyRight = new THREE.Vector3(Math.cos(bYaw), 0, -Math.sin(bYaw));
+            const bodyBack = new THREE.Vector3(Math.sin(bYaw), 0, Math.cos(bYaw));
+            const camWorldPos = cam.getWorldPosition(new THREE.Vector3());
+            const climbAnchor = camWorldPos
+              .addScaledVector(bodyRight, sideSign * 0.21)
+              .addScaledVector(bodyBack, 0.08);
+            climbAnchor.y -= 0.25;
+
+            const cAnc = cam.worldToLocal(climbAnchor.clone());
+            if (cAnc.z < 0.05) {
+              const safeY = -Math.max(0, -cAnc.z) * halfTanY - 0.085;
+              if (cAnc.y > safeY) cAnc.y = safeY;
+            }
+            climbAnchor.copy(cam.localToWorld(cAnc));
+            anchor.lerp(climbAnchor, cb);
+
+            const climbPole = anchor.clone().add(climbLock.poleOffsetWorld);
+            pole.lerp(climbPole, cb);
+
+            const liveDist = wristTarget.distanceTo(anchor);
+            if (liveDist > this.reach * 0.90) {
+              const segScale = THREE.MathUtils.clamp(liveDist / (this.reach * 0.90), 1.0, 1.82);
+              bFore.position.multiplyScalar(segScale);
+              bHand.position.multiplyScalar(segScale);
+            }
+          }
+
+          if (bArm.parent) {
+            bArm.parent.updateWorldMatrix(true, false);
+            bArm.position.copy(bArm.parent.worldToLocal(anchor.clone()));
+            bArm.updateMatrixWorld(true);
+          }
+
           RigIK.solveTwoBone(
             bArm, bFore, bHand, wristTarget, pole,
             this.bindLocal && this.bindLocal[side + 'arm'],
             this.bindLocal && this.bindLocal[side + 'forearm']
           );
 
-          // 1. Clamp wrist flexion/extension to natural anatomical range (<= 42 deg from forearm axis)
-          bFore.updateMatrixWorld(true);
-          const forePosW = bFore.getWorldPosition(new THREE.Vector3());
-          const handPosW = bHand.getWorldPosition(new THREE.Vector3());
-          const foreDir = handPosW.sub(forePosW);
-          if (foreDir.lengthSq() > 1e-6) {
-            foreDir.normalize();
-            const dotF = THREE.MathUtils.clamp(fW.dot(foreDir), -1, 1);
-            const bendAng = Math.acos(dotF);
-            const maxBend = 0.73; // ~42 degrees max natural wrist bend
-            if (bendAng > maxBend) {
-              const perp = fW.clone().addScaledVector(foreDir, -dotF);
-              if (perp.lengthSq() > 1e-6) {
-                perp.normalize();
-                fW.copy(foreDir).multiplyScalar(Math.cos(maxBend)).addScaledVector(perp, Math.sin(maxBend)).normalize();
-              } else {
-                fW.copy(foreDir);
-              }
-            }
-
-            // 2. Forearm pronation/supination twist alignment (eliminates candy-wrapper broken wrist!)
-            const foreWQ = bFore.getWorldQuaternion(new THREE.Quaternion());
-            const hb = this.handBasis[side];
-            const foreBackW = hb.bLocal.clone().applyQuaternion(foreWQ);
-            const fbProj = foreBackW.addScaledVector(foreDir, -foreBackW.dot(foreDir));
-            const hbProj = backW.clone().addScaledVector(foreDir, -backW.dot(foreDir));
-            if (fbProj.lengthSq() > 1e-5 && hbProj.lengthSq() > 1e-5) {
-              fbProj.normalize();
-              hbProj.normalize();
-              const sinA = new THREE.Vector3().crossVectors(fbProj, hbProj).dot(foreDir);
-              const cosA = THREE.MathUtils.clamp(fbProj.dot(hbProj), -1, 1);
-              const rollAng = Math.atan2(sinA, cosA);
-              const qRoll = new THREE.Quaternion().setFromAxisAngle(foreDir, rollAng * 0.72);
-              RigIK.setWorldQuat(bFore, qRoll.multiply(foreWQ));
-              bFore.updateMatrixWorld(true);
-            }
-          }
+          RigIK.alignArmChainTwist(bArm, bFore, bHand, pole, this.handBasis[side], fW, backW, side, cb > 0.25);
 
           const qHand = RigIK.handBasisQuat(this.handBasis[side], fW, backW, new THREE.Quaternion());
           RigIK.setWorldQuat(bHand, qHand);

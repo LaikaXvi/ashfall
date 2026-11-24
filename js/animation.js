@@ -986,10 +986,138 @@
         headPitch -= fl * 0.12;
       }
 
-      // === LAYER 4: ACTION OVERLAYS (4-STAGE MW2 PLATING, RELOAD, MEDKIT, REVIVE SYRINGE, GRENADE THROW, STANCE TRANSITION) ===
+      // === LAYER 4: ACTION OVERLAYS (CLIMB/MANTLE, 4-STAGE MW2 PLATING, RELOAD, MEDKIT, REVIVE SYRINGE, GRENADE THROW, STANCE TRANSITION) ===
       let customLeftArm = null;
       let customRightArm = null;
-      if (isReviving) {
+      r._climbWorldHands = null;
+      if (st.ledgeState && !isDowned) {
+        const ls = st.ledgeState;
+        const p = THREE.MathUtils.clamp(ls.pullProgress || 0, 0, 1);
+        const pullArc = Math.sin(p * Math.PI);
+        pelvisYaw = 0;
+        spineYaw = 0;
+        torsoYaw = 0;
+        if (st.isFP) {
+          // 1P lower-body wall hang & step-up (arms driven by RiggedFPArms in vmCamera)
+          torsoPitch = -0.06 - pullArc * 0.10;
+          lHipX = 0.14 + pullArc * 0.46; lKneeX = -0.26 - pullArc * 0.46; lAnkX = 0.16;
+          rHipX = 0.08 + p * 0.24;       rKneeX = -0.20 - pullArc * 0.30; rAnkX = 0.14;
+        } else {
+          leftIKWeight = 0.0;
+          rightIKWeight = 0.0;
+          spinePitch = -0.08 - pullArc * 0.14;
+          torsoPitch = -0.14 - pullArc * 0.18;
+          headPitch = 0.24 * (1 - p);
+          lHipX = 0.32 + pullArc * 0.88; lKneeX = -0.58 - pullArc * 0.72; lAnkX = 0.28;
+          rHipX = 0.12 + p * 0.42;       rKneeX = -0.34 - pullArc * 0.40; rAnkX = 0.22;
+          const armLift = THREE.MathUtils.lerp(2.26, 0.88, smoothstep(Math.min(1, p / 0.85)));
+          customLeftArm = { shX: armLift, shZ: 0.18, elbX: 0.42 + pullArc * 0.72 };
+          customRightArm = { shX: armLift, shZ: -0.18, elbX: 0.42 + pullArc * 0.72 };
+
+          if (ls.edgePos) {
+            const grabLock = ls.phase === 'grabbing' ? smoothstep(Math.min(1, (ls.grabT || 0) / 0.52)) : 1.0;
+            const relEase = smoothstep(THREE.MathUtils.clamp((p - 0.68) / 0.22, 0, 1));
+            const lockW = grabLock * (1 - relEase);
+            const pressEase = smoothstep(THREE.MathUtils.clamp(p / 0.58, 0, 1));
+            const ledgeInward = new THREE.Vector3(ls.inwardX || 0, 0, ls.inwardZ || 0);
+            if (ledgeInward.lengthSq() < 1e-5) ledgeInward.set(-Math.sin(ls.ledgeYaw || 0), 0, -Math.cos(ls.ledgeYaw || 0));
+            ledgeInward.normalize();
+            const ledgeOutward = ledgeInward.clone().negate();
+            const worldUp = new THREE.Vector3(0, 1, 0);
+            const ledgeRight = new THREE.Vector3().crossVectors(ledgeInward, worldUp).normalize();
+            const span = ls.edgeHalfWidth || 0.20;
+            const inwardLip = THREE.MathUtils.lerp(0.014, 0.048, pressEase);
+            const mkSide = (sSign) => ({
+              blend: lockW,
+              palmWorld: ls.edgePos.clone()
+                .addScaledVector(ledgeRight, sSign * span)
+                .addScaledVector(worldUp, 0.015)
+                .addScaledVector(ledgeInward, inwardLip),
+              fWorld: new THREE.Vector3()
+                .addScaledVector(ledgeInward, THREE.MathUtils.lerp(0.95, 0.92, pressEase))
+                .addScaledVector(worldUp, THREE.MathUtils.lerp(-0.22, -0.10, pressEase))
+                .addScaledVector(ledgeRight, -sSign * THREE.MathUtils.lerp(0.06, 0.14, pressEase))
+                .normalize(),
+              backWorld: new THREE.Vector3()
+                .addScaledVector(worldUp, THREE.MathUtils.lerp(0.86, 0.95, pressEase))
+                .addScaledVector(ledgeOutward, THREE.MathUtils.lerp(0.48, 0.22, pressEase))
+                .addScaledVector(ledgeRight, sSign * 0.18)
+                .normalize(),
+              poleOffsetWorld: new THREE.Vector3()
+                .addScaledVector(ledgeOutward, THREE.MathUtils.lerp(0.42, 0.46, pressEase))
+                .addScaledVector(ledgeRight, sSign * THREE.MathUtils.lerp(0.36, 0.46, pressEase))
+                .addScaledVector(worldUp, THREE.MathUtils.lerp(-0.36, -0.18, pressEase)),
+              curl: [
+                THREE.MathUtils.lerp(0.76, 0.20, pressEase),
+                THREE.MathUtils.lerp(0.90, 0.24, pressEase),
+                THREE.MathUtils.lerp(0.64, 0.16, pressEase)
+              ],
+              thumb: THREE.MathUtils.lerp(0.54, 0.28, pressEase)
+            });
+            r._climbWorldHands = { left: mkSide(-1), right: mkSide(1) };
+          }
+        }
+      } else if (st.mantleState && !isDowned) {
+        const ms = st.mantleState;
+        const mt = THREE.MathUtils.clamp(ms.t || 0, 0, 1);
+        const mArc = Math.sin(mt * Math.PI);
+        if (st.isFP) {
+          lHipX = 0.16 + mArc * 0.48; lKneeX = -0.26 - mArc * 0.48; lAnkX = 0.16;
+          rHipX = 0.06 + mt * 0.22;   rKneeX = -0.18 - mArc * 0.25; rAnkX = 0.12;
+        } else {
+          let contactW = 0;
+          if (mt < 0.12) contactW = smoothstep(mt / 0.12);
+          else if (mt <= 0.62) contactW = 1.0;
+          else if (mt < 0.90) contactW = 1 - smoothstep((mt - 0.62) / 0.28);
+          if (typeof ms.ledgeY === 'number' && st.worldPos) {
+            contactW *= smoothstep(THREE.MathUtils.clamp((0.96 - (st.worldPos.y - ms.ledgeY)) / 0.18, 0, 1));
+          }
+          leftIKWeight = 1 - contactW;
+          torsoPitch -= 0.16 * mArc;
+          lHipX = 0.24 + mArc * 0.92; lKneeX = -0.38 - mArc * 0.82; lAnkX = 0.26;
+          rHipX = 0.08 + mt * 0.35;   rKneeX = -0.28 - mArc * 0.35; rAnkX = 0.20;
+          wpnPosX = 0.18; wpnPosY = 0.24; wpnPosZ = -0.20;
+          wpnRotX = -0.34 * mArc; wpnRotZ = -0.24 * mArc;
+          if (contactW > 0.04) {
+            customLeftArm = { shX: 0.96 + contactW * 0.24, shZ: 0.20, elbX: 0.36 + contactW * 0.35 };
+          }
+          if (ms.edgePos && contactW > 0.01) {
+            const ledgeInward = new THREE.Vector3(ms.inwardX || 0, 0, ms.inwardZ || 0);
+            if (ledgeInward.lengthSq() < 1e-5) ledgeInward.set(-Math.sin(ms.ledgeYaw || 0), 0, -Math.cos(ms.ledgeYaw || 0));
+            ledgeInward.normalize();
+            const ledgeOutward = ledgeInward.clone().negate();
+            const worldUp = new THREE.Vector3(0, 1, 0);
+            const ledgeRight = new THREE.Vector3().crossVectors(ledgeInward, worldUp).normalize();
+            const latOff = Math.min(0.16, ms.edgeHalfWidth || 0.18);
+            r._climbWorldHands = {
+              left: {
+                blend: contactW,
+                palmWorld: ms.edgePos.clone()
+                  .addScaledVector(ledgeRight, -latOff)
+                  .addScaledVector(worldUp, 0.016)
+                  .addScaledVector(ledgeInward, 0.045),
+                fWorld: new THREE.Vector3()
+                  .addScaledVector(ledgeInward, 0.92)
+                  .addScaledVector(worldUp, -0.10)
+                  .addScaledVector(ledgeRight, 0.14)
+                  .normalize(),
+                backWorld: new THREE.Vector3()
+                  .addScaledVector(worldUp, 0.95)
+                  .addScaledVector(ledgeOutward, 0.22)
+                  .addScaledVector(ledgeRight, -0.18)
+                  .normalize(),
+                poleOffsetWorld: new THREE.Vector3()
+                  .addScaledVector(ledgeOutward, 0.44)
+                  .addScaledVector(ledgeRight, -0.42)
+                  .addScaledVector(worldUp, -0.22),
+                curl: [0.20, 0.24, 0.16],
+                thumb: 0.28
+              },
+              right: null
+            };
+          }
+        }
+      } else if (isReviving) {
         const rp = THREE.MathUtils.clamp(st.reviveProgress || 0, 0, 1);
         if (isDowned) {
           // 3P Warzone/DMZ Self-Revive Syringe plunged straight into own chest while downed!

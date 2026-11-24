@@ -3657,12 +3657,8 @@
       return;
     }
 
-    if (player.ledgeState) {
-      const pct = Math.round((player.ledgeState.pullProgress || 0) * 100);
-      textEl.textContent = pct > 2
-        ? `PULLING UP (${pct}%)  ·  [S / A / D] LET GO`
-        : `HOLD [W] TO PULL UP  ·  [S / A / D] LET GO`;
-      promptEl.classList.remove('hidden');
+    if (player.ledgeState || player.mantleState) {
+      promptEl.classList.add('hidden');
       return;
     }
 
@@ -4250,29 +4246,34 @@
         viewmodelCamera.position.copy(camera.position);
         viewmodelCamera.quaternion.copy(camera.quaternion);
         let targetVmFov = camera.fov;
-        if (window.WEAPON_FOV_MODE === 'independent') {
-          const vmBase = window.VIEWMODEL_FOV || 75;
-          const activeDef = (player && player.getActiveWeaponDef) ? player.getActiveWeaponDef() : null;
-          const hasMagScope = !!(activeDef && (activeDef.adsZoom || 1) >= 2.0);
-          if (hasMagScope) {
-            // Magnified scopes zoom proportionally with the optic in Independent mode too so the scope never shrinks tiny!
-            const bf = window.BASE_FOV || 75;
-            const liveZoom = Math.max(
-              1.0,
-              Math.tan(THREE.MathUtils.degToRad(bf * 0.5)) / Math.max(0.04, Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)))
-            );
-            targetVmFov = (window.GAME_DATA && window.GAME_DATA.computeAdsFov)
-              ? window.GAME_DATA.computeAdsFov(vmBase, liveZoom)
-              : (vmBase / liveZoom);
-          } else {
-            targetVmFov = vmBase;
+        if (player && player.ledgeState) {
+          // Match world camera frustum 1:1 during two-handed ledge climbs so world-locked hands project with 0.0px offset!
+          targetVmFov = camera.fov;
+        } else {
+          if (window.WEAPON_FOV_MODE === 'independent') {
+            const vmBase = window.VIEWMODEL_FOV || 75;
+            const activeDef = (player && player.getActiveWeaponDef) ? player.getActiveWeaponDef() : null;
+            const hasMagScope = !!(activeDef && (activeDef.adsZoom || 1) >= 2.0);
+            if (hasMagScope) {
+              // Magnified scopes zoom proportionally with the optic in Independent mode too so the scope never shrinks tiny!
+              const bf = window.BASE_FOV || 75;
+              const liveZoom = Math.max(
+                1.0,
+                Math.tan(THREE.MathUtils.degToRad(bf * 0.5)) / Math.max(0.04, Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)))
+              );
+              targetVmFov = (window.GAME_DATA && window.GAME_DATA.computeAdsFov)
+                ? window.GAME_DATA.computeAdsFov(vmBase, liveZoom)
+                : (vmBase / liveZoom);
+            } else {
+              targetVmFov = vmBase;
+            }
           }
-        }
-        // MW4 Weapon Field of View Scale (Narrow / Default / Wide): widens or tightens hipfire weapon perspective without altering magnified scope zoom!
-        const wfovDelta = window.WEAPON_FOV_SCALE === 'wide' ? 8 : (window.WEAPON_FOV_SCALE === 'narrow' ? -6 : 0);
-        if (wfovDelta !== 0) {
-          const hipWeight = 1 - (weaponSystem ? (weaponSystem._adsBlend || 0) : 0);
-          targetVmFov = THREE.MathUtils.clamp(targetVmFov + wfovDelta * hipWeight, 12, 128);
+          // MW4 Weapon Field of View Scale (Narrow / Default / Wide): widens or tightens hipfire weapon perspective without altering magnified scope zoom!
+          const wfovDelta = window.WEAPON_FOV_SCALE === 'wide' ? 8 : (window.WEAPON_FOV_SCALE === 'narrow' ? -6 : 0);
+          if (wfovDelta !== 0) {
+            const hipWeight = 1 - (weaponSystem ? (weaponSystem._adsBlend || 0) : 0);
+            targetVmFov = THREE.MathUtils.clamp(targetVmFov + wfovDelta * hipWeight, 12, 128);
+          }
         }
         if (Math.abs(viewmodelCamera.fov - targetVmFov) > 0.01) {
           viewmodelCamera.fov = targetVmFov;

@@ -777,13 +777,20 @@ class Player {
     let bodyY = feetY;
     let bodyZ = this.position.z;
     if (isFP) {
-      const baseBack = this.isProne ? 0.34 : (this.stance === 'crouch' ? 0.25 : 0.23);
-      const backDist = THREE.MathUtils.lerp(baseBack, 0.22, this._fpSlideBlend);
-      bodyX += Math.sin(this.yaw) * backDist;
-      bodyZ += Math.cos(this.yaw) * backDist;
+      if (this.ledgeState) {
+        bodyX -= (this.ledgeState.inwardX || 0) * 0.24;
+        bodyZ -= (this.ledgeState.inwardZ || 0) * 0.24;
+      } else {
+        const baseBack = this.isProne ? 0.34 : (this.stance === 'crouch' ? 0.25 : 0.23);
+        const backDist = THREE.MathUtils.lerp(baseBack, 0.22, this._fpSlideBlend);
+        bodyX += Math.sin(this.yaw) * backDist;
+        bodyZ += Math.cos(this.yaw) * backDist;
+      }
     }
     this.avatarGroup.position.set(bodyX, bodyY, bodyZ);
-    this.avatarGroup.rotation.y = this.yaw;
+    this.avatarGroup.rotation.y = (this.ledgeState && typeof this.ledgeState.ledgeYaw === 'number')
+      ? this.ledgeState.ledgeYaw
+      : this.yaw;
 
     // Unified MW2 Layered Rig & Analytical 2-Bone IK Driver
     if (this.mw2Anim) {
@@ -854,6 +861,9 @@ class Player {
         hasVertGrip: !!(this.tpWeapon && this.tpWeapon.hasVertGrip),
         foregripPivotPos: tpFgPivotPos,
         pumpOffset: tpPumpOff,
+        isFP: isFP,
+        mantleState: this.mantleState,
+        ledgeState: this.ledgeState,
         world: this.world,
         worldPos: this.position,
         worldYaw: this.yaw,
@@ -2177,21 +2187,31 @@ class Player {
         const minD = Math.min(dxMin, dxMax, dzMin, dzMax);
 
         let inwardX = 0, inwardZ = 0;
-        let edgeX = THREE.MathUtils.clamp(this.position.x, c.minX + 0.25, c.maxX - 0.25);
-        let edgeZ = THREE.MathUtils.clamp(this.position.z, c.minZ + 0.25, c.maxZ - 0.25);
-        if (c.maxX - c.minX < 0.5) edgeX = (c.minX + c.maxX) * 0.5;
-        if (c.maxZ - c.minZ < 0.5) edgeZ = (c.minZ + c.maxZ) * 0.5;
-
-        if (minD === dxMin) { inwardX = 1; edgeX = c.minX; }
-        else if (minD === dxMax) { inwardX = -1; edgeX = c.maxX; }
-        else if (minD === dzMin) { inwardZ = 1; edgeZ = c.minZ; }
-        else { inwardZ = -1; edgeZ = c.maxZ; }
+        if (minD === dxMin) inwardX = 1;
+        else if (minD === dxMax) inwardX = -1;
+        else if (minD === dzMin) inwardZ = 1;
+        else inwardZ = -1;
 
         // Ensure player is roughly facing the obstacle face
         if (fwdX * inwardX + fwdZ * inwardZ < 0.25) continue;
 
-        const hangX = edgeX - inwardX * (this.radius + 0.08);
-        const hangZ = edgeZ - inwardZ * (this.radius + 0.08);
+        const latSpan = inwardX !== 0 ? (c.maxZ - c.minZ) : (c.maxX - c.minX);
+        const edgeHalfWidth = Math.min(0.20, Math.max(0.08, (latSpan - 0.12) * 0.5));
+        const latMargin = Math.min(edgeHalfWidth + 0.06, latSpan * 0.45);
+        let edgeX = (c.maxX - c.minX < 2 * latMargin)
+          ? (c.minX + c.maxX) * 0.5
+          : THREE.MathUtils.clamp(this.position.x, c.minX + latMargin, c.maxX - latMargin);
+        let edgeZ = (c.maxZ - c.minZ < 2 * latMargin)
+          ? (c.minZ + c.maxZ) * 0.5
+          : THREE.MathUtils.clamp(this.position.z, c.minZ + latMargin, c.maxZ - latMargin);
+        if (inwardX === 1) edgeX = c.minX;
+        else if (inwardX === -1) edgeX = c.maxX;
+        else if (inwardZ === 1) edgeZ = c.minZ;
+        else edgeZ = c.maxZ;
+
+        const hangDist = 0.34;
+        const hangX = edgeX - inwardX * hangDist;
+        const hangZ = edgeZ - inwardZ * hangDist;
 
         // Compute top landing point (step 0.56m inward onto the top surface)
         const boxDepth = inwardX !== 0 ? (c.maxX - c.minX) : (c.maxZ - c.minZ);
@@ -2210,10 +2230,11 @@ class Player {
           relH,
           ledgeY: c.maxY,
           edgePos: new THREE.Vector3(edgeX, c.maxY, edgeZ),
-          hangPos: new THREE.Vector3(hangX, c.maxY - 0.16, hangZ),
+          hangPos: new THREE.Vector3(hangX, c.maxY - 0.12, hangZ),
           endPos: new THREE.Vector3(landX, standEye, landZ),
           inwardX,
           inwardZ,
+          edgeHalfWidth,
           ledgeYaw: Math.atan2(-inwardX, -inwardZ)
         };
         break;
@@ -2235,16 +2256,22 @@ class Player {
 
     if (info.kind === 'mantle') {
       const midPos = new THREE.Vector3(
-        THREE.MathUtils.lerp(this.position.x, info.endPos.x, 0.45),
-        info.ledgeY + this.standEyeHeight + 0.12,
-        THREE.MathUtils.lerp(this.position.z, info.endPos.z, 0.45)
+        THREE.MathUtils.lerp(this.position.x, info.endPos.x, 0.44),
+        Math.max(this.position.y + 0.16, info.ledgeY + 0.88),
+        THREE.MathUtils.lerp(this.position.z, info.endPos.z, 0.44)
       );
       this.mantleState = {
         startPos: this.position.clone(),
         midPos,
         endPos: info.endPos.clone(),
+        edgePos: info.edgePos.clone(),
+        ledgeY: info.ledgeY,
+        inwardX: info.inwardX,
+        inwardZ: info.inwardZ,
+        edgeHalfWidth: info.edgeHalfWidth || 0.18,
+        ledgeYaw: info.ledgeYaw,
         t: 0,
-        duration: 0.34
+        duration: 0.40
       };
       if ((this.deadSilenceTimer || 0) <= 0 && window.soundEngine && window.soundEngine.playFootstep) {
         try { window.soundEngine.playFootstep(true); } catch (e) {}
@@ -2264,6 +2291,7 @@ class Player {
       ledgeY: info.ledgeY,
       inwardX: info.inwardX,
       inwardZ: info.inwardZ,
+      edgeHalfWidth: info.edgeHalfWidth || 0.20,
       ledgeYaw: info.ledgeYaw
     };
     if ((this.deadSilenceTimer || 0) <= 0 && window.soundEngine && window.soundEngine.playFootstep) {
@@ -2521,11 +2549,11 @@ class Player {
       return;
     }
 
-    // Active Hip-Height Mantle (smooth quick vault/step-up onto hip-height obstacle)
+    // Active Hip-Height Mantle (smooth vault/step-up onto hip/chest-height obstacle with world-locked hand press)
     if (this.mantleState && !this.dead && !this.isDowned) {
       const ms = this.mantleState;
       ms.t = Math.min(1, ms.t + dt / ms.duration);
-      const u = 1 - Math.pow(1 - ms.t, 2.2); // crisp ease-out
+      const u = ms.t * ms.t * (3 - 2 * ms.t); // smooth C1 vault curve over planted palm
       const inv = 1 - u;
       // Quadratic Bezier arc from startPos -> midPos -> endPos
       this.position.set(
@@ -2536,8 +2564,8 @@ class Player {
       this.currentEyeHeight = this.standEyeHeight;
       this.velocity.set(0, 0, 0);
       this.onGround = false;
-      const vaultRoll = Math.sin(ms.t * Math.PI) * 0.048;
-      const vaultPitch = -Math.sin(ms.t * Math.PI) * 0.055;
+      const vaultRoll = Math.sin(ms.t * Math.PI) * 0.042;
+      const vaultPitch = -Math.sin(ms.t * Math.PI) * 0.048;
       if (ms.t >= 1) {
         this.position.copy(ms.endPos);
         this.mantleState = null;
@@ -2555,7 +2583,7 @@ class Player {
       return;
     }
 
-    // Active Head-Height Progressive Ledge-Grab (both hands on ledge; W pulls up progressively, other movement lets go!)
+    // Active Head-Height Progressive Ledge-Grab (both hands locked on ledge; W/Jump pulls up, S/A/D/Crouch lets go!)
     if (this.ledgeState && !this.dead && !this.isDowned) {
       const ls = this.ledgeState;
       this.isFiring = false;
@@ -2578,43 +2606,65 @@ class Player {
       const pressingCancel = (moveForward < -0.25) || (Math.abs(moveRight) > 0.25) || !!this.keys[kb.crouch || 'KeyC'] || !!this.keys['ControlLeft'];
 
       if (ls.phase === 'grabbing') {
-        ls.grabT = Math.min(1, ls.grabT + dt / 0.16);
+        ls.grabT = Math.min(1, ls.grabT + dt / 0.15);
         const ease = 1 - Math.pow(1 - ls.grabT, 2);
         this.position.lerpVectors(ls.startPos, ls.hangPos, ease);
         if (ls.grabT >= 1) ls.phase = 'hanging';
       } else {
-        if (pressingCancel) {
-          // Let go of the ledge cleanly!
-          this.position.x -= ls.inwardX * 0.20;
-          this.position.z -= ls.inwardZ * 0.20;
+        if (pressingCancel && ls.pullProgress < 0.68) {
+          // Let go of the ledge cleanly outside obstacle collider radius!
+          const safeOut = Math.max(0.20, (this.radius + 0.14));
+          if (ls.edgePos) {
+            this.position.x = ls.edgePos.x - ls.inwardX * safeOut;
+            this.position.z = ls.edgePos.z - ls.inwardZ * safeOut;
+          } else {
+            this.position.x -= ls.inwardX * 0.24;
+            this.position.z -= ls.inwardZ * 0.24;
+          }
           this.velocity.set(-ls.inwardX * 1.2, -0.8, -ls.inwardZ * 1.2);
           this.ledgeState = null;
           this.ledgeCooldown = 0.45;
           return;
         }
-        if (pressingForward) {
+        if (pressingForward || ls.pullProgress >= 0.68) {
           ls.phase = 'pulling';
           ls.pullProgress = Math.min(1, ls.pullProgress + dt / 0.62);
         } else {
           ls.phase = 'hanging';
-          if (ls.pullProgress > 0 && ls.pullProgress < 0.65) {
+          if (ls.pullProgress > 0 && ls.pullProgress < 0.68) {
             ls.pullProgress = Math.max(0, ls.pullProgress - dt * 0.75);
           }
         }
 
-        // Progressive 2-stage pull curve: hoist vertically (0..0.68), then vault forward onto top (0.68..1.0)
+        // Biomechanical 3-stage climb curve so shoulders/arms stay within natural reach while hands stay 100% locked (p <= 0.68):
+        //  1) Pull-Up (0.00..0.42): hoist chin/chest to ledge lip (ledgeY - 0.12 -> ledgeY + 0.40)
+        //  2) Mantle Press (0.42..0.68): press palms down & shift hips/chest over lip (ledgeY + 0.40 -> ledgeY + 0.80)
+        //  3) Stand Up (0.68..1.00): hands push off ledge & legs stand upright to endPos (ledgeY + 0.80 -> ledgeY + standEyeHeight)
         const p = ls.pullProgress;
-        const riseT = THREE.MathUtils.clamp(p / 0.68, 0, 1);
-        const riseEase = riseT * riseT * (3 - 2 * riseT);
-        const vaultT = THREE.MathUtils.clamp((p - 0.62) / 0.38, 0, 1);
-        const vaultEase = vaultT * vaultT * (3 - 2 * vaultT);
-
-        const curX = THREE.MathUtils.lerp(ls.hangPos.x, ls.endPos.x, riseEase * 0.22 + vaultEase * 0.78);
-        const curZ = THREE.MathUtils.lerp(ls.hangPos.z, ls.endPos.z, riseEase * 0.22 + vaultEase * 0.78);
-        const peakY = ls.endPos.y + 0.08;
-        const curY = p < 0.68
-          ? THREE.MathUtils.lerp(ls.hangPos.y, peakY, riseEase)
-          : THREE.MathUtils.lerp(peakY, ls.endPos.y, vaultEase);
+        const edge = ls.edgePos || ls.hangPos;
+        const crestX = edge.x + ls.inwardX * 0.08;
+        const crestZ = edge.z + ls.inwardZ * 0.08;
+        const crestY = ls.ledgeY + 0.80;
+        let curX, curY, curZ;
+        if (p <= 0.42) {
+          const t1 = THREE.MathUtils.clamp(p / 0.42, 0, 1);
+          const e1 = t1 * t1 * (3 - 2 * t1);
+          curX = THREE.MathUtils.lerp(ls.hangPos.x, edge.x - ls.inwardX * 0.22, e1);
+          curZ = THREE.MathUtils.lerp(ls.hangPos.z, edge.z - ls.inwardZ * 0.22, e1);
+          curY = THREE.MathUtils.lerp(ls.hangPos.y, ls.ledgeY + 0.40, e1);
+        } else if (p <= 0.68) {
+          const t2 = THREE.MathUtils.clamp((p - 0.42) / 0.26, 0, 1);
+          const e2 = t2 * t2 * (3 - 2 * t2);
+          curX = THREE.MathUtils.lerp(edge.x - ls.inwardX * 0.22, crestX, e2);
+          curZ = THREE.MathUtils.lerp(edge.z - ls.inwardZ * 0.22, crestZ, e2);
+          curY = THREE.MathUtils.lerp(ls.ledgeY + 0.40, crestY, e2);
+        } else {
+          const t3 = THREE.MathUtils.clamp((p - 0.68) / 0.32, 0, 1);
+          const e3 = t3 * t3 * (3 - 2 * t3);
+          curX = THREE.MathUtils.lerp(crestX, ls.endPos.x, e3);
+          curZ = THREE.MathUtils.lerp(crestZ, ls.endPos.z, e3);
+          curY = THREE.MathUtils.lerp(crestY, ls.endPos.y, e3);
+        }
         this.position.set(curX, curY, curZ);
 
         if (ls.pullProgress >= 1) {
