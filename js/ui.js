@@ -10991,7 +10991,7 @@ class GameUI {
     const inRaidNow = typeof window.isInRaid === 'function' ? !!window.isInRaid() : (this._chatScope === 'match');
     if (msg.scope === 'match' && !inRaidNow) return;
     if (msg.scope === 'fob' && inRaidNow) return;
-    if (msg.scope !== this._chatScope || String(msg.roomId) !== String(this._chatRoomId)) return;
+    if (msg.scope !== 'party' && (msg.scope !== this._chatScope || String(msg.roomId) !== String(this._chatRoomId))) return;
 
     const isSelf = msg.fromId === this._clientId;
     const isPartyPeer = !isSelf && !!(msg.partyId && this.partyId && msg.partyId === this.partyId);
