@@ -2722,7 +2722,7 @@ class GameUI {
         try {
           const migrated = JSON.stringify(p).split('ak74m').join('ak47').split('ammo_545').join('ammo_739');
           const mp = JSON.parse(migrated);
-          if (migrated.length !== JSON.stringify(p).length) { for (const k of Object.keys(mp)) p[k] = mp[k]; this.saveProfile(); }
+          if (migrated !== JSON.stringify(p)) { for (const k of Object.keys(mp)) p[k] = mp[k]; this.saveProfile(); }
         } catch (e) {}
         if (p) {
           if (typeof p.xp !== 'number') p.xp = 0;
