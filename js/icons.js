@@ -7,7 +7,7 @@ const ITEM_MODEL_MAP = {
   gas_mask:     { model: 'old_gas_mask' },
   ammo_9x18:    { model: 'ammo_box', tint: 0xc9b27a },
   ammo_9x19:    { model: 'ammo_box', tint: 0xb0b6a0 },
-  ammo_545:     { model: 'ammo_box', tint: 0x8f9a6a },
+  ammo_739:     { model: 'ammo_box', tint: 0x8f9a6a },
   ammo_12g:     { model: 'ammo_box', tint: 0xb04a3a },
   ammo_762:     { model: 'ammo_box', tint: 0x7a8a5a },
   fu_ammo_box:  { model: 'ammo_box', tint: 0xffffff },
@@ -204,7 +204,7 @@ class ItemIconRenderer {
         lines: [[[66, 28], [112, 28]], [[66, 35], [110, 35]]],
         anchors: { optic: { x: 68, y: 24, len: 42 }, muzzle: { x: 156, y: 33 }, under: { x: 125, y: 41 }, stock: { x: 52, y: 32 } }
       },
-      ak74m: {
+      ak47: {
         parts: [
           { pts: [[50, 26], [112, 26], [112, 40], [50, 40]], kind: 'body' },
           { pts: [[54, 22], [108, 22], [112, 26], [50, 26]], kind: 'body' },
@@ -303,7 +303,7 @@ class ItemIconRenderer {
 
   _render2DWeaponIcon(itemId, mods = {}, wide = false) {
     const specs = this._get2DWeaponSpecs();
-    const spec = specs[itemId] || specs.ak74m;
+    const spec = specs[itemId] || specs.ak47;
     const W = wide ? 384 : 192;
     const H = 192;
     this.canvas2d.width = W;
@@ -979,7 +979,7 @@ class ItemIconRenderer {
         return g;
       }
       const isShotgun = id === 'ammo_12g';
-      const isRifle = id === 'ammo_545' || id === 'ammo_762';
+      const isRifle = id === 'ammo_739' || id === 'ammo_762';
       const caseCol = isShotgun ? 0xb52b2b : 0xd4a946;
       const tipCol = isShotgun ? 0xd4a946 : 0xb87333;
       [-0.12, 0, 0.12].forEach((x) => {
