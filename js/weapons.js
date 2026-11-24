@@ -258,7 +258,7 @@ class WeaponSystem {
     if (weaponId === 'mp5k') {
       return { magOutP: isEmpty ? 0.42 : 0.24, magInP: isEmpty ? 0.70 : 0.66, needsChamber: !!isEmpty };
     }
-    if (weaponId === 'ak74m') {
+    if (weaponId === 'ak47') {
       return { magOutP: isEmpty ? 0.34 : 0.32, magInP: isEmpty ? 0.64 : 0.70, needsChamber: !!isEmpty };
     }
     if (weaponId === 'mosin9130') {
@@ -645,8 +645,8 @@ class WeaponSystem {
       }
       frontPivot.traverse((ch) => { if (ch.isMesh) ch.renderOrder = -20; });
       ironGroup.add(rearPivot, frontPivot);
-    } else if (weaponId === 'ak74m') {
-      // Authentic AK-74M: rear tangent leaf sight block on front trunnion + hooded front sight block on barrel
+    } else if (weaponId === 'ak47') {
+      // Authentic AK-47: rear tangent leaf sight block on front trunnion + hooded front sight block on barrel
       const rearPivot = new THREE.Group();
       rearPivot.position.set(0, 0.032, -0.095);
       const trunnionBlock = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.010, 0.036), steelSightMat);
@@ -1063,7 +1063,7 @@ class WeaponSystem {
 
     // 1. Optic (pass exact receiver top height so scope stanchions bolt flush to the receiver!)
     const isLongRifle = weaponDef.id === 'm24' || weaponDef.id === 'awm338' || weaponDef.id === 'mosin9130';
-    const recTopY = (weaponDef.id === 'm24' || weaponDef.id === 'awm338') ? 0.038 : (weaponDef.id === 'mosin9130' ? 0.032 : (weaponDef.id === 'ak74m' ? 0.034 : (weaponDef.id === 'm870' ? 0.028 : 0.029)));
+    const recTopY = (weaponDef.id === 'm24' || weaponDef.id === 'awm338') ? 0.038 : (weaponDef.id === 'mosin9130' ? 0.032 : (weaponDef.id === 'ak47' ? 0.034 : (weaponDef.id === 'm870' ? 0.028 : 0.029)));
     if (mods.optic === 'red_dot') {
       if (weaponDef.slot === 'secondary' && this.boltMesh) {
         const y = 0.036;
@@ -1124,7 +1124,7 @@ class WeaponSystem {
         : (weaponDef.id === 'mp5k' ? -0.175 : ((weaponDef.id === 'awm338' || weaponDef.id === 'm24') ? -0.185 : -0.215));
       const collarWorldY = isTrenchGun
         ? -0.039
-        : (weaponDef.id === 'mp5k' ? -0.036 : (weaponDef.id === 'ak74m' ? -0.024 : -0.031));
+        : (weaponDef.id === 'mp5k' ? -0.036 : (weaponDef.id === 'ak47' ? -0.024 : -0.031));
 
       // Sculpted RK-1 Tactical Vertical Foregrip (Picatinny clamp collar + contoured ribbed post + flared endcap)
       const vGripGroup = new THREE.Group();
@@ -1207,7 +1207,7 @@ class WeaponSystem {
         const clamp = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.052, 0.018), matDark);
         clamp.position.set(0, -0.001, -0.555);
         g.add(extTube, coupling, endCap, clamp);
-      } else if (weaponDef.id !== 'ak74m' && this.magMesh) {
+      } else if (weaponDef.id !== 'ak47' && this.magMesh) {
         this.magMesh.scale.y = 1.28;
         this.magMesh.position.y -= 0.018;
         this.magRestPos.copy(this.magMesh.position);
@@ -2599,7 +2599,7 @@ class WeaponSystem {
           reloadRotOffset.y *= 0.26;
           reloadRotOffset.z *= 0.44;
         } else {
-          // Compact shouldered ADS reload for MP5-K (H&K slap) & AK-74M (mag-flick)
+          // Compact shouldered ADS reload for MP5-K (H&K slap) & AK-47 (mag-flick)
           reloadPosOffset.x = reloadPosOffset.x * 0.18;
           reloadPosOffset.y = reloadPosOffset.y * 0.15 - 0.020 * env;
           reloadPosOffset.z = reloadPosOffset.z * 0.25 + 0.022 * env;
@@ -2981,11 +2981,11 @@ class WeaponSystem {
 
     // Recoil & blowback / pump-action recovery + live dynamic spread (drives both crosshair & hipfire accuracy)
     this.recoilOffset = THREE.MathUtils.lerp(this.recoilOffset, 0, Math.min(1, dt * 14));
-    // Deterministic cyclic bolt reciprocation (gives AK-74M & rifles crisp, consistent mechanical blowback every single shot!)
+    // Deterministic cyclic bolt reciprocation (gives AK-47 & rifles crisp, consistent mechanical blowback every single shot!)
     if (this.boltCycleTimer > 0) {
       this.boltCycleTimer = Math.max(0, this.boltCycleTimer - dt);
       const cp = 1 - (this.boltCycleTimer / Math.max(0.01, this.boltCycleDuration));
-      const stroke = (weaponDef && weaponDef.id === 'ak74m') ? 0.078 : (weaponDef && weaponDef.slot === 'secondary' ? 0.052 : 0.058);
+      const stroke = (weaponDef && weaponDef.id === 'ak47') ? 0.078 : (weaponDef && weaponDef.slot === 'secondary' ? 0.052 : 0.058);
       if (cp < 0.30) {
         // Fast rearward gas-piston / blowback stroke
         this.boltKick = (cp / 0.30) * stroke;
@@ -4082,9 +4082,9 @@ class WeaponSystem {
       return;
     }
 
-    if (id === 'ak74m') {
-      // AK-74M (v2.53 MW2019 Rock-Out -> Rock-In -> Right-Hand Charging Handle Rack):
-      // Calibrated rigid hand-to-magazine lock on the curved 5.45mm bakelite mag + authentic forward (+X) rock-out/rock-in!
+    if (id === 'ak47') {
+      // AK-47 (v2.53 MW2019 Rock-Out -> Rock-In -> Right-Hand Charging Handle Rack):
+      // Calibrated rigid hand-to-magazine lock on the curved 7.62x39mm bakelite mag + authentic forward (+X) rock-out/rock-in!
       if (p > 0.13 && !this.reloadSfxFlags.magOut) {
         this.reloadSfxFlags.magOut = true;
         window.soundEngine.playMagOut(this.reloadWeaponId);
@@ -4095,7 +4095,7 @@ class WeaponSystem {
       }
       if (this.wasEmptyReload && p > 0.70 && !this.reloadSfxFlags.rack) {
         this.reloadSfxFlags.rack = true;
-        window.soundEngine.playRechamber(this.reloadWeaponId || 'ak74m');
+        window.soundEngine.playRechamber(this.reloadWeaponId || 'ak47');
       }
 
       if (this.spareMagMesh) this.spareMagMesh.visible = false;
@@ -4552,7 +4552,7 @@ class WeaponSystem {
       }
       if (this.wasEmptyReload && p > 0.64 && !this.reloadSfxFlags.rack) {
         this.reloadSfxFlags.rack = true;
-        window.soundEngine.playRechamber(this.reloadWeaponId || (weaponDef && weaponDef.id) || 'ak74m');
+        window.soundEngine.playRechamber(this.reloadWeaponId || (weaponDef && weaponDef.id) || 'ak47');
       }
 
       if (p < 0.26) {
@@ -4912,7 +4912,7 @@ class WeaponSystem {
       return;
     }
 
-    if (id === 'ak74m') {
+    if (id === 'ak47') {
       pos.x = (-0.12 + drift) * enter;
       pos.y = (0.095 + drift * 0.5) * enter;
       pos.z = 0.02 * enter;
@@ -5902,10 +5902,10 @@ class WeaponSystem {
       this.fpArms.applyShoulderImpulse('right', hSign * hRec * 0.16 * gKick, 0.008 * gKick, baseZKick * 0.72 * gKick, 0.32);
       this.fpArms.applyShoulderImpulse('left', hSign * hRec * 0.08 * gKick, 0.004 * gKick, baseZKick * 0.36 * gKick, 0.20);
     }
-    if (def.slot === 'secondary' || def.id === 'mp5k' || def.id === 'ak74m') {
-      this.boltCycleDuration = def.id === 'ak74m' ? 0.085 : 0.075;
+    if (def.slot === 'secondary' || def.id === 'mp5k' || def.id === 'ak47') {
+      this.boltCycleDuration = def.id === 'ak47' ? 0.085 : 0.075;
       this.boltCycleTimer = this.boltCycleDuration;
-      this.boltKick = def.id === 'ak74m' ? 0.078 : (def.slot === 'secondary' ? 0.052 : 0.058);
+      this.boltKick = def.id === 'ak47' ? 0.078 : (def.slot === 'secondary' ? 0.052 : 0.058);
     } else if (def.id === 'm870' && weaponSlotState.mag > 0) {
       this.pumpDelayTimer = 0.16;
     } else if (def.boltAction && weaponSlotState.mag > 0) {
@@ -5961,7 +5961,7 @@ class WeaponSystem {
       awm338: 920,
       m24: 820,
       mosin9130: 780,
-      ak74m: 680,
+      ak47: 680,
       mp5k: 390,
       m870: 340,
       g17: 355,
@@ -5973,7 +5973,7 @@ class WeaponSystem {
     if (mods.optic === 'sniper_8x' || mods.optic === 'lpvo_4x') muzzleVel *= 1.04;
     const gravity = 13.5; // Tuned tactical ballistic drop (m/s^2)
     // Effective flat-drop zero distance (meters before noticeable drop)
-    const zeroDist = def.id === 'awm338' ? 140 : (def.id === 'm24' || def.id === 'mosin9130' ? 115 : (def.id === 'ak74m' ? 75 : 40));
+    const zeroDist = def.id === 'awm338' ? 140 : (def.id === 'm24' || def.id === 'mosin9130' ? 115 : (def.id === 'ak47' ? 75 : 40));
 
     // MW4 DMZ Sight-Aligned Aiming: align aim convergence ray with live physical sight sway & hit flinch during ADS!
     const camFwd = this._shotCamFwd.set(0, 0, -1);
