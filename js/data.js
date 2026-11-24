@@ -3,11 +3,11 @@
 // Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
 // With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'Alpha RC 0.2.72',
+  VERSION: 'Alpha RC 0.2.73',
   VERSION_INFO: {
     major: 0,
     minor: 2,
-    patch: 72,
+    patch: 73,
     channel: 'Alpha', // Alpha | Beta — never blank while major === 0
     stage: 'RC',     // RC = Release Candidate
     get semver() { return `${this.major}.${this.minor}.${this.patch}`; },
@@ -462,16 +462,22 @@ window.GAME_DATA = {
     melee_karambit: { id: 'melee_karambit', name: 'Tactical Karambit', type: 'melee', rarity: 'epic', value: 5800, weight: 0.25, damage: 85, desc: 'Curved CQB karambit with rapid slash recovery.' },
     melee_axe: { id: 'melee_axe', name: 'Breaching Hatchet', type: 'melee', rarity: 'legendary', value: 9400, weight: 0.8, damage: 115, desc: 'Heavy carbon-steel breaching tomahawk.' },
 
-    // === MEDS (Hospitals & Clinics) ===
-    bandage: { id: 'bandage', name: 'Sterile Bandage', type: 'med', rarity: 'common', value: 350, weight: 0.15, healAmount: 25, stackable: true, maxStack: 4, buyQty: 2, desc: 'Quick field dressing (+25 HP).' },
-    painkillers: { id: 'painkillers', name: 'Tactical Painkillers', type: 'med', rarity: 'rare', value: 1100, weight: 0.2, healAmount: 40, stackable: true, maxStack: 3, buyQty: 1, desc: 'Fast-acting analgesic bottle (+40 HP).' },
-    medkit: { id: 'medkit', name: 'Field Medkit', type: 'med', rarity: 'rare', value: 1450, weight: 0.4, healAmount: 55, stackable: true, maxStack: 3, buyQty: 1, desc: 'Full IFAK medical kit (+55 HP, Press H).' },
+    // === MEDICAL ITEMS (Clinics, Strip-Towns, Med-Tents & Triage Sites) ===
+    bandage: { id: 'bandage', name: 'Bandage', type: 'med', category: 'medical', rarity: 'common', value: 260, weight: 0.12, healAmount: 22, stackable: true, maxStack: 5, buyQty: 2, desc: 'Basic rolled gauze dressing (+22 HP).' },
+    sterile_bandage: { id: 'sterile_bandage', name: 'Sterile Bandage', type: 'med', category: 'medical', rarity: 'rare', value: 520, weight: 0.15, healAmount: 35, stackable: true, maxStack: 4, buyQty: 2, desc: 'Vacuum-sealed trauma dressing (+35 HP & restores disabled health).' },
+    sterile_cloth: { id: 'sterile_cloth', name: 'Sterile Cloth', type: 'material', category: 'medical', rarity: 'common', value: 300, weight: 0.15, stackable: true, maxStack: 10, desc: 'Autoclaved medical weave used to craft bandages & medkits.' },
+    scrubs: { id: 'scrubs', name: 'Scrubs', type: 'material', category: 'medical', rarity: 'common', value: 340, weight: 0.30, stackable: true, maxStack: 6, desc: 'Vostok clinic surgical scrubs. Salvageable medical textile.' },
+    basic_chemicals: { id: 'basic_chemicals', name: 'Basic Chemicals', type: 'material', category: 'medical', rarity: 'common', value: 420, weight: 0.35, stackable: true, maxStack: 10, desc: 'Antiseptic and reagent bottles for synthesizing syringes & meds.' },
+    syringe: { id: 'syringe', name: 'Syringe', type: 'med', category: 'medical', rarity: 'rare', value: 960, weight: 0.10, healAmount: 45, stackable: true, maxStack: 4, buyQty: 1, desc: 'Combat epinephrine & analgesic syringe (+45 HP & temporary trauma buffer).' },
+    painkillers: { id: 'painkillers', name: 'Tactical Painkillers', type: 'med', category: 'medical', rarity: 'rare', value: 1100, weight: 0.2, healAmount: 40, stackable: true, maxStack: 3, buyQty: 1, desc: 'Fast-acting analgesic bottle (+40 HP).' },
+    medkit: { id: 'medkit', name: 'Medkit', type: 'med', category: 'medical', rarity: 'rare', value: 1500, weight: 0.4, healAmount: 55, stackable: true, maxStack: 3, buyQty: 1, desc: 'Full IFAK field medical kit (+55 HP & clears trauma, Press H).' },
 
     // === THROWABLES (Lethals & Tacticals) ===
     frag_grenade: {
       id: 'frag_grenade',
       name: 'M67 Frag Grenade',
       type: 'lethal',
+      category: 'military',
       rarity: 'uncommon',
       value: 850,
       weight: 0.4,
@@ -487,6 +493,7 @@ window.GAME_DATA = {
       id: 'throwing_knife',
       name: 'Throwing Knife',
       type: 'lethal',
+      category: 'military',
       rarity: 'rare',
       value: 700,
       weight: 0.25,
@@ -500,6 +507,7 @@ window.GAME_DATA = {
       id: 'smoke_grenade',
       name: 'M18 Smoke Grenade',
       type: 'tactical',
+      category: 'military',
       rarity: 'common',
       value: 600,
       weight: 0.35,
@@ -515,6 +523,7 @@ window.GAME_DATA = {
       id: 'concussion_grenade',
       name: 'M84 Concussion',
       type: 'tactical',
+      category: 'military',
       rarity: 'uncommon',
       value: 750,
       weight: 0.35,
@@ -527,50 +536,310 @@ window.GAME_DATA = {
       desc: 'Disorients and stuns hostiles in blast radius for 5s ([Q]).'
     },
 
-    // === COMMON CRAFTING MATERIALS (Stack to 10; used in Workbench or bulk sold) ===
+    // === MILITARY MATERIALS & ORDNANCE COMPONENTS (Compounds A-F, Dam, Hangars) ===
     scrap_metal: {
       id: 'scrap_metal',
       name: 'Salvaged Steel',
       type: 'material',
+      category: 'military',
       rarity: 'common',
       value: 320,
       weight: 0.35,
       stackable: true,
       maxStack: 10,
-      desc: 'Common crafting alloy. Stacks to 10. Used at Workbench or sold in bulk.'
+      desc: 'Common crafting steel. Stacks to 10. Used at Workbench or sold in bulk.'
     },
     cloth_roll: {
       id: 'cloth_roll',
       name: 'Ballistic Cloth',
       type: 'material',
+      category: 'military',
       rarity: 'common',
-      value: 280,
+      value: 340,
       weight: 0.25,
       stackable: true,
       maxStack: 10,
-      desc: 'Common woven fabric for crafting meds, vests & packs. Stacks to 10.'
+      desc: 'High-tensile woven ballistic fabric for armor carriers & packs. Stacks to 10.'
+    },
+    kevlar_padding: {
+      id: 'kevlar_padding',
+      name: 'Kevlar Padding',
+      type: 'material',
+      category: 'military',
+      rarity: 'rare',
+      value: 940,
+      weight: 0.35,
+      stackable: true,
+      maxStack: 8,
+      desc: 'Multi-layer aramid trauma liner used to fabricate ballistic vests & plates.'
     },
     gunpowder: {
       id: 'gunpowder',
-      name: 'Smokeless Powder',
+      name: 'Gunpowder',
       type: 'material',
+      category: 'military',
       rarity: 'common',
-      value: 360,
+      value: 380,
       weight: 0.3,
       stackable: true,
       maxStack: 10,
-      desc: 'Common propellant for crafting ordnance & ammo. Stacks to 10.'
+      desc: 'Smokeless rifle & pistol propellant for crafting ammo & grenades. Stacks to 10.'
+    },
+    brass_casings: {
+      id: 'brass_casings',
+      name: 'Brass Casings',
+      type: 'material',
+      category: 'military',
+      rarity: 'common',
+      value: 320,
+      weight: 0.28,
+      stackable: true,
+      maxStack: 10,
+      desc: 'Cleaned small-caliber brass cartridge cases for reloading 9mm & 5.45mm.'
+    },
+    heavy_gunpowder: {
+      id: 'heavy_gunpowder',
+      name: 'Heavy Gunpowder',
+      type: 'material',
+      category: 'military',
+      rarity: 'rare',
+      value: 880,
+      weight: 0.40,
+      stackable: true,
+      maxStack: 10,
+      desc: 'High-energy magnum & ordnance propellant for sniper rounds & explosives.'
+    },
+    heavy_casings: {
+      id: 'heavy_casings',
+      name: 'Heavy Casings',
+      type: 'material',
+      category: 'military',
+      rarity: 'rare',
+      value: 820,
+      weight: 0.38,
+      stackable: true,
+      maxStack: 10,
+      desc: 'Thick-walled rifle & marksman brass casings for high-pressure loads.'
+    },
+    casings_12g: {
+      id: 'casings_12g',
+      name: '12-Gauge Casings',
+      type: 'material',
+      category: 'military',
+      rarity: 'common',
+      value: 360,
+      weight: 0.26,
+      stackable: true,
+      maxStack: 10,
+      desc: 'Crimped red polymer 12ga hulls with brass bases for buckshot reloading.'
+    },
+    metallic_alloy: {
+      id: 'metallic_alloy',
+      name: 'Metallic Alloy',
+      type: 'material',
+      category: 'military',
+      rarity: 'rare',
+      value: 980,
+      weight: 0.55,
+      stackable: true,
+      maxStack: 10,
+      desc: 'Hardened titanium-vanadium military alloy billet from Vostok depots.'
+    },
+    reactive_metals: {
+      id: 'reactive_metals',
+      name: 'Reactive Metals',
+      type: 'material',
+      category: 'military',
+      rarity: 'epic',
+      value: 2650,
+      weight: 0.65,
+      stackable: true,
+      maxStack: 6,
+      desc: 'Volatile military-grade reactive metal core sealed in a hazard canister.'
     },
     polymer_parts: {
       id: 'polymer_parts',
       name: 'Polymer Components',
       type: 'material',
+      category: 'military',
       rarity: 'common',
       value: 300,
       weight: 0.25,
       stackable: true,
       maxStack: 10,
-      desc: 'Common tactical polymers for Workbench crafting. Stacks to 10.'
+      desc: 'Tactical polymer housings for Workbench crafting. Stacks to 10.'
+    },
+
+    // === OFFICE DOCUMENTS & RECORDS (TV Station, City Hall, Airport, Superstore, Cruise Terminal) ===
+    payroll_documents: {
+      id: 'payroll_documents',
+      name: 'Payroll Documents',
+      type: 'valuable',
+      category: 'office',
+      rarity: 'common',
+      value: 480,
+      weight: 0.12,
+      stackable: true,
+      maxStack: 5,
+      desc: 'Vostok municipal & garrison wage disbursements prior to evacuation.'
+    },
+    vacation_planner: {
+      id: 'vacation_planner',
+      name: 'Vacation Planner',
+      type: 'valuable',
+      category: 'office',
+      rarity: 'common',
+      value: 360,
+      weight: 0.10,
+      stackable: true,
+      maxStack: 5,
+      desc: 'Wall & desk travel calendar marking cancelled southern cruise departures.'
+    },
+    financial_ledger: {
+      id: 'financial_ledger',
+      name: 'Financial Ledger',
+      type: 'valuable',
+      category: 'office',
+      rarity: 'rare',
+      value: 1550,
+      weight: 0.35,
+      stackable: true,
+      maxStack: 3,
+      desc: 'Hardbound accounting ledger tracking illicit mercenary wire transfers.'
+    },
+    documents: {
+      id: 'documents',
+      name: 'Documents',
+      type: 'valuable',
+      category: 'office',
+      rarity: 'common',
+      value: 420,
+      weight: 0.12,
+      stackable: true,
+      maxStack: 5,
+      desc: 'Stamped Vostok administrative paperwork and transit manifests.'
+    },
+    classified_documents: {
+      id: 'classified_documents',
+      name: 'Classified Documents',
+      type: 'valuable',
+      category: 'office',
+      rarity: 'epic',
+      value: 4800,
+      weight: 0.15,
+      stackable: true,
+      maxStack: 3,
+      desc: 'Red-stamped eyes-only intelligence detailing rogue operator defections.'
+    },
+    back_room_inventory_list: {
+      id: 'back_room_inventory_list',
+      name: 'Back Room Inventory List',
+      type: 'valuable',
+      category: 'office',
+      rarity: 'common',
+      value: 540,
+      weight: 0.12,
+      stackable: true,
+      maxStack: 5,
+      desc: 'Clipboard manifest logging requisitioned Superstore and depot stock.'
+    },
+    hourly_schedule: {
+      id: 'hourly_schedule',
+      name: 'Hourly Schedule',
+      type: 'valuable',
+      category: 'office',
+      rarity: 'common',
+      value: 320,
+      weight: 0.08,
+      stackable: true,
+      maxStack: 5,
+      desc: 'Shift roster abandoned mid-rotation when Vostok defenses collapsed.'
+    },
+
+    // === HOUSEHOLD ITEMS (Roadside Strip-Town Houses, City Apartments, Evac Cars) ===
+    tools: {
+      id: 'tools',
+      name: 'Tools',
+      type: 'material',
+      category: 'household',
+      rarity: 'common',
+      value: 580,
+      weight: 0.75,
+      stackable: true,
+      maxStack: 6,
+      desc: 'Assorted wrenches, pliers & drivers useful for Workbench fabrication.'
+    },
+    clothes: {
+      id: 'clothes',
+      name: 'Clothes',
+      type: 'material',
+      category: 'household',
+      rarity: 'common',
+      value: 260,
+      weight: 0.35,
+      stackable: true,
+      maxStack: 8,
+      desc: 'Heavy Northern Russian winter garments left in hastily packed homes.'
+    },
+    cleaning_supplies: {
+      id: 'cleaning_supplies',
+      name: 'Cleaning Supplies',
+      type: 'material',
+      category: 'household',
+      rarity: 'common',
+      value: 340,
+      weight: 0.45,
+      stackable: true,
+      maxStack: 8,
+      desc: 'Bleach and solvent bottles salvageable for chemical synthesis.'
+    },
+    kids_drawing: {
+      id: 'kids_drawing',
+      name: "Kid's Drawing",
+      type: 'valuable',
+      category: 'household',
+      rarity: 'common',
+      value: 290,
+      weight: 0.04,
+      stackable: true,
+      maxStack: 5,
+      desc: 'Crayon sketch of a sunny house by the Vostok lighthouse, left behind in haste.'
+    },
+    family_photo: {
+      id: 'family_photo',
+      name: 'Family Photo',
+      type: 'valuable',
+      category: 'household',
+      rarity: 'common',
+      value: 380,
+      weight: 0.05,
+      stackable: true,
+      maxStack: 5,
+      desc: 'Framed photograph of a Vostok family before the incursion.'
+    },
+    picture_of_man: {
+      id: 'picture_of_man',
+      name: 'Picture of a Man',
+      type: 'valuable',
+      category: 'household',
+      rarity: 'common',
+      value: 350,
+      weight: 0.05,
+      stackable: true,
+      maxStack: 5,
+      desc: 'Weathered portrait photograph tucked inside an apartment drawer.'
+    },
+    nature_photo: {
+      id: 'nature_photo',
+      name: 'Nature Photo',
+      type: 'valuable',
+      category: 'household',
+      rarity: 'common',
+      value: 340,
+      weight: 0.05,
+      stackable: true,
+      maxStack: 5,
+      desc: 'Glossy print of the NW Vostok mountains and reservoir pine valley.'
     },
 
     // === HEADGEAR (Gas Mask / NVG) ===
@@ -593,11 +862,12 @@ window.GAME_DATA = {
       desc: 'Panoramic quad-tube night vision goggles for low-light operations.'
     },
 
-    // === SELF-REVIVE & KEYS & HIGH-VALUE BARTER ===
+    // === SELF-REVIVE, KEYS & HIGH-VALUE VOSTOK VALUABLES ===
     self_revive: {
       id: 'self_revive',
       name: 'Self-Revive Kit',
       type: 'self_revive',
+      category: 'medical',
       rarity: 'epic',
       value: 6500,
       weight: 0.6,
@@ -605,17 +875,144 @@ window.GAME_DATA = {
     },
     boss_key: {
       id: 'boss_key',
-      name: 'Encampment Armory Key',
+      name: 'Vostok Command Key',
       type: 'key',
       rarity: 'legendary',
       value: 12000,
       weight: 0.05,
-      desc: 'Unlocks the Boss Encampment Key Room (Guaranteed Legendary/Ultra weapon + 4 Epic + 8 Rare).'
+      desc: 'Unlocks the Vostok Command Armory Key Room (Guaranteed Legendary/Ultra weapon + high-tier valuables).'
+    },
+    decorative_bowl: {
+      id: 'decorative_bowl',
+      name: 'Decorative Bowl',
+      type: 'valuable',
+      category: 'valuable',
+      rarity: 'rare',
+      value: 2200,
+      weight: 0.55,
+      desc: 'Gilded Northern porcelain bowl with cobalt filigree.'
+    },
+    antique_watch: {
+      id: 'antique_watch',
+      name: 'Antique Watch',
+      type: 'valuable',
+      category: 'valuable',
+      rarity: 'epic',
+      value: 6600,
+      weight: 0.15,
+      desc: 'Intricate pre-war mechanical pocket watch in working order.'
+    },
+    pure_silver: {
+      id: 'pure_silver',
+      name: 'Pure Silver',
+      type: 'valuable',
+      category: 'valuable',
+      rarity: 'epic',
+      value: 5600,
+      weight: 0.90,
+      desc: 'Assayed .999 fine silver ingot recovered from Vostok quarry & vaults.'
+    },
+    gold_bar: {
+      id: 'gold_bar',
+      name: 'Gold Bar',
+      type: 'valuable',
+      category: 'valuable',
+      rarity: 'legendary',
+      value: 15800,
+      weight: 1.50,
+      desc: 'Stamped 24-karat state reserve bullion bar.'
+    },
+    ancient_coin: {
+      id: 'ancient_coin',
+      name: 'Ancient Coin',
+      type: 'valuable',
+      category: 'valuable',
+      rarity: 'rare',
+      value: 2900,
+      weight: 0.06,
+      stackable: true,
+      maxStack: 5,
+      desc: 'Imperial gold & silver trade coin unearthed in Northern Russia.'
+    },
+    golden_skull: {
+      id: 'golden_skull',
+      name: 'Golden Skull',
+      type: 'valuable',
+      category: 'valuable',
+      rarity: 'ultra',
+      value: 24500,
+      weight: 2.10,
+      desc: 'Ornate solid-gold warlord trophy coveted by rogue mercenary syndicates.'
+    },
+    heart_of_vostok: {
+      id: 'heart_of_vostok',
+      name: 'Heart of Vostok',
+      type: 'valuable',
+      category: 'valuable',
+      rarity: 'ultra',
+      value: 38000,
+      weight: 0.45,
+      desc: 'Mythic deep-crimson faceted gemstone artifact — the crown jewel of Vostok.'
+    },
+    exp_radio_transmitter: {
+      id: 'exp_radio_transmitter',
+      name: 'Experimental Radio Transmitter',
+      type: 'valuable',
+      category: 'valuable',
+      rarity: 'legendary',
+      value: 13600,
+      weight: 1.35,
+      desc: 'Encrypted frequency-hopping military satcom transceiver prototype.'
+    },
+    reactive_compounds: {
+      id: 'reactive_compounds',
+      name: 'Reactive Compounds',
+      type: 'valuable',
+      category: 'valuable',
+      rarity: 'epic',
+      value: 5200,
+      weight: 0.60,
+      desc: 'Pressurized containment flask of high-yield chemical catalyst.'
+    },
+    nylon_cloth_roll: {
+      id: 'nylon_cloth_roll',
+      name: 'Nylon Cloth Roll',
+      type: 'material',
+      category: 'valuable',
+      rarity: 'rare',
+      value: 1650,
+      weight: 0.40,
+      stackable: true,
+      maxStack: 6,
+      desc: 'Ripstop mil-spec Cordura nylon bolt for high-capacity rucksacks & rigs.'
+    },
+    carbon_fibre_sample: {
+      id: 'carbon_fibre_sample',
+      name: 'Carbon Fibre Sample',
+      type: 'material',
+      category: 'valuable',
+      rarity: 'epic',
+      value: 4400,
+      weight: 0.30,
+      stackable: true,
+      maxStack: 6,
+      desc: 'Aerospace-grade woven carbon-fibre laminate plate.'
+    },
+    classified_dossier: {
+      id: 'classified_dossier',
+      name: 'Classified Dossier',
+      type: 'valuable',
+      category: 'valuable',
+      rarity: 'legendary',
+      value: 14200,
+      weight: 0.25,
+      desc: 'Sealed leather-bound NATO/Vostok intelligence dossier on rogue mercenaries.'
     },
     water_filter: {
       id: 'water_filter',
       name: 'Military Water Filter',
       type: 'valuable',
+      category: 'valuable',
       rarity: 'rare',
       value: 2400,
       weight: 0.8,
@@ -625,6 +1022,7 @@ window.GAME_DATA = {
       id: 'fuel_can',
       name: 'Refined Fuel Canister',
       type: 'valuable',
+      category: 'valuable',
       rarity: 'rare',
       value: 3100,
       weight: 2.2,
@@ -634,6 +1032,7 @@ window.GAME_DATA = {
       id: 'intel_drive',
       name: 'Encrypted Hard Drive',
       type: 'valuable',
+      category: 'valuable',
       rarity: 'epic',
       value: 5800,
       weight: 0.4,
@@ -643,6 +1042,7 @@ window.GAME_DATA = {
       id: 'gold_watch',
       name: 'Antique Officer Watch',
       type: 'valuable',
+      category: 'valuable',
       rarity: 'epic',
       value: 6600,
       weight: 0.15,
@@ -652,6 +1052,7 @@ window.GAME_DATA = {
       id: 'gpu_unit',
       name: 'Military GPU Module',
       type: 'valuable',
+      category: 'valuable',
       rarity: 'legendary',
       value: 12800,
       weight: 1.1,
@@ -661,19 +1062,21 @@ window.GAME_DATA = {
       id: 'black_box',
       name: 'Classified Flight Recorder',
       type: 'valuable',
+      category: 'valuable',
       rarity: 'ultra',
       value: 22500,
       weight: 1.4,
-      desc: 'Ultra-rare orbital command black box.'
+      desc: 'Ultra-rare downed military aircraft flight recorder.'
     },
     dogtag: {
       id: 'dogtag',
       name: 'Operator Dogtag',
       type: 'valuable',
+      category: 'military',
       rarity: 'rare',
       value: 1800,
       weight: 0.05,
-      desc: 'Proof of operator elimination.'
+      desc: 'Proof of rogue operator elimination.'
     }
   },
 
@@ -683,16 +1086,32 @@ window.GAME_DATA = {
       outputId: 'armor_plate',
       outputQty: 3,
       name: '3x Ceramic Armor Plates',
-      desc: 'Press salvaged steel and ballistic cloth into 3 ceramic plates.',
-      ingredients: [{ id: 'scrap_metal', qty: 2 }, { id: 'cloth_roll', qty: 1 }]
+      desc: 'Bond metallic alloy or steel with ballistic cloth into 3 ceramic plates.',
+      ingredients: [{ id: 'cloth_roll', qty: 2 }, { id: 'metallic_alloy', qty: 1 }]
+    },
+    {
+      id: 'craft_sterile_bandage',
+      outputId: 'sterile_bandage',
+      outputQty: 2,
+      name: '2x Sterile Bandages',
+      desc: 'Sanitize sterile cloth with basic chemicals into 2 trauma dressings.',
+      ingredients: [{ id: 'sterile_cloth', qty: 2 }, { id: 'basic_chemicals', qty: 1 }]
+    },
+    {
+      id: 'craft_syringe',
+      outputId: 'syringe',
+      outputQty: 2,
+      name: '2x Combat Syringes',
+      desc: 'Synthesize 2 fast-acting combat syringes from basic chemicals.',
+      ingredients: [{ id: 'basic_chemicals', qty: 2 }, { id: 'sterile_cloth', qty: 1 }]
     },
     {
       id: 'craft_medkit',
       outputId: 'medkit',
       outputQty: 1,
-      name: 'Field Medkit',
-      desc: 'Assemble a full IFAK Field Medkit from sterile cloth and polymer.',
-      ingredients: [{ id: 'cloth_roll', qty: 2 }, { id: 'polymer_parts', qty: 1 }]
+      name: 'Medkit',
+      desc: 'Assemble a full IFAK Medkit from sterile cloth, scrubs & chemicals.',
+      ingredients: [{ id: 'sterile_cloth', qty: 2 }, { id: 'basic_chemicals', qty: 1 }]
     },
     {
       id: 'craft_self_revive',
@@ -700,39 +1119,71 @@ window.GAME_DATA = {
       outputQty: 1,
       name: 'Self-Revive Kit',
       desc: 'Synthesize an Epic Self-Revive auto-injector for solo or last-stand recovery.',
-      ingredients: [{ id: 'cloth_roll', qty: 3 }, { id: 'polymer_parts', qty: 3 }, { id: 'scrap_metal', qty: 2 }]
+      ingredients: [{ id: 'basic_chemicals', qty: 3 }, { id: 'sterile_cloth', qty: 2 }, { id: 'tools', qty: 1 }]
+    },
+    {
+      id: 'craft_ammo_545',
+      outputId: 'ammo_545',
+      outputQty: 60,
+      name: '60x 5.45mm Heavy Ammo',
+      desc: 'Reload 60 assault rifle cartridges from brass casings & gunpowder.',
+      ingredients: [{ id: 'brass_casings', qty: 2 }, { id: 'gunpowder', qty: 2 }]
+    },
+    {
+      id: 'craft_ammo_12g',
+      outputId: 'ammo_12g',
+      outputQty: 24,
+      name: '24x 12ga Buckshot',
+      desc: 'Crimp 24 buckshot shells from 12-gauge casings & gunpowder.',
+      ingredients: [{ id: 'casings_12g', qty: 2 }, { id: 'gunpowder', qty: 1 }]
+    },
+    {
+      id: 'craft_ammo_762',
+      outputId: 'ammo_762',
+      outputQty: 25,
+      name: '25x 7.62mm Sniper Ammo',
+      desc: 'Precision-load 25 marksman cartridges from heavy casings & heavy gunpowder.',
+      ingredients: [{ id: 'heavy_casings', qty: 2 }, { id: 'heavy_gunpowder', qty: 2 }]
     },
     {
       id: 'craft_frag',
       outputId: 'frag_grenade',
       outputQty: 2,
       name: '2x M67 Frag Grenades',
-      desc: 'Pack smokeless powder into steel fragmentation casings.',
-      ingredients: [{ id: 'scrap_metal', qty: 2 }, { id: 'gunpowder', qty: 2 }]
+      desc: 'Pack heavy gunpowder into metallic alloy fragmentation bodies.',
+      ingredients: [{ id: 'metallic_alloy', qty: 1 }, { id: 'heavy_gunpowder', qty: 1 }]
     },
     {
       id: 'craft_gel_vest',
       outputId: 'vest_2plate_gel',
       outputQty: 1,
       name: '2-Plate Ballistic Gel Vest',
-      desc: 'Fabricate a Rare 2-plate ballistic gel armor carrier.',
-      ingredients: [{ id: 'scrap_metal', qty: 3 }, { id: 'cloth_roll', qty: 3 }, { id: 'polymer_parts', qty: 2 }]
+      desc: 'Fabricate a Rare 2-plate carrier from Kevlar padding & ballistic cloth.',
+      ingredients: [{ id: 'kevlar_padding', qty: 2 }, { id: 'cloth_roll', qty: 2 }]
+    },
+    {
+      id: 'craft_heavy_vest',
+      outputId: 'vest_3plate',
+      outputQty: 1,
+      name: '3-Plate Heavy Vest',
+      desc: 'Laminate carbon fibre, Kevlar padding & reactive metals into an Ultra 3-plate carrier.',
+      ingredients: [{ id: 'carbon_fibre_sample', qty: 2 }, { id: 'kevlar_padding', qty: 2 }, { id: 'reactive_metals', qty: 1 }]
     },
     {
       id: 'craft_med_bag',
-      outputId: 'bag_medium',
+      outputId: 'bag_large',
       outputQty: 1,
-      name: 'Assault Pack (12 Slots)',
-      desc: 'Stitch a Rare 12-slot operator backpack.',
-      ingredients: [{ id: 'cloth_roll', qty: 4 }, { id: 'polymer_parts', qty: 2 }]
+      name: 'Expedition Rucksack (16 Slots)',
+      desc: 'Stitch an Epic 16-slot rucksack from nylon cloth rolls & ballistic cloth.',
+      ingredients: [{ id: 'nylon_cloth_roll', qty: 2 }, { id: 'cloth_roll', qty: 2 }]
     },
     {
       id: 'craft_boss_key',
       outputId: 'boss_key',
       outputQty: 1,
-      name: 'Encampment Armory Key',
-      desc: 'Mill a Legendary Armory Key for Boss Encampment key rooms.',
-      ingredients: [{ id: 'scrap_metal', qty: 4 }, { id: 'polymer_parts', qty: 4 }, { id: 'gunpowder', qty: 2 }]
+      name: 'Vostok Command Key',
+      desc: 'Mill a Legendary Command Armory Key using tools, metallic alloy & reactive metals.',
+      ingredients: [{ id: 'metallic_alloy', qty: 2 }, { id: 'reactive_metals', qty: 1 }, { id: 'tools', qty: 1 }]
     }
   ],
 
@@ -740,7 +1191,8 @@ window.GAME_DATA = {
     weapons: ['pm9', 'g17', 'mp5k', 'm870', 'ak74m', 'mosin9130', 'm24', 'awm338'],
     ammo: ['ammo_9x18', 'ammo_9x19', 'ammo_12g', 'ammo_545', 'ammo_762', 'ammo_rocket'],
     gear: [
-      'bandage', 'painkillers', 'medkit', 'self_revive', 'gas_mask', 'nvg_goggles', 'armor_plate',
+      'bandage', 'sterile_bandage', 'syringe', 'medkit', 'self_revive',
+      'gas_mask', 'nvg_goggles', 'armor_plate',
       'vest_1plate', 'vest_2plate', 'vest_2plate_gel', 'vest_2plate_helmet', 'vest_3plate',
       'bag_small', 'bag_medium', 'bag_large', 'bag_weapon',
       'fu_ammo_box', 'fu_dead_silence', 'fu_trophy',
@@ -754,84 +1206,159 @@ window.GAME_DATA = {
   ZONES: {
     outpost: {
       id: 'outpost',
-      name: 'Dustline Outpost',
-      raidDuration: 600, // 10 minutes
-      enemyCount: 6,
-      raiderChance: 0.35,
-      heavyChance: 0.05,
+      name: 'Vostok',
+      raidDuration: 900, // 15 minutes
+      enemyCount: 10,
+      raiderChance: 0.45,
+      heavyChance: 0.12,
       lootTierBonus: 0,
-      fogColor: 0x3a362e,
-      skyColor: 0x4b463b
+      fogColor: 0x8d9aa2,
+      skyColor: 0x7c8e99
     },
     industrial: {
       id: 'industrial',
-      name: 'Rustyard Compound',
-      raidDuration: 660, // 11 minutes
-      enemyCount: 10,
-      raiderChance: 0.5,
-      heavyChance: 0.2,
+      name: 'Vostok // High Threat',
+      raidDuration: 900, // 15 minutes
+      enemyCount: 14,
+      raiderChance: 0.62,
+      heavyChance: 0.25,
       lootTierBonus: 1,
-      fogColor: 0x2b2d2b,
-      skyColor: 0x383b38
+      fogColor: 0x6d7982,
+      skyColor: 0x5c6973
     }
   },
 
   LOOT_TABLES: {
-    // Location-based logical loot tables
+    // Location-based logical loot tables across Vostok
     hospital: [
-      { id: 'medkit', min: 1, max: 2, w: 30 },
-      { id: 'bandage', min: 1, max: 3, w: 28 },
-      { id: 'painkillers', min: 1, max: 2, w: 22 },
-      { id: 'self_revive', min: 1, max: 1, w: 12 },
-      { id: 'cloth_roll', min: 1, max: 3, w: 8 }
-    ],
-    police_fire: [
-      { id: 'vest_1plate', min: 1, max: 1, w: 18 },
-      { id: 'vest_2plate', min: 1, max: 1, w: 10 },
-      { id: 'bag_small', min: 1, max: 1, w: 14 },
-      { id: 'pm9', min: 1, max: 1, w: 12 },
-      { id: 'g17', min: 1, max: 1, w: 10 },
-      { id: 'mp5k', min: 1, max: 1, w: 8 },
-      { id: 'armor_plate', min: 1, max: 3, w: 16 },
-      { id: 'ammo_9x19', min: 20, max: 45, w: 12 }
-    ],
-    military: [
-      { id: 'ammo_545', min: 20, max: 45, w: 18 },
-      { id: 'ammo_762', min: 8, max: 16, w: 10 },
-      { id: 'ammo_12g', min: 6, max: 12, w: 10 },
-      { id: 'armor_plate', min: 1, max: 3, w: 14 },
-      { id: 'vest_2plate_gel', min: 1, max: 1, w: 8 },
-      { id: 'vest_2plate_helmet', min: 1, max: 1, w: 5 },
-      { id: 'vest_3plate', min: 1, max: 1, w: 2 },
-      { id: 'bag_medium', min: 1, max: 1, w: 6 },
-      { id: 'bag_weapon', min: 1, max: 1, w: 4 },
-      { id: 'gas_mask', min: 1, max: 1, w: 5 },
-      { id: 'nvg_goggles', min: 1, max: 1, w: 3 },
-      { id: 'intel_drive', min: 1, max: 1, w: 8 },
-      { id: 'gpu_unit', min: 1, max: 1, w: 5 },
-      { id: 'ak74m', min: 1, max: 1, w: 6 },
-      { id: 'mosin9130', min: 1, max: 1, w: 5 },
-      { id: 'awm338', min: 1, max: 1, w: 3 },
-      { id: 'boss_key', min: 1, max: 1, w: 3 },
-      { id: 'medkit', min: 1, max: 1, w: 5 }
+      { id: 'bandage', min: 1, max: 3, w: 22 },
+      { id: 'sterile_bandage', min: 1, max: 2, w: 18 },
+      { id: 'sterile_cloth', min: 1, max: 3, w: 16 },
+      { id: 'scrubs', min: 1, max: 2, w: 12 },
+      { id: 'basic_chemicals', min: 1, max: 3, w: 14 },
+      { id: 'syringe', min: 1, max: 2, w: 14 },
+      { id: 'medkit', min: 1, max: 2, w: 18 },
+      { id: 'self_revive', min: 1, max: 1, w: 8 }
     ],
     medical: [
-      { id: 'medkit', min: 1, max: 2, w: 38 },
-      { id: 'bandage', min: 1, max: 3, w: 30 },
-      { id: 'painkillers', min: 1, max: 2, w: 22 },
-      { id: 'cloth_roll', min: 1, max: 3, w: 10 }
+      { id: 'bandage', min: 1, max: 3, w: 24 },
+      { id: 'sterile_bandage', min: 1, max: 2, w: 20 },
+      { id: 'sterile_cloth', min: 1, max: 3, w: 16 },
+      { id: 'scrubs', min: 1, max: 2, w: 12 },
+      { id: 'basic_chemicals', min: 1, max: 2, w: 14 },
+      { id: 'syringe', min: 1, max: 2, w: 14 },
+      { id: 'medkit', min: 1, max: 1, w: 16 },
+      { id: 'self_revive', min: 1, max: 1, w: 5 }
+    ],
+    office: [
+      { id: 'payroll_documents', min: 1, max: 2, w: 18 },
+      { id: 'vacation_planner', min: 1, max: 1, w: 14 },
+      { id: 'financial_ledger', min: 1, max: 1, w: 12 },
+      { id: 'documents', min: 1, max: 2, w: 20 },
+      { id: 'classified_documents', min: 1, max: 1, w: 8 },
+      { id: 'back_room_inventory_list', min: 1, max: 2, w: 14 },
+      { id: 'hourly_schedule', min: 1, max: 2, w: 16 },
+      { id: 'classified_dossier', min: 1, max: 1, w: 4 },
+      { id: 'antique_watch', min: 1, max: 1, w: 5 }
+    ],
+    household: [
+      { id: 'tools', min: 1, max: 2, w: 18 },
+      { id: 'clothes', min: 1, max: 2, w: 18 },
+      { id: 'cleaning_supplies', min: 1, max: 2, w: 16 },
+      { id: 'kids_drawing', min: 1, max: 1, w: 11 },
+      { id: 'family_photo', min: 1, max: 1, w: 11 },
+      { id: 'picture_of_man', min: 1, max: 1, w: 10 },
+      { id: 'nature_photo', min: 1, max: 1, w: 10 },
+      { id: 'decorative_bowl', min: 1, max: 1, w: 6 },
+      { id: 'ancient_coin', min: 1, max: 1, w: 5 },
+      { id: 'bandage', min: 1, max: 2, w: 10 }
+    ],
+    police_fire: [
+      { id: 'vest_1plate', min: 1, max: 1, w: 14 },
+      { id: 'vest_2plate', min: 1, max: 1, w: 9 },
+      { id: 'bag_small', min: 1, max: 1, w: 10 },
+      { id: 'pm9', min: 1, max: 1, w: 10 },
+      { id: 'g17', min: 1, max: 1, w: 10 },
+      { id: 'mp5k', min: 1, max: 1, w: 7 },
+      { id: 'm870', min: 1, max: 1, w: 7 },
+      { id: 'armor_plate', min: 1, max: 3, w: 14 },
+      { id: 'ammo_9x19', min: 20, max: 45, w: 12 },
+      { id: 'ammo_12g', min: 8, max: 16, w: 10 },
+      { id: 'tools', min: 1, max: 2, w: 10 },
+      { id: 'documents', min: 1, max: 2, w: 8 },
+      { id: 'concussion_grenade', min: 1, max: 2, w: 8 }
+    ],
+    military: [
+      { id: 'cloth_roll', min: 1, max: 3, w: 12 },
+      { id: 'kevlar_padding', min: 1, max: 2, w: 10 },
+      { id: 'gunpowder', min: 1, max: 3, w: 12 },
+      { id: 'brass_casings', min: 1, max: 3, w: 11 },
+      { id: 'heavy_gunpowder', min: 1, max: 2, w: 8 },
+      { id: 'heavy_casings', min: 1, max: 2, w: 8 },
+      { id: 'casings_12g', min: 1, max: 3, w: 10 },
+      { id: 'frag_grenade', min: 1, max: 2, w: 10 },
+      { id: 'throwing_knife', min: 1, max: 2, w: 6 },
+      { id: 'smoke_grenade', min: 1, max: 2, w: 9 },
+      { id: 'concussion_grenade', min: 1, max: 2, w: 8 },
+      { id: 'metallic_alloy', min: 1, max: 2, w: 9 },
+      { id: 'reactive_metals', min: 1, max: 1, w: 5 },
+      { id: 'ammo_545', min: 20, max: 45, w: 14 },
+      { id: 'ammo_762', min: 8, max: 18, w: 9 },
+      { id: 'armor_plate', min: 1, max: 3, w: 12 },
+      { id: 'vest_2plate_gel', min: 1, max: 1, w: 6 },
+      { id: 'vest_2plate_helmet', min: 1, max: 1, w: 4 },
+      { id: 'vest_3plate', min: 1, max: 1, w: 2 },
+      { id: 'bag_medium', min: 1, max: 1, w: 5 },
+      { id: 'bag_weapon', min: 1, max: 1, w: 3 },
+      { id: 'gas_mask', min: 1, max: 1, w: 4 },
+      { id: 'nvg_goggles', min: 1, max: 1, w: 3 },
+      { id: 'ak74m', min: 1, max: 1, w: 6 },
+      { id: 'mosin9130', min: 1, max: 1, w: 5 },
+      { id: 'm24', min: 1, max: 1, w: 4 },
+      { id: 'awm338', min: 1, max: 1, w: 2 },
+      { id: 'exp_radio_transmitter', min: 1, max: 1, w: 3 },
+      { id: 'classified_dossier', min: 1, max: 1, w: 3 },
+      { id: 'boss_key', min: 1, max: 1, w: 3 }
     ],
     supply: [
-      { id: 'scrap_metal', min: 2, max: 5, w: 24 },
-      { id: 'cloth_roll', min: 2, max: 5, w: 20 },
-      { id: 'gunpowder', min: 2, max: 4, w: 18 },
-      { id: 'polymer_parts', min: 2, max: 5, w: 20 },
-      { id: 'water_filter', min: 1, max: 1, w: 10 },
-      { id: 'fuel_can', min: 1, max: 1, w: 8 }
+      { id: 'tools', min: 1, max: 2, w: 16 },
+      { id: 'cloth_roll', min: 2, max: 4, w: 14 },
+      { id: 'gunpowder', min: 1, max: 3, w: 12 },
+      { id: 'brass_casings', min: 1, max: 3, w: 12 },
+      { id: 'casings_12g', min: 1, max: 3, w: 10 },
+      { id: 'metallic_alloy', min: 1, max: 2, w: 10 },
+      { id: 'nylon_cloth_roll', min: 1, max: 2, w: 9 },
+      { id: 'carbon_fibre_sample', min: 1, max: 1, w: 6 },
+      { id: 'reactive_compounds', min: 1, max: 1, w: 6 },
+      { id: 'cleaning_supplies', min: 1, max: 2, w: 10 },
+      { id: 'basic_chemicals', min: 1, max: 2, w: 10 }
     ],
-    // Boss Encampment Key Room pools (ZERO common items!)
-    boss_epic: ['vest_2plate_helmet', 'bag_large', 'bag_weapon', 'intel_drive', 'gold_watch', 'fu_dead_silence', 'ks_uav', 'melee_karambit', 'ammo_rocket'],
-    boss_rare: ['vest_2plate_gel', 'bag_medium', 'water_filter', 'fuel_can', 'painkillers', 'medkit', 'fu_ammo_box', 'fu_trophy', 'ammo_762'],
+    valuables: [
+      { id: 'decorative_bowl', min: 1, max: 1, w: 16 },
+      { id: 'ancient_coin', min: 1, max: 2, w: 15 },
+      { id: 'nylon_cloth_roll', min: 1, max: 2, w: 12 },
+      { id: 'antique_watch', min: 1, max: 1, w: 10 },
+      { id: 'pure_silver', min: 1, max: 1, w: 10 },
+      { id: 'reactive_compounds', min: 1, max: 1, w: 9 },
+      { id: 'carbon_fibre_sample', min: 1, max: 1, w: 8 },
+      { id: 'classified_documents', min: 1, max: 1, w: 8 },
+      { id: 'gold_bar', min: 1, max: 1, w: 5 },
+      { id: 'exp_radio_transmitter', min: 1, max: 1, w: 5 },
+      { id: 'classified_dossier', min: 1, max: 1, w: 5 },
+      { id: 'golden_skull', min: 1, max: 1, w: 2 },
+      { id: 'heart_of_vostok', min: 1, max: 1, w: 1 }
+    ],
+    // Vostok Command Key Room pools (ZERO common items!)
+    boss_epic: [
+      'vest_2plate_helmet', 'bag_large', 'bag_weapon', 'antique_watch', 'pure_silver',
+      'reactive_compounds', 'carbon_fibre_sample', 'classified_documents', 'gold_bar',
+      'exp_radio_transmitter', 'classified_dossier', 'golden_skull', 'heart_of_vostok',
+      'fu_dead_silence', 'ks_uav', 'melee_karambit'
+    ],
+    boss_rare: [
+      'vest_2plate_gel', 'bag_medium', 'decorative_bowl', 'ancient_coin', 'nylon_cloth_roll',
+      'kevlar_padding', 'metallic_alloy', 'sterile_bandage', 'syringe', 'medkit', 'ammo_762'
+    ],
     boss_legendary_weapons: ['ak74m', 'm24', 'awm338', 'mosin9130', 'mp5k', 'm870']
   },
 
@@ -1087,10 +1614,10 @@ window.GAME_DATA = {
 
   MISSIONS: [
     { id: 'm_scav_hunt', faction: 'VANGUARD', title: 'SECTOR SWEEP', type: 'kills', target: 5, rewardCredits: 4500, rewardXp: 350, desc: 'Eliminate 5 hostile combatants in any sector.' },
-    { id: 'm_loot_run', faction: 'PHANTOM', title: 'SALVAGE RUN', type: 'loot', target: 6, rewardCredits: 3500, rewardXp: 250, desc: 'Open and search 6 loot containers across Sector 7.' },
+    { id: 'm_loot_run', faction: 'PHANTOM', title: 'SALVAGE RUN', type: 'loot', target: 6, rewardCredits: 3500, rewardXp: 250, desc: 'Open and search 6 loot containers across Vostok.' },
     { id: 'm_clean_exfil', faction: 'VANGUARD', title: 'CLEAN EXTRACTION', type: 'extracts', target: 1, rewardCredits: 5000, rewardXp: 400, desc: 'Successfully extract from an active operation.' },
     { id: 'm_heavy_haul', faction: 'BLACKWOOD', title: 'HIGH-VALUE HAUL', type: 'value', target: 12000, rewardCredits: 7500, rewardXp: 600, desc: 'Extract with ₽12,000+ in recovered loot value.' },
-    { id: 'm_operator_bounty', faction: 'BLACKWOOD', title: 'OPERATOR BOUNTY', type: 'kills', target: 12, rewardCredits: 10000, rewardXp: 900, desc: 'Eliminate 12 hostiles across Sector 7 operations.' },
+    { id: 'm_operator_bounty', faction: 'BLACKWOOD', title: 'OPERATOR BOUNTY', type: 'kills', target: 12, rewardCredits: 10000, rewardXp: 900, desc: 'Eliminate 12 hostiles across Vostok operations.' },
     { id: 'm_supply_chain', faction: 'PHANTOM', title: 'SUPPLY CHAIN', type: 'extracts', target: 3, rewardCredits: 12000, rewardXp: 1100, desc: 'Complete 3 successful extractions from the wasteland.' }
   ]
 };
@@ -1130,7 +1657,7 @@ window.GAME_DATA = {
   };
   window.GAME_DATA.getCacheBuster = function getCacheBuster() {
     const p = window.GAME_DATA.parseVersion(window.GAME_DATA.VERSION);
-    if (!p) return '0272';
+    if (!p) return '0273';
     return `${p.major}${p.minor}${String(p.patch).padStart(2, '0')}`;
   };
   window.GAME_DATA.isNewerVersion = function isNewerVersion(remote, local) {

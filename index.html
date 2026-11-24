@@ -75,7 +75,7 @@
     <!-- IMPORTANT: Update version in GAME_DATA.VERSION_INFO (js/data.js) and here with EVERY new commit — 0.X.XX pre-release only! -->
     <div class="menu-version-stack">
       <button id="menu-update-badge" class="menu-update-badge hidden" title="Click to reload into the latest version">NEW VERSION AVAILABLE</button>
-      <div id="menu-version-badge" class="menu-version-badge">Alpha RC 0.2.72</div>
+      <div id="menu-version-badge" class="menu-version-badge">Alpha RC 0.2.73</div>
     </div>
     <!-- Minimal Sub-Menu Top Bar (Top-Left Back Button only — no redundant nav band) -->
     <header id="menu-topbar" class="hideout-header hidden">
@@ -310,28 +310,28 @@
     <main id="menu-view-map" class="menu-tab-view hidden">
       <div class="deploy-map-stage">
         <div class="panel-header" style="position:relative;z-index:2;">
-          <h2>SECTOR 7 // TACTICAL DEPLOYMENT MAP</h2>
+          <h2>VOSTOK // TACTICAL DEPLOYMENT MAP</h2>
           <button id="btn-map-back" class="btn-small">← BACK TO LOADOUT</button>
         </div>
         <div class="tactical-map-canvas">
           <div class="map-grid-lines"></div>
           <button class="map-node active" data-zone="outpost" style="left:32%;top:42%;">
             <span class="node-pulse"></span>
-            <span class="node-title">DUSTLINE OUTPOST</span>
-            <span class="node-meta">STANDARD · 6 OPERATOR SQUADS · CLINIC &amp; POLICE</span>
+            <span class="node-title">VOSTOK</span>
+            <span class="node-meta">STANDARD · NATO INFIL vs ROGUE OPERATORS · DAM, CITY &amp; AIRPORT</span>
           </button>
           <button class="map-node" data-zone="industrial" style="left:66%;top:56%;">
             <span class="node-pulse high"></span>
-            <span class="node-title">RUSTYARD COMPOUND</span>
-            <span class="node-meta">HIGH THREAT · 6 OPERATOR SQUADS · BOSS KEY ROOM</span>
+            <span class="node-title">VOSTOK // HIGH THREAT</span>
+            <span class="node-meta">HIGH THREAT · HEAVY ROGUE SYNDICATES · COMMAND KEY VAULT</span>
           </button>
         </div>
         <select id="raid-zone-select" style="display:none;">
-          <option value="outpost">Dustline Outpost</option>
-          <option value="industrial">Rustyard Compound</option>
+          <option value="outpost">Vostok</option>
+          <option value="industrial">Vostok // High Threat</option>
         </select>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;">
-          <span id="map-selected-desc" class="deploy-note" style="margin:0;">Selected: Dustline Outpost — Balanced wasteland sector with Hospital, Police/Fire &amp; Boss Encampment.</span>
+          <span id="map-selected-desc" class="deploy-note" style="margin:0;">Selected: Vostok — Battle-scarred Northern Russian mountains, dam, city &amp; southern coast. Watch for rogue mercenary operators.</span>
           <button id="btn-map-confirm" class="btn-primary" style="padding:12px 26px;">SEARCH FOR MATCH →</button>
         </div>
       </div>
@@ -342,7 +342,7 @@
       <canvas id="matchmaking-canvas" style="width:100%;height:100%;display:block;"></canvas>
       <div class="mm-overlay-left">
         <span class="brand-tag">MATCHMAKING // 6 SQUADS (UP TO 18 OPERATORS)</span>
-        <h2 id="mm-zone-title" style="font-size:26px;letter-spacing:2px;margin:4px 0;">DUSTLINE OUTPOST</h2>
+        <h2 id="mm-zone-title" style="font-size:26px;letter-spacing:2px;margin:4px 0;">VOSTOK</h2>
         <div id="mm-status-text" style="font-family:var(--font-mono);font-size:12px;color:#69f0ae;">SEARCHING FOR SECTOR INSTANCE...</div>
         <div id="mm-squad-list" class="mm-squad-list"></div>
       </div>
@@ -983,7 +983,7 @@
     <div id="tacmap-overlay" class="tacmap-overlay hidden">
       <div class="tacmap-card">
         <div class="tacmap-header">
-          <span class="tacmap-title">TACTICAL SECTOR MAP // <span id="tacmap-zone-name">DUSTLINE OUTPOST</span></span>
+          <span class="tacmap-title">TACTICAL SECTOR MAP // <span id="tacmap-zone-name">VOSTOK</span></span>
           <div class="tacmap-header-right">
             <span id="tacmap-zoom-badge" class="tacmap-zoom-badge" title="Click to reset zoom (Scroll or LB/RB)">1.0x</span>
             <span class="tacmap-hint">CLICK PING/REMOVE · SCROLL OR [LB]/[RB] ZOOM · RIGHT-CLICK / HOLD [A] RADIAL · [M] CLOSE</span>
@@ -1375,25 +1375,25 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION_INFO with every new commit — 0.X.XX only!) -->
-  <script src="js/data.js?v=0272"></script>
+  <script src="js/data.js?v=0273"></script>
   <script src="js/rig.js?v=0269"></script>
   <script src="js/animation.js?v=0269"></script>
   <script src="js/net.js?v=123"></script>
   <script src="js/sfx_samples.js?v=21"></script>
   <script src="js/audio.js?v=263"></script>
-  <script src="js/world.js?v=0270"></script>
+  <script src="js/world.js?v=0273"></script>
   <script src="js/weapons.js?v=0269"></script>
-  <script src="js/icons.js?v=246"></script>
+  <script src="js/icons.js?v=0273"></script>
   <script src="js/throwables.js?v=260"></script>
-  <script src="js/enemies.js?v=260"></script>
+  <script src="js/enemies.js?v=0273"></script>
   <script src="js/squad.js?v=262"></script>
   <script src="js/multiplayer.js?v=264"></script>
-  <script src="js/player.js?v=0270"></script>
+  <script src="js/player.js?v=0273"></script>
   <script src="js/gamepad.js?v=264"></script>
   <script src="js/gunsmith.js?v=257"></script>
   <script src="js/matchmaking.js?v=240"></script>
   <script src="js/hideout.js?v=244"></script>
-  <script src="js/ui.js?v=0272"></script>
+  <script src="js/ui.js?v=0273"></script>
   <script src="js/console.js?v=264"></script>
   <script src="js/main.js?v=0271"></script>
 </body>

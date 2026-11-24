@@ -2855,17 +2855,19 @@ class EnemyManager {
 
     // Remote non-host party clients receive authoritative enemy spawns & transforms from the Host!
     if (this.isRemoteClient) return;
-    const squadPrefixes = ['ALPHA', 'BRAVO', 'CHARLIE', 'DELTA', 'ECHO', 'FOXTROT'];
+    const squadPrefixes = ['ROGUE-1', 'ROGUE-2', 'MERC-3', 'BLACKWOOD', 'VIPER-5', 'JACKAL-6'];
     const callsigns = [
-      'VIPER', 'PHANTOM', 'REAPER', 'COBALT', 'STRYKER', 'WRAITH',
-      'JACKAL', 'HAWK', 'SPECTRE', 'BANDIT', 'NOMAD', 'SABLE',
-      'KODIAK', 'TALON', 'ZERO', 'ORION', 'BISHOP', 'BLITZ'
+      'VOLKOV', 'PHANTOM', 'REAPER', 'KORSAR', 'STRYKER', 'WRAITH',
+      'JACKAL', 'SOKOL', 'SPECTRE', 'MOROZ', 'NOMAD', 'SABLE',
+      'KODIAK', 'TALON', 'VORON', 'ORION', 'BISHOP', 'BLITZ'
     ];
     const styles = ['rusher', 'flanker', 'tactical', 'marksman'];
     const anchorSource = (world.operatorSpawns && world.operatorSpawns.length > 0)
       ? world.operatorSpawns
       : world.spawnPoints;
-    const anchorPts = [...anchorSource].sort(() => Math.random() - 0.5);
+    const pSpawn = world.playerSpawn || new THREE.Vector3(0, 0, 0);
+    const safeAnchors = anchorSource.filter(pt => Math.hypot(pt.x - pSpawn.x, pt.z - pSpawn.z) > 110);
+    const anchorPts = [...(safeAnchors.length >= 6 ? safeAnchors : anchorSource)].sort(() => Math.random() - 0.5);
     const worldPois = (world.pois && world.pois.length > 0)
       ? world.pois.map(p => new THREE.Vector3(p.x, 0, p.z))
       : [new THREE.Vector3(-88, 0, -86), new THREE.Vector3(94, 0, -56), new THREE.Vector3(-96, 0, 74)];

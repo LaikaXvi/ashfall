@@ -1165,6 +1165,214 @@ class ItemIconRenderer {
       return g;
     }
 
+    // 13. VOSTOK MEDICAL, OFFICE, MILITARY, HOUSEHOLD & VALUABLES STUDIO ICONS
+    if (id === 'sterile_bandage') {
+      const pack = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.26, 0.10), this._mat(0xdfe8e4, 0x000000, 35));
+      const band = new THREE.Mesh(new THREE.BoxGeometry(0.40, 0.08, 0.11), this._mat(0x2e8b57));
+      const c1 = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.03, 0.115), this._mat(0xffffff));
+      const c2 = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.10, 0.115), this._mat(0xffffff));
+      g.add(pack, band, c1, c2);
+      g.rotation.set(0.22, -0.32, 0.08);
+      return g;
+    }
+    if (id === 'sterile_cloth' || id === 'nylon_cloth_roll') {
+      const col = id === 'nylon_cloth_roll' ? 0x3b4d5e : 0xe8eff0;
+      const coreCol = id === 'nylon_cloth_roll' ? 0x222a30 : 0xaab8be;
+      const roll = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.14, 0.48, 14), this._mat(col, 0x000000, 30));
+      const core = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.50, 12), this._mat(coreCol));
+      roll.rotation.z = Math.PI / 2;
+      core.rotation.z = Math.PI / 2;
+      g.add(roll, core);
+      g.rotation.set(0.30, -0.42, 0.20);
+      return g;
+    }
+    if (id === 'scrubs' || id === 'clothes') {
+      const col = id === 'scrubs' ? 0x3ca09a : 0x5d6458;
+      const col2 = id === 'scrubs' ? 0x2c7d78 : 0x42483e;
+      const f1 = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.11, 0.34), this._mat(col, 0x000000, 18));
+      const f2 = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.09, 0.28), this._mat(col2, 0x000000, 18));
+      f2.position.set(0, 0.09, -0.02);
+      g.add(f1, f2);
+      g.rotation.set(0.36, -0.38, 0.06);
+      return g;
+    }
+    if (id === 'basic_chemicals' || id === 'cleaning_supplies' || id === 'reactive_compounds') {
+      const bodyCol = id === 'reactive_compounds' ? 0x2de084 : (id === 'cleaning_supplies' ? 0x3a89c9 : 0xc88a32);
+      const emCol = id === 'reactive_compounds' ? 0x0d5c32 : 0x000000;
+      const bottle = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.15, 0.38, 14), this._mat(bodyCol, emCol, 70));
+      const neck = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 0.10, 12), this._mat(0xdce4e8));
+      neck.position.y = 0.22;
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.065, 0.06, 12), this._mat(id === 'cleaning_supplies' ? 0xe53935 : 0x22282c));
+      cap.position.y = 0.28;
+      const lbl = new THREE.Mesh(new THREE.CylinderGeometry(0.146, 0.154, 0.14, 14), this._mat(0xf2f4f0, 0x000000, 15));
+      g.add(bottle, neck, cap, lbl);
+      g.rotation.set(0.18, -0.35, 0.08);
+      return g;
+    }
+    if (id === 'syringe') {
+      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.34, 12), this._mat(0xd8eef8, 0x102430, 85));
+      const fluid = new THREE.Mesh(new THREE.CylinderGeometry(0.042, 0.042, 0.20, 10), this._mat(0xff5252, 0x4a0e0e, 60));
+      fluid.position.y = -0.04;
+      const plunger = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.20, 8), this._mat(0xb0bec5));
+      plunger.position.y = 0.22;
+      const thumb = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 0.025, 10), this._mat(0xe53935));
+      thumb.position.y = 0.32;
+      const needle = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.004, 0.16, 8), this._mat(0xe0e6ea, 0x000000, 95));
+      needle.position.y = -0.24;
+      g.add(barrel, fluid, plunger, thumb, needle);
+      g.rotation.set(0.15, 0.15, -0.68);
+      return g;
+    }
+    if (
+      id === 'payroll_documents' || id === 'vacation_planner' || id === 'financial_ledger' ||
+      id === 'documents' || id === 'classified_documents' || id === 'back_room_inventory_list' ||
+      id === 'hourly_schedule' || id === 'classified_dossier'
+    ) {
+      const isClassified = id === 'classified_documents' || id === 'classified_dossier';
+      const isLedger = id === 'financial_ledger';
+      const baseCol = id === 'classified_dossier' ? 0x5c201e : (isClassified ? 0xc8a46e : (isLedger ? 0x264653 : 0xd8c89e));
+      const sheet = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.46, isLedger ? 0.08 : 0.035), this._mat(baseCol, 0x000000, 22));
+      const page = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.42, 0.02), this._mat(0xf5f5ef));
+      page.position.set(0.02, 0.01, 0.022);
+      const stampCol = isClassified ? 0xd32f2f : (id === 'vacation_planner' ? 0x29b6f6 : 0x455a64);
+      const band = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.06, 0.025), this._mat(stampCol));
+      band.position.set(0.02, 0.10, 0.03);
+      g.add(sheet, page, band);
+      g.rotation.set(-0.26, -0.28, 0.14);
+      return g;
+    }
+    if (id === 'kids_drawing' || id === 'family_photo' || id === 'picture_of_man' || id === 'nature_photo') {
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(0.40, 0.44, 0.025), this._mat(0xf6f6f2, 0x000000, 25));
+      const artCol = id === 'kids_drawing' ? 0xffca28 : (id === 'nature_photo' ? 0x43a047 : (id === 'family_photo' ? 0x5c85d6 : 0x78909c));
+      const art = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.30, 0.028), this._mat(artCol));
+      art.position.set(0, 0.04, 0.004);
+      g.add(frame, art);
+      g.rotation.set(-0.18, -0.24, 0.10);
+      return g;
+    }
+    if (id === 'kevlar_padding' || id === 'carbon_fibre_sample') {
+      const col = id === 'carbon_fibre_sample' ? 0x1e2226 : 0xc5a86a;
+      const spec = id === 'carbon_fibre_sample' ? 0x90a4ae : 0x55482c;
+      const pad = new THREE.Mesh(new THREE.BoxGeometry(0.40, 0.42, 0.07), this._mat(col, 0x000000, 75, spec));
+      const rib = new THREE.Mesh(new THREE.BoxGeometry(0.41, 0.06, 0.075), this._mat(0x37474f));
+      g.add(pad, rib);
+      g.rotation.set(0.24, -0.36, 0.10);
+      return g;
+    }
+    if (id === 'brass_casings' || id === 'heavy_casings' || id === 'casings_12g') {
+      const hullCol = id === 'casings_12g' ? 0xc62828 : (id === 'heavy_casings' ? 0xc99e38 : 0xdcb44a);
+      const h = id === 'heavy_casings' ? 0.34 : 0.26;
+      const r = id === 'casings_12g' ? 0.055 : 0.042;
+      for (let i = -1; i <= 1; i++) {
+        const cMesh = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.04, h, 12), this._mat(hullCol, 0x000000, 88, 0xfff0b8));
+        cMesh.position.set(i * 0.12, (i === 0 ? 0.03 : -0.02), (i === 0 ? 0.04 : -0.03));
+        g.add(cMesh);
+        if (id === 'casings_12g') {
+          const base = new THREE.Mesh(new THREE.CylinderGeometry(r * 1.05, r * 1.05, 0.07, 12), this._mat(0xdcb44a, 0x000000, 90));
+          base.position.set(cMesh.position.x, cMesh.position.y - h * 0.5 + 0.035, cMesh.position.z);
+          g.add(base);
+        }
+      }
+      g.rotation.set(0.24, -0.32, 0.06);
+      return g;
+    }
+    if (id === 'heavy_gunpowder') {
+      const can = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.17, 0.42, 14), this._mat(0x26292c, 0x000000, 55));
+      const stripe = new THREE.Mesh(new THREE.CylinderGeometry(0.174, 0.174, 0.12, 14), this._mat(0xe53935));
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.06, 10), this._mat(0xd4a428));
+      cap.position.y = 0.23;
+      g.add(can, stripe, cap);
+      g.rotation.set(0.22, -0.35, 0);
+      return g;
+    }
+    if (id === 'metallic_alloy' || id === 'reactive_metals' || id === 'pure_silver' || id === 'gold_bar') {
+      const colMap = {
+        metallic_alloy: [0x8ea0ab, 0x000000, 0xd8ecff],
+        reactive_metals: [0x7e57c2, 0x28124d, 0xd1c4e9],
+        pure_silver: [0xe2e9ee, 0x11161a, 0xffffff],
+        gold_bar: [0xf2bc32, 0x3a2600, 0xfff4b8]
+      };
+      const [cMain, cEm, cSpec] = colMap[id];
+      const bar = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.13, 0.22), this._mat(cMain, cEm, 95, cSpec));
+      const top = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.05, 0.16), this._mat(cMain, cEm, 98, cSpec));
+      top.position.y = 0.08;
+      g.add(bar, top);
+      g.rotation.set(0.36, -0.45, 0.10);
+      return g;
+    }
+    if (id === 'tools') {
+      const box = new THREE.Mesh(new THREE.BoxGeometry(0.44, 0.22, 0.22), this._mat(0xc62828, 0x000000, 50));
+      const handle = new THREE.Mesh(new THREE.BoxGeometry(0.20, 0.05, 0.04), this._mat(0x212529));
+      handle.position.y = 0.135;
+      const latch = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.05, 0.23), this._mat(0xcfd8dc));
+      latch.position.y = 0.03;
+      g.add(box, handle, latch);
+      g.rotation.set(0.26, -0.38, 0);
+      return g;
+    }
+    if (id === 'decorative_bowl') {
+      const bowl = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.11, 0.18, 16), this._mat(0x1e5aa8, 0x061630, 85));
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.02, 8, 20), this._mat(0xf2bc32, 0x2b1c00, 95));
+      rim.rotation.x = Math.PI / 2;
+      rim.position.y = 0.09;
+      g.add(bowl, rim);
+      g.rotation.set(0.34, -0.30, 0);
+      return g;
+    }
+    if (id === 'antique_watch') {
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.19, 0.06, 20), this._mat(0xd4a437, 0x261800, 92, 0xfff0b0));
+      body.rotation.x = Math.PI / 2;
+      const dial = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.065, 20), this._mat(0xfaf6e8));
+      dial.rotation.x = Math.PI / 2;
+      const crown = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.07, 10), this._mat(0xd4a437));
+      crown.position.y = 0.22;
+      g.add(body, dial, crown);
+      g.rotation.set(-0.18, -0.28, 0.12);
+      return g;
+    }
+    if (id === 'ancient_coin') {
+      const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.20, 0.20, 0.04, 20), this._mat(0xe6b432, 0x241800, 92, 0xfff2b2));
+      coin.rotation.x = Math.PI / 2;
+      const emblem = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 0.048), this._mat(0xc9941e, 0x000000, 80));
+      emblem.rotation.z = Math.PI / 4;
+      g.add(coin, emblem);
+      g.rotation.set(-0.20, -0.30, 0.10);
+      return g;
+    }
+    if (id === 'golden_skull') {
+      const cranium = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 14), this._mat(0xf5c236, 0x3b2600, 98, 0xfff8c8));
+      cranium.position.y = 0.05;
+      const jaw = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.12, 0.18), this._mat(0xe0ab24, 0x2c1b00, 92));
+      jaw.position.set(0, -0.10, 0.05);
+      const eyeL = new THREE.Mesh(new THREE.SphereGeometry(0.038, 8, 8), this._mat(0x18120a));
+      eyeL.position.set(-0.065, 0.03, 0.155);
+      const eyeR = eyeL.clone();
+      eyeR.position.x = 0.065;
+      g.add(cranium, jaw, eyeL, eyeR);
+      g.rotation.set(0.14, -0.34, 0);
+      return g;
+    }
+    if (id === 'heart_of_vostok') {
+      const gem = new THREE.Mesh(new THREE.OctahedronGeometry(0.22, 1), this._mat(0xff1744, 0x6a0018, 100, 0xffd0da));
+      gem.scale.set(1.0, 1.22, 0.85);
+      g.add(gem);
+      g.rotation.set(0.25, -0.42, 0.16);
+      return g;
+    }
+    if (id === 'exp_radio_transmitter') {
+      const body = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.28, 0.16), this._mat(0x3c4a3e, 0x000000, 50));
+      const screen = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.09, 0.17), this._mat(0x69f0ae, 0x165c38, 80));
+      screen.position.set(-0.05, 0.05, 0);
+      const ant1 = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.016, 0.30, 8), this._mat(0x222628));
+      ant1.position.set(0.12, 0.26, 0);
+      const ant2 = ant1.clone();
+      ant2.position.set(-0.13, 0.22, 0);
+      ant2.scale.y = 0.75;
+      g.add(body, screen, ant1, ant2);
+      g.rotation.set(0.18, -0.32, 0);
+      return g;
+    }
+
     // Fallback tactical crate cube
     const fallback = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.36, 0.36), this._mat(0x69f0ae));
     fallback.rotation.set(0.35, -0.45, 0);

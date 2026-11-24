@@ -2885,8 +2885,8 @@ class GameUI {
 
     // Pre-Match Step 2: Interactive Map floating nodes
     const zoneDescs = {
-      outpost: 'Selected: Dustline Outpost — Balanced wasteland sector with Field Hospital, Police/Fire Station & Boss Encampment.',
-      industrial: 'Selected: Rustyard Compound — High-threat industrial sector with Military Compound, Boss Key Room & Ultra gear.'
+      outpost: 'Selected: Vostok — Battle-scarred Northern Russian sector with Northern Dam, City Center, Airport, Cruise Terminal & Compounds Alpha–Foxtrot.',
+      industrial: 'Selected: Vostok // High Threat — Intensified rogue operator activity, armored patrols & boosted high-tier Vostok valuables.'
     };
     document.querySelectorAll('.map-node').forEach((node) => {
       node.addEventListener('click', () => {
@@ -6725,6 +6725,33 @@ class GameUI {
     ctx.fillStyle = 'rgba(46, 74, 42, 0.45)';
     ctx.fillRect(0, 0, W, H);
 
+    // Southern Beach & Ocean + Upper Reservoir on Minimap
+    if (world.OCEAN_POLY && world.OCEAN_POLY.length >= 3) {
+      ctx.beginPath();
+      world.OCEAN_POLY.forEach(([wx, wz], i) => {
+        const p = toMap(wx, wz);
+        if (i === 0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+      });
+      ctx.closePath();
+      ctx.strokeStyle = 'rgba(198, 182, 132, 0.55)';
+      ctx.lineWidth = Math.max(2.0, 18 * scale);
+      ctx.stroke();
+      ctx.fillStyle = '#1f4d66';
+      ctx.fill();
+    }
+    if (world.RESERVOIR_POLY && world.RESERVOIR_POLY.length >= 3) {
+      ctx.beginPath();
+      world.RESERVOIR_POLY.forEach(([wx, wz], i) => {
+        const p = toMap(wx, wz);
+        if (i === 0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+      });
+      ctx.closePath();
+      ctx.fillStyle = '#296580';
+      ctx.fill();
+    }
+
     // Variable-width river & confluence polygons
     if (world.RIVER_POLYGONS && world.RIVER_POLYGONS.length > 0) {
       for (const poly of world.RIVER_POLYGONS) {
@@ -6973,16 +7000,46 @@ class GameUI {
       ctx.fill();
       ctx.restore();
     };
-    drawTopoContour(-335, -240, 215, 260, -0.18, 'rgba(64, 106, 56, 0.34)'); // NW / West Highlands
-    drawTopoContour(-285, 85, 195, 225, 0.32, 'rgba(58, 98, 52, 0.28)');     // SW Ridge
-    drawTopoContour(165, 470, 245, 95, 0.16, 'rgba(60, 102, 54, 0.30)');     // Southern Peninsula Arm
-    drawTopoContour(225, -345, 128, 108, -0.42, 'rgba(68, 112, 60, 0.38)');  // NNE Island/Peninsula Lobe
-    drawTopoContour(325, 25, 195, 310, 0.08, 'rgba(64, 106, 56, 0.34)');     // East Landmass & Meander Bulge
-    drawTopoContour(150, 95, 115, 95, -0.12, 'rgba(72, 116, 62, 0.28)');     // Central-East Meander Peninsula
+    // Topographic contours: NW Snow-Capped Mountain Range (A1-D2), Taiga Ridges & Southern Coastal Plain
+    drawTopoContour(-455, -495, 235, 165, -0.22, 'rgba(130, 142, 148, 0.34)'); // NW Granite Mountain Base
+    drawTopoContour(-495, -515, 135,  95, -0.18, 'rgba(218, 228, 236, 0.32)'); // NW Snow Peak Cap
+    drawTopoContour(-355, -510, 115,  78,  0.12, 'rgba(210, 222, 230, 0.26)'); // North Quarry Snow Ridge
+    drawTopoContour(-315, -140, 210, 220, -0.14, 'rgba(64, 104, 56, 0.30)');   // West Taiga Highlands
+    drawTopoContour( 255, -345, 145, 155, -0.28, 'rgba(68, 110, 60, 0.34)');   // NNE Vostok City Plateau
+    drawTopoContour( 310,   45, 195, 265,  0.08, 'rgba(62, 102, 54, 0.32)');   // East Taiga Bluff
 
-    // 3a. Variable-Width Hydrography: Dam Tailwater -> Wide Central Confluence Basin + NE Tributary -> SSW Bend -> SE Outlet
+    // Southern Sandy Beach & Ocean Expanse (C7 - H8)
+    if (world.OCEAN_POLY && world.OCEAN_POLY.length >= 3) {
+      ctx.beginPath();
+      world.OCEAN_POLY.forEach(([wx, wz], i) => {
+        const p = toMap(wx, wz);
+        if (i === 0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+      });
+      ctx.closePath();
+      ctx.strokeStyle = 'rgba(198, 182, 132, 0.62)';
+      ctx.lineWidth = Math.max(3.5, 26 * scale);
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+      ctx.fillStyle = '#1e4d68';
+      ctx.fill();
+    }
+
+    // Upper Reservoir Pool north of Northern Dam (E1.5)
+    if (world.RESERVOIR_POLY && world.RESERVOIR_POLY.length >= 3) {
+      ctx.beginPath();
+      world.RESERVOIR_POLY.forEach(([wx, wz], i) => {
+        const p = toMap(wx, wz);
+        if (i === 0) ctx.moveTo(p.x, p.y);
+        else ctx.lineTo(p.x, p.y);
+      });
+      ctx.closePath();
+      ctx.fillStyle = '#28688c';
+      ctx.fill();
+    }
+
+    // 3a. Variable-Width Vostok River Network (Dam Tailwater + City Reservoir Tributary -> Southern Ocean Estuary)
     if (world.RIVER_POLYGONS && world.RIVER_POLYGONS.length > 0) {
-      // Pass 1: Subtle sandy/gravelly riverbank rim
       for (const poly of world.RIVER_POLYGONS) {
         if (!poly || poly.length < 3) continue;
         ctx.beginPath();
@@ -6992,12 +7049,11 @@ class GameUI {
           else ctx.lineTo(p.x, p.y);
         });
         ctx.closePath();
-        ctx.strokeStyle = 'rgba(170, 158, 112, 0.38)';
-        ctx.lineWidth = Math.max(2.2, 10 * scale);
+        ctx.strokeStyle = 'rgba(170, 158, 112, 0.36)';
+        ctx.lineWidth = Math.max(2.0, 9 * scale);
         ctx.lineJoin = 'round';
         ctx.stroke();
       }
-      // Pass 2: Seamless variable-width water fill across main river & NE tributary confluence
       for (const poly of world.RIVER_POLYGONS) {
         if (!poly || poly.length < 3) continue;
         ctx.beginPath();
@@ -7010,26 +7066,25 @@ class GameUI {
         ctx.fillStyle = '#296c92';
         ctx.fill();
       }
-      // Subtle thalweg current highlight along river centerlines
-      ctx.save();
-      ctx.strokeStyle = 'rgba(115, 195, 235, 0.18)';
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.lineWidth = Math.max(1.2, 10 * scale);
-      for (const line of [world.RIVER_A, world.RIVER_B]) {
-        if (!line || !line.length) continue;
-        ctx.beginPath();
-        line.forEach(([wx, wz], i) => {
-          const p = toMap(wx, wz);
-          if (i === 0) ctx.moveTo(p.x, p.y);
-          else ctx.lineTo(p.x, p.y);
-        });
-        ctx.stroke();
-      }
-      ctx.restore();
     }
 
-    // 3b. Monumental North-Center Concrete Hydroelectric Dam (matching gray "dam" block in outline)
+    // Airport Asphalt Runway Strip (B5) & Cruise Terminal Deep-Water Ocean Pier (G7)
+    {
+      const rTL = toMap(-561, 1);
+      const rBR = toMap(-543, 149);
+      ctx.fillStyle = '#52585e';
+      ctx.fillRect(rTL.x, rTL.y, rBR.x - rTL.x, rBR.y - rTL.y);
+      ctx.strokeStyle = 'rgba(235, 240, 244, 0.55)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(rTL.x, rTL.y, rBR.x - rTL.x, rBR.y - rTL.y);
+
+      const pTL = toMap(239, 418);
+      const pBR = toMap(251, 486);
+      ctx.fillStyle = '#8b949a';
+      ctx.fillRect(pTL.x, pTL.y, pBR.x - pTL.x, pBR.y - pTL.y);
+    }
+
+    // 3b. Northern Dam Concrete Structure in E2
     if (world.DAM_BOUNDS) {
       const db = world.DAM_BOUNDS;
       const dTL = toMap(db.minX, db.minZ);
@@ -7037,32 +7092,30 @@ class GameUI {
       const dW = dBR.x - dTL.x;
       const dH = dBR.y - dTL.y;
 
-      // Concrete dam body + spillway apron
       ctx.fillStyle = '#767f86';
       ctx.fillRect(dTL.x, dTL.y, dW, dH);
 
-      // Stepped spillway shading & 6 concrete buttress ribs
       const spTop = toMap(db.minX, -396);
       const spBot = toMap(db.maxX, -334);
       ctx.fillStyle = 'rgba(42, 48, 54, 0.28)';
       ctx.fillRect(spTop.x, spTop.y, spBot.x - spTop.x, spBot.y - spTop.y);
       ctx.strokeStyle = 'rgba(205, 214, 220, 0.42)';
-      ctx.lineWidth = Math.max(1.2, 3.2 * scale);
-      for (const bx of [-72, -32, 8, 48, 88, 128]) {
+      ctx.lineWidth = Math.max(1.2, 3.0 * scale);
+      for (let bi = 1; bi <= 6; bi++) {
+        const bx = db.minX + ((db.maxX - db.minX) * bi) / 7;
         const b1 = toMap(bx, -398);
         const b2 = toMap(bx, -332);
         ctx.beginPath(); ctx.moveTo(b1.x, b1.y); ctx.lineTo(b2.x, b2.y); ctx.stroke();
       }
 
-      // Walkable Dam Crest Highway Deck (z = -408)
-      const cA = toMap(db.minX - 24, -408);
-      const cB = toMap(db.maxX + 24, -408);
+      const cA = toMap(db.minX - 22, -408);
+      const cB = toMap(db.maxX + 22, -408);
       ctx.strokeStyle = 'rgba(218, 226, 232, 0.72)';
-      ctx.lineWidth = Math.max(2.2, 16 * scale);
+      ctx.lineWidth = Math.max(2.2, 15 * scale);
       ctx.beginPath(); ctx.moveTo(cA.x, cA.y); ctx.lineTo(cB.x, cB.y); ctx.stroke();
 
       ctx.strokeStyle = '#b4bfc6';
-      ctx.lineWidth = 1.6;
+      ctx.lineWidth = 1.5;
       ctx.strokeRect(dTL.x, dTL.y, dW, dH);
     }
 
@@ -7125,14 +7178,14 @@ class GameUI {
       ctx.textAlign = 'center';
       for (const poi of world.pois) {
         const p = toMap(poi.x, poi.z);
-        if (poi.name === 'HYDRO DAM') {
+        if (poi.name === 'NORTHERN DAM' || poi.name === 'HYDRO DAM') {
           ctx.fillStyle = 'rgba(14, 18, 20, 0.78)';
           ctx.fillRect(p.x - 36, p.y - 8, 72, 15);
           ctx.strokeStyle = '#cfd8dc';
           ctx.lineWidth = 1.1;
           ctx.strokeRect(p.x - 36, p.y - 8, 72, 15);
           ctx.fillStyle = '#ffffff';
-          ctx.fillText('HYDRO DAM', p.x, p.y + 3);
+          ctx.fillText(poi.name, p.x, p.y + 3);
           continue;
         }
         ctx.fillStyle = poi.color || 'rgba(255,255,255,0.28)';
@@ -7952,10 +8005,10 @@ class GameUI {
           if (player.startMedkit()) this.closeLootModal();
           return true;
         }
-        if (def.type === 'med' && (item.id === 'bandage' || item.id === 'painkillers')) {
+        if (def.type === 'med' && (['bandage', 'sterile_bandage', 'syringe', 'painkillers'].includes(item.id))) {
           if (player.useTemporaryMed && player.useTemporaryMed(item.id)) {
             this.showCenterToast(
-              item.id === 'painkillers' ? 'PAINKILLERS ACTIVE (45s TEMP HP)' : 'BANDAGE APPLIED (25s TEMP HP)',
+              item.id === 'syringe' ? 'COMBAT SYRINGE INJECTED (+45 HP)' : (item.id === 'sterile_bandage' ? 'STERILE BANDAGE APPLIED (+35 HP)' : (item.id === 'painkillers' ? 'PAINKILLERS ACTIVE (+40 HP)' : 'BANDAGE APPLIED (+22 HP)')),
               '#ffd54f'
             );
             this.renderLootModal(player);
@@ -8700,10 +8753,10 @@ class GameUI {
           this.closeLootModal();
           return;
         }
-      } else if (def.type === 'med' && (item.id === 'bandage' || item.id === 'painkillers')) {
+      } else if (def.type === 'med' && (['bandage', 'sterile_bandage', 'syringe', 'painkillers'].includes(item.id))) {
         if (player.useTemporaryMed && player.useTemporaryMed(item.id)) {
           this.showCenterToast(
-            item.id === 'painkillers' ? 'PAINKILLERS ACTIVE (45s TEMP HP)' : 'BANDAGE APPLIED (25s TEMP HP)',
+            item.id === 'syringe' ? 'COMBAT SYRINGE INJECTED (+45 HP)' : (item.id === 'sterile_bandage' ? 'STERILE BANDAGE APPLIED (+35 HP)' : (item.id === 'painkillers' ? 'PAINKILLERS ACTIVE (+40 HP)' : 'BANDAGE APPLIED (+22 HP)')),
             '#ffd54f'
           );
           this.renderLootModal(player);
@@ -8770,10 +8823,10 @@ class GameUI {
             this.closeLootModal();
             return;
           }
-        } else if (def.type === 'med' && (item.id === 'bandage' || item.id === 'painkillers')) {
+        } else if (def.type === 'med' && (['bandage', 'sterile_bandage', 'syringe', 'painkillers'].includes(item.id))) {
           if (player.useTemporaryMed && player.useTemporaryMed(item.id)) {
             this.showCenterToast(
-              item.id === 'painkillers' ? 'PAINKILLERS ACTIVE (45s TEMP HP)' : 'BANDAGE APPLIED (25s TEMP HP)',
+              item.id === 'syringe' ? 'COMBAT SYRINGE INJECTED (+45 HP)' : (item.id === 'sterile_bandage' ? 'STERILE BANDAGE APPLIED (+35 HP)' : (item.id === 'painkillers' ? 'PAINKILLERS ACTIVE (+40 HP)' : 'BANDAGE APPLIED (+22 HP)')),
               '#ffd54f'
             );
             this.renderLootModal(player);

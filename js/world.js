@@ -21,114 +21,132 @@ class WastelandWorld {
     this.pois = [];           // { name, x, z, color } for minimap & logical looting
     this.activeSmokes = [];
     this.spawnPoints = [];    // Enemy patrol/spawn positions
-    this.operatorSpawns = []; // Ring perimeter (250m apart) + intermittent low-threat POI infil points
-    this.mapHalfSize = 620;   // Custom organic sector silhouette within ±620m frame
+    this.operatorSpawns = []; // Randomized outer perimeter + 5 inner POI infil points
+    this.perimeterSpawns = [];
+    this.innerPoiSpawns = [];
+    this.smokePlumes = [];    // Rising battle-scarred smoke columns across Vostok
+    this.mapHalfSize = 620;   // Vostok sector silhouette within [-800..+800] 10x10 (A-J x 0-9) Tac-Map grid
     this.skyDome = null;
     this.fogLayers = [];
 
-    // Custom organic map perimeter traced 1:1 from design outline (NW headland, North Dam saddle, NNE lobe, East bluff, SE estuary & SW diagonal peninsula)
+    // Vostok Northern Russia Perimeter Polygon:
+    // NW Alpine Mountain Range (B1-D2), Northern Dam Gorge & Upper Reservoir (E2), NNE City/Compound Lobe (G1.5-G2),
+    // East Taiga Bluff (H2-H6), Southern Beach & Oceanfront Pier (C7-G8), SW Lighthouse Promontory (C7) & West Airport Flank (B5-B3)
     this.MAP_BOUNDARY = [
-      [-515, -565], [-435, -583], [-345, -571], [-251, -536], [-173, -501],
-      [-110, -481], [-52, -474], [14, -473], [84, -476], [151, -480],
-      [222, -487], [291, -497], [357, -504], [422, -494], [485, -469],
-      [545, -436], [592, -394], [610, -333], [592, -263], [545, -205],
-      [519, -141], [513, -75], [512, 1], [514, 75], [518, 152],
-      [523, 234], [528, 311], [521, 384], [502, 454], [465, 513],
-      [407, 548], [339, 563], [262, 569], [184, 574], [105, 575],
-      [33, 558], [-27, 524], [-79, 480], [-128, 426], [-189, 379],
-      [-257, 350], [-329, 328], [-398, 294], [-464, 236], [-526, 158],
-      [-575, 75], [-604, -18], [-607, -107], [-589, -204], [-565, -306],
-      [-550, -411], [-538, -502]
+      [-560, -560], [-465, -585], [-355, -570], [-245, -535], [-155, -515],
+      [-65, -525],  [35, -530],   [135, -545],  [235, -555],  [325, -540],
+      [415, -505],  [495, -455],  [555, -385],  [575, -295],  [545, -205],
+      [525, -110],  [520, -10],   [522, 90],    [520, 195],   [505, 295],
+      [475, 385],   [425, 465],   [355, 520],   [255, 535],   [145, 530],
+      [35, 520],    [-85, 510],   [-205, 495],  [-315, 475],  [-415, 445],
+      [-465, 385],  [-495, 305],  [-535, 215],  [-585, 125],  [-605, 40],
+      [-605, -60],  [-600, -165], [-595, -270], [-585, -375], [-575, -475]
     ];
 
-    // North-Center Hydroelectric Dam footprint (gray "dam" landmark in outline)
-    this.DAM_BOUNDS = { minX: -92, maxX: 148, minZ: -476, maxZ: -322, cx: 28, cz: -395 };
+    // Northern Dam footprint in E2 (-45, -395) nestled between NW & NNE mountain ridges + Upper Reservoir above Dam
+    this.DAM_BOUNDS = { minX: -150, maxX: 65, minZ: -468, maxZ: -322, cx: -42, cz: -395 };
+    this.UPPER_RESERVOIR = { cx: -42, cz: -498, rx: 98, rz: 36, waterY: 13.6 };
 
-    // Variable-width hydrography matching outline:
-    //  - RIVER_A (Main): Dam spillway tailwater -> Wide Central Confluence Basin -> SSW elbow -> ESE sweep -> SE outlet
-    //  - RIVER_B (NE Tributary): Enters NE border -> curves SW between NNE lobe & East landmass -> merges into Confluence!
+    // Vostok Hydrography:
+    //  - RIVER_A: Northern Dam spillway tailwater (E2) -> Central Confluence (E4) -> Valley Meander -> Southern Ocean Estuary (F7/G7)
+    //  - RIVER_B: Reservoir Tributary above Dam -> runs south right through Vostok City (G2) & past S. Vostok Industrial (G3) -> Confluence!
     this.RIVER_A_CTRL = [
-      [24, -320, 44],
-      [18, -245, 34],
-      [22, -175, 44],
-      [10, -105, 68],
-      [-8, -28, 76],
-      [-32, 35, 52],
-      [-64, 112, 36],
-      [-46, 192, 36],
-      [52, 246, 32],
-      [195, 282, 28],
-      [345, 326, 28],
-      [468, 374, 32],
-      [555, 408, 35],
-      [685, 458, 42]
+      [-42, -318, 34],
+      [-36, -230, 30],
+      [-22, -135, 46],
+      [-28, -35, 48],
+      [-38, 75, 34],
+      [-10, 185, 30],
+      [42, 295, 30],
+      [82, 395, 34],
+      [98, 485, 44]
     ];
     this.RIVER_B_CTRL = [
-      [345, -650, 20],
-      [364, -515, 21],
-      [384, -425, 23],
-      [362, -335, 24],
-      [320, -255, 26],
-      [232, -196, 30],
-      [122, -154, 34],
-      [20, -132, 46]
+      [148, -545, 18],
+      [162, -455, 17],
+      [168, -365, 18],
+      [152, -255, 19],
+      [95, -180, 24],
+      [-18, -130, 36]
     ];
-    this.MAIN_START_WATER_Y = 1.55;
-    this.CONFLUENCE_WATER_Y = 0.85;
-    this.OUTLET_WATER_Y = 0.18;
-    this.NE_START_WATER_Y = 3.80;
-    this.LAKE_WATER_Y = 0.85;
-    this.OCEAN_WATER_Y = 0.18;
-    this.RIVER_WATER_Y = 0.85;
+    this.MAIN_START_WATER_Y = 1.65;
+    this.CONFLUENCE_WATER_Y = 0.95;
+    this.OUTLET_WATER_Y = 0.25;
+    this.NE_START_WATER_Y = 4.20;
+    this.LAKE_WATER_Y = 0.95;
+    this.OCEAN_WATER_Y = 0.25;
+    this.RIVER_WATER_Y = 0.95;
     this._riverA = this._buildSmoothRiverData(this.RIVER_A_CTRL, 8);
     this._riverB = this._buildSmoothRiverData(this.RIVER_B_CTRL, 8);
     this.RIVER_A = this._riverA.pts;
     this.RIVER_B = this._riverB.pts;
     this.RIVER_POLYGONS = [];
+    this.OCEAN_POLY = null;
+    this.RESERVOIR_POLY = null;
     this.waterMeshes = [];
 
-    // Connected tactical road & bridge network across all 3 landmass lobes + Dam Crest
+    // Connected Vostok highway, city bridge & strip-town road network
     this.ROADS = [
-      [-450, -495, -340, -330, 9],
-      [-340, -330, -118, -408, 10],
-      [174, -408, 215, -345, 10],
-      [215, -345, 395, -145, 9],
-      [-340, -330, -365, -20, 10],
-      [-365, -20, -128, 72, 10],
-      [-128, 72, 135, 95, 10],
-      [135, 95, 375, 135, 10],
-      [395, -145, 375, 135, 9],
-      [-365, -20, -165, 305, 9],
-      [-165, 305, -65, 355, 10],
-      [-65, 355, 135, 95, 9],
-      [-65, 355, 85, 495, 9],
-      [85, 495, 245, 455, 9],
-      [245, 455, 355, 505, 8],
-      [245, 455, 375, 135, 9]
+      [-520, -240, -400, -395, 9],    // Compound Delta (B3) -> Quarry (C2)
+      [-400, -395, -232, -395, 10],   // Quarry (C2) -> Compound Bravo (D2)
+      [-232, -395, -172, -408, 10],   // Compound Bravo (D2) -> Northern Dam West Abutment (E2)
+      [88, -408, 248, -368, 10],      // Northern Dam East Abutment -> Vostok City Center (G2, crosses City River Bridge!)
+      [242, -485, 248, -368, 9],      // Compound Alpha (G1.5) -> Vostok City Center (G2)
+      [118, -352, 215, -352, 9],      // Vostok City West Bank -> East City Plaza Bridge
+      [248, -368, 252, -225, 10],     // Vostok City Center (G2) -> S. Vostok Industrial (G3)
+      [252, -225, 248, -75, 10],      // S. Vostok Industrial (G3) -> East Strip-Town (G4)
+      [248, -75, 402, 80, 9],         // East Strip-Town (G4) -> Compound Charlie (H5)
+      [248, -75, 95, 85, 10],         // East Strip-Town (G4) -> Superstore (F5)
+      [-240, -80, 95, 85, 10],        // TV Broadcast Station (D4) -> Superstore (F5, Central River Bridge!)
+      [-232, -395, -240, -80, 9],     // Compound Bravo (D2) -> TV Broadcast Station (D4)
+      [-400, -395, -390, -80, 9],     // Quarry (C2) -> West Strip-Town (C4)
+      [-390, -80, -392, 80, 9],       // West Strip-Town (C4) -> Compound Echo (C5)
+      [-520, -240, -522, 75, 9],      // Compound Delta (B3) -> Airport (B5)
+      [-522, 75, -392, 80, 10],       // Airport (B5) -> Compound Echo (C5)
+      [-392, 80, -240, -80, 9],       // Compound Echo (C5) -> TV Broadcast Station (D4)
+      [-240, -80, -235, 225, 9],      // TV Broadcast Station (D4) -> SW Strip-Town (D6)
+      [-235, 225, -375, 372, 9],      // SW Strip-Town (D6) -> Lighthouse (C7)
+      [-235, 225, -82, 380, 9],       // SW Strip-Town (D6) -> Compound Foxtrot (E7)
+      [95, 85, 155, 245, 10],         // Superstore (F5) -> SE Strip-Town (F6)
+      [155, 245, 245, 408, 10],       // SE Strip-Town (F6) -> Cruise Terminal (G7)
+      [-82, 380, 245, 408, 9],        // Compound Foxtrot (E7) -> Cruise Terminal (G7, South Estuary Bridge!)
+      [402, 80, 245, 408, 9]          // Compound Charlie (H5) -> Cruise Terminal (G7)
     ];
 
-    // Pre-registered flat terrain pads for every POI & extraction zone (100% dry inside green landmass lobes!)
+    // Flat terrain pads for all 15 Vostok POIs, 4 Roadside Strip-Towns, Dam abutments & Extracts
     this._poiPads = [
-      { x: 135, z: 95, r: 34, h: 3.4 },         // WAREHOUSE (Central-East River Meander Peninsula)
-      { x: -340, z: -330, r: 32, h: 7.2 },      // COMPOUND (NW Highlands Base)
-      { x: 375, z: 135, r: 38, h: 4.2 },        // CLINIC (East Landmass Hospital + Canopy)
-      { x: -165, z: 305, r: 34, h: 3.0 },       // POLICE STATION (SW Bend 2-Story Precinct)
-      { x: -65, z: 355, r: 36, h: 3.0 },        // FIRE STATION (South Bend 3-Bay Garage + Watch Tower)
-      { x: 395, z: -145, r: 52, h: 9.0 },       // BOSS CAMP (Upper-East Fortified Compound & Command HQ)
-      { x: 245, z: 455, r: 26, h: 5.2 },        // RADIO OUTPOST (SE Peninsula Hilltop)
-      { x: -365, z: -20, r: 32, h: 2.6 },       // RAIL YARD (West Valley Freight Depot)
-      { x: 215, z: -345, r: 26, h: 11.2 },      // NORTH BUNKER (NNE Island Lobe Overlook)
-      // Dam West & East Approach Abutments
-      { x: -120, z: -408, r: 24, h: 12.8 },
-      { x: 176, z: -408, r: 24, h: 12.8 },
-      // Extraction pads (4 corners of custom silhouette)
-      { x: -450, z: -495, r: 16, h: 8.5 },
-      { x: 465, z: -45, r: 16, h: 5.0 },
-      { x: -535, z: -60, r: 16, h: 3.5 },
-      { x: 355, z: 505, r: 16, h: 4.2 },
-      // Southern Peninsula Infil & Checkpoint pads
-      { x: 85, z: 495, r: 18, h: 3.6 },
-      { x: 85, z: 395, r: 20, h: 3.2 }
+      // 9 Core Vostok Landmark POIs
+      { x: -240, z: -80,  r: 36, h: 6.4 },  // TV Broadcast Station (D4)
+      { x: -522, z:  75,  r: 46, h: 4.2 },  // Vostok Airport Terminal & Hangar (B5)
+      { x: -545, z:  15,  r: 28, h: 4.2 },  // Airport North Runway Extension
+      { x: -545, z: 135,  r: 28, h: 4.2 },  // Airport South Runway Extension
+      { x:   95, z:  85,  r: 38, h: 3.8 },  // Vostok Superstore (F5)
+      { x:  245, z: 408,  r: 36, h: 2.1 },  // Cruise Terminal on Southern Beach (G7)
+      { x: -375, z: 372,  r: 28, h: 5.8 },  // Coastal Lighthouse Promontory (C7)
+      { x:  248, z: -368, r: 44, h: 6.8 },  // Vostok City Center East Plaza (G2)
+      { x:  118, z: -355, r: 22, h: 6.4 },  // Vostok City West Riverbank Block
+      { x:  252, z: -225, r: 38, h: 5.8 },  // South Vostok Industrial Construction (G3)
+      { x: -400, z: -395, r: 40, h: 12.5 }, // NW Mountain Quarry Basin (C2)
+      // 6 Guarded Military Compounds (Alpha - Foxtrot)
+      { x:  242, z: -485, r: 30, h: 10.2 }, // Compound Alpha (G1.5)
+      { x: -232, z: -395, r: 30, h: 12.8 }, // Compound Bravo (D2)
+      { x:  402, z:   80, r: 30, h: 5.4 },  // Compound Charlie (H5)
+      { x: -520, z: -240, r: 30, h: 9.6 },  // Compound Delta (B3)
+      { x: -392, z:   80, r: 30, h: 4.8 },  // Compound Echo (C5)
+      { x:  -82, z:  380, r: 30, h: 2.4 },  // Compound Foxtrot (E7)
+      // 4 Roadside Strip-Towns (Houses + % chance Clinic / Police / Fire)
+      { x: -390, z:  -80, r: 30, h: 6.2 },  // West Highway Strip-Town (C4)
+      { x: -235, z:  225, r: 30, h: 3.6 },  // SW Coastal Strip-Town (D6)
+      { x:  248, z:  -75, r: 30, h: 5.0 },  // East Valley Strip-Town (G4)
+      { x:  155, z:  245, r: 30, h: 3.0 },  // SE Oceanfront Road Strip-Town (F6)
+      // Northern Dam West & East Mountain Gorge Abutments
+      { x: -172, z: -408, r: 22, h: 12.8 },
+      { x:   88, z: -408, r: 22, h: 12.8 },
+      // 4 Extraction Zone Pads
+      { x: -485, z: -445, r: 16, h: 16.5 }, // NW Mountain Pass Helipad
+      { x:  465, z: -185, r: 16, h: 6.4 },  // East Taiga Gate
+      { x: -455, z:  285, r: 16, h: 4.4 },  // SW Cliffside Convoy
+      { x:  365, z:  435, r: 16, h: 1.9 }   // SE Beach Evacuation Boat
     ];
 
     this._colliderCellSize = 18;
@@ -149,8 +167,13 @@ class WastelandWorld {
     this._batchStaticGeometry();
     this.buildColliderGrid();
 
-    const spawnY = this.getTerrainHeight(85, 495);
-    this.playerSpawn = new THREE.Vector3(85, spawnY + 1.7, 495);
+    // Pick a randomized infil point from Vostok's outer perimeter + 5 inner POI spawn pool!
+    const infilPool = (this.operatorSpawns && this.operatorSpawns.length > 0)
+      ? this.operatorSpawns
+      : [new THREE.Vector3(-82, this.getTerrainHeight(-82, 415), 415)];
+    const chosenInfil = infilPool[Math.floor(Math.random() * infilPool.length)];
+    const spawnY = this.getTerrainHeight(chosenInfil.x, chosenInfil.z);
+    this.playerSpawn = new THREE.Vector3(chosenInfil.x, spawnY + 1.7, chosenInfil.z);
   }
 
   buildColliderGrid() {
@@ -403,36 +426,56 @@ class WastelandWorld {
     return best;
   }
 
-  _oceanDist() {
-    return -999;
+  _shorelineZ(x) {
+    // Smooth Northern Russian southern bay shoreline (~z=448..464) with SW Lighthouse promontory & G7 Cruise waterfront
+    return 452.0 + Math.sin(x * 0.0055 + 0.6) * 16.0 - Math.max(0, (-x - 240.0) * 0.055);
   }
 
-  _oceanFactor() {
-    return -9;
+  _oceanDist(x, z) {
+    return z - this._shorelineZ(x);
+  }
+
+  _oceanFactor(x, z) {
+    return this._oceanDist(x, z) / 55.0;
   }
 
   _evalAnalyticalTerrainHeight(x, z) {
-    // Broad rolling wasteland hills & elevated northern highlands
-    const ridgeN = Math.max(0, (-z - 120) / 460) * 10.2;
-    const h1 = Math.sin(x * 0.0068 + 0.4) * Math.cos(z * 0.0062 - 0.3) * 7.2;
-    const h2 = Math.sin((x + z) * 0.0115) * 3.1 + Math.cos((x - z * 1.1) * 0.014) * 2.0;
-    const h3 = Math.sin(x * 0.029) * Math.sin(z * 0.027) * 0.80;
-    let baseH = Math.max(2.2, 3.0 + ridgeN + h1 + h2 + h3);
+    // 0. Base Northern Russian taiga hills: elevated in north, gradually lowering southward toward the Southern Beach!
+    const northLift = Math.max(0, (-z + 260) / 820) * 11.5;
+    const southTaper = z > 180 ? Math.min(1, (z - 180) / 270) : 0;
+    const h1 = Math.sin(x * 0.0068 + 0.4) * Math.cos(z * 0.0062 - 0.3) * 6.4 * (1 - southTaper * 0.72);
+    const h2 = (Math.sin((x + z) * 0.0115) * 2.8 + Math.cos((x - z * 1.1) * 0.014) * 1.8) * (1 - southTaper * 0.68);
+    const h3 = Math.sin(x * 0.029) * Math.sin(z * 0.027) * 0.65;
+    let baseH = Math.max(1.85, (2.6 + northLift + h1 + h2 + h3) * (1 - southTaper * 0.52) + southTaper * 1.45);
 
-    // 1. Variable-width River A (Dam tailwater -> Central Confluence Basin -> SSW/ESE meander -> SE estuary)
-    //    & River B (NE Tributary) carved independently and combined via Math.min for seamless Y-confluence!
+    // 0b. Top-Left NW Mountain Range (B1-D2) & Dam Gorge Flanking Mountain Shoulders!
+    const addMountainPeak = (px, pz, rx, rz, peakH) => {
+      const u = Math.hypot((x - px) / rx, (z - pz) / rz);
+      if (u >= 1.0) return 0;
+      const k = 1 - u * u;
+      const ridge = 0.85 + 0.15 * Math.sin(x * 0.045 + z * 0.038);
+      return peakH * k * k * ridge;
+    };
+    baseH += addMountainPeak(-525, -525, 220, 195, 30.0); // Main NW Alpine Peak (A1/B1)
+    baseH += addMountainPeak(-380, -535, 185, 145, 25.0); // North Quarry Ridge (C1)
+    baseH += addMountainPeak(-225, -505, 145, 120, 19.5); // West Dam Gorge Mountain Shoulder (D1/D2)
+    baseH += addMountainPeak(  95, -455, 110,  95, 16.5); // East Dam Gorge Mountain Shoulder (F2)
+    baseH += addMountainPeak(-595, -355, 135, 175, 21.0); // Far-NW Mountain Spine (A2/B2)
+
+    // 1. Carve River A (Dam tailwater -> Central Confluence -> Southern Ocean Estuary)
+    //    & River B (Reservoir Tributary -> Vostok City -> Confluence) seamlessly via Math.min
     const carveBranch = (proj, wY) => {
-      const bankW = 28;
+      const bankW = 26;
       if (proj.margin >= bankW) return baseH;
       if (proj.margin <= 0) {
         const frac = proj.dist / Math.max(1, proj.halfW);
-        const maxDepth = 1.38 + Math.min(0.85, Math.max(0, proj.halfW - 26) * 0.016);
-        return wY - (maxDepth - (maxDepth - 0.44) * frac * frac);
+        const maxDepth = 1.42 + Math.min(0.80, Math.max(0, proj.halfW - 26) * 0.016);
+        return wY - (maxDepth - (maxDepth - 0.45) * frac * frac);
       }
       const u = Math.max(0, Math.min(1, proj.margin / bankW));
       const prof = u * u * (3 - 2 * u);
-      const rimBase = Math.max(wY + 0.68, baseH);
-      return (wY - 0.44) * (1 - prof) + rimBase * prof;
+      const rimBase = Math.max(wY + 0.65, baseH);
+      return (wY - 0.45) * (1 - prof) + rimBase * prof;
     };
 
     const rA = this._projectOntoRiver(x, z, this._riverA);
@@ -441,14 +484,26 @@ class WastelandWorld {
     const hB = carveBranch(rB, this._riverWaterYB(rB.s));
     let h = Math.min(hA, hB);
 
-    // 2. North-Center Hydroelectric Dam Gorge & Lower Powerhouse Apron (x in [-96..152], z in [-480..-324])
+    // 1b. Upper Reservoir Basin north of Northern Dam (E1.5)
+    const res = this.UPPER_RESERVOIR;
+    if (res) {
+      const ru = Math.hypot((x - res.cx) / res.rx, (z - res.cz) / res.rz);
+      if (ru < 1.35 && z < -455) {
+        const rk = Math.max(0, Math.min(1, (ru - 0.85) / 0.50));
+        const rBlend = rk * rk * (3 - 2 * rk);
+        const bedY = res.waterY - 2.2 * (1 - Math.min(1, ru) * 0.55);
+        h = bedY * (1 - rBlend) + h * rBlend;
+      }
+    }
+
+    // 2. Northern Dam Gorge & Lower Powerhouse Apron (E2: x in [-150..65], z in [-468..-322])
     const db = this.DAM_BOUNDS;
-    if (db && x >= db.minX - 24 && x <= db.maxX + 24 && z >= db.minZ - 18 && z <= db.maxZ + 8) {
+    if (db && x >= db.minX - 24 && x <= db.maxX + 24 && z >= db.minZ - 14 && z <= db.maxZ + 8) {
       let lx = 1.0;
       if (x < db.minX) lx = Math.max(0, (x - (db.minX - 24)) / 24);
       else if (x > db.maxX) lx = Math.max(0, ((db.maxX + 24) - x) / 24);
       let lz = 1.0;
-      if (z < db.minZ) lz = Math.max(0, (z - (db.minZ - 18)) / 18);
+      if (z < db.minZ) lz = Math.max(0, (z - (db.minZ - 14)) / 14);
       else if (z > db.maxZ - 2) lz = Math.max(0, ((db.maxZ + 6) - z) / 8);
       const wDam = (lx * lx * (3 - 2 * lx)) * (lz * lz * (3 - 2 * lz));
       if (wDam > 0.001) {
@@ -465,14 +520,31 @@ class WastelandWorld {
       }
     }
 
-    // 3. Smoothly blend toward flat pads around POIs & Extraction Zones
+    // 2b. Southern Beach & Ocean Shelf: gradual slope down to golden-gravel beach & sea floor!
+    const oDist = this._oceanDist(x, z);
+    if (oDist > -72) {
+      if (oDist <= 0) {
+        // Gentle walkable beach ramp from dry coastal plain down to OCEAN_WATER_Y (0.25m)
+        const bt = (oDist + 72) / 72; // 0 inland -> 1 at surf line
+        const bSmooth = bt * bt * (3 - 2 * bt);
+        const surfRimY = this.OCEAN_WATER_Y + 0.12;
+        const beachH = h * (1 - bSmooth) + surfRimY * bSmooth;
+        h = Math.min(h, beachH);
+      } else {
+        // Submerged ocean shelf sloping cleanly down from 0.25m into deep coastal sea
+        const seaDepth = Math.min(3.6, 0.22 + oDist * 0.042);
+        h = Math.min(h, this.OCEAN_WATER_Y - seaDepth);
+      }
+    }
+
+    // 3. Smoothly blend toward flat pads around POIs, Compounds, Strip-Towns & Extraction Zones
     if (this._poiPads) {
       for (let i = 0; i < this._poiPads.length; i++) {
         const pad = this._poiPads[i];
         const dx = x - pad.x;
         const dz = z - pad.z;
         const dist = Math.hypot(dx, dz);
-        const outer = pad.r + 26;
+        const outer = pad.r + 24;
         if (dist < outer) {
           if (dist <= pad.r) return pad.h;
           const t = (dist - pad.r) / (outer - pad.r);
@@ -584,15 +656,15 @@ class WastelandWorld {
       side: THREE.DoubleSide
     });
     const mistSpots = [
-      [25, -265, 210],    // Hydro Dam tailwater gorge mist
-      [4, -55, 250],      // Wide Central Confluence Basin
-      [265, -225, 200],   // NE Tributary valley
-      [-55, 135, 220],    // SSW River Bend
-      [255, 305, 220],    // SE Estuary channel
-      [-345, -45, 210],   // West Rail Yard valley
-      [-235, 185, 210],   // SW Highland slope
-      [285, 25, 220],     // East Landmass meadow
-      [115, 445, 200]     // Southern Peninsula mist
+      [-42, -265, 210],   // Northern Dam tailwater gorge mist
+      [-22, -95, 250],    // Central Vostok Confluence mist
+      [165, -310, 200],   // Vostok City river channel mist
+      [-35, 115, 220],    // Central valley river mist
+      [75, 335, 230],     // Southern estuary & beach mist
+      [-395, -245, 210],  // Quarry / NW mountain pass mist
+      [-240, 145, 210],   // SW coastal plain mist
+      [250, -95, 220],    // East taiga valley mist
+      [245, 365, 220]     // Cruise Terminal waterfront mist
     ];
     for (const [mx, mz, size] of mistSpots) {
       const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size), mistMat);
@@ -1158,14 +1230,15 @@ class WastelandWorld {
     const posAttr = groundGeo.attributes.position;
     const heights = new Float32Array(posAttr.count);
     const colors = new Float32Array(posAttr.count * 3);
-    const colLow = new THREE.Color(0x6b6f4e);     // Gritty desaturated valley olive
-    const colMid = new THREE.Color(0x77784f);     // Sun-baked steppe grass
-    const colHigh = new THREE.Color(0x80805c);    // Highland dry pasture
-    const colSlope = new THREE.Color(0x6a6247);   // Rocky dirt hillside
-    const colSand = new THREE.Color(0xc2b280);    // Southern beach sand
-    const colWet = new THREE.Color(0x5d5a40);     // Wet shoreline band
-    const colShallow = new THREE.Color(0x4a5d4a); // Shallow submerged bed
-    const colDeep = new THREE.Color(0x2e4038);    // Deep lake / ocean bed
+    const colLow = new THREE.Color(0x525d46);     // Cool Northern Russian taiga moss
+    const colMid = new THREE.Color(0x5f684c);     // Sub-arctic pine & heather meadow
+    const colHigh = new THREE.Color(0x6d705c);    // Windswept northern tundra
+    const colSlope = new THREE.Color(0x5e6266);   // Cold granite mountain rock
+    const colSnow = new THREE.Color(0xdde5ea);    // Alpine snow-dusted mountain peaks
+    const colSand = new THREE.Color(0xc4b588);    // Southern coastal beach sand & shingle
+    const colWet = new THREE.Color(0x595642);     // Wet shoreline band
+    const colShallow = new THREE.Color(0x3f585c); // Shallow submerged sea/river bed
+    const colDeep = new THREE.Color(0x223844);    // Deep ocean & reservoir bed
     const tmpCol = new THREE.Color();
 
     for (let i = 0; i < posAttr.count; i++) {
@@ -1175,33 +1248,46 @@ class WastelandWorld {
       posAttr.setY(i, vy);
       heights[i] = vy;
 
-      // Compute approximate slope for natural dirt/rock blending
+      // Compute approximate slope for granite rock & snow-peak blending
       const hx = this._evalAnalyticalTerrainHeight(vx + 3, vz) - vy;
       const hz = this._evalAnalyticalTerrainHeight(vx, vz + 3) - vy;
       const slope = Math.hypot(hx, hz) / 3;
 
-      if (vy < 0.8) {
-        tmpCol.copy(colLow).lerp(colMid, THREE.MathUtils.clamp((vy + 2.5) / 3.3, 0, 1));
-      } else if (vy < 7.5) {
-        tmpCol.copy(colMid).lerp(colHigh, THREE.MathUtils.clamp((vy - 0.8) / 6.7, 0, 1));
+      if (vy < 1.5) {
+        tmpCol.copy(colLow).lerp(colMid, THREE.MathUtils.clamp((vy + 2.0) / 3.5, 0, 1));
+      } else if (vy < 9.5) {
+        tmpCol.copy(colMid).lerp(colHigh, THREE.MathUtils.clamp((vy - 1.5) / 8.0, 0, 1));
       } else {
-        tmpCol.copy(colHigh);
+        tmpCol.copy(colHigh).lerp(colSlope, THREE.MathUtils.clamp((vy - 9.5) / 9.0, 0, 0.72));
       }
-      if (slope > 0.16) {
-        tmpCol.lerp(colSlope, THREE.MathUtils.clamp((slope - 0.16) * 2.6, 0, 0.78));
+      if (slope > 0.15) {
+        tmpCol.lerp(colSlope, THREE.MathUtils.clamp((slope - 0.15) * 2.8, 0, 0.85));
       }
-      // Sandy/silty riverbank & submerged riverbed tinting
+      // Snow-dusted Northern Russian mountain peaks (y > 20m in NW range & Dam shoulders)
+      if (vy > 19.5) {
+        const snowK = THREE.MathUtils.clamp((vy - 19.5) / 9.5, 0, 0.92) * (1 - THREE.MathUtils.clamp((slope - 0.45) * 1.4, 0, 0.55));
+        tmpCol.lerp(colSnow, snowK);
+      }
+
+      // Southern coastal sandy beach band (gradually blending from coastal grass into beach sand)
+      const oDist = this._oceanDist(vx, vz);
+      if (oDist > -58 && oDist <= 6) {
+        const sandK = THREE.MathUtils.clamp((oDist + 58) / 42, 0, 1);
+        tmpCol.lerp(colSand, sandK * 0.86);
+      }
+
+      // Sandy/silty riverbank, reservoir & submerged ocean/riverbed tinting
       const wSurf = this.getWaterSurfaceY(vx, vz);
       if (wSurf !== null) {
         const subDepth = wSurf - vy;
-        if (subDepth > -0.65 && subDepth <= 0.05) {
-          tmpCol.lerp(colSand, 0.36);
-          tmpCol.lerp(colWet, 0.42);
+        if (subDepth > -0.65 && subDepth <= 0.08) {
+          tmpCol.lerp(colSand, 0.45);
+          tmpCol.lerp(colWet, 0.35);
         }
         if (subDepth > 0.02) {
           const dk = Math.max(0, Math.min(1, subDepth / 2.2));
           tmpCol.lerp(colShallow, Math.min(0.85, 0.35 + dk * 0.5));
-          if (subDepth > 1.35) tmpCol.lerp(colDeep, Math.min(0.9, (subDepth - 1.35) / 2.4));
+          if (subDepth > 1.35) tmpCol.lerp(colDeep, Math.min(0.92, (subDepth - 1.35) / 2.4));
         }
       }
       colors[i * 3] = tmpCol.r;
@@ -1319,6 +1405,16 @@ class WastelandWorld {
     if (rB.margin < 3.0) {
       level = Math.max(level, this._riverWaterYB(rB.s));
     }
+    if (this._oceanDist(x, z) > 0) {
+      level = Math.max(level, this.OCEAN_WATER_Y);
+    }
+    const res = this.UPPER_RESERVOIR;
+    if (res && z < -462) {
+      const ru = Math.hypot((x - res.cx) / res.rx, (z - res.cz) / res.rz);
+      if (ru <= 1.0) {
+        level = Math.max(level, res.waterY);
+      }
+    }
     return level === -Infinity ? null : level;
   }
 
@@ -1344,7 +1440,8 @@ class WastelandWorld {
       polygonOffsetFactor: -1,
       polygonOffsetUnits: -2
     });
-    const riverMat = mkWater(0x316b82, 0.84);
+    const riverMat = mkWater(0x2a6178, 0.85);
+    const oceanMat = mkWater(0x1f4b63, 0.88);
     this.RIVER_POLYGONS = [];
 
     // Smooth variable-width sloped river & confluence basin ribbon mesh!
@@ -1395,6 +1492,63 @@ class WastelandWorld {
 
     buildVariableSlopedRibbon(this._riverA, (s) => this._riverWaterYA(s), riverMat);
     buildVariableSlopedRibbon(this._riverB, (s) => this._riverWaterYB(s), riverMat);
+
+    // Upper Reservoir Lake north of the Northern Dam (E1.5, y = 13.6m)
+    const res = this.UPPER_RESERVOIR;
+    if (res) {
+      const resGeo = new THREE.CircleGeometry(1, 32);
+      resGeo.rotateX(-Math.PI / 2);
+      resGeo.scale(res.rx, 1, res.rz);
+      const resMesh = new THREE.Mesh(resGeo, riverMat);
+      resMesh.position.set(res.cx, res.waterY, res.cz);
+      resMesh.renderOrder = 2;
+      this.scene.add(resMesh);
+      this.waterMeshes.push(resMesh);
+      const resPoly = [];
+      for (let a = 0; a < 28; a++) {
+        const th = (a / 28) * Math.PI * 2;
+        resPoly.push([res.cx + Math.cos(th) * res.rx, res.cz + Math.sin(th) * res.rz]);
+      }
+      this.RESERVOIR_POLY = resPoly;
+    }
+
+    // Southern Ocean Expanse & White Beach Surf Foam (south of _shorelineZ(x))
+    const oceanVerts = [];
+    const oceanIdx = [];
+    const foamVerts = [];
+    const foamIdx = [];
+    const shoreline2D = [];
+    const stepsX = 48;
+    for (let i = 0; i <= stepsX; i++) {
+      const ox = -880 + (1760 * i) / stepsX;
+      const sz = this._shorelineZ(ox) - 3.0;
+      shoreline2D.push([ox, sz]);
+      oceanVerts.push(ox, this.OCEAN_WATER_Y, sz);
+      oceanVerts.push(ox, this.OCEAN_WATER_Y, 960);
+      foamVerts.push(ox, this.OCEAN_WATER_Y + 0.04, sz - 0.5);
+      foamVerts.push(ox, this.OCEAN_WATER_Y + 0.04, sz + 6.5);
+      if (i > 0) {
+        const b = i * 2;
+        oceanIdx.push(b - 2, b - 1, b, b - 1, b + 1, b);
+        foamIdx.push(b - 2, b - 1, b, b - 1, b + 1, b);
+      }
+    }
+    const oGeo = new THREE.BufferGeometry();
+    oGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(oceanVerts), 3));
+    oGeo.setIndex(oceanIdx);
+    oGeo.computeVertexNormals();
+    const oMesh = new THREE.Mesh(oGeo, oceanMat);
+    oMesh.renderOrder = 1;
+    this.scene.add(oMesh);
+    this.waterMeshes.push(oMesh);
+
+    const fGeo = new THREE.BufferGeometry();
+    fGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(foamVerts), 3));
+    fGeo.setIndex(foamIdx);
+    const fMesh = new THREE.Mesh(fGeo, mkWater(0xdbeaf0, 0.42));
+    fMesh.renderOrder = 3;
+    this.scene.add(fMesh);
+    this.OCEAN_POLY = shoreline2D.concat([[880, 920], [-880, 920]]);
   }
 
   _buildForestAndFoliage() {
@@ -1424,14 +1578,18 @@ class WastelandWorld {
       if (Math.abs(x) > this.mapHalfSize + 120 || Math.abs(z) > this.mapHalfSize + 120) return false;
       const outD = this.getOutOfBoundsDist(x, z);
       if (strictInside ? (outD > -4) : (outD > 95)) return false;
-      // Keep forests out of rivers & confluence basin
-      if (this.getWaterDepth && this.getWaterDepth(x, z) > 0.15) return false;
-      // Keep clear of Hydroelectric Dam structure
+      // Keep forests off the Southern Beach & Ocean
+      if (this._oceanDist && this._oceanDist(x, z) > -34) return false;
+      // Keep forests out of rivers, reservoir & confluence basin
+      if (this.getWaterDepth && this.getWaterDepth(x, z) > 0.12) return false;
+      // Keep clear of Northern Dam structure
       const db = this.DAM_BOUNDS;
       if (db && x >= db.minX - 18 && x <= db.maxX + 18 && z >= db.minZ - 14 && z <= db.maxZ + 18) return false;
+      // Keep clear of Airport Runway (-552, z in [-5..155])
+      if (x >= -570 && x <= -532 && z >= -8 && z <= 158) return false;
       // Keep clear of tactical roads & bridges
       if (isNearAnyRoad(x, z, 8)) return false;
-      // Keep clear of POI & Extraction pads
+      // Keep clear of POI, Compound, Strip-Town & Extraction pads
       for (let i = 0; i < this._poiPads.length; i++) {
         const p = this._poiPads[i];
         if (Math.hypot(x - p.x, z - p.z) < p.r + padMargin) return false;
@@ -1439,9 +1597,8 @@ class WastelandWorld {
       // Keep clear of operator spawn points
       for (let i = 0; i < this.operatorSpawns.length; i++) {
         const sp = this.operatorSpawns[i];
-        if (Math.hypot(x - sp.x, z - sp.z) < 14) return false;
+        if (Math.hypot(x - sp.x, z - sp.z) < 12) return false;
       }
-      if (Math.hypot(x - 85, z - 495) < 18) return false;
       return true;
     };
 
@@ -2068,6 +2225,27 @@ class WastelandWorld {
     canvas.width = 512;
     canvas.height = 192;
     const ctx = canvas.getContext('2d');
+
+    if (type && typeof type === 'object') {
+      ctx.fillStyle = type.bg || '#1c2329';
+      ctx.fillRect(0, 0, 512, 192);
+      ctx.strokeStyle = type.accent || '#f5a623';
+      ctx.lineWidth = 8;
+      ctx.strokeRect(8, 8, 496, 176);
+      ctx.fillStyle = type.accent || '#f5a623';
+      ctx.fillRect(16, 16, 480, 12);
+      ctx.fillStyle = type.fg || '#f2f6f9';
+      const titleStr = String(type.title || 'VOSTOK');
+      const fontSz = titleStr.length > 15 ? 40 : (titleStr.length > 11 ? 48 : 56);
+      ctx.font = `900 ${fontSz}px Consolas, Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(titleStr, 256, 84);
+      ctx.fillStyle = type.accent || '#69f0ae';
+      ctx.font = '700 22px Consolas, Arial, sans-serif';
+      ctx.fillText(String(type.sub || 'VOSTOK // SECTOR'), 256, 140);
+      return new THREE.CanvasTexture(canvas);
+    }
 
     if (type === 'clinic') {
       // Crisp white medical signboard with big GREEN MEDICAL PLUS INSIDE A CIRCLE
@@ -2771,6 +2949,21 @@ class WastelandWorld {
       name = customName || 'Police / Fire Locker';
       w = 1.2; h = 0.8; d = 0.75;
       items = this._rollLoot('police_fire', 3);
+    } else if (kind === 'office') {
+      mat = this._materials.metal;
+      name = customName || 'Office Filing Cabinet';
+      w = 0.72; h = 1.15; d = 0.62;
+      items = this._rollLoot('office', 3);
+    } else if (kind === 'household') {
+      mat = this._materials.wood;
+      name = customName || 'Household Cabinet';
+      w = 1.05; h = 0.78; d = 0.65;
+      items = this._rollLoot('household', 3);
+    } else if (kind === 'valuables') {
+      mat = this._materials.bossDark;
+      name = customName || 'Security Safe';
+      w = 0.82; h = 0.86; d = 0.72;
+      items = this._rollLoot('valuables', 2 + this.zone.lootTierBonus);
     } else {
       items = this._rollLoot('supply', count);
     }
@@ -2780,7 +2973,7 @@ class WastelandWorld {
     let mesh;
     let lid = null;
 
-    if (kind === 'hospital' || kind === 'police_fire') {
+    if (kind === 'hospital' || kind === 'police_fire' || kind === 'office' || kind === 'valuables') {
       // Wall/medical cabinet with recessed interior & hinged front door
       mesh = this._addBox(x, baseY + h / 2, z - 0.02, w, h, Math.max(0.2, d - 0.04), mat, true);
       const back = new THREE.Mesh(new THREE.BoxGeometry(w * 0.88, h * 0.80, 0.02), recessMat);
@@ -2949,597 +3142,776 @@ class WastelandWorld {
       this._addBox(tx, by + h * 0.98, tz, w * 0.42, 0.18, d + 0.3, this._materials.crateMil, false);
     };
 
-    // === 9 TACTICAL POIs TAILORED TO THE 3 LANDMASS LOBES & NORTH HYDRO DAM ===
+    // === VOSTOK BATTLEFIELD ATMOSPHERE HELPERS (Smoke Plumes, Wrecks, Downed Helis, Casualties, Compounds & Strip-Towns) ===
+    const smokeTex = (() => {
+      const c = document.createElement('canvas');
+      c.width = 128; c.height = 128;
+      const cx2 = c.getContext('2d');
+      const grd = cx2.createRadialGradient(64, 64, 6, 64, 64, 60);
+      grd.addColorStop(0, 'rgba(32, 35, 38, 0.64)');
+      grd.addColorStop(0.55, 'rgba(46, 50, 54, 0.30)');
+      grd.addColorStop(1, 'rgba(58, 62, 66, 0.0)');
+      cx2.fillStyle = grd;
+      cx2.fillRect(0, 0, 128, 128);
+      return new THREE.CanvasTexture(c);
+    })();
 
-    // 1. Military Compound (NW Highlands Lobe: -340, -330)
-    {
-      const cx = -340, cz = -330;
-      this._addBuilding(cx, cz, 18, 16, 5.0, 'east', null, (by, bh) => {
-        // West Armory Wing
-        this._addPartition(cx - 4.0, cz - 8.0, cx - 4.0, cz + 8.0, by, bh, [
-          { at: cz, w: 1.8, door: 'steel', label: 'Armory Door' }
-        ]);
-        // NE Security Office
-        this._addPartition(cx + 4.6, cz - 3.2, cx + 9.0, cz - 3.2, by, bh, []);
-        this._addPartition(cx + 4.6, cz - 8.0, cx + 4.6, cz - 3.2, by, bh, [
-          { at: cz - 4.4, w: 1.7, door: 'wood', label: 'Office Door' }
-        ]);
-        addDeskProp(cx + 7.0, by + 0.16, cz - 6.6);
-        this._addLootContainer(cx + 7.4, 0.16, cz - 4.4, 'supply', 'Compound Office Safe');
+    const addSmokePlume = (sx, baseY, sz, heightScale = 1.0) => {
+      const puffs = [];
+      for (let p = 0; p < 6; p++) {
+        const mat = new THREE.SpriteMaterial({
+          map: smokeTex,
+          transparent: true,
+          depthWrite: false,
+          opacity: 0.48
+        });
+        const sp = new THREE.Sprite(mat);
+        const sz0 = (5.5 + p * 2.8) * heightScale;
+        sp.scale.set(sz0, sz0, 1);
+        sp.position.set(sx, baseY + 2.0 + p * 6.5 * heightScale, sz);
+        this.scene.add(sp);
+        puffs.push({ sprite: sp, phase: p / 6, baseScale: sz0 });
+      }
+      const ember = new THREE.Mesh(
+        new THREE.BoxGeometry(1.4, 0.25, 1.4),
+        new THREE.MeshBasicMaterial({ color: 0xff5722 })
+      );
+      ember.position.set(sx, baseY + 0.14, sz);
+      this.scene.add(ember);
+      this.smokePlumes.push({ x: sx, y: baseY, z: sz, scale: heightScale, puffs });
+    };
+
+    const addWreckedVehicle = (vx, vz, rotY = 0, isAPC = false, smoking = false) => {
+      const vy = this.getTerrainHeight(vx, vz);
+      const g = new THREE.Group();
+      g.position.set(vx, vy, vz);
+      g.rotation.y = rotY;
+      if (isAPC) {
+        const hull = new THREE.Mesh(new THREE.BoxGeometry(2.7, 1.45, 6.6), this._materials.rustOlive);
+        hull.position.y = 1.05;
+        const nose = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.85, 1.4), this._materials.bossDark);
+        nose.position.set(0, 0.95, 3.5);
+        const turret = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.95, 0.65, 8), this._materials.bossDark);
+        turret.position.set(0, 2.05, 0.6);
+        const gun = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.14, 2.2), this._materials.windowFrame);
+        gun.position.set(0, 2.10, 1.9);
+        g.add(hull, nose, turret, gun);
+        for (const wzOff of [-2.2, -0.75, 0.75, 2.2]) {
+          for (const wxOff of [-1.35, 1.35]) {
+            const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.48, 0.48, 0.34, 10), this._materials.windowFrame);
+            wh.rotation.z = Math.PI / 2;
+            wh.position.set(wxOff, 0.48, wzOff);
+            g.add(wh);
+          }
+        }
+        this.colliders.push({ minX: vx - 2.6, maxX: vx + 2.6, minY: vy, maxY: vy + 2.4, minZ: vz - 3.2, maxZ: vz + 3.2 });
+      } else {
+        const bodyMat = Math.abs(Math.sin(vx)) > 0.5 ? this._materials.rustBlue : this._materials.rustRed;
+        const lower = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.72, 4.3), bodyMat);
+        lower.position.y = 0.62;
+        const cab = new THREE.Mesh(new THREE.BoxGeometry(1.72, 0.62, 2.1), this._materials.darkConcrete);
+        cab.position.set(0, 1.25, -0.2);
+        g.add(lower, cab);
+        for (const wzOff of [-1.35, 1.35]) {
+          for (const wxOff of [-0.98, 0.98]) {
+            const wh = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.34, 0.24, 8), this._materials.windowFrame);
+            wh.rotation.z = Math.PI / 2;
+            wh.position.set(wxOff, 0.34, wzOff);
+            g.add(wh);
+          }
+        }
+        this.colliders.push({ minX: vx - 1.8, maxX: vx + 1.8, minY: vy, maxY: vy + 1.65, minZ: vz - 2.1, maxZ: vz + 2.1 });
+      }
+      this.scene.add(g);
+      if (smoking) addSmokePlume(vx, vy + 1.2, vz, isAPC ? 1.15 : 0.75);
+    };
+
+    const addFallenCasualtyAndEvac = (ex, ez, rotY = 0) => {
+      const ey = this.getTerrainHeight(ex, ez);
+      const g = new THREE.Group();
+      g.position.set(ex, ey, ez);
+      g.rotation.y = rotY;
+      const tarp = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.24, 1.78), this._materials.bossDark);
+      tarp.position.set(0, 0.13, 0);
+      const suitcase1 = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.22, 0.44), this._materials.rustBlue);
+      suitcase1.position.set(0.85, 0.12, 0.35);
+      suitcase1.rotation.y = 0.4;
+      const suitcase2 = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.38, 0.26), this._materials.rustRed);
+      suitcase2.position.set(-0.75, 0.19, -0.25);
+      g.add(tarp, suitcase1, suitcase2);
+      this.scene.add(g);
+    };
+
+    const addDownedHelicopter = (hx, hz, rotY = 0.4, crashName = 'Downed Mi-8 Gunship') => {
+      const hy = this.getTerrainHeight(hx, hz);
+      const g = new THREE.Group();
+      g.position.set(hx, hy, hz);
+      g.rotation.set(0.08, rotY, -0.14);
+      const scar = new THREE.Mesh(new THREE.CircleGeometry(7.5, 14), new THREE.MeshLambertMaterial({ color: 0x1c1d1b }));
+      scar.rotation.x = -Math.PI / 2;
+      scar.position.set(hx, hy + 0.05, hz);
+      this.scene.add(scar);
+
+      const fuse = new THREE.Mesh(new THREE.BoxGeometry(2.8, 2.5, 8.6), this._materials.rustOlive);
+      fuse.position.y = 1.35;
+      const nose = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.9, 2.4), this._materials.windowFrame);
+      nose.position.set(0, 1.15, 5.1);
+      const tail = new THREE.Mesh(new THREE.BoxGeometry(0.95, 1.0, 6.8), this._materials.rustOlive);
+      tail.position.set(0.6, 1.75, -7.2);
+      tail.rotation.y = 0.24;
+      const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.28, 1.1, 8), this._materials.metal);
+      mast.position.set(0, 2.95, 0.6);
+      const blade1 = new THREE.Mesh(new THREE.BoxGeometry(9.6, 0.08, 0.38), this._materials.bossDark);
+      blade1.position.set(0, 3.35, 0.6);
+      blade1.rotation.z = 0.12;
+      const blade2 = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.08, 8.8), this._materials.bossDark);
+      blade2.position.set(0, 3.32, 0.6);
+      g.add(fuse, nose, tail, mast, blade1, blade2);
+      this.scene.add(g);
+
+      this.colliders.push({ minX: hx - 3.6, maxX: hx + 3.6, minY: hy, maxY: hy + 3.1, minZ: hz - 4.8, maxZ: hz + 4.8 });
+      addSmokePlume(hx, hy + 1.8, hz, 1.35);
+      addFallenCasualtyAndEvac(hx + 4.8, hz + 2.2, rotY);
+      this._addLootContainer(hx - 4.2, 0, hz + 1.5, 'military', `${crashName} Avionics Case`);
+      if (Math.random() < 0.55) {
+        this.spawnGroundItem('black_box', 1, new THREE.Vector3(hx + 3.8, hy + 0.05, hz - 2.0));
+      }
+    };
+
+    const addFallenPineLog = (lx, lz, rotY = 0) => {
+      const ly = this.getTerrainHeight(lx, lz);
+      const log = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.36, 7.8, 7), this._materials.wood);
+      log.rotation.z = Math.PI / 2;
+      log.rotation.y = rotY;
+      log.position.set(lx, ly + 0.28, lz);
+      const crater = new THREE.Mesh(new THREE.CircleGeometry(2.6, 10), new THREE.MeshLambertMaterial({ color: 0x26241f }));
+      crater.rotation.x = -Math.PI / 2;
+      crater.position.set(lx - Math.cos(rotY) * 3.6, ly + 0.04, lz + Math.sin(rotY) * 3.6);
+      this.scene.add(log, crater);
+    };
+
+    // Reusable Guarded Military Compound Builder (Compounds Alpha - Foxtrot)
+    const buildGuardedCompound = (codeName, gridRef, cx, cz) => {
+      const wSpan = 42, dSpan = 38, wallH = 2.9;
+      const baseY = this.getTerrainHeight(cx, cz);
+      this._addBox(cx - 12.5, baseY + wallH * 0.5, cz - dSpan * 0.5, 17, wallH, 0.9, this._materials.darkConcrete, true);
+      this._addBox(cx + 12.5, baseY + wallH * 0.5, cz - dSpan * 0.5, 17, wallH, 0.9, this._materials.darkConcrete, true);
+      this._addBox(cx - 12.5, baseY + wallH * 0.5, cz + dSpan * 0.5, 17, wallH, 0.9, this._materials.darkConcrete, true);
+      this._addBox(cx + 12.5, baseY + wallH * 0.5, cz + dSpan * 0.5, 17, wallH, 0.9, this._materials.darkConcrete, true);
+      this._addBox(cx - wSpan * 0.5, baseY + wallH * 0.5, cz, 0.9, wallH, dSpan, this._materials.darkConcrete, true);
+      this._addBox(cx + wSpan * 0.5, baseY + wallH * 0.5, cz, 0.9, wallH, dSpan, this._materials.darkConcrete, true);
+      this._addSignBoard(cx, baseY + 4.1, cz + dSpan * 0.5 + 0.3, 6.4, 2.1, 0, {
+        title: `COMPOUND ${codeName}`,
+        sub: `VOSTOK GARRISON // SECTOR ${gridRef}`,
+        bg: '#1e241e',
+        accent: '#ab47bc'
       });
-      this.pois.push({ name: 'COMPOUND', x: cx, z: cz, color: '#ab47bc', threat: 'high' });
-      this._addGunLocker(cx - 8.1, cz - 3.0, Math.PI / 2, 'military', 'Compound Rifle Locker');
-      this._addGunLocker(cx - 8.1, cz + 2.5, Math.PI / 2, 'military', 'Compound Armory Locker');
-      this._addLootContainer(cx - 6.0, 0.16, cz + 6.2, 'supply', 'Compound Materials Crate');
-      this._addWallFirstAidKit(cx + 4.0, cz + 7.45, 'south', 'Compound Wall First Aid Kit');
-      this._addMetalShelf(cx - 2.0, cz - 6.9, 0, [
-        { id: 'ammo_545', qty: 30 }, { id: 'armor_plate', qty: 2 }, { id: 'frag_grenade', qty: 1 }
+
+      // 1. Permanent Primary Barracks (NW quadrant)
+      const bx = cx - 10.5, bz = cz - 8.5;
+      this._addBuilding(bx, bz, 14, 10, 4.4, 'south', this._materials.concrete, (by, bh) => {
+        this._addPartition(bx + 2.2, bz - 5.0, bx + 2.2, bz + 5.0, by, bh, [
+          { at: bz + 1.4, w: 1.7, door: 'wood', label: 'Barracks Arms Room' }
+        ]);
+        addDeskProp(bx + 4.8, by + 0.16, bz - 2.8);
+      });
+      this._addGunLocker(bx + 5.2, bz + 2.4, -Math.PI / 2, 'military', `${codeName} Barracks Gun Locker`);
+      this._addLootContainer(bx - 4.2, 0.16, bz - 2.6, 'military', `${codeName} Barracks Footlocker`);
+      this._addMetalShelf(bx - 4.2, bz + 2.4, 0, [
+        { id: 'cloth_roll', qty: 2 }, { id: 'kevlar_padding', qty: 1 }, { id: 'sterile_bandage', qty: 1 }
       ]);
-      this._addMetalShelf(cx + 3.0, cz - 6.9, 0, [
-        { id: 'ammo_762', qty: 20 }, { id: 'gunpowder', qty: 2 }, { id: 'polymer_parts', qty: 2 }
+
+      // 2. Permanent Supply Depot (NE quadrant)
+      const sx = cx + 11.0, sz = cz - 9.0;
+      this._addBuilding(sx, sz, 12, 9.5, 4.4, 'south', this._materials.rustOlive, () => {});
+      this._addLootContainer(sx - 3.6, 0.16, sz - 2.4, 'supply', `${codeName} Depot Supply Crate`);
+      this._addMetalShelf(sx + 3.2, sz - 2.2, 0, [
+        { id: 'brass_casings', qty: 2 }, { id: 'gunpowder', qty: 2 }, { id: 'metallic_alloy', qty: 1 }
       ]);
-      this._addWorkbenchTable(cx + 0.5, cz, 0, [
-        { id: 'armor_plate', qty: 2 }, { id: 'scrap_metal', qty: 3 }
+      this._addWorkbenchTable(sx - 3.2, sz + 2.0, 0, [
+        { id: 'heavy_casings', qty: 2 }, { id: 'casings_12g', qty: 2 }
       ]);
-      this._addContainer(cx + 18, cz - 10, 0, this._materials.rustOlive);
-      this._addBarrier(cx + 15, cz + 9, true);
-    }
 
-    // 2. Large Multi-Room Field Hospital & Clinic (East Landmass: 375, 135) — 28m x 20m White Hospital + Ambulance Canopy + 6 Patient Rooms!
-    {
-      const cx = 375, cz = 135;
-      const by = this.getTerrainHeight(cx, cz);
-      this._addBuilding(cx, cz, 28, 20, 4.8, 'west', this._materials.whiteWall);
-      this.pois.push({ name: 'CLINIC', x: cx, z: cz, color: '#69f0ae', threat: 'medium' });
+      // 3. Hardened Concrete Command Bunker (SE quadrant)
+      const kbx = cx + 11.5, kbz = cz + 8.5;
+      this._addBuilding(kbx, kbz, 11, 9, 3.8, 'west', this._materials.bossDark, (by) => {
+        addDeskProp(kbx + 2.6, by + 0.16, kbz - 2.2);
+      });
+      this._addLootContainer(kbx + 2.8, 0.16, kbz + 2.2, 'military', `${codeName} Bunker Ordnance Case`);
+      this._addLootContainer(kbx - 2.2, 0.16, kbz - 2.6, 'office', `${codeName} Intelligence Cabinet`);
 
-      // Covered Ambulance Drop-Off Canopy on West Front Entrance (instantly recognizable hospital silhouette!)
-      this._addBox(cx - 17.2, by + 3.8, cz, 6.4, 0.36, 7.6, this._materials.whiteWall, false);
-      this._addBox(cx - 20.1, by + 1.9, cz - 3.4, 0.45, 3.8, 0.45, this._materials.metal, true);
-      this._addBox(cx - 20.1, by + 1.9, cz + 3.4, 0.45, 3.8, 0.45, this._materials.metal, true);
-      // Giant Green Medical Plus-in-Circle Sign on Ambulance Canopy & Roofline!
-      this._addSignBoard(cx - 20.5, by + 5.1, cz, 8.2, 3.1, -Math.PI / 2, 'clinic');
-      this._addSignBoard(cx, by + 6.2, cz - 10.3, 8.6, 3.2, Math.PI, 'clinic');
-      this._addSignBoard(cx, by + 6.2, cz + 10.3, 8.6, 3.2, 0, 'clinic');
-      // Extra panoramic hospital windows along West front facade
-      this._addWindow(cx - 14.24, by + 2.5, cz - 6.0, 3.2, 1.55, -Math.PI / 2);
-      this._addWindow(cx - 14.24, by + 2.5, cz + 6.0, 3.2, 1.55, -Math.PI / 2);
+      // 4. Dual Gear Tents (SW quadrant) sheltering Supply Crates & Weapon Lockers
+      const t1x = cx - 11.0, t1z = cz + 8.5;
+      addMilitaryTent(t1x, this.getTerrainHeight(t1x, t1z), t1z, 8.6, 6.4);
+      this._addGunLocker(t1x - 2.4, t1z - 1.2, Math.PI / 2, 'military', `${codeName} Tent Weapon Locker`);
+      this._addLootContainer(t1x + 2.2, 0, t1z + 1.0, 'supply', `${codeName} Tent Gear Crate`);
 
-      // Front Triage & Reception Desk
-      this._addBox(cx - 9.8, by + 0.55, cz - 3.0, 1.3, 1.1, 4.6, this._materials.crateMed, true);
-      this._addWallFirstAidKit(cx - 7.5, cz - 9.55, 'north', 'Clinic Lobby First Aid Kit');
+      const t2x = cx - 1.2, t2z = cz + 9.5;
+      addMilitaryTent(t2x, this.getTerrainHeight(t2x, t2z), t2z, 7.6, 5.8);
+      this._addLootContainer(t2x - 1.6, 0, t2z, 'military', `${codeName} Field Munitions Case`);
+      this._addWallFirstAidKit(bx + 1.0, bz + 5.3, 'south', `${codeName} Triage First Aid`);
 
-      // Central Corridor + 6 Partitioned Patient / ICU / Pharmacy Rooms (3 North, 3 South) ALL WITH INTERACTIVE DOORS!
-      for (const side of [-1, 1]) {
-        const wallZ = cz + side * 2.2;
-        const roomZ = cz + side * 6.0;
-        const bedZ = cz + side * 7.2;
-        // Longitudinal corridor wall segments leaving 3 wide doorways
-        for (const rx of [cx - 4.5, cx + 2.5, cx + 9.5]) {
-          this._addBox(rx - 3.5, by + 2.25, roomZ, 0.24, 4.5, 7.6, this._materials.whiteWall, true);
-          this._addBox(rx + 1.0, by + 2.25, wallZ, 4.4, 4.5, 0.24, this._materials.whiteWall, true);
-          const roomNum = side === -1 ? (rx < cx ? 'Exam 1' : (rx < cx + 5 ? 'ICU 1' : 'Trauma')) : (rx < cx ? 'Exam 2' : (rx < cx + 5 ? 'Ward B' : 'Pharmacy'));
-          this._addDoor(rx - 2.3, by + 0.16, wallZ, 1.75, 2.6, 0, `${roomNum} Door`, 'wood');
-          addHospitalBed(rx + 0.6, by, bedZ, 0);
+      this.pois.push({ name: `COMPOUND ${codeName}`, x: cx, z: cz, color: '#ab47bc', threat: 'high' });
+    };
+
+    // Reusable Roadside Strip-Town Builder (Houses + % chance of small Clinic, Police Station, or Fire Station!)
+    const buildRoadsideStripTown = (cx, cz, verticalRoad = true) => {
+      const plots = verticalRoad
+        ? [
+            { x: cx - 14.5, z: cz - 11.0, door: 'east' },
+            { x: cx + 14.5, z: cz - 11.0, door: 'west' },
+            { x: cx - 14.5, z: cz + 11.0, door: 'east' },
+            { x: cx + 14.5, z: cz + 11.0, door: 'west' }
+          ]
+        : [
+            { x: cx - 11.0, z: cz - 14.5, door: 'south' },
+            { x: cx + 11.0, z: cz - 14.5, door: 'south' },
+            { x: cx - 11.0, z: cz + 14.5, door: 'north' },
+            { x: cx + 11.0, z: cz + 14.5, door: 'north' }
+          ];
+
+      const usedSpecial = new Set();
+      for (let i = 0; i < plots.length; i++) {
+        const pl = plots[i];
+        const roll = Math.random();
+        let bType = 'house';
+        if (roll < 0.16 && !usedSpecial.has('clinic')) {
+          bType = 'clinic';
+          usedSpecial.add('clinic');
+        } else if (roll < 0.31 && !usedSpecial.has('police')) {
+          bType = 'police';
+          usedSpecial.add('police');
+        } else if (roll < 0.44 && !usedSpecial.has('fire')) {
+          bType = 'fire';
+          usedSpecial.add('fire');
+        }
+
+        const signRot = pl.door === 'east' ? Math.PI / 2 : (pl.door === 'west' ? -Math.PI / 2 : (pl.door === 'north' ? Math.PI : 0));
+        const signOffX = pl.door === 'east' ? 5.6 : (pl.door === 'west' ? -5.6 : 0);
+        const signOffZ = pl.door === 'south' ? 4.6 : (pl.door === 'north' ? -4.6 : 0);
+
+        if (bType === 'clinic') {
+          this._addBuilding(pl.x, pl.z, 10.5, 8.6, 4.0, pl.door, this._materials.whiteWall, (by) => {
+            addHospitalBed(pl.x - 2.2, by + 0.16, pl.z - 1.8, 0);
+            addDeskProp(pl.x + 2.4, by + 0.16, pl.z + 1.8);
+          });
+          this._addSignBoard(pl.x + signOffX, this.getTerrainHeight(pl.x, pl.z) + 3.4, pl.z + signOffZ, 4.2, 1.5, signRot, 'clinic');
+          this._addLootContainer(pl.x + 2.8, 0.16, pl.z - 2.2, 'hospital', 'Roadside Clinic Med Cabinet');
+          this._addWallFirstAidKit(pl.x - 4.6, pl.z + 1.2, 'east', 'Clinic First Aid Kit');
+          this._addWorkbenchTable(pl.x - 2.0, pl.z + 2.2, 0, [
+            { id: 'sterile_bandage', qty: 1 }, { id: 'syringe', qty: 1 }, { id: 'scrubs', qty: 1 }
+          ]);
+        } else if (bType === 'police') {
+          this._addBuilding(pl.x, pl.z, 11.0, 8.8, 4.1, pl.door, this._materials.policeNavy, (by) => {
+            addDeskProp(pl.x - 2.2, by + 0.16, pl.z - 1.8);
+          });
+          this._addSignBoard(pl.x + signOffX, this.getTerrainHeight(pl.x, pl.z) + 3.4, pl.z + signOffZ, 4.2, 1.5, signRot, 'police');
+          this._addGunLocker(pl.x + 3.4, pl.z - 2.2, -Math.PI / 2, 'police_fire', 'Roadside Police Arms Locker');
+          this._addLootContainer(pl.x - 2.8, 0.16, pl.z + 2.2, 'office', 'Precinct Records Cabinet');
+        } else if (bType === 'fire') {
+          this._addBuilding(pl.x, pl.z, 11.0, 9.0, 4.3, pl.door, this._materials.fireRed, () => {});
+          this._addSignBoard(pl.x + signOffX, this.getTerrainHeight(pl.x, pl.z) + 3.5, pl.z + signOffZ, 4.2, 1.5, signRot, 'fire');
+          this._addGunLocker(pl.x - 3.4, pl.z - 2.4, Math.PI / 2, 'police_fire', 'Firehouse Rescue Gear Locker');
+          this._addWorkbenchTable(pl.x + 2.6, pl.z + 2.0, 0, [
+            { id: 'tools', qty: 1 }, { id: 'medkit', qty: 1 }
+          ]);
+        } else {
+          const hWall = (i % 2 === 0) ? this._materials.wood : this._materials.interiorPlaster;
+          const hy = this.getTerrainHeight(pl.x, pl.z);
+          this._addBuilding(pl.x, pl.z, 10.2, 8.4, 3.8, pl.door, hWall, (by, bh) => {
+            this._addPartition(pl.x, pl.z - 4.2, pl.x, pl.z + 4.2, by, bh, [
+              { at: pl.z + 1.0, w: 1.5, door: 'wood', label: 'Bedroom Door' }
+            ]);
+          });
+          this._addBox(pl.x, hy + 4.35, pl.z, 10.6, 0.75, 5.2, this._materials.rustRed, false);
+          this._addLootContainer(pl.x - 2.8, 0.16, pl.z - 2.0, 'household', 'House Dresser');
+          this._addMedicineCabinet(pl.x + 2.6, pl.z - 3.65, 'north', 'Home Medicine Cabinet');
+          const housePool = ['kids_drawing', 'family_photo', 'picture_of_man', 'nature_photo', 'clothes', 'cleaning_supplies', 'tools'];
+          const pick1 = housePool[(i * 2) % housePool.length];
+          const pick2 = housePool[(i * 2 + 3) % housePool.length];
+          this._addWorkbenchTable(pl.x + 2.6, pl.z + 2.0, 0, [
+            { id: pick1, qty: 1 }, { id: pick2, qty: 1 }
+          ]);
         }
       }
+      addWreckedVehicle(cx + (verticalRoad ? 5.2 : 0), cz + (verticalRoad ? 0 : 5.2), verticalRoad ? 0.12 : 1.45, false, false);
+    };
 
-      // Medical loot across the hospital wings
-      this._addWallFirstAidKit(cx + 13.55, cz - 5.2, 'east', 'Trauma Room First Aid Kit');
-      this._addMedicineCabinet(cx + 9.4, cz + 9.55, 'south', 'Clinic Pharmacy Cabinet');
-      this._addLootContainer(cx + 11.2, 0.16, cz - 4.2, 'hospital', 'Hospital Trauma Crate');
-      this._addLootContainer(cx - 7.5, 0.16, cz - 7.8, 'hospital', 'Triage Supply Case');
-      this._addLootContainer(cx + 4.0, 0.16, cz + 8.0, 'hospital', 'ICU Medical Cart');
-      this._addMetalShelf(cx + 2.2, cz - 9.1, 0, [
-        { id: 'bandage', qty: 3 }, { id: 'painkillers', qty: 2 }, { id: 'cloth_roll', qty: 2 }
+    // =========================================================================
+    // === 15 REAL NAMED VOSTOK POIs AT EXACT A-J x 0-9 COORDINATES ===
+    // =========================================================================
+
+    // 1. TV BROADCAST STATION (D4: -240, -80)
+    {
+      const cx = -240, cz = -80;
+      const by0 = this.getTerrainHeight(cx, cz);
+      this._addBuilding(cx, cz, 26, 20, 5.6, 'east', this._materials.concrete, (by, bh) => {
+        this._addPartition(cx - 2.0, cz - 10.0, cx - 2.0, cz + 10.0, by, bh, [
+          { at: cz - 3.0, w: 1.8, door: 'steel', label: 'Studio Control Door' },
+          { at: cz + 4.5, w: 1.8, door: 'wood', label: 'Executive Suite Door' }
+        ]);
+        this._addPartition(cx - 13.0, cz + 1.0, cx - 2.0, cz + 1.0, by, bh, []);
+        this._addBox(cx + 5.5, by + 0.55, cz - 2.5, 4.2, 0.95, 1.4, this._materials.bossDark, true);
+        addDeskProp(cx - 7.5, by + 0.16, cz - 5.5);
+        addDeskProp(cx - 7.5, by + 0.16, cz + 5.5);
+      });
+      this._addSignBoard(cx + 13.3, by0 + 4.6, cz, 8.2, 2.4, Math.PI / 2, {
+        title: 'TV BROADCAST',
+        sub: 'VOSTOK STATE TELEVISION // CH-04',
+        bg: '#18222c',
+        accent: '#29b6f6'
+      });
+      this._addLootContainer(cx - 9.5, 0.16, cz - 6.8, 'office', 'Broadcast Archive Cabinet');
+      this._addLootContainer(cx - 9.5, 0.16, cz + 6.8, 'valuables', 'Station Director Safe');
+      this._addMetalShelf(cx + 6.5, cz + 6.5, 0, [
+        { id: 'exp_radio_transmitter', qty: 1 }, { id: 'classified_documents', qty: 1 }, { id: 'payroll_documents', qty: 1 }
       ]);
-      this._addWorkbenchTable(cx - 6.8, cz + 1.8, 0, [
-        { id: 'medkit', qty: 1 }, { id: 'painkillers', qty: 1 }, { id: 'water_filter', qty: 1 }
-      ]);
-      this._addBarrier(cx - 22, cz - 7, false);
+
+      const mx = cx - 20, mz = cz - 15;
+      const my = this.getTerrainHeight(mx, mz);
+      for (let tier = 0; tier < 6; tier++) {
+        const th = 7.5;
+        const wT = 4.6 - tier * 0.58;
+        const matT = (tier % 2 === 0) ? this._materials.fireRed : this._materials.whiteWall;
+        this._addBox(mx, my + tier * th + th * 0.5, mz, wT, th, wT, matT, tier === 0);
+      }
+      this._addBox(mx, my + 47.5, mz, 0.35, 6.0, 0.35, this._materials.metal, false);
+      const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.45, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff2a2a }));
+      beacon.position.set(mx, my + 50.8, mz);
+      this.scene.add(beacon);
+      this.pois.push({ name: 'TV BROADCAST', x: cx, z: cz, color: '#29b6f6', threat: 'medium' });
     }
 
-    // 3A. Large 2-Story Police Precinct Headquarters (SW Bend: -165, 305 — 24m x 18m w/ Front Portico & Wide Central Stairs!)
+    // 2. VOSTOK AIRPORT (B5: -522, 75)
     {
-      const pcx = -165, pcz = 305;
-      const pby = this.getTerrainHeight(pcx, pcz);
-      this.pois.push({ name: 'POLICE STATION', x: pcx, z: pcz, color: '#42a5f5', threat: 'low' });
-
-      const pw = 24, pd = 18, ph = 4.4;
-      this._addBox(pcx, pby - 0.5, pcz, pw + 0.8, 1.0, pd + 0.8, this._materials.darkConcrete, false);
-      this._addBox(pcx, pby + 0.08, pcz, pw, 0.16, pd, this._materials.floorTile, false);
-      // Limestone lower base + Navy-Blue 2-story precinct walls
-      this._addBox(pcx, pby + ph, pcz - pd / 2, pw, ph * 2, 0.52, this._materials.policeNavy, true);
-      this._addBox(pcx, pby + ph, pcz + pd / 2, pw, ph * 2, 0.52, this._materials.policeNavy, true);
-      this._addBox(pcx - pw / 2, pby + ph, pcz, 0.52, ph * 2, pd, this._materials.policeNavy, true);
-      // East Front Entrance Wall with Interactive Double-Width Door + Covered Precinct Portico Canopy
-      this._addBox(pcx + pw / 2, pby + ph / 2, pcz - 5.0, 0.52, ph, 8.0, this._materials.policeNavy, true);
-      this._addBox(pcx + pw / 2, pby + ph / 2, pcz + 5.0, 0.52, ph, 8.0, this._materials.policeNavy, true);
-      this._addBox(pcx + pw / 2, pby + ph - 0.85, pcz, 0.52, 1.7, 2.0, this._materials.policeNavy, true);
-      this._addDoor(pcx + pw / 2, pby + 0.16, pcz, 2.0, 2.65, Math.PI / 2, 'Police Precinct Entrance', 'steel');
-      this._addBox(pcx + pw / 2, pby + ph * 1.5, pcz, 0.52, ph, pd, this._materials.policeNavy, true);
-      // Front Portico Overhang & Columns
-      this._addBox(pcx + pw / 2 + 2.4, pby + 3.7, pcz, 4.4, 0.34, 6.2, this._materials.whiteWall, false);
-      this._addBox(pcx + pw / 2 + 4.2, pby + 1.85, pcz - 2.6, 0.42, 3.7, 0.42, this._materials.whiteWall, true);
-      this._addBox(pcx + pw / 2 + 4.2, pby + 1.85, pcz + 2.6, 0.42, 3.7, 0.42, this._materials.whiteWall, true);
-      // 1st & 2nd Floor Exterior Windows
-      for (const wy of [pby + 2.4, pby + ph + 2.4]) {
-        this._addWindow(pcx - 6.0, wy, pcz - pd / 2 - 0.25, 2.8, 1.45, Math.PI);
-        this._addWindow(pcx + 0.0, wy, pcz - pd / 2 - 0.25, 2.8, 1.45, Math.PI);
-        this._addWindow(pcx + 6.0, wy, pcz - pd / 2 - 0.25, 2.8, 1.45, Math.PI);
-        this._addWindow(pcx - 6.0, wy, pcz + pd / 2 + 0.25, 2.8, 1.45, 0);
-        this._addWindow(pcx + 6.0, wy, pcz + pd / 2 + 0.25, 2.8, 1.45, 0);
-        this._addWindow(pcx + pw / 2 + 0.25, wy, pcz - 5.2, 2.6, 1.45, Math.PI / 2);
-        this._addWindow(pcx + pw / 2 + 0.25, wy, pcz + 5.2, 2.6, 1.45, Math.PI / 2);
+      const cx = -522, cz = 75;
+      const ay = this.getTerrainHeight(cx, cz);
+      this._addBox(-552, ay + 0.06, cz, 18, 0.14, 148, this._materials.road, false);
+      for (let k = -3; k <= 3; k++) {
+        if (k === 0) continue;
+        this._addBox(-552 + k * 2.1, ay + 0.14, cz - 66, 1.1, 0.04, 7.5, this._materials.whiteWall, false);
+        this._addBox(-552 + k * 2.1, ay + 0.14, cz + 66, 1.1, 0.04, 7.5, this._materials.whiteWall, false);
       }
-      // Giant POLICE rooftop signage + glowing blue/red rooftop precinct beacons
-      this._addSignBoard(pcx + pw / 2 + 0.4, pby + ph * 2 + 1.65, pcz, 9.2, 3.2, Math.PI / 2, 'police');
-      this._addSignBoard(pcx, pby + ph * 2 + 1.65, pcz - pd / 2 - 0.4, 9.2, 3.2, Math.PI, 'police');
-      this._addBox(pcx + 3, pby + ph * 2 + 0.6, pcz - 2.4, 2.6, 0.5, 0.65, new THREE.MeshBasicMaterial({ color: 0x2979ff }), false);
-      this._addBox(pcx + 3, pby + ph * 2 + 0.6, pcz + 2.4, 2.6, 0.5, 0.65, new THREE.MeshBasicMaterial({ color: 0xff3d3d }), false);
+      this._addBuilding(-512, 92, 22, 16, 5.2, 'east', this._materials.whiteWall, (by, bh) => {
+        this._addPartition(-512 - 3.5, 92 - 8.0, -512 - 3.5, 92 + 8.0, by, bh, [
+          { at: 92, w: 2.0, door: 'steel', label: 'Customs Office Door' }
+        ]);
+        addDeskProp(-512 + 3.5, by + 0.16, 92 - 4.2);
+        addDeskProp(-512 - 7.0, by + 0.16, 92 + 3.8);
+      });
+      this._addSignBoard(-512 + 11.3, ay + 4.4, 92, 8.0, 2.3, Math.PI / 2, {
+        title: 'VOSTOK AIRPORT',
+        sub: 'TERMINAL A // EVACUATION HALTED',
+        bg: '#162636',
+        accent: '#4fc3f7'
+      });
+      this._addLootContainer(-512 - 7.5, 0.16, 92 - 4.8, 'office', 'Airport Manifest Cabinet');
+      this._addLootContainer(-512 - 7.5, 0.16, 92 + 5.6, 'valuables', 'Customs Seizure Safe');
+      this._addWorkbenchTable(-512 + 4.2, 92 + 4.5, 0, [
+        { id: 'vacation_planner', qty: 1 }, { id: 'documents', qty: 2 }, { id: 'hourly_schedule', qty: 1 }
+      ]);
 
-      // 2nd Floor Slab with wide open central-east stairwell cutout (around pcx + 5.2, generous 3.2m clearance from east wall!)
-      this._addBox(pcx - 4.2, pby + ph, pcz, 15.6, 0.28, pd - 0.4, this._materials.darkConcrete, true);
-      this._addBox(pcx + 9.4, pby + ph, pcz, 5.0, 0.28, pd - 0.4, this._materials.darkConcrete, true);
-      this._addBox(pcx + 5.2, pby + ph, pcz - 5.5, 3.4, 0.28, 6.6, this._materials.darkConcrete, true);
-      this._addBox(pcx, pby + ph * 2 + 0.15, pcz, pw + 0.6, 0.32, pd + 0.6, this._materials.roofTar, true);
+      const hx = -514, hz = 54;
+      this._addBox(hx, ay + 0.08, hz, 18, 0.16, 18, this._materials.darkConcrete, false);
+      this._addBox(hx - 8.75, ay + 3.2, hz, 0.5, 6.4, 18, this._materials.rustBlue, true);
+      this._addBox(hx + 8.75, ay + 3.2, hz, 0.5, 6.4, 18, this._materials.rustBlue, true);
+      this._addBox(hx, ay + 3.2, hz - 8.75, 18, 6.4, 0.5, this._materials.rustBlue, true);
+      this._addBox(hx, ay + 6.55, hz, 18.6, 0.4, 18.6, this._materials.roofTar, true);
+      this._addGunLocker(hx - 7.2, hz - 5.5, Math.PI / 2, 'military', 'Hangar Security Locker');
+      this._addLootContainer(hx + 6.4, 0.16, hz - 5.5, 'military', 'Airfield Ordnance Case');
+      this._addMetalShelf(hx, hz - 7.4, 0, [
+        { id: 'carbon_fibre_sample', qty: 1 }, { id: 'metallic_alloy', qty: 2 }, { id: 'tools', qty: 1 }
+      ]);
 
-      // Ground Floor: Grand Booking Desk & Holding Area
-      this._addBox(pcx + 1.2, pby + 0.55, pcz - 3.6, 1.2, 1.1, 5.2, this._materials.wood, true);
-      // Ground Floor: 4-Cell Cell Block along West Wall
-      for (let cell = 0; cell < 4; cell++) {
-        const czCell = pcz - 6.3 + cell * 4.2;
-        if (cell > 0) {
-          this._addBox(pcx - 9.2, pby + 2.1, czCell - 2.1, 5.0, 4.2, 0.22, this._materials.interiorPlaster, true);
+      this._addBox(-528, ay + 4.5, 72, 6.4, 9.0, 6.4, this._materials.concrete, true);
+      this._addBox(-528, ay + 9.8, 72, 8.2, 2.2, 8.2, this._materials.windowFrame, true);
+      addStaircase(-522.5, ay, 72, 30, 2.2, 9.0, 12.0, 'north');
+      addDownedHelicopter(-551, 42, 0.65, 'Runway Evac Helo');
+      addFallenCasualtyAndEvac(-498, 92, 0.3);
+      this.pois.push({ name: 'AIRPORT', x: cx, z: cz, color: '#4fc3f7', threat: 'high' });
+    }
+
+    // 3. VOSTOK SUPERSTORE (F5: 95, 85)
+    {
+      const cx = 95, cz = 85;
+      const sy = this.getTerrainHeight(cx, cz);
+      this._addBuilding(cx, cz, 30, 24, 6.0, 'west', this._materials.rustBlue, (by, bh) => {
+        this._addPartition(cx + 8.5, cz - 12.0, cx + 8.5, cz + 12.0, by, bh, [
+          { at: cz - 4.5, w: 2.0, door: 'steel', label: 'Superstore Back Room' },
+          { at: cz + 5.5, w: 1.8, door: 'wood', label: 'Manager Office' }
+        ]);
+        this._addPartition(cx + 8.5, cz + 1.0, cx + 15.0, cz + 1.0, by, bh, []);
+        addDeskProp(cx + 11.8, by + 0.16, cz + 6.5);
+        for (const kz of [cz - 6.5, cz + 6.5]) {
+          this._addBox(cx - 9.5, by + 0.52, kz, 3.2, 0.9, 1.1, this._materials.hazardAmber, true);
         }
-        for (let b = 0; b < 5; b++) {
-          this._addBox(pcx - 6.7, pby + 2.1, czCell - 1.5 + b * 0.48, 0.09, 4.2, 0.09, this._materials.metal, true);
-        }
-        this._addBox(pcx - 10.9, pby + 0.42, czCell, 0.9, 0.42, 2.2, this._materials.metal, true);
-      }
-      this._addGunLocker(pcx - 1.2, pcz - 8.1, 0, 'police_fire', 'Booking Armory Locker');
-      this._addWallFirstAidKit(pcx + 5.6, pcz - 8.55, 'north', 'Precinct First Aid Kit');
-
-      // Wide, Gentle Walkable Interior Staircase (18 steps @ 0.24m rise, 2.8m wide, well away from walls!)
-      addStaircase(pcx + 5.2, pby + 0.16, pcz + 6.4, 18, 2.8, ph, 7.6, 'north');
-
-      // 2nd Floor: Detective Bullpen Desks (6 desks)
-      const f2y = pby + ph + 0.16;
-      addDeskProp(pcx + 1.8, f2y, pcz - 5.0);
-      addDeskProp(pcx + 1.8, f2y, pcz - 0.8);
-      addDeskProp(pcx + 1.8, f2y, pcz + 3.6);
-      addDeskProp(pcx - 1.8, f2y, pcz - 5.0);
-      addDeskProp(pcx - 1.8, f2y, pcz - 0.8);
-      addDeskProp(pcx - 1.8, f2y, pcz + 3.6);
-
-      // 2nd Floor: Evidence Processing Room & Vault WITH INTERACTIVE STEEL DOOR!
-      this._addBox(pcx - 5.2, f2y + 2.1, pcz - 2.8, 0.24, 4.2, 11.4, this._materials.interiorPlaster, true);
-      this._addBox(pcx - 9.4, f2y + 2.1, pcz + 2.8, 4.6, 4.2, 0.24, this._materials.interiorPlaster, true);
-      this._addDoor(pcx - 6.1, f2y, pcz + 2.8, 1.8, 2.6, 0, 'Evidence Room Door', 'steel');
-      this._addLootContainer(pcx - 10.2, ph + 0.16, pcz - 6.4, 'military', 'Evidence Locker Vault');
-      this._addLootContainer(pcx - 10.2, ph + 0.16, pcz - 1.6, 'police_fire', 'Evidence Processing Case');
-      this._addWorkbenchTable(pcx - 8.2, pcz - 3.8, 0, [
-        { id: 'intel_drive', qty: 1 }, { id: 'armor_plate', qty: 2 }, { id: 'medkit', qty: 1 }
-      ]);
-      this._decorateFacade(pcx, pcz, pw, pd, ph * 2, pby, {
-        doorSide: 'east',
-        wallMat: this._materials.policeNavy,
-        roofOffset: 0.31,
-        lightH: ph - 0.14,
-        stairwellAvoidX: pcx + 3.0
       });
+      this._addSignBoard(cx - 15.3, sy + 4.8, cz, 9.2, 2.5, -Math.PI / 2, {
+        title: 'SUPERSTORE',
+        sub: 'VOSTOK HYPERMARKET // RETAIL & DEPOT',
+        bg: '#152942',
+        accent: '#ffb300'
+      });
+      this._addMetalShelf(cx - 2.5, cz - 6.5, 0, [
+        { id: 'cleaning_supplies', qty: 2 }, { id: 'tools', qty: 1 }, { id: 'clothes', qty: 2 }
+      ]);
+      this._addMetalShelf(cx - 2.5, cz, 0, [
+        { id: 'bandage', qty: 2 }, { id: 'basic_chemicals', qty: 2 }, { id: 'nylon_cloth_roll', qty: 1 }
+      ]);
+      this._addMetalShelf(cx - 2.5, cz + 6.5, 0, [
+        { id: 'decorative_bowl', qty: 1 }, { id: 'vacation_planner', qty: 1 }, { id: 'hourly_schedule', qty: 1 }
+      ]);
+      this._addLootContainer(cx + 12.0, 0.16, cz - 7.5, 'supply', 'Back Room Stock Crate');
+      this._addLootContainer(cx + 12.2, 0.16, cz + 8.8, 'valuables', 'Superstore Manager Safe');
+      this._addWorkbenchTable(cx + 11.8, cz - 2.5, 0, [
+        { id: 'back_room_inventory_list', qty: 2 }, { id: 'financial_ledger', qty: 1 }
+      ]);
+      this.pois.push({ name: 'SUPERSTORE', x: cx, z: cz, color: '#ffb300', threat: 'medium' });
     }
 
-    // 3B. Large 3-Bay Fire Station + Living Wing + Spacious 8m x 8m Climbable Watch Tower (South Bend: -65, 355)
+    // 4. NORTHERN DAM (E2: -42, -395)
     {
-      const fcx = -65, fcz = 355;
-      const fby = this.getTerrainHeight(fcx, fcz);
-      this.pois.push({ name: 'FIRE STATION', x: fcx, z: fcz, color: '#ef5350', threat: 'low' });
+      const dcx = -42, crestZ = -408;
+      const crestY = 16.5;
+      const lowerY = 3.2;
+      this.pois.push({ name: 'NORTHERN DAM', x: dcx, z: -395, color: '#90a4ae', threat: 'high' });
 
-      const fw = 22, fd = 16, fh = 5.6;
-      this._addBox(fcx, fby - 0.5, fcz, fw + 0.8, 1.0, fd + 0.8, this._materials.darkConcrete, false);
-      this._addBox(fcx, fby + 0.08, fcz, fw, 0.16, fd, this._materials.floorTile, false);
-      // Clean watertight Fire Red brick-style outer walls
-      this._addBox(fcx, fby + fh / 2, fcz - fd / 2, fw, fh, 0.52, this._materials.fireRed, true);
-      this._addBox(fcx - fw / 2, fby + fh / 2, fcz, 0.52, fh, fd, this._materials.fireRed, true);
-      this._addBox(fcx + fw / 2, fby + fh / 2, fcz, 0.52, fh, fd, this._materials.fireRed, true);
-      // Crisp white architectural cornice trim & rear/side windows
-      this._addBox(fcx, fby + fh - 0.2, fcz + fd / 2 + 0.28, fw, 0.4, 0.18, this._materials.whiteWall, false);
-      this._addWindow(fcx - 6.5, fby + 3.0, fcz - fd / 2 - 0.25, 2.8, 1.5, Math.PI);
-      this._addWindow(fcx + 0.0, fby + 3.0, fcz - fd / 2 - 0.25, 2.8, 1.5, Math.PI);
-      this._addWindow(fcx + 6.5, fby + 3.0, fcz - fd / 2 - 0.25, 2.8, 1.5, Math.PI);
-      this._addWindow(fcx - fw / 2 - 0.25, fby + 3.0, fcz - 3.0, 2.8, 1.5, -Math.PI / 2);
-      this._addWindow(fcx - fw / 2 - 0.25, fby + 3.0, fcz + 3.0, 2.8, 1.5, -Math.PI / 2);
-      // Giant FIRE DEPT sign over 3 wide garage bays!
-      this._addSignBoard(fcx, fby + fh + 1.75, fcz + fd / 2 + 0.3, 9.6, 3.3, 0, 'fire');
-      this._addSignBoard(fcx, fby + fh + 1.75, fcz - fd / 2 - 0.3, 9.6, 3.3, Math.PI, 'fire');
-      // South Garage Face: 3 Wide Open Fire-Truck Engine Bays (5.4m wide each)
-      this._addBox(fcx - fw / 2 + 0.9, fby + fh / 2, fcz + fd / 2, 1.8, fh, 0.52, this._materials.fireRed, true);
-      this._addBox(fcx - 3.6, fby + fh / 2, fcz + fd / 2, 1.3, fh, 0.52, this._materials.fireRed, true);
-      this._addBox(fcx + 3.6, fby + fh / 2, fcz + fd / 2, 1.3, fh, 0.52, this._materials.fireRed, true);
-      this._addBox(fcx + fw / 2 - 0.9, fby + fh / 2, fcz + fd / 2, 1.8, fh, 0.52, this._materials.fireRed, true);
-      this._addBox(fcx, fby + fh - 0.7, fcz + fd / 2, fw, 1.4, 0.56, this._materials.whiteWall, true);
-      this._addBox(fcx, fby + fh + 0.16, fcz, fw + 0.5, 0.32, fd + 0.5, this._materials.roofTar, true);
-      this._decorateFacade(fcx, fcz, fw, fd, fh, fby, {
-        doorSide: 'south',
-        wallMat: this._materials.fireRed,
-        roofOffset: 0.32,
-        skipDoorFrame: true
-      });
+      this._addBox(dcx, (crestY + lowerY) * 0.5, crestZ, 216, crestY - lowerY + 0.4, 16.0, this._materials.concrete, true);
+      this._addBox(dcx, 12.9, -442, 216, 0.6, 52, this._materials.darkConcrete, true);
+      this._addBox(dcx, crestY + 0.6, crestZ - 7.8, 216, 1.2, 0.45, this._materials.darkConcrete, true);
+      this._addBox(-134, crestY + 0.6, crestZ + 7.8, 32, 1.2, 0.45, this._materials.darkConcrete, true);
+      this._addBox(dcx, crestY + 0.6, crestZ + 7.8, 140, 1.2, 0.45, this._materials.darkConcrete, true);
+      this._addBox(50, crestY + 0.6, crestZ + 7.8, 32, 1.2, 0.45, this._materials.darkConcrete, true);
+      addStaircase(-174, 12.8, crestZ, 16, 12.0, crestY - 12.8, 24.0, 'east');
+      addStaircase(90, 12.8, crestZ, 16, 12.0, crestY - 12.8, 24.0, 'west');
 
-      // Garage Equipment Lockers, Bunks & Workbench
-      this._addGunLocker(fcx - 9.8, fcz - 3.0, Math.PI / 2, 'police_fire', 'Fire & Rescue Gear Locker');
-      this._addGunLocker(fcx - 9.8, fcz + 2.0, Math.PI / 2, 'police_fire', 'Emergency Hazmat Locker');
-      this._addLootContainer(fcx + 8.6, 0.16, fcz - 6.0, 'supply', 'Firehouse Tool & Medical Crate');
-      this._addWorkbenchTable(fcx, fcz - 5.8, 0, [
-        { id: 'smoke_grenade', qty: 1 }, { id: 'medkit', qty: 1 }, { id: 'armor_plate', qty: 2 }
-      ]);
-
-      // Spacious 8m x 8m Climbable Hose / Watch Tower (13.2m tall, wide 2.6m gentle stairs, zero wall-snags!)
-      const tcx = fcx + fw / 2 + 4.3, tcz = fcz - 3.6;
-      const tw = 8.0, td = 8.0, th = 13.2;
-      this._addBox(tcx, fby + 0.08, tcz, tw, 0.16, td, this._materials.darkConcrete, false);
-      this._addBox(tcx, fby + th / 2, tcz - td / 2, tw, th, 0.44, this._materials.fireRed, true);
-      this._addBox(tcx + tw / 2, fby + th / 2, tcz, 0.44, th, td, this._materials.fireRed, true);
-      this._addBox(tcx - tw / 2, fby + (th + fh) / 2, tcz, 0.44, th - fh, td, this._materials.fireRed, true);
-      // South Tower Wall with clean ground entrance doorway
-      this._addBox(tcx + 1.9, fby + 1.4, tcz + td / 2, 4.2, 2.8, 0.44, this._materials.fireRed, true);
-      this._addBox(tcx - 3.2, fby + 1.4, tcz + td / 2, 1.6, 2.8, 0.44, this._materials.fireRed, true);
-      this._addBox(tcx, fby + 2.8 + (th - 2.8) / 2, tcz + td / 2, tw, th - 2.8, 0.44, this._materials.fireRed, true);
-      this._addDoor(tcx - 1.3, fby + 0.16, tcz + td / 2, 2.0, 2.65, 0, 'Watch Tower Door', 'steel');
-      this._addWindow(tcx + tw / 2 + 0.22, fby + 6.4, tcz, 2.4, 1.6, Math.PI / 2);
-      this._addWindow(tcx + tw / 2 + 0.22, fby + 10.6, tcz, 2.4, 1.6, Math.PI / 2);
-
-      // 3 Wide, Gentle Walkable Stair Flights (18 steps @ 0.24m rise, 2.6m wide!) + Spacious 2.4m Landings
-      addStaircase(tcx - 1.9, fby + 0.16, tcz + 2.6, 18, 2.6, 4.4, 4.8, 'north');
-      this._addBox(tcx, fby + 4.4, tcz - 2.7, 7.2, 0.24, 2.2, this._materials.darkConcrete, true);
-      addStaircase(tcx + 1.9, fby + 4.4, tcz - 1.6, 18, 2.6, 4.4, 4.8, 'south');
-      this._addBox(tcx, fby + 8.8, tcz + 2.7, 7.2, 0.24, 2.2, this._materials.darkConcrete, true);
-      addStaircase(tcx - 1.9, fby + 8.8, tcz + 1.6, 18, 2.6, 4.4, 4.8, 'north');
-      const topY = fby + 13.2;
-      this._addBox(tcx + 1.6, topY, tcz, 4.4, 0.26, td, this._materials.darkConcrete, true);
-      this._addBox(tcx - 2.0, topY, tcz - 2.7, 3.2, 0.26, 2.4, this._materials.darkConcrete, true);
-      this._addBox(tcx, topY + 0.55, tcz - td / 2 + 0.2, tw, 1.1, 0.2, this._materials.whiteWall, true);
-      this._addBox(tcx, topY + 0.55, tcz + td / 2 - 0.2, tw, 1.1, 0.2, this._materials.whiteWall, true);
-      this._addBox(tcx - tw / 2 + 0.2, topY + 0.55, tcz, 0.2, 1.1, td, this._materials.whiteWall, true);
-      this._addBox(tcx + tw / 2 - 0.2, topY + 0.55, tcz, 0.2, 1.1, td, this._materials.whiteWall, true);
-      this._addBox(tcx + 3.2, topY + 1.9, tcz - 3.2, 0.24, 1.8, 0.24, this._materials.metal, false);
-      this._addBox(tcx + 3.2, topY + 2.9, tcz - 3.2, 0.65, 0.65, 0.65, new THREE.MeshBasicMaterial({ color: 0xff3b3b }), false);
-      this._addLootContainer(tcx + 1.8, 13.35, tcz - 1.8, 'military', 'Fire Tower Overwatch Case');
-    }
-
-    // 4. Massive Boss Encampment Compound (Upper-East Landmass: 395, -145 — 70m x 64m Walls, 4 Corner Guard Towers, Barracks, 3 Tents & 2-Story Command HQ!)
-    {
-      const cx = 395, cz = -145;
-      const by = this.getTerrainHeight(cx, cz);
-      this.pois.push({ name: 'BOSS CAMP', x: cx, z: cz, color: '#ffc107', threat: 'boss' });
-
-      // A. High Fortified Concrete Perimeter Compound Walls (70m x 64m) + 4 Corner Guard Watch Platforms!
-      const cw = 70, cd = 64, wallH = 4.6;
-      this._addBox(cx, by + wallH / 2, cz - cd / 2, cw, wallH, 0.85, this._materials.bossDark, true);
-      this._addBox(cx + cw / 2, by + wallH / 2, cz, 0.85, wallH, cd, this._materials.bossDark, true);
-      this._addBox(cx - 19.5, by + wallH / 2, cz + cd / 2, 31, wallH, 0.85, this._materials.bossDark, true);
-      this._addBox(cx + 19.5, by + wallH / 2, cz + cd / 2, 31, wallH, 0.85, this._materials.bossDark, true);
-      this._addBox(cx - cw / 2, by + wallH / 2, cz - 18, 0.85, wallH, 28, this._materials.bossDark, true);
-      this._addBox(cx - cw / 2, by + wallH / 2, cz + 18, 0.85, wallH, 28, this._materials.bossDark, true);
-      // Amber hazard gate pillars & 4 elevated corner watch towers
-      this._addBox(cx - 4.4, by + 3.6, cz + cd / 2, 1.0, 0.65, 1.0, this._materials.hazardAmber, false);
-      this._addBox(cx + 4.4, by + 3.6, cz + cd / 2, 1.0, 0.65, 1.0, this._materials.hazardAmber, false);
-      for (const [gx, gz] of [[-cw / 2 + 2.2, -cd / 2 + 2.2], [cw / 2 - 2.2, -cd / 2 + 2.2], [-cw / 2 + 2.2, cd / 2 - 2.2], [cw / 2 - 2.2, cd / 2 - 2.2]]) {
-        this._addBox(cx + gx, by + 5.2, cz + gz, 4.4, 0.3, 4.4, this._materials.darkConcrete, true);
-        this._addBox(cx + gx, by + 7.8, cz + gz, 4.6, 0.25, 4.6, this._materials.bossDark, false);
-        this._addBox(cx + gx, by + 5.7, cz + gz, 4.4, 0.22, 4.4, this._materials.hazardAmber, false);
-      }
-
-      // B. Massive 24m x 20m 2-Story Central Command Center + Rooftop Radar Tower & Helipad!
-      const ccw = 24, ccd = 20, cch = 4.6;
-      this._addBox(cx, by - 0.5, cz - 2, ccw + 0.8, 1.0, ccd + 0.8, this._materials.darkConcrete, false);
-      this._addBox(cx, by + 0.08, cz - 2, ccw, 0.16, ccd, this._materials.floorTile, false);
-      this._addBox(cx - ccw / 2, by + cch, cz - 2, 0.55, cch * 2, ccd, this._materials.bossDark, true);
-      this._addBox(cx + ccw / 2, by + cch, cz - 2, 0.55, cch * 2, ccd, this._materials.bossDark, true);
-      this._addBox(cx - 6.6, by + cch / 2, cz - 2 + ccd / 2, 10.8, cch, 0.55, this._materials.bossDark, true);
-      this._addBox(cx + 6.6, by + cch / 2, cz - 2 + ccd / 2, 10.8, cch, 0.55, this._materials.bossDark, true);
-      this._addBox(cx, by + cch - 0.9, cz - 2 + ccd / 2, 2.4, 1.8, 0.55, this._materials.bossDark, true);
-      this._addDoor(cx, by + 0.16, cz - 2 + ccd / 2, 2.2, 2.7, 0, 'Command HQ Entrance', 'steel');
-      this._addBox(cx, by + cch * 1.5, cz - 2 + ccd / 2, ccw, cch, 0.55, this._materials.bossDark, true);
-      this._addBox(cx, by + cch, cz - 2 - ccd / 2, ccw, cch * 2, 0.55, this._materials.bossDark, true);
-      // 1st & 2nd Floor Command Center Windows
-      for (const wy of [by + 2.5, by + cch + 2.5]) {
-        this._addWindow(cx - 6.8, wy, cz - 2 + ccd / 2 + 0.28, 3.0, 1.35, 0);
-        this._addWindow(cx + 6.8, wy, cz - 2 + ccd / 2 + 0.28, 3.0, 1.35, 0);
-        this._addWindow(cx - ccw / 2 - 0.28, wy, cz - 6, 3.2, 1.35, -Math.PI / 2);
-        this._addWindow(cx - ccw / 2 - 0.28, wy, cz + 2, 3.2, 1.35, -Math.PI / 2);
-        this._addWindow(cx + ccw / 2 + 0.28, wy, cz - 6, 3.2, 1.35, Math.PI / 2);
-        this._addWindow(cx + ccw / 2 + 0.28, wy, cz + 2, 3.2, 1.35, Math.PI / 2);
-      }
-      // Roof + Giant COMMAND HQ Signs + Tall Rooftop Radar Mast
-      const roofY = by + cch * 2 + 0.15;
-      this._addBox(cx, roofY, cz - 2, ccw + 0.6, 0.34, ccd + 0.6, this._materials.roofTar, true);
-      this._addBox(cx, roofY + 0.38, cz - 2 + ccd / 2 + 0.15, ccw + 0.6, 0.4, 0.25, this._materials.hazardAmber, false);
-      this._addSignBoard(cx, roofY + 2.0, cz - 2 + ccd / 2 + 0.35, 10.6, 3.6, 0, 'boss');
-      this._addSignBoard(cx - ccw / 2 - 0.35, roofY + 2.0, cz - 2, 9.6, 3.4, -Math.PI / 2, 'boss');
-      this._addBox(cx + 7.5, roofY + 5.0, cz - 7.5, 0.42, 10.0, 0.42, this._materials.metal, false);
-      this._addBox(cx + 7.5, roofY + 8.4, cz - 7.5, 3.8, 1.6, 0.26, this._materials.hazardAmber, false);
-      this._addBox(cx + 7.5, roofY + 10.2, cz - 7.5, 0.65, 0.65, 0.65, new THREE.MeshBasicMaterial({ color: 0xffb300 }), false);
-
-      // 2nd Floor Slab with wide inset stairwell (cx + 6.6, generous clearance from east wall!)
-      this._addBox(cx - 3.6, by + cch, cz - 2, 16.8, 0.3, ccd - 0.4, this._materials.darkConcrete, true);
-      this._addBox(cx + 10.1, by + cch, cz - 2, 3.6, 0.3, ccd - 0.4, this._materials.darkConcrete, true);
-      this._addBox(cx + 6.6, by + cch, cz - 7.4, 3.6, 0.3, 8.8, this._materials.darkConcrete, true);
-      // Wide, Gentle Walkable Staircase (19 steps @ 0.24m rise, 2.8m wide!)
-      addStaircase(cx + 6.6, by + 0.16, cz + 5.8, 19, 2.8, cch, 8.4, 'north');
-
-      // Ground Floor War-Room Table & 2nd Floor Boss Key Vault Room (with sub-room steel door!)
-      this._addWorkbenchTable(cx - 1.8, cz - 1.5, 0, [
-        { id: 'ammo_762', qty: 30 }, { id: 'gold_watch', qty: 1 }, { id: 'intel_drive', qty: 1 }
-      ]);
-      this._addGunLocker(cx - 10.8, cz - 2.5, Math.PI / 2, 'military', 'Command Center Armory Locker');
-      this._addWallFirstAidKit(cx - 11.45, cz + 2.4, 'west', 'Command Center First Aid Kit');
-      addDeskProp(cx - 2.0, by + cch + 0.16, cz - 6.5);
-      this._addBox(cx - 4.6, by + cch + 2.2, cz - 7.2, 0.24, 4.2, 8.8, this._materials.interiorPlaster, true);
-      this._addDoor(cx - 4.6, by + cch + 0.16, cz - 1.8, 1.8, 2.6, Math.PI / 2, 'Command Vault Door', 'steel');
-      this._addLootContainer(cx - 8.4, cch + 0.18, cz - 9.2, 'boss_key_room', 'Boss Command Vault [KEY ROOM]', 'boss_key');
-      this._addLootContainer(cx + 3.2, cch + 0.18, cz - 9.2, 'military', 'Command Center Weapons Case');
-      this._decorateFacade(cx, cz - 2, ccw, ccd, cch * 2, by, {
-        doorSide: 'south',
-        wallMat: this._materials.bossDark,
-        roofOffset: 0.32,
-        lightH: cch - 0.15,
-        stairwellAvoidX: cx + 4.2
-      });
-
-      // Boss Spawn inside 2nd Floor Command Center + 5 Armored Boss Guard Spawns
-      this.bossSpawnPos = new THREE.Vector3(cx - 1.5, by + cch + 0.2, cz - 2.5);
-      this.bossGuardSpawns = [
-        new THREE.Vector3(cx - 2.0, by, cz + 2.8),
-        new THREE.Vector3(cx + 3.5, by, cz - 3.5),
-        new THREE.Vector3(cx - 14.0, by, cz + 20.0),
-        new THREE.Vector3(cx + 14.0, by, cz + 18.0),
-        new THREE.Vector3(cx - 20.0, by, cz - 12.0)
-      ];
-
-      // C. Compound Barracks Building (16m x 12m, West-South)
-      const bx = cx - 22, bz = cz + 16;
-      this._addBuilding(bx, bz, 16, 12, 4.4, 'east', this._materials.rustOlive, (bBaseY, bH) => {
-        this._addPartition(bx - 1.8, bz - 6.0, bx - 1.8, bz + 6.0, bBaseY, bH, [
-          { at: bz, w: 1.8, door: null }
-        ]);
-        this._addBox(bx - 2.8, bBaseY + 0.41, bz - 1.7, 0.9, 0.5, 0.5, this._materials.crateMil, true);
-        this._addBox(bx - 2.8, bBaseY + 0.41, bz + 1.7, 0.9, 0.5, 0.5, this._materials.crateMil, true);
-      });
-      addHospitalBed(bx - 4.6, by, bz - 3.4, Math.PI / 2);
-      addHospitalBed(bx - 4.6, by, bz + 0.0, Math.PI / 2);
-      addHospitalBed(bx - 4.6, by, bz + 3.4, Math.PI / 2);
-      this._addGunLocker(bx + 2.6, bz - 5.1, 0, 'military', 'Barracks Rifle Rack');
-      this._addLootContainer(bx + 2.6, 0.16, bz + 4.4, 'supply', 'Barracks Footlocker');
-
-      // D. 3 Large Military Canvas Tents with Weapons Lockers & Equipment Containers
-      const tentSpots = [
-        { x: cx + 23, z: cz + 15, label: 'East Armory Tent' },
-        { x: cx + 23, z: cz - 7, label: 'Ordnance Supply Tent' },
-        { x: cx - 22, z: cz - 17, label: 'Recon Gear Tent' }
-      ];
-      for (const ts of tentSpots) {
-        addMilitaryTent(ts.x, by, ts.z, 9.6, 7.0);
-        this._addGunLocker(ts.x - 3.6, ts.z - 1.4, Math.PI / 2, 'military', `${ts.label} Weapons Locker`);
-        this._addLootContainer(ts.x + 3.0, 0.16, ts.z + 1.4, 'military', `${ts.label} Equipment Container`);
-      }
-
-      this._addBarrier(cx - 8, cz + 22, true);
-      this._addBarrier(cx + 8, cz + 22, true);
-      this._addContainer(cx + 20, cz - 24, 0, this._materials.rustOlive);
-    }
-
-    // 5. Enlarged Central Logistics Warehouse (East River Meander Peninsula: 135, 95 — 28m x 18m w/ Walkable Catwalk Mezzanine!)
-    {
-      const cx = 135, cz = 95;
-      const by = this.getTerrainHeight(cx, cz);
-      this._addBuilding(cx, cz, 28, 18, 6.2, 'south', null, (wBy, wH) => {
-        // SW Foreman Office
-        this._addPartition(cx - 8.5, cz + 2.5, cx - 8.5, cz + 9.0, wBy, wH, [
-          { at: cz + 5.5, w: 1.7, door: 'wood', label: 'Foreman Office' }
-        ]);
-        this._addPartition(cx - 14.0, cz + 2.5, cx - 8.5, cz + 2.5, wBy, wH, []);
-        addDeskProp(cx - 11.6, wBy + 0.16, cz + 5.2);
-        this._addLootContainer(cx - 12.2, 0.16, cz + 7.4, 'supply', "Foreman's Office Safe");
-
-        // Supply Pallet Stacks for Interior Cover
-        this._addBox(cx - 5.5, wBy + 0.7, cz + 5.0, 2.4, 1.4, 1.2, this._materials.crateSup, true);
-        this._addBox(cx + 5.5, wBy + 0.7, cz + 5.0, 2.4, 1.4, 1.2, this._materials.crateSup, true);
-
-        // Catwalk Railing (leaving 2.4m arrival gap at stairs!)
-        this._addBox(cx - 2.25, wBy + 3.85, cz - 5.05, 20.5, 1.0, 0.08, this._materials.metal, true);
-        this._addBox(cx + 11.45, wBy + 3.85, cz - 5.05, 2.1, 1.0, 0.08, this._materials.metal, true);
-      });
-      this.pois.push({ name: 'WAREHOUSE', x: cx, z: cz, color: '#ff9800', threat: 'low' });
-      // Interior Walkable Steel Catwalk Mezzanine along North Wall + Gentle Stairs
-      this._addBox(cx, by + 3.2, cz - 6.8, 25.0, 0.24, 3.6, this._materials.metal, true);
-      addStaircase(cx + 9.2, by + 0.16, cz - 0.4, 14, 2.2, 3.2, 4.8, 'north');
-      this._addLootContainer(cx - 10.5, 3.35, cz - 6.8, 'military', 'Catwalk Armory Case');
-      this._addLootContainer(cx - 10.8, 0.16, cz - 6.2, 'military', 'Warehouse Armory Case');
-      this._addLootContainer(cx + 10.8, 0.16, cz - 6.2, 'supply', 'Logistics Cargo Crate');
-      this._addMetalShelf(cx - 4.0, cz - 7.4, 0, [
-        { id: 'scrap_metal', qty: 3 }, { id: 'polymer_parts', qty: 2 }, { id: 'ammo_545', qty: 24 }
-      ]);
-      this._addMetalShelf(cx + 4.0, cz - 7.4, 0, [
-        { id: 'cloth_roll', qty: 2 }, { id: 'gunpowder', qty: 2 }, { id: 'fuel_can', qty: 1 }
-      ]);
-      this._addWorkbenchTable(cx, cz + 1.2, 0, [
-        { id: 'medkit', qty: 1 }, { id: 'armor_plate', qty: 2 }
-      ]);
-    }
-
-    // 6. Fuel & Radio Outpost (SE Peninsula Hilltop: 245, 455)
-    {
-      const cx = 245, cz = 455;
-      this._addBuilding(cx, cz, 14, 12, 4.4, 'west', null, (rBy, rH) => {
-        this._addPartition(cx + 3.4, cz - 6.0, cx + 3.4, cz + 6.0, rBy, rH, [
-          { at: cz + 1.0, w: 1.7, door: 'wood', label: 'Comms Room Door' }
-        ]);
-      });
-      this.pois.push({ name: 'RADIO OUTPOST', x: cx, z: cz, color: '#26c6da', threat: 'low' });
-      this._addGunLocker(cx + 6.1, cz - 1.8, -Math.PI / 2, 'military', 'Outpost Comms Locker');
-      this._addLootContainer(cx + 5.2, 0.16, cz + 3.8, 'supply', 'Fuel & Parts Supply Crate');
-      this._addWallFirstAidKit(cx - 2.5, cz - 5.55, 'north', 'Outpost First Aid Kit');
-      this._addWorkbenchTable(cx, cz, 0, [
-        { id: 'intel_drive', qty: 1 }, { id: 'fuel_can', qty: 1 }
-      ]);
-      this._addContainer(cx - 14, cz + 12, 1, this._materials.rustRed);
-    }
-
-    // 7. Rail Yard / Container Depot (West Valley: -365, -20)
-    {
-      const cx = -365, cz = -20;
-      this.pois.push({ name: 'RAIL YARD', x: cx, z: cz, color: '#ef5350', threat: 'medium' });
-      this._addContainer(cx, cz - 10, 1, this._materials.rustRed);
-      this._addContainer(cx, cz + 2, 1, this._materials.rustBlue);
-      this._addContainer(cx - 10, cz + 12, 0, this._materials.rustOlive);
-      this._addContainer(cx + 10, cz + 14, 0, this._materials.rustRed);
-      this._addLootContainer(cx, 0, cz - 4, 'military', 'Rail Yard Weapon Case');
-      this._addLootContainer(cx + 4, 0, cz + 14, 'supply', 'Freight Cargo Crate');
-      this._addWorkbenchTable(cx - 5, cz + 8, 0, [
-        { id: 'armor_plate', qty: 2 }, { id: 'ammo_762', qty: 20 }
-      ], 0);
-    }
-
-    // 8. Northern Watchtower Bunker (NNE Island Lobe Overlook: 215, -345)
-    {
-      const cx = 215, cz = -345;
-      this._addBuilding(cx, cz, 12, 10, 4.5, 'south', null, (bBy, bH) => {
-        // Interior blast wall forcing flank routes left/right on entry
-        this._addBox(cx, bBy + bH * 0.5, cz + 2.2, 4.0, bH, 0.35, this._materials.concrete, true);
-        // Sandbag firing cover
-        this._addBox(cx - 3.4, bBy + 0.55, cz - 1.2, 2.2, 1.1, 0.6, this._materials.crateSup, true);
-      });
-      this.pois.push({ name: 'NORTH BUNKER', x: cx, z: cz, color: '#ec407a', threat: 'high' });
-      this._addGunLocker(cx - 5.1, cz - 0.5, Math.PI / 2, 'military', 'Bunker Marksman Locker');
-      this._addLootContainer(cx + 4.2, 0.16, cz - 3.2, 'military', 'Bunker Munitions Case');
-      this._addWallFirstAidKit(cx, cz - 4.55, 'north', 'Bunker First Aid Kit');
-      this._addBarrier(cx - 8, cz + 10, true);
-      this._addBarrier(cx + 8, cz + 10, true);
-    }
-
-    // 9. Monumental North-Center Hydroelectric Dam (28, -395 — Spanning Gorge x in [-92..148], z in [-474..-322]!)
-    {
-      const dcx = 28, crestZ = -408, crestY = 16.5, lowerY = 3.2;
-      this.pois.push({ name: 'HYDRO DAM', x: dcx, z: -385, color: '#90a4ae', threat: 'high' });
-
-      // A. Towering Gravity-Dam Core, Walkable 240m Crest Highway Deck & West/East Approach Ramps
-      this._addBox(dcx, (crestY + lowerY) * 0.5, crestZ, 240, crestY - lowerY + 0.4, 16.0, this._materials.concrete, true);
-      this._addBox(dcx, 12.9, -444, 240, 0.6, 56, this._materials.darkConcrete, true);
-      // North & South Crest Parapets (leaving clean 4m stair openings at x = -58 and x = +114 on south face!)
-      this._addBox(dcx, crestY + 0.6, crestZ - 7.8, 240, 1.2, 0.45, this._materials.darkConcrete, true);
-      this._addBox(-76, crestY + 0.6, crestZ + 7.8, 32, 1.2, 0.45, this._materials.darkConcrete, true);
-      this._addBox(dcx, crestY + 0.6, crestZ + 7.8, 166, 1.2, 0.45, this._materials.darkConcrete, true);
-      this._addBox(132, crestY + 0.6, crestZ + 7.8, 32, 1.2, 0.45, this._materials.darkConcrete, true);
-      // Gentle road-width approach ramps onto the 16.5m Dam Crest from NW (-116) & NNE (+172) abutments
-      addStaircase(-116, 12.8, crestZ, 16, 12.0, crestY - 12.8, 24.0, 'east');
-      addStaircase(172, 12.8, crestZ, 16, 12.0, crestY - 12.8, 24.0, 'west');
-
-      // Overhead Crest Gantry Arch, Signboards & Tactical Crest Cover
       this._addBox(dcx - 6.2, crestY + 3.4, crestZ, 1.2, 6.8, 4.2, this._materials.bossDark, true);
       this._addBox(dcx + 6.2, crestY + 3.4, crestZ, 1.2, 6.8, 4.2, this._materials.bossDark, true);
       this._addBox(dcx, crestY + 6.4, crestZ, 15.6, 1.4, 4.8, this._materials.bossDark, true);
-      this._addSignBoard(dcx, crestY + 8.6, crestZ + 2.6, 11.4, 3.8, 0, 'dam');
-      this._addSignBoard(dcx, crestY + 8.6, crestZ - 2.6, 11.4, 3.8, Math.PI, 'dam');
-      this._addBox(-24, crestY + 1.4, crestZ - 3.6, 6.5, 2.8, 2.6, this._materials.rustBlue, true);
-      this._addBox(82, crestY + 1.4, crestZ + 3.6, 6.5, 2.8, 2.6, this._materials.rustOlive, true);
-      this._addLootContainer(dcx - 8.5, crestY - this.getTerrainHeight(dcx - 8.5, crestZ - 4.5) + 0.02, crestZ - 4.5, 'military', 'Dam Crest Overwatch Case');
-      this._addLootContainer(80, crestY - this.getTerrainHeight(80, crestZ - 3.5) + 0.02, crestZ - 3.5, 'supply', 'Dam Maintenance Crate');
+      const damSign = { title: 'NORTHERN DAM', sub: 'VOSTOK HYDROELECTRIC // GORGE SECTOR', bg: '#20262c', accent: '#4fc3f7' };
+      this._addSignBoard(dcx, crestY + 8.6, crestZ + 2.6, 11.4, 3.8, 0, damSign);
+      this._addSignBoard(dcx, crestY + 8.6, crestZ - 2.6, 11.4, 3.8, Math.PI, damSign);
+      this._addBox(dcx - 36, crestY + 1.4, crestZ - 3.6, 6.5, 2.8, 2.6, this._materials.rustOlive, true);
+      addSmokePlume(dcx + 28, crestY + 0.5, crestZ + 2.5, 0.85);
+      this._addLootContainer(dcx - 8.5, crestY - this.getTerrainHeight(dcx - 8.5, crestZ - 4.5) + 0.02, crestZ - 4.5, 'military', 'Dam Crest Convoy Case');
 
-      // B. Stepped Downstream Concrete Spillway Face, 6 Buttress Piers & Whitewater Tailwater Apron
-      this._addBox(dcx, 12.6, -396, 236, 4.4, 9.0, this._materials.concrete, true);
-      this._addBox(dcx, 9.4, -387, 236, 4.2, 10.0, this._materials.darkConcrete, true);
-      this._addBox(dcx, 6.2, -376, 236, 3.8, 12.0, this._materials.concrete, true);
-      for (const px of [-82, -38, 6, 50, 94, 138]) {
+      this._addBox(dcx, 12.6, -396, 212, 4.4, 9.0, this._materials.concrete, true);
+      this._addBox(dcx, 9.4, -387, 212, 4.2, 10.0, this._materials.darkConcrete, true);
+      this._addBox(dcx, 6.2, -376, 212, 3.8, 12.0, this._materials.concrete, true);
+      for (const px of [-132, -96, -60, -24, 12, 48]) {
         this._addBox(px, 10.2, -384, 3.4, 12.6, 34.0, this._materials.bossDark, true);
       }
-      const foamMat = new THREE.MeshBasicMaterial({ color: 0xdbeff5, transparent: true, opacity: 0.72 });
-      for (const sx of [-16, 28, 72]) {
-        const foam = new THREE.Mesh(new THREE.PlaneGeometry(18, 10), foamMat);
-        foam.rotation.x = -Math.PI / 2;
-        foam.position.set(sx, this.MAIN_START_WATER_Y + 0.06, -320);
-        this.scene.add(foam);
-      }
-
-      // C. Mid-Height Dam Gallery Walkway (y = 9.85m) + Dual Wide Exterior Concrete Staircases (3.2m -> 9.85m -> 16.5m)
       const midY = 9.85;
-      this._addBox(dcx, midY - 0.15, -378, 192, 0.35, 4.6, this._materials.darkConcrete, true);
-      addStaircase(-58, lowerY, -356, 25, 3.0, midY - lowerY, 19.5, 'north');
-      addStaircase(-58, midY, -380.5, 25, 3.0, crestY - midY, 19.5, 'north');
-      addStaircase(114, lowerY, -356, 25, 3.0, midY - lowerY, 19.5, 'north');
-      addStaircase(114, midY, -380.5, 25, 3.0, crestY - midY, 19.5, 'north');
+      this._addBox(dcx, midY - 0.15, -378, 174, 0.35, 4.6, this._materials.darkConcrete, true);
+      addStaircase(-114, lowerY, -356, 25, 3.0, midY - lowerY, 19.5, 'north');
+      addStaircase(-114, midY, -380.5, 25, 3.0, crestY - midY, 19.5, 'north');
+      addStaircase(30, lowerY, -356, 25, 3.0, midY - lowerY, 19.5, 'north');
+      addStaircase(30, midY, -380.5, 25, 3.0, crestY - midY, 19.5, 'north');
 
-      // D. Walkable Lower Hydro Powerhouse & Turbine Hall (28, -342 — 28m x 14m at y = 3.2m!)
-      const pbx = 28, pbz = -342;
-      const pby = this.getTerrainHeight(pbx, pbz);
-      this._addBuilding(pbx, pbz, 28, 14, 5.4, 'south', this._materials.concrete, (hBy, hH) => {
-        // 3 Cylindrical Hydro-Turbine Generator Units + Control Room Partition
-        for (const tx of [pbx - 8.5, pbx - 1.5, pbx + 5.5]) {
-          this._addBox(tx, hBy + 1.15, pbz - 2.2, 3.2, 2.0, 3.2, this._materials.metal, true);
-          this._addBox(tx, hBy + 2.35, pbz - 2.2, 1.8, 0.45, 1.8, this._materials.hazardAmber, false);
+      const pbx = -42, pbz = -342;
+      this._addBuilding(pbx, pbz, 26, 14, 5.4, 'south', this._materials.concrete, (hBy, hH) => {
+        for (const tx of [pbx - 7.5, pbx - 1.0, pbx + 5.5]) {
+          this._addBox(tx, hBy + 1.15, pbz - 2.2, 3.0, 2.0, 3.0, this._materials.metal, true);
         }
-        this._addPartition(pbx + 8.8, pbz - 7.0, pbx + 8.8, pbz + 7.0, hBy, hH, [
-          { at: pbz + 2.5, w: 1.8, door: 'steel', label: 'Turbine Control Door' }
+        this._addPartition(pbx + 8.2, pbz - 7.0, pbx + 8.2, pbz + 7.0, hBy, hH, [
+          { at: pbz + 2.2, w: 1.8, door: 'steel', label: 'Turbine Control Door' }
         ]);
-        addDeskProp(pbx + 11.4, hBy + 0.16, pbz - 4.2);
-        this._addLootContainer(pbx + 11.8, 0.16, pbz + 4.8, 'military', 'Dam Control Vault Case');
+        addDeskProp(pbx + 10.6, hBy + 0.16, pbz - 4.0);
+        this._addLootContainer(pbx + 10.8, 0.16, pbz + 4.4, 'valuables', 'Dam Control Vault');
       });
-      this._addGunLocker(pbx - 12.8, pbz + 2.2, Math.PI / 2, 'military', 'Powerhouse Security Locker');
-      this._addLootContainer(pbx - 11.2, 0.16, pbz - 5.0, 'supply', 'Turbine Hall Parts Crate');
-      this._addWallFirstAidKit(pbx + 4.2, pbz + 6.55, 'south', 'Powerhouse First Aid Kit');
+      this._addGunLocker(pbx - 11.6, pbz + 2.2, Math.PI / 2, 'military', 'Powerhouse Security Locker');
+      this._addLootContainer(pbx - 10.2, 0.16, pbz - 4.8, 'supply', 'Turbine Hall Parts Crate');
     }
 
-    // === MID-FIELD CHECKPOINTS, HIGHWAY COVER & SHIPPING CONTAINERS (100% ON DRY LOBES) ===
-    // South Peninsula Checkpoint (north of player infil)
-    this._addBarrier(77, 400, true);
-    this._addBarrier(93, 390, true);
-    this._addContainer(68, 395, 0, this._materials.rustOlive);
-    this._addLootContainer(72, 0, 399, 'supply', 'Peninsula Checkpoint Crate');
+    // 5. CRUISE TERMINAL (G7: 245, 408) — Oceanfront Terminal, Concrete Pier & Listing Evacuation Ship!
+    {
+      const cx = 245, cz = 408;
+      const cy = this.getTerrainHeight(cx, cz);
+      this._addBuilding(cx, cz, 28, 16, 5.4, 'north', this._materials.whiteWall, (by, bh) => {
+        this._addPartition(cx + 6.5, cz - 8.0, cx + 6.5, cz + 8.0, by, bh, [
+          { at: cz, w: 1.8, door: 'wood', label: 'VIP Cruise Lounge' }
+        ]);
+        addDeskProp(cx - 5.5, by + 0.16, cz + 3.5);
+        addDeskProp(cx + 10.2, by + 0.16, cz - 4.2);
+      });
+      this._addSignBoard(cx, cy + 4.5, cz - 8.3, 8.8, 2.4, Math.PI, {
+        title: 'CRUISE TERMINAL',
+        sub: 'VOSTOK MARITIME PORT // OCEAN BERTH 01',
+        bg: '#132a3a',
+        accent: '#26c6da'
+      });
+      this._addLootContainer(cx + 10.8, 0.16, cz + 4.8, 'valuables', 'Purser Bullion & Valuables Safe');
+      this._addLootContainer(cx - 9.5, 0.16, cz - 4.5, 'office', 'Port Embarkation Records');
+      this._addWorkbenchTable(cx - 2.0, cz + 4.5, 0, [
+        { id: 'vacation_planner', qty: 2 }, { id: 'antique_watch', qty: 1 }, { id: 'ancient_coin', qty: 1 }
+      ]);
 
-    const midContainers = [
-      [-245, -180, 0, this._materials.rustRed],
-      [-240, 145, 1, this._materials.rustBlue],
-      [255, 95, 0, this._materials.rustOlive],
-      [-455, -180, 1, this._materials.rustRed],
-      [285, -40, 0, this._materials.rustBlue],
-      [-285, -75, 1, this._materials.rustOlive],
-      [255, 205, 1, this._materials.rustRed],
-      [155, 465, 0, this._materials.rustBlue]
-    ];
-    for (const [cx, cz, rot, mat] of midContainers) {
-      this._addContainer(cx, cz, rot, mat);
-      this._addLootContainer(cx + 3.2, 0, cz + 2.5, 'supply');
+      const pierY = Math.max(cy + 0.25, this.OCEAN_WATER_Y + 1.85);
+      this._addBox(cx, pierY - 0.25, 452, 12.0, 0.55, 68, this._materials.concrete, true);
+      addStaircase(cx, cy, 417, 6, 8.0, Math.max(0.4, pierY - cy), 4.5, 'south');
+      for (let pz = 428; pz <= 482; pz += 14) {
+        this._addBox(cx - 5.2, pierY - 2.2, pz, 1.0, 4.2, 1.0, this._materials.darkConcrete, true);
+        this._addBox(cx + 5.2, pierY - 2.2, pz, 1.0, 4.2, 1.0, this._materials.darkConcrete, true);
+      }
+      this._addBox(cx - 3.2, pierY + 1.4, 466, 2.6, 2.8, 6.5, this._materials.rustBlue, true);
+      this._addLootContainer(cx + 2.8, pierY - this.getTerrainHeight(cx + 2.8, 474) + 0.02, 474, 'military', 'Evacuation Pier Supply Case');
+      addFallenCasualtyAndEvac(cx - 1.5, 444, 0.5);
+      addFallenCasualtyAndEvac(cx + 8.5, 395, -0.4);
+
+      const shipX = cx + 22, shipZ = 476;
+      const ship = new THREE.Group();
+      ship.position.set(shipX, this.OCEAN_WATER_Y + 0.6, shipZ);
+      ship.rotation.set(0.04, -0.18, 0.14);
+      const hull = new THREE.Mesh(new THREE.BoxGeometry(11.5, 5.2, 38), this._materials.bossDark);
+      hull.position.y = 1.8;
+      const deck1 = new THREE.Mesh(new THREE.BoxGeometry(10.2, 3.4, 28), this._materials.whiteWall);
+      deck1.position.set(0, 5.8, -1.5);
+      const bridge = new THREE.Mesh(new THREE.BoxGeometry(9.6, 2.6, 8.0), this._materials.whiteWall);
+      bridge.position.set(0, 8.6, 7.0);
+      const funnel = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.7, 4.8, 10), this._materials.fireRed);
+      funnel.position.set(0, 9.5, -5.0);
+      ship.add(hull, deck1, bridge, funnel);
+      this.scene.add(ship);
+      addSmokePlume(shipX, this.OCEAN_WATER_Y + 9.2, shipZ - 4.0, 1.45);
+
+      this.pois.push({ name: 'CRUISE TERMINAL', x: cx, z: cz, color: '#26c6da', threat: 'medium' });
     }
 
-    const barriers = [
-      [-125, 76, true], [48, 86, true], [-245, -90, true], [295, -242, true],
-      [255, 112, false], [-255, 130, false], [165, 472, true], [-115, 330, true]
+    // 6. COASTAL LIGHTHOUSE (C7: -375, 372)
+    {
+      const cx = -375, cz = 372;
+      const ly = this.getTerrainHeight(cx, cz);
+      const tx = cx - 6.5, tz = cz + 6.5;
+      this._addBox(tx, ly + 1.2, tz, 7.2, 2.4, 7.2, this._materials.darkConcrete, true);
+      for (let b = 0; b < 6; b++) {
+        const rBot = 2.8 - b * 0.16;
+        const rTop = 2.8 - (b + 1) * 0.16;
+        const bandMesh = new THREE.Mesh(
+          new THREE.CylinderGeometry(rTop, rBot, 3.8, 14),
+          (b % 2 === 0) ? this._materials.whiteWall : this._materials.fireRed
+        );
+        bandMesh.position.set(tx, ly + 2.4 + b * 3.8 + 1.9, tz);
+        this.scene.add(bandMesh);
+      }
+      this.colliders.push({ minX: tx - 3.0, maxX: tx + 3.0, minY: ly, maxY: ly + 26, minZ: tz - 3.0, maxZ: tz + 3.0 });
+      const lantern = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.65, 1.65, 2.6, 12),
+        new THREE.MeshBasicMaterial({ color: 0xfff3b0 })
+      );
+      lantern.position.set(tx, ly + 26.5, tz);
+      const cap = new THREE.Mesh(new THREE.ConeGeometry(2.1, 1.8, 12), this._materials.bossDark);
+      cap.position.set(tx, ly + 28.6, tz);
+      this.scene.add(lantern, cap);
+
+      this._addBuilding(cx + 6.5, cz - 3.5, 12, 9.5, 4.0, 'north', this._materials.wood, (by) => {
+        addDeskProp(cx + 9.2, by + 0.16, cz - 5.8);
+      });
+      this._addLootContainer(cx + 9.4, 0.16, cz - 1.2, 'valuables', 'Lighthouse Keeper Chest');
+      this._addLootContainer(cx + 3.2, 0.16, cz - 5.8, 'household', 'Keeper Wardrobe');
+      this._addWorkbenchTable(cx + 3.5, cz - 1.0, 0, [
+        { id: 'nature_photo', qty: 1 }, { id: 'ancient_coin', qty: 1 }, { id: 'tools', qty: 1 }
+      ]);
+      this.pois.push({ name: 'LIGHTHOUSE', x: cx, z: cz, color: '#ffee58', threat: 'low' });
+    }
+
+    // 7. VOSTOK CITY CENTER (G2: 248, -368) — Urban Blocks, River Bridges & Garrison Boss HQ!
+    {
+      const cx = 248, cz = -368;
+      const cy = this.getTerrainHeight(cx, cz);
+      const hqx = cx + 10, hqz = cz - 10;
+      const hqY = this.getTerrainHeight(hqx, hqz);
+      const f1H = 4.2, f2H = 4.0;
+      const f2Base = hqY + f1H;
+      this.bossSpawnPos = new THREE.Vector3(hqx - 3.0, f2Base + 0.30, hqz + 2.5);
+      this.bossGuardSpawns = [
+        new THREE.Vector3(hqx + 4.0, hqY + 0.25, hqz + 3.0),
+        new THREE.Vector3(cx - 6.0, cy + 0.25, cz + 6.0),
+        new THREE.Vector3(hqx - 3.0, f2Base + 0.30, hqz - 3.5)
+      ];
+      this._addBuilding(hqx, hqz, 22, 18, f1H + f2H, 'west', this._materials.bossDark, (by) => {
+        this._addPartition(hqx + 2.0, hqz - 9.0, hqx + 2.0, hqz - 1.0, by, f1H, [
+          { at: hqz - 5.0, w: 1.8, door: 'steel', label: 'Command Armory Door' }
+        ]);
+        this._addPartition(hqx + 2.0, hqz - 1.0, hqx + 11.0, hqz - 1.0, by, f1H, []);
+        this._addLootContainer(hqx + 6.8, 0.16, hqz - 5.2, 'boss_key_room', 'Vostok Command Vault [KEY ROOM]', 'boss_key');
+        this._addBox(hqx + 3.2, f2Base - 0.15, hqz, 15.2, 0.32, 17.4, this._materials.darkConcrete, true);
+        addStaircase(hqx - 6.8, by + 0.16, hqz + 6.8, 16, 2.4, f1H - 0.16, 10.5, 'north');
+        addDeskProp(hqx + 5.5, f2Base + 0.02, hqz + 4.2);
+      });
+      this._addSignBoard(hqx - 11.3, hqY + 5.2, hqz, 8.6, 2.4, -Math.PI / 2, {
+        title: 'VOSTOK CITY',
+        sub: 'MUNICIPAL COMMAND // RESTRICTED',
+        bg: '#1c1818',
+        accent: '#ffc107'
+      });
+      this._addLootContainer(hqx + 6.5, f1H + 0.04, hqz + 5.8, 'valuables', 'Commander Warlord Safe');
+      this._addGunLocker(hqx - 2.0, hqz - 7.2, 0, 'military', 'Garrison HQ Gun Locker');
+
+      this._addBuilding(cx - 12, cz + 14, 18, 13, 5.2, 'north', this._materials.concrete, (by, bh) => {
+        this._addPartition(cx - 12, cz + 7.5, cx - 12, cz + 20.5, by, bh, [
+          { at: cz + 14, w: 1.7, door: 'wood', label: 'Apartment Hallway' }
+        ]);
+      });
+      this._addLootContainer(cx - 17.2, 0.16, cz + 16.5, 'household', 'City Apartment Cupboard');
+      this._addLootContainer(cx - 6.8, 0.16, cz + 16.5, 'office', 'Municipal Tax Office Cabinet');
+      this._addWorkbenchTable(cx - 16.5, cz + 10.5, 0, [
+        { id: 'family_photo', qty: 1 }, { id: 'pure_silver', qty: 1 }, { id: 'clothes', qty: 2 }
+      ]);
+
+      this._addBuilding(118, -355, 14, 12, 4.8, 'east', this._materials.interiorPlaster, () => {});
+      this._addLootContainer(118 - 3.8, 0.16, -355 - 3.2, 'hospital', 'City Pharmacy Cabinet');
+      this._addLootContainer(118 - 3.8, 0.16, -355 + 3.2, 'household', 'Riverfront Flat Closet');
+
+      this._addBox(cx - 8, cy + 1.4, cz - 4, 3.6, 2.8, 3.6, this._materials.darkConcrete, true);
+      addWreckedVehicle(cx - 18, cz - 6, 0.55, true, true);
+      this.pois.push({ name: 'VOSTOK CITY', x: cx, z: cz, color: '#ffc107', threat: 'boss' });
+    }
+
+    // 8. SOUTH VOSTOK INDUSTRIAL CONSTRUCTION (G3: 252, -225)
+    {
+      const cx = 252, cz = -225;
+      const iy = this.getTerrainHeight(cx, cz);
+      this._addBox(cx, iy + 0.12, cz, 22, 0.24, 18, this._materials.darkConcrete, false);
+      this._addBox(cx + 2.5, iy + 4.4, cz, 16.5, 0.35, 17.5, this._materials.concrete, true);
+      for (const px of [cx - 9.5, cx, cx + 9.5]) {
+        for (const pz of [cz - 7.8, cz, cz + 7.8]) {
+          this._addBox(px, iy + 4.6, pz, 0.75, 9.2, 0.75, this._materials.bossDark, true);
+        }
+      }
+      addStaircase(cx - 8.2, iy + 0.2, cz + 6.5, 16, 2.8, 4.35, 11.0, 'north');
+      this._addLootContainer(cx + 6.2, 4.58, cz - 5.2, 'supply', 'Upper Deck Requisition Crate');
+      this._addWorkbenchTable(cx + 5.5, cz + 4.8, 0, [
+        { id: 'carbon_fibre_sample', qty: 1 }, { id: 'metallic_alloy', qty: 2 }, { id: 'tools', qty: 2 }
+      ], 4.58);
+
+      const crX = cx - 16, crZ = cz - 14;
+      const crY = this.getTerrainHeight(crX, crZ);
+      this._addBox(crX, crY + 1.0, crZ, 5.2, 2.0, 5.2, this._materials.darkConcrete, true);
+      this._addBox(crX, crY + 16.5, crZ, 2.2, 31.0, 2.2, this._materials.hazardAmber, true);
+      this._addBox(crX + 11.0, crY + 31.2, crZ, 32.0, 1.4, 1.6, this._materials.hazardAmber, false);
+      this._addBox(crX - 6.5, crY + 30.8, crZ, 3.6, 2.2, 2.4, this._materials.darkConcrete, false);
+
+      this._addBuilding(cx + 15, cz + 14, 12, 8.5, 3.8, 'west', this._materials.rustBlue, (by) => {
+        addDeskProp(cx + 17.5, by + 0.16, cz + 12.2);
+      });
+      this._addSignBoard(cx + 9.0, iy + 3.4, cz + 14, 7.6, 2.2, -Math.PI / 2, {
+        title: 'S. VOSTOK IND.',
+        sub: 'CONSTRUCTION SECTOR // BLOCK 03',
+        bg: '#262116',
+        accent: '#ff9800'
+      });
+      this._addLootContainer(cx + 17.8, 0.16, cz + 16.2, 'office', 'Foreman Blueprints & Ledger');
+      this._addLootContainer(cx - 2.5, 0.24, cz - 4.5, 'supply', 'Industrial Materials Crate');
+      for (const szOff of [-6, 2]) {
+        const silo = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 11.0, 12), this._materials.concrete);
+        silo.position.set(cx - 17, iy + 5.5, cz + 12 + szOff);
+        this.scene.add(silo);
+      }
+      this.pois.push({ name: 'S. VOSTOK IND.', x: cx, z: cz, color: '#ff9800', threat: 'medium' });
+    }
+
+    // 9. VOSTOK QUARRY (C2: -400, -395)
+    {
+      const cx = -400, cz = -395;
+      const qy = this.getTerrainHeight(cx, cz);
+      this._addBox(cx - 18, qy + 2.2, cz - 18, 28, 4.4, 8, this._materials.darkConcrete, true);
+      this._addBox(cx - 20, qy + 5.2, cz - 24, 32, 6.0, 8, this._materials.bossDark, true);
+      this._addBox(cx - 6, qy + 4.2, cz - 6, 8.5, 8.4, 8.5, this._materials.rustRed, true);
+      const conv = new THREE.Mesh(new THREE.BoxGeometry(2.2, 1.1, 18.0), this._materials.metal);
+      conv.position.set(cx - 6, qy + 5.8, cz + 5.5);
+      conv.rotation.x = 0.34;
+      this.scene.add(conv);
+
+      this._addBuilding(cx + 14, cz - 6, 14, 11, 4.2, 'south', this._materials.bossDark, (by) => {
+        addDeskProp(cx + 17.2, by + 0.16, cz - 8.5);
+      });
+      this._addSignBoard(cx + 14, qy + 3.8, cz - 0.2, 7.6, 2.2, 0, {
+        title: 'VOSTOK QUARRY',
+        sub: 'EXCAVATION & BLASTING // SECTOR C2',
+        bg: '#241e1a',
+        accent: '#ef5350'
+      });
+      this._addLootContainer(cx + 17.2, 0.16, cz - 3.2, 'valuables', 'Quarry Assay Bullion Safe');
+      this._addLootContainer(cx + 10.2, 0.16, cz - 8.5, 'military', 'Blasting Magazine Case');
+      this._addMetalShelf(cx + 10.5, cz - 3.0, 0, [
+        { id: 'heavy_gunpowder', qty: 2 }, { id: 'reactive_metals', qty: 1 }, { id: 'pure_silver', qty: 1 }
+      ]);
+      addWreckedVehicle(cx + 2, cz + 14, -0.4, true, false);
+      this.pois.push({ name: 'QUARRY', x: cx, z: cz, color: '#ef5350', threat: 'medium' });
+    }
+
+    // 10-15. COMPOUNDS ALPHA - FOXTROT
+    buildGuardedCompound('ALPHA',   'G1.5',  242, -485);
+    buildGuardedCompound('BRAVO',   'D2',   -232, -395);
+    buildGuardedCompound('CHARLIE', 'H5',    402,   80);
+    buildGuardedCompound('DELTA',   'B3',   -520, -240);
+    buildGuardedCompound('ECHO',    'C5',   -392,   80);
+    buildGuardedCompound('FOXTROT', 'E7',    -82,  380);
+
+    // === 4 ROADSIDE STRIP-TOWNS (Houses + % Chance of Small Clinic, Police Station, or Fire Station!) ===
+    buildRoadsideStripTown(-390, -80, true);   // West Highway Strip-Town (C4)
+    buildRoadsideStripTown(-235, 225, true);   // SW Coastal Road Strip-Town (D6)
+    buildRoadsideStripTown( 248, -75, true);   // East Arterial Strip-Town (G4)
+    buildRoadsideStripTown( 155, 245, false);  // SE Oceanfront Strip-Town (F6)
+
+    // === BATTLE-SCARRED VOSTOK LANDSCAPE: Downed Helicopters, Burned-Out Convoys, Casualties & Fallen Trees ===
+    addDownedHelicopter(-125, -185, -0.75, 'Downed NATO Blackhawk');
+    addDownedHelicopter( 335,  -85,  1.15, 'Downed Vostok Mi-8');
+    addDownedHelicopter( -15,  255,  0.35, 'Coastal Evac Chopper');
+
+    const battleVehicles = [
+      [-115,  -80,  0.12, true,  true],
+      [  25,   82, -0.25, false, false],
+      [-310,  305,  0.85, false, false],
+      [  85,  392,  0.18, true,  true],
+      [ 325,  245, -0.65, false, false],
+      [-315, -395,  0.05, true,  false],
+      [ 168, -352,  0.08, false, false]
     ];
-    for (const [bx, bz, horiz] of barriers) {
-      this._addBarrier(bx, bz, horiz);
+    for (const [vx, vz, vrot, isApc, smk] of battleVehicles) {
+      addWreckedVehicle(vx, vz, vrot, isApc, smk);
+    }
+
+    const evacSites = [
+      [-132, -74, 0.4], [92, 386, -0.5], [-485, 82, 0.2],
+      [228, 392, 0.9], [230, -355, -0.3], [-242, 212, 0.6]
+    ];
+    for (const [ex, ez, erot] of evacSites) {
+      addFallenCasualtyAndEvac(ex, ez, erot);
+    }
+
+    const fallenLogs = [
+      [-310, -210, 0.4], [-175, -245, 1.2], [-165, 65, -0.5], [175, -135, 0.8],
+      [335, -215, -0.3], [325, 185, 1.0], [-315, 165, 0.2], [45, -215, -0.9],
+      [-455, -145, 0.7], [175, 145, -0.4], [-145, 295, 1.1], [385, -335, 0.5]
+    ];
+    for (const [lx, lz, lrot] of fallenLogs) {
+      addFallenPineLog(lx, lz, lrot);
     }
 
     this._spawnLogicalLooseLoot();
 
-    // === 4 SPREAD-OUT EXTRACTION ZONES MATCHING CUSTOM SILHOUETTE ===
-    this._addExtractZone('NW RIDGE HELIPAD', -450, -495, 6.5);
-    this._addExtractZone('EAST BLUFF GATE', 465, -45, 6.5);
-    this._addExtractZone('WEST CLIFF CONVOY', -535, -60, 6.5);
-    this._addExtractZone('SOUTH PENINSULA PIER', 355, 505, 6.5);
+    // === 4 VOSTOK EXTRACTION ZONES ===
+    this._addExtractZone('NW MOUNTAIN HELIPAD', -485, -445, 6.5);
+    this._addExtractZone('EAST TAIGA CHECKPOINT', 465, -185, 6.5);
+    this._addExtractZone('SW COASTAL CONVOY', -455, 285, 6.5);
+    this._addExtractZone('SOUTH BEACH EVAC BOAT', 365, 435, 6.5);
 
-    // === OPERATOR SQUAD PERIMETER SPAWNS (100% INSIDE MAP_BOUNDARY & DRY!) ===
+    // === RANDOMIZED OUTER PERIMETER SPAWNS (16) + 5 INNER POI SPAWNS ===
     this.operatorSpawns = [];
+    this.perimeterSpawns = [];
+    this.innerPoiSpawns = [];
     const ensureDrySpawn = (sx, sz) => {
       let cx = sx;
       let cz = sz;
-      for (let step = 0; step < 24; step++) {
+      for (let step = 0; step < 26; step++) {
         const outD = this.getOutOfBoundsDist(cx, cz);
         const wD = this.getWaterDepth(cx, cz);
-        const inDam = this.DAM_BOUNDS && cx >= this.DAM_BOUNDS.minX - 10 && cx <= this.DAM_BOUNDS.maxX + 10 && cz >= this.DAM_BOUNDS.minZ - 10 && cz <= this.DAM_BOUNDS.maxZ + 10;
-        if (outD < -24 && wD <= 0.03 && !inDam) break;
-        // Pull smoothly toward nearest dry lobe centroid
-        const targetX = cx < -40 ? -310 : (cz > 280 ? 120 : 320);
-        const targetZ = cz < -180 ? -290 : (cz > 280 ? 430 : 60);
+        const oD = this._oceanDist(cx, cz);
+        const inDam = this.DAM_BOUNDS && cx >= this.DAM_BOUNDS.minX - 12 && cx <= this.DAM_BOUNDS.maxX + 12 && cz >= this.DAM_BOUNDS.minZ - 12 && cz <= this.DAM_BOUNDS.maxZ + 12;
+        if (outD < -24 && wD <= 0.03 && oD < -12 && !inDam) break;
+        const targetX = cx < -40 ? -310 : 240;
+        const targetZ = cz < -180 ? -280 : (cz > 280 ? 290 : 40);
         const dx = targetX - cx;
         const dz = targetZ - cz;
         const dLen = Math.hypot(dx, dz) || 1;
@@ -3549,30 +3921,36 @@ class WastelandWorld {
       return new THREE.Vector3(Math.round(cx), this.getTerrainHeight(cx, cz), Math.round(cz));
     };
 
-    const perimCandidates = [
-      [-475, -430], [-255, -455], [250, -435], [505, -315],
-      [455, -80], [455, 225], [385, 475], [-25, 455],
-      [-265, 265], [-475, 115], [-525, -165]
+    const outerPerimCandidates = [
+      [-515, -485], [-345, -505], [-195, -475], [185, -510],
+      [335, -475],  [475, -365],  [485, -125],  [475,  145],
+      [445,  325],  [335,  425],  [ 25,  425],  [-195, 425],
+      [-425, 395],  [-485, 225],  [-555,  -25], [-555, -335]
     ];
-    for (const [sx, sz] of perimCandidates) {
-      this.operatorSpawns.push(ensureDrySpawn(sx, sz));
-    }
-    const lowThreatInteriorSpawns = [
-      [-125, 315],  // Near Police/Fire (low threat)
-      [215, 435],   // Near Radio Outpost (low threat)
-      [168, 118]    // Near Central-East Warehouse (low threat)
-    ];
-    for (const [ix, iz] of lowThreatInteriorSpawns) {
-      this.operatorSpawns.push(ensureDrySpawn(ix, iz));
+    for (const [sx, sz] of outerPerimCandidates) {
+      const sp = ensureDrySpawn(sx, sz);
+      this.perimeterSpawns.push(sp);
+      this.operatorSpawns.push(sp);
     }
 
-    // === GENERAL PATROL / SPAWN POINTS ACROSS ALL SECTORS ===
+    const fiveInnerPoiSpawns = [
+      [-195,  -65], // 1. Inner Spawn: East of TV Broadcast Station (D4)
+      [ 145,   95], // 2. Inner Spawn: East of Vostok Superstore (F5)
+      [ 208, -218], // 3. Inner Spawn: West approach to S. Vostok Industrial (G3)
+      [-345,   85], // 4. Inner Spawn: East approach to Compound Echo (C5)
+      [-195,  225]  // 5. Inner Spawn: Central-SW Strip-Town Crossroads (D6)
+    ];
+    for (const [ix, iz] of fiveInnerPoiSpawns) {
+      const isp = ensureDrySpawn(ix, iz);
+      this.innerPoiSpawns.push(isp);
+      this.operatorSpawns.push(isp);
+    }
+
     this.spawnPoints = this.pois.map((p) => {
-      const sp = ensureDrySpawn(p.x + 14, p.z + 14);
+      const sp = ensureDrySpawn(p.x + 16, p.z + 16);
       return new THREE.Vector3(sp.x, this.getTerrainHeight(sp.x, sp.z), sp.z);
     });
   }
-
   getSurfaceHeightAt(x, z, referenceY = null) {
     // Sample a small 4-corner footprint so items on sloped hills never clip one end into the terrain!
     const t0 = this.getTerrainHeight(x, z);
@@ -4050,21 +4428,20 @@ class WastelandWorld {
   }
 
   _spawnLogicalLooseLoot() {
-    // Outdoor field tables near dry lobe checkpoints & bridge approaches
-    this._addWorkbenchTable(76.0, 404.0, 0, [
-      { id: 'scrap_metal', qty: 2 }, { id: 'bandage', qty: 1 }
+    this._addWorkbenchTable(-125.0, -76.0, 0, [
+      { id: 'sterile_bandage', qty: 1 }, { id: 'brass_casings', qty: 2 }
     ], 0);
-    this._addWorkbenchTable(-132.0, 76.0, Math.PI / 2, [
-      { id: 'gunpowder', qty: 2 }, { id: 'ammo_9x18', qty: 20 }
+    this._addWorkbenchTable(92.0, 384.0, Math.PI / 2, [
+      { id: 'syringe', qty: 1 }, { id: 'gunpowder', qty: 2 }
     ], 0);
-    this._addWorkbenchTable(258.0, 102.0, 0, [
-      { id: 'ammo_545', qty: 24 }, { id: 'polymer_parts', qty: 2 }
+    this._addWorkbenchTable(162.0, -348.0, 0, [
+      { id: 'classified_documents', qty: 1 }, { id: 'ammo_545', qty: 24 }
     ], 0);
-    this._addWorkbenchTable(-248.0, -96.0, Math.PI / 2, [
-      { id: 'armor_plate', qty: 1 }, { id: 'frag_grenade', qty: 1 }
+    this._addWorkbenchTable(-315.0, -388.0, Math.PI / 2, [
+      { id: 'armor_plate', qty: 2 }, { id: 'kevlar_padding', qty: 1 }
     ], 0);
-    this._addWorkbenchTable(260.0, 212.0, 0, [
-      { id: 'medkit', qty: 1 }, { id: 'ammo_9x19', qty: 24 }
+    this._addWorkbenchTable(330.0, 240.0, 0, [
+      { id: 'medkit', qty: 1 }, { id: 'tools', qty: 1 }
     ], 0);
   }
 
@@ -4149,6 +4526,23 @@ class WastelandWorld {
       }
       if (this.skyDome.material && this.skyDome.material.uniforms && this.skyDome.material.uniforms.uTime) {
         this.skyDome.material.uniforms.uTime.value = time;
+      }
+    }
+    // Animate rising Vostok battlefield smoke plumes trailing into the sky!
+    if (this.smokePlumes && this.smokePlumes.length > 0) {
+      for (let i = 0; i < this.smokePlumes.length; i++) {
+        const pl = this.smokePlumes[i];
+        const maxRise = 44 * pl.scale;
+        for (let j = 0; j < pl.puffs.length; j++) {
+          const pf = pl.puffs[j];
+          const cyc = (time * 0.085 + pf.phase + i * 0.13) % 1.0;
+          pf.sprite.position.y = pl.y + 1.8 + cyc * maxRise;
+          pf.sprite.position.x = pl.x + Math.sin(time * 0.4 + j + i) * (1.5 + cyc * 6.5) + cyc * 8.0;
+          pf.sprite.position.z = pl.z + Math.cos(time * 0.35 + j) * (1.2 + cyc * 4.5) - cyc * 4.0;
+          const sc = pf.baseScale * (0.65 + cyc * 1.15);
+          pf.sprite.scale.set(sc, sc, 1);
+          pf.sprite.material.opacity = Math.sin(cyc * Math.PI) * 0.42;
+        }
       }
     }
     // Gently drift volumetric valley mist layers

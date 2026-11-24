@@ -1819,11 +1819,14 @@ class Player {
 
   useTemporaryMed(itemId) {
     if (this.isDowned || this.dead) return false;
-    if (itemId !== 'bandage' && itemId !== 'painkillers') return false;
+    const allowedMeds = ['bandage', 'sterile_bandage', 'syringe', 'painkillers'];
+    if (!allowedMeds.includes(itemId)) return false;
     const idx = this.backpack.findIndex(it => it && it.id === itemId && it.qty > 0);
     if (!window.DEV_MODE && idx === -1) return false;
-    const restoreCap = itemId === 'painkillers' ? 50 : 25;
-    const dur = itemId === 'painkillers' ? 45.0 : 25.0;
+    const def = (window.GAME_DATA && GAME_DATA.ITEMS && GAME_DATA.ITEMS[itemId]) || null;
+    const healAmt = (def && def.healAmount) || (itemId === 'painkillers' ? 45 : 30);
+    const restoreCap = (itemId === 'syringe' || itemId === 'painkillers') ? 50 : (itemId === 'sterile_bandage' ? 35 : 25);
+    const dur = (itemId === 'syringe' || itemId === 'painkillers') ? 45.0 : 30.0;
     const canRestore = Math.min(this.disabledHp || 0, restoreCap);
     const needsHeal = this.hp < this.getEffectiveMaxHp();
     if (canRestore <= 0 && !needsHeal && !window.DEV_MODE) return false;
@@ -1838,7 +1841,6 @@ class Player {
       this.tempHealthDuration = dur;
       this.tempHealthSource = itemId;
     }
-    const healAmt = itemId === 'painkillers' ? 45 : 30;
     this.hp = Math.min(this.getEffectiveMaxHp(), this.hp + healAmt);
     if (window.soundEngine && window.soundEngine.playHeal) {
       try { window.soundEngine.playHeal(); } catch (e) {}
