@@ -1075,11 +1075,11 @@ window.ModelSystem = (() => {
       const bandFront = new THREE.Mesh(geoRoundedBox(0.043, 0.044, 0.016, 0.008, 0.0014), m.bluedMat);
       bandFront.position.set(0, 0.002, -0.37);
       const cleaningRod = new THREE.Mesh(_cachedGeo('mosin_rod', () => {
-        const c = new THREE.CylinderGeometry(0.003, 0.003, 0.44, 8);
+        const c = new THREE.CylinderGeometry(0.003, 0.003, 0.51, 8);
         c.rotateX(Math.PI / 2);
         return c;
       }), m.magMat);
-      cleaningRod.position.set(0, -0.002, -0.44);
+      cleaningRod.position.set(0, -0.002, -0.475);
 
       const receiver = new THREE.Mesh(_cachedGeo('mosin_rec', () => {
         const c = new THREE.CylinderGeometry(0.020, 0.020, 0.22, 8);
