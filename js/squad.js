@@ -7,7 +7,7 @@ class SquadMate {
     this.weaponSystem = weaponSystem;
     this.name = memberInfo.name || 'ALLY';
     this.squadColor = memberInfo.squadColor || '#69f0ae';
-    this.weaponId = memberInfo.weaponId || 'ak74m';
+    this.weaponId = memberInfo.weaponId || 'ak47';
     this.isRemoteHuman = !!memberInfo.isRemoteHuman;
     this.clientId = memberInfo.clientId || null;
     this._remoteTargetPos = spawnPos.clone();
@@ -445,7 +445,7 @@ class SquadMate {
       this.isDowned = true;
       this.downedHp = 55;
       this.downedBleedTimer = this.downedBleedMax;
-      this.downedBy = attackerInfo || { name: 'HOSTILE', weaponId: 'ak74m', weaponName: 'AK-74M' };
+      this.downedBy = attackerInfo || { name: 'HOSTILE', weaponId: 'ak47', weaponName: 'AK-47' };
       this.reviveProgress = 0;
       this.state = 'DOWNED';
       // Grounded seated downed posture: hide weapon, reclined back with legs flat on top of ground (Y_foot >= +0.16m)
@@ -1235,8 +1235,8 @@ class SquadMate {
           const ewDef = GAME_DATA.ITEMS[targetEnemy.weaponId];
           this.takeDamage(16, {
             name: targetEnemy.name,
-            weaponId: targetEnemy.weaponId || 'ak74m',
-            weaponName: ewDef ? ewDef.name : 'AK-74M'
+            weaponId: targetEnemy.weaponId || 'ak47',
+            weaponName: ewDef ? ewDef.name : 'AK-47'
           }, onAllyEvent);
         }
       }
@@ -1426,7 +1426,7 @@ class SquadManager {
         clientId: m.clientId || null,
         isRemoteHuman: !!m.isRemoteHuman,
         squadColor: m.squadColor || squadColors[(idx + 1) % squadColors.length],
-        weaponId: m.weaponId || (idx % 2 === 0 ? 'ak74m' : 'mp5k'),
+        weaponId: m.weaponId || (idx % 2 === 0 ? 'ak47' : 'mp5k'),
         flankSide: side
       }, weaponSystem));
     });
