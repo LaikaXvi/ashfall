@@ -115,8 +115,8 @@ class Enemy {
       const opStats = GAME_DATA.OPERATOR_STATS || { maxHp: 100, walkSpeed: 6.8, sprintSpeed: 9.6, tacSprintSpeed: 12.4, crouchSpeed: 3.9, adsSpeed: 4.3, proneSpeed: 1.15, downedSpeed: 1.9, slideStartSpeed: 13.6, slideEndSpeed: 4.6 };
       const styles = {
         rusher:   { dmg: 11, fire: 0.30, acc: 0.11, wpn: 'mp5k',  col: 0x3b4852 },
-        flanker:  { dmg: 13, fire: 0.36, acc: 0.08, wpn: 'ak74m', col: 0x424d3b },
-        tactical: { dmg: 14, fire: 0.40, acc: 0.06, wpn: 'ak74m', col: 0x383d42 },
+        flanker:  { dmg: 13, fire: 0.36, acc: 0.08, wpn: 'ak47', col: 0x424d3b },
+        tactical: { dmg: 14, fire: 0.40, acc: 0.06, wpn: 'ak47', col: 0x383d42 },
         marksman: { dmg: 22, fire: 0.98, acc: 0.03, wpn: 'm24',   col: 0x4a4536 }
       };
       const st = styles[this.playstyle] || styles.tactical;
@@ -131,8 +131,8 @@ class Enemy {
       this.downedSpeed = opStats.downedSpeed;
       this.armorColor = st.col;
       this.headColor = 0x26292d;
-      const opPrimaries = this.playstyle === 'marksman' ? ['m24', 'ak74m']
-        : (this.playstyle === 'rusher' ? ['mp5k', 'm870'] : ['ak74m', 'mp5k', 'm870']);
+      const opPrimaries = this.playstyle === 'marksman' ? ['m24', 'ak47']
+        : (this.playstyle === 'rusher' ? ['mp5k', 'm870'] : ['ak47', 'mp5k', 'm870']);
       this.weaponId = opPrimaries[Math.floor(Math.random() * opPrimaries.length)];
       const vests = ['vest_1plate', 'vest_2plate', 'vest_2plate_gel', 'vest_2plate_helmet', 'vest_3plate'];
       const bags = ['bag_small', 'bag_medium', 'bag_large', 'bag_weapon'];
@@ -174,7 +174,7 @@ class Enemy {
       };
       // Only Weapon Pack operators can spawn with a stowed weapon in their top-left backpack weapon slot!
       if (this.operatorEquipment.backpack === 'bag_weapon' && Math.random() < 0.65) {
-        const bwPool = ['mp5k', 'ak74m', 'm870', 'm24', 'g17'];
+        const bwPool = ['mp5k', 'ak47', 'm870', 'm24', 'g17'];
         const bwId = bwPool[Math.floor(Math.random() * bwPool.length)];
         const bwDef = GAME_DATA.ITEMS[bwId];
         const bwRoll = GAME_DATA.rollRandomAttachmentsForRarity
@@ -254,7 +254,7 @@ class Enemy {
       this.speed = 3.0;
       this.armorColor = 0x3b1e22;
       this.headColor = 0x1d1e22;
-      const bossWpns = ['ak74m', 'm24', 'awm338', 'm870'];
+      const bossWpns = ['ak47', 'm24', 'awm338', 'm870'];
       this.weaponId = bossWpns[Math.floor(Math.random() * bossWpns.length)];
     } else if (tier === 'boss_guard') {
       this.name = 'Armored Command Guard';
@@ -268,7 +268,7 @@ class Enemy {
       this.armorColor = 0x222830;
       this.headColor = 0x1a1e24;
       // Armored Boss Guards carry higher-tier weapons than standard raiders!
-      const guardWpns = ['ak74m', 'm24', 'awm338', 'mp5k', 'm870'];
+      const guardWpns = ['ak47', 'm24', 'awm338', 'mp5k', 'm870'];
       this.weaponId = guardWpns[Math.floor(Math.random() * guardWpns.length)];
     } else if (tier === 'heavy') {
       this.name = 'Armored Juggernaut';
@@ -279,7 +279,7 @@ class Enemy {
       this.speed = 2.6;
       this.armorColor = 0x2a2f33;
       this.headColor = 0x3b4045;
-      this.weaponId = 'ak74m';
+      this.weaponId = 'ak47';
     } else if (tier === 'raider') {
       this.name = 'Wasteland Raider';
       this.maxHp = 110;
@@ -289,7 +289,7 @@ class Enemy {
       this.speed = 3.5;
       this.armorColor = 0x4b4232;
       this.headColor = 0x6b5a48;
-      const raiderWpns = ['ak74m', 'mp5k', 'm870'];
+      const raiderWpns = ['ak47', 'mp5k', 'm870'];
       this.weaponId = raiderWpns[Math.floor(Math.random() * raiderWpns.length)];
     } else {
       this.name = 'Scavenger';
@@ -545,7 +545,7 @@ class Enemy {
   _generateCorpseLoot() {
     if (this.isOperator) {
       const wDef = GAME_DATA.ITEMS[this.weaponId];
-      const ammoId = (wDef && wDef.ammoType) || 'ammo_545';
+      const ammoId = (wDef && wDef.ammoType) || 'ammo_739';
       const maxAmmo = ammoId === 'ammo_12g' ? 18 : (ammoId === 'ammo_762' ? 25 : 60);
       const items = [
         { id: ammoId, qty: Math.min(maxAmmo, 20 + Math.floor(Math.random() * 40)), revealed: false },
@@ -2771,7 +2771,7 @@ class Enemy {
               isPlayer: false,
               isOperator: this.isOperator,
               weaponId: this.weaponId,
-              weaponName: wDef ? wDef.name : 'AK-74M'
+              weaponName: wDef ? wDef.name : 'AK-47'
             };
             const killed = tgtEnemy.takeDamage(this.damage, this.position, info);
             if (tgtEnemy.justDowned) {
@@ -3030,7 +3030,7 @@ class EnemyManager {
         t: e.tier || 'scav',
         op: e.isOperator ? 1 : 0,
         n: e.name || 'HOSTILE',
-        w: e.weaponId || 'ak74m',
+        w: e.weaponId || 'ak47',
         sq: e.squadName || ''
       });
     }
