@@ -523,6 +523,12 @@ class Enemy {
 
   _pickPatrolPoint() {
     const base = this.homePos || this.position;
+    if (this.world && this.world.isBunkerMap) {
+      // Tight interior patrols inside ZAVOD-9 rooms & corridors (no open-world clamp)
+      const a = Math.random() * Math.PI * 2;
+      const dd = 2 + Math.random() * 5;
+      return new THREE.Vector3(base.x + Math.cos(a) * dd, 0, base.z + Math.sin(a) * dd);
+    }
     const angle = Math.random() * Math.PI * 2;
     const dist = 4 + Math.random() * 10;
     return new THREE.Vector3(
@@ -2873,12 +2879,14 @@ class EnemyManager {
     const worldPois = (world.pois && world.pois.length > 0)
       ? world.pois.map(p => new THREE.Vector3(p.x, 0, p.z))
       : [new THREE.Vector3(-88, 0, -86), new THREE.Vector3(94, 0, -56), new THREE.Vector3(-96, 0, 74)];
-    const extracts = (world.extractZones && world.extractZones.length > 0)
-      ? world.extractZones
+    const openExtracts = (world.extractZones || []).filter(ez => !ez.locked);
+    const extracts = openExtracts.length > 0
+      ? openExtracts
       : [{ position: new THREE.Vector3(-14, 0, -172), radius: 6.0 }];
 
     let nameIdx = 0;
-    for (let s = 0; s < 6; s++) {
+    const squadCount = Math.max(0, Math.min(6, world.operatorSquadCount != null ? world.operatorSquadCount : 6));
+    for (let s = 0; s < squadCount; s++) {
       const sqName = squadPrefixes[s];
       const anchor = anchorPts[s % anchorPts.length] || new THREE.Vector3((s - 3) * 18, 0, -20);
       const squadSize = 1 + Math.floor(Math.random() * 3); // 1 to 3 operators per squad
@@ -2913,7 +2921,7 @@ class EnemyManager {
     }
 
     // 2. Spawn Scavengers & Raiders guarding every non-boss POI across the expanded 1240m sector
-    const aiSpawns = (world.pois || [])
+    const aiSpawns = Array.isArray(world.aiSpawnList) ? world.aiSpawnList : (world.pois || [])
       .filter(p => !(p.name || '').toLowerCase().includes('boss'))
       .map(p => {
         const sx = p.x + 12;
