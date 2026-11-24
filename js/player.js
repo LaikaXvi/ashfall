@@ -2907,7 +2907,7 @@ class Player {
       if (this.world && this.world.getWaterDepth) {
         const wDepth = this.world.getWaterDepth(this.position.x, this.position.z, this.position.y - this.currentEyeHeight);
         if (wDepth > 0.05) {
-          const wadeK = wDepth > 1.15 ? 0.22 : (wDepth > 0.55 ? 0.45 : 0.7);
+          const wadeK = wDepth > 1.75 ? 0.36 : (wDepth > 1.15 ? 0.22 : (wDepth > 0.55 ? 0.45 : 0.7));
           speed *= wadeK;
           this.isTacSprinting = false;
           if (wDepth > 0.55) this.isSprinting = false;
