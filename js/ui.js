@@ -141,6 +141,9 @@ class GameUI {
     this.menuTabs = ['home', 'deploy', 'traders', 'workbench', 'stash', 'gunsmith', 'operator', 'missions', 'settings'];
     this.partyVisibility = 'invite';
     this.whispers = [];
+    this.notifications = [];
+    this._notifSeq = 0;
+    this._pendingWhispers = [];
     this.drawerTab = 'party';
     this.socialDrawerOpen = false;
     this.socialTab = 'friends';
@@ -1623,7 +1626,8 @@ class GameUI {
             this.saveProfile();
           }
         }
-        this._rebuildOnlineList();
+        this.flushPendingWhispers(name);
+      this._rebuildOnlineList();
         return;
       }
 
@@ -1661,6 +1665,7 @@ class GameUI {
           });
           this.saveProfile();
           this.renderSocial();
+          this.addNotification({ kind: 'friend_request', title: `Friend request from ${fromName}`, sub: 'Accept or decline from Notifications', from: fromName });
           this._showSocialToast(`Friend request from ${fromName}! Accept or Decline in COMMS.`);
         }
         return;
@@ -1708,6 +1713,7 @@ class GameUI {
           fromClientId: msg.clientId,
           leaderWeapon: msg.leaderWeapon || 'ak74m'
         };
+        this.addNotification({ kind: 'party_invite', title: `Party invite from ${this.pendingPartyInvite.from}`, sub: 'Accept or decline from Notifications', from: this.pendingPartyInvite.from });
         this._showSocialToast(`Party invite from ${this.pendingPartyInvite.from}! Click ACCEPT in COMMS.`);
         this.renderSocial();
         return;
@@ -1854,6 +1860,13 @@ class GameUI {
         return;
       }
 
+      if (msg.type === 'whisper' && msg.msgId) {
+        const toMe = (msg.toClientId && msg.toClientId === this._clientId) || (msg.to && msg.to.toUpperCase() === myName);
+        if (!toMe) return;
+        if (now - effectiveTs > 120000) return;
+        this.receiveWhisper({ from: msg.from, to: msg.to, text: msg.text });
+        return;
+      }
       if (msg.type === 'lobby_chat' && msg.msgId && msg.scope && msg.roomId) {
         if (this.receiveLobbyChatPacket) this.receiveLobbyChatPacket(msg);
         return;
@@ -2790,22 +2803,38 @@ class GameUI {
     if (typeof this._broadcastPartySync === 'function' && this.isPartyLeader && this.isPartyLeader()) this._broadcastPartySync();
   }
   canJoinParty() { return this.partyVisibility !== 'closed' ? true : false; }
+  _resolvePeerClientId(nameUp) {
+    const p = (this.onlinePlayers || []).find((x) => x.name.toUpperCase() === nameUp);
+    if (p) return p.clientId;
+    for (const [, peer] of (this._peers || new Map()).entries()) {
+      if (peer && peer.name.toUpperCase() === nameUp) return peer.clientId;
+    }
+    return null;
+  }
+
   sendWhisper(to, text) {
     const clean = (to || '').trim().toUpperCase();
     const msg = (text || '').trim();
     if (!clean || !msg) { this._showSocialToast('Whisper needs a User#1234 + message.'); return false; }
-    const entry = { from: (this.profile.social && this.profile.social.callsign) || 'YOU', to: clean, text: msg.slice(0, 220), out: true, at: Date.now() };
+    const myCallsign = (this.profile.social && this.profile.social.callsign) || 'YOU';
+    const entry = { from: myCallsign, to: clean, text: msg.slice(0, 220), out: true, at: Date.now() };
     this.whispers.push(entry);
     if (this.whispers.length > 40) this.whispers.splice(0, this.whispers.length - 40);
-    if (this._sendWhisperNet) this._sendWhisperNet(entry);
     this.renderWhispers();
+    const toId = this._resolvePeerClientId(clean);
+    const pkt = { type: 'whisper', msgId: `${this._clientId}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, from: myCallsign, fromClientId: this._clientId, to: clean, toClientId: toId, text: entry.text, ts: Date.now() };
+    if (toId) { if (this._sendSocialPacket) this._sendSocialPacket(pkt); }
+    else { this._pendingWhispers.push(pkt); this._showSocialToast(`${clean} is not online — whisper will deliver when seen.`); if (this._sendSocialPacket) this._sendSocialPacket(pkt); }
     return true;
   }
   receiveWhisper(entry) {
     this.whispers.push({ from: entry.from || 'UNKNOWN', to: entry.to || '', text: (entry.text || '').slice(0, 220), out: false, at: Date.now() });
     if (this.whispers.length > 40) this.whispers.splice(0, this.whispers.length - 40);
     this.renderWhispers();
-    this._showSocialToast(`Whisper from ${entry.from}`);
+    const fromUp = (entry.from || 'UNKNOWN').toUpperCase();
+    const chatOpen = this.socialDrawerOpen && this.drawerTab === 'chat';
+    this.addNotification({ kind: 'whisper', title: `Whisper from ${entry.from || 'UNKNOWN'}`, sub: (entry.text || '').slice(0, 90), from: fromUp, silent: chatOpen });
+    if (!chatOpen) this._showSocialToast(`Whisper from ${entry.from}`);
   }
   renderWhispers() {
     const el = document.getElementById('whisper-list');
@@ -2821,6 +2850,110 @@ class GameUI {
       el.appendChild(row);
     }
     el.scrollTop = el.scrollHeight;
+  }
+  addNotification({ kind, title, sub, from, silent } = {}) {
+    const id = `n${Date.now().toString(36)}_${++this._notifSeq}`;
+    this.notifications.push({ id, kind: kind || 'info', title: title || 'Notification', sub: sub || '', from: (from || '').toUpperCase(), at: Date.now() });
+    if (this.notifications.length > 30) this.notifications.splice(0, this.notifications.length - 30);
+    this.renderNotifications();
+    return id;
+  }
+  clearNotif(id) {
+    const i = (this.notifications || []).findIndex((n) => n.id === id);
+    if (i !== -1) this.notifications.splice(i, 1);
+    this.closeNotifCtx();
+    this.renderNotifications();
+  }
+  clearNotifsFor(kind, fromUp) {
+    const f = (fromUp || '').toUpperCase();
+    this.notifications = (this.notifications || []).filter((n) => !(n.kind === kind && (!f || n.from === f)));
+    this.renderNotifications();
+  }
+  clearWhisperNotifs() {
+    this.notifications = (this.notifications || []).filter((n) => n.kind !== 'whisper');
+    this.renderNotifications();
+  }
+  renderNotifications() {
+    const el = document.getElementById('notif-list');
+    if (el) {
+      el.innerHTML = '';
+      if (!this.notifications.length) {
+        const d = document.createElement('div');
+        d.className = 'notif-empty';
+        d.textContent = 'No notifications. Friend requests, party invites & whispers land here.';
+        el.appendChild(d);
+      }
+      for (const n of this.notifications) {
+        const b = document.createElement('button');
+        b.className = `notif-row kind-${n.kind}`;
+        b.dataset.notifId = n.id;
+        const t = document.createElement('span'); t.className = 'notif-title'; t.textContent = n.title;
+        const st = document.createElement('span'); st.className = 'notif-sub'; st.textContent = n.sub || '';
+        b.append(t, st);
+        b.addEventListener('click', () => this.openNotifCtx(n.id, b));
+        el.appendChild(b);
+      }
+    }
+    this.updateNotifBadges();
+  }
+  updateNotifBadges() {
+    const total = (this.notifications || []).length;
+    const whis = this.notifications.filter((n) => n.kind === 'whisper').length;
+    const reqs = this.notifications.filter((n) => n.kind === 'friend_request' || n.kind === 'party_invite').length;
+    const set = (id, v) => { const e = document.getElementById(id); if (!e) return; e.textContent = v > 99 ? '99+' : String(v); e.classList.toggle('hidden', v <= 0); };
+    set('badge-notifs', total);
+    set('badge-chat', whis);
+    set('badge-friends', reqs);
+    const wb = document.getElementById('party-widget-badge');
+    if (wb) { wb.textContent = total > 99 ? '99+' : String(total); wb.classList.toggle('hidden', total <= 0); }
+    const bell = document.getElementById('party-widget-bell');
+    if (bell) bell.classList.toggle('has-unread', total > 0);
+  }
+  openNotifCtx(id, anchorEl) {
+    const n = (this.notifications || []).find((x) => x.id === id);
+    const menu = document.getElementById('notif-ctx-menu');
+    if (!n || !menu) return;
+    menu.innerHTML = '';
+    const title = document.createElement('div');
+    title.className = 'notif-ctx-title';
+    title.textContent = n.title;
+    menu.appendChild(title);
+    const mk = (label, fn, accent) => {
+      const b = document.createElement('button');
+      b.className = 'btn-small';
+      b.textContent = label;
+      if (accent) b.style.cssText = `border-color:${accent};color:${accent};`;
+      b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
+      menu.appendChild(b);
+    };
+    if (n.kind === 'party_invite') {
+      mk('ACCEPT INVITE', () => { this.acceptPendingPartyInvite(); }, '#69f0ae');
+      mk('DECLINE', () => { this.declinePendingPartyInvite(); });
+    } else if (n.kind === 'friend_request') {
+      mk('ACCEPT', () => { this.acceptFriendRequest(n.from); }, '#69f0ae');
+      mk('DECLINE', () => { this.declineFriendRequest(n.from); });
+    } else if (n.kind === 'whisper') {
+      mk('OPEN CHAT', () => { this.closeNotifCtx(); this.toggleSocialDrawer(true); this.setDrawerTab('chat'); }, '#4fc3f7');
+    }
+    mk('DISMISS', () => { this.clearNotif(id); });
+    menu.classList.remove('hidden');
+    const first = menu.querySelector('button');
+    if (first && window._lastInputMode === 'gamepad') this.setSelectedElement(first, { inputMode: 'gamepad' });
+    else if (first) first.focus();
+  }
+  closeNotifCtx() {
+    const menu = document.getElementById('notif-ctx-menu');
+    if (menu && !menu.classList.contains('hidden')) { menu.classList.add('hidden'); return true; }
+    return false;
+  }
+  flushPendingWhispers(nameUp) {
+    if (!this._pendingWhispers.length) return;
+    const keep = [];
+    for (const pkt of this._pendingWhispers) {
+      if (pkt.to === nameUp && this._resolvePeerClientId(nameUp)) { if (this._sendSocialPacket) this._sendSocialPacket({ ...pkt, toClientId: this._resolvePeerClientId(nameUp) }); }
+      else keep.push(pkt);
+    }
+    this._pendingWhispers = keep;
   }
   _dockLobbyChat() {
     try {
