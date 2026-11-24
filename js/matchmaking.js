@@ -229,7 +229,7 @@ class MatchmakingStage {
       allies.forEach((a, idx) => {
         const col = multiSquad ? (a.squadColor || squadColors[(idx + 1) % squadColors.length]) : '#69f0ae';
         const allyMesh = this._buildOperatorMesh({
-          primary: a.weaponId || 'ak74m',
+          primary: a.weaponId || 'ak47',
           armor: 'vest_2plate',
           backpack: 'bag_medium'
         }, {}, true, a.name, col);
