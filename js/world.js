@@ -147,6 +147,7 @@ class WastelandWorld {
       { x:   88, z: -408, r: 22, h: 17.8 },
       // ZAVOD-9 Mountain Complex plateau (carved into NW alpine massif)
       { x: -555, z: -490, r: 46, h: 34.0 },
+      { x: -540, z: -447, r: 14, h: 34.0 }, // ZAVOD-9 service-elevator forecourt (flat apron in front of the lift door)
       // 4 Extraction Zone Pads
       { x: -485, z: -445, r: 16, h: 21.0 }, // NW Mountain Pass Helipad
       { x:  465, z: -185, r: 16, h: 6.4 },  // East Taiga Gate
@@ -175,6 +176,18 @@ class WastelandWorld {
     this._batchedMeshes = [];
 
     this._materials = this._createMaterials();
+
+    // ZAVOD-9 Underground Complex: a completely separate standalone map (not built under Vostok)
+    if (zoneConfig && zoneConfig.mapType === 'zavod' && typeof this._initZavodMap === 'function') {
+      this._initZavodMap();
+      this._batchStaticGeometry();
+      this.buildColliderGrid();
+      this.buildRaycastGrid();
+      if (!this.playerSpawn) this.playerSpawn = new THREE.Vector3(-328, 1.7, 163);
+      this._staticSceneSet = new Set(this.scene.children); // static map props eligible for interior culling
+      return;
+    }
+
     this._buildSkybox();
     this._buildEnvironment();
     this._buildVolumetricFogLayers();
@@ -285,6 +298,7 @@ class WastelandWorld {
   }
 
   raycastTerrain(origin, dir, near = 0, far = 300) {
+    if (this.isBunkerMap) return this._zavodRaycastFloor(origin, dir, near, far);
     const maxD = Math.min(far, 1450);
     if (maxD <= near) return null;
     if (origin.y > 64 && dir.y >= 0) return null;
@@ -486,6 +500,7 @@ class WastelandWorld {
 
   // Deterministic rolling terrain heightfield with hills, ridges, creek valley & smooth POI plateaus
   getTerrainHeight(x, z) {
+    if (this.isBunkerMap) return 0;
     // Once the rendered terrain mesh is built, sample the EXACT rendered triangle height in O(1)
     // so players, operators, NPCs, loot & buildings NEVER clip underneath a coarse terrain triangle!
     if (this._terrainHeights) {
@@ -1694,6 +1709,7 @@ class WastelandWorld {
   }
 
   getWaterSurfaceY(x, z) {
+    if (this.isBunkerMap) return this._zavodWaterSurfaceY(x, z);
     let level = -Infinity;
     const rA = this._projectOntoRiver(x, z, this._riverA);
     if (rA.margin < 3.0) {
@@ -2200,7 +2216,8 @@ class WastelandWorld {
       if (!e || !e.geometry || !e.material) continue;
       const ex = e.matrix.elements[12];
       const ez = e.matrix.elements[14];
-      const key = `${e.material.uuid}|${Math.floor(ex / 96)}|${Math.floor(ez / 96)}`;
+      const bcs = this._batchCellSize || 96;
+      const key = `${e.material.uuid}|${Math.floor(ex / bcs)}|${Math.floor(ez / bcs)}`;
       let bucket = groups.get(key);
       if (!bucket) {
         bucket = { material: e.material, entries: [] };
@@ -3282,235 +3299,49 @@ class WastelandWorld {
 
   _addServiceElevator(ex, ez) {
     const baseY = this.getTerrainHeight(ex, ez);
-    const g = new THREE.Group();
     const conc = this._materials.concrete;
     const dark = this._materials.darkConcrete;
-    // Enclosed concrete shaft house in front of the brutalist block
-    const shaft = new THREE.Mesh(new THREE.BoxGeometry(7, 20, 7), conc);
-    shaft.position.set(ex, baseY + 10, ez);
-    const capSlab = new THREE.Mesh(new THREE.BoxGeometry(8.6, 1.0, 8.6), dark);
-    capSlab.position.set(ex, baseY + 20.4, ez);
-    const doorFrame = new THREE.Mesh(new THREE.BoxGeometry(3.0, 4.4, 0.5), dark);
-    doorFrame.position.set(ex, baseY + 2.2, ez + 3.6);
-    const doorGlow = new THREE.Mesh(
-      new THREE.BoxGeometry(2.2, 3.6, 0.2),
-      new THREE.MeshBasicMaterial({ color: 0xffc107 })
-    );
-    doorGlow.position.set(ex, baseY + 2.0, ez + 3.75);
-    // Hazard chevron strip
-    const chev = new THREE.Mesh(new THREE.BoxGeometry(7.2, 0.7, 0.15), new THREE.MeshBasicMaterial({ color: 0xff3d3d }));
-    chev.position.set(ex, baseY + 5.4, ez + 3.55);
-    g.add(shaft, capSlab, doorFrame, doorGlow, chev);
+    const steel = this._materials.metal;
+    // Walk-in concrete shaft house (8 x 8 m) with an open south doorway into the freight cab
+    const H = 20, W = 8, T = 0.6;
+    this._addBox(ex, baseY + H / 2, ez - W / 2, W, H, T, conc, true);                 // north
+    this._addBox(ex - W / 2, baseY + H / 2, ez, T, H, W, conc, true);                 // west
+    this._addBox(ex + W / 2, baseY + H / 2, ez, T, H, W, conc, true);                 // east
+    this._addBox(ex - 2.6, baseY + H / 2, ez + W / 2, 2.8, H, T, conc, true);         // south (left of door)
+    this._addBox(ex + 2.6, baseY + H / 2, ez + W / 2, 2.8, H, T, conc, true);         // south (right of door)
+    this._addBox(ex, baseY + 4.2 + (H - 4.2) / 2, ez + W / 2, 2.4, H - 4.2, T, conc, true); // lintel
+    this._addBox(ex, baseY + H + 0.5, ez, W + 1.6, 1.0, W + 1.6, dark, true);         // cap slab
+    this._addBox(ex, baseY + 4.6, ez, W - T, 0.3, W - T, dark, false);                // cab ceiling
+    this._addBox(ex, baseY + 0.08, ez, W - T, 0.16, W - T, steel, true);              // cab floor plate
+    const g = new THREE.Group();
+    const doorGlow = new THREE.Mesh(new THREE.BoxGeometry(2.3, 0.18, 0.2), new THREE.MeshBasicMaterial({ color: 0xffc107 }));
+    doorGlow.position.set(ex, baseY + 4.35, ez + W / 2 + 0.32);
+    const chev = new THREE.Mesh(new THREE.BoxGeometry(W + 0.2, 0.7, 0.15), new THREE.MeshBasicMaterial({ color: 0xff3d3d }));
+    chev.position.set(ex, baseY + 5.6, ez + W / 2 + 0.36);
+    const cabLight = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.08, 0.4), new THREE.MeshBasicMaterial({ color: 0xfff1cf }));
+    cabLight.position.set(ex, baseY + 4.42, ez);
+    const panel = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.1, 0.2), new THREE.MeshBasicMaterial({ color: 0x2aa36a }));
+    panel.position.set(ex + W / 2 - 0.45, baseY + 1.5, ez + 1.6);
+    panel.rotation.y = -Math.PI / 2;
+    g.add(doorGlow, chev, cabLight, panel);
     this.scene.add(g);
-    this._addBox(ex, baseY + 10, ez, 7, 20, 7, conc, true);
+    if (this._addSignBoard) {
+      try { this._addSignBoard(ex, baseY + 7.2, ez + W / 2 + 0.42, 5.2, 1.9, 0, { title: 'ЗАВОД-9 ЛИФТ', sub: 'SERVICE ELEVATOR // ZAVOD-9 COMPLEX', accent: '#ffca28', bg: '#16191b' }); } catch (e) {}
+    }
     const entry = {
       id: 'zavod9_elevator',
       kind: 'bunker_elevator',
       name: 'ZAVOD-9 SERVICE ELEVATOR',
       mesh: g,
       glowMesh: doorGlow,
-      position: new THREE.Vector3(ex, baseY + 1.0, ez + 4.2),
+      // Interaction & transfer volume = inside the freight cab
+      position: new THREE.Vector3(ex, baseY + 1.7, ez),
+      cabRadius: 3.6,
       shaftBaseY: baseY
     };
     this.bunkerElevators = this.bunkerElevators || [];
     this.bunkerElevators.push(entry);
     return entry;
-  }
-
-  // === ZAVOD-9 UNDERGROUND BUNKER (rough outline): 4 puzzle wings + central plant ===
-  // Koschei-inspired: 4 separated spawn wings, each gated by its own puzzle inner door,
-  // all converging on the large Chemical Processing + Weapons Manufacturing plant.
-  // Building-21-inspired: multi-room wings, security checkpoints, admin annex.
-  _buildBunkerComplex() {
-    const cfg = (window.GAME_DATA && window.GAME_DATA.BUNKER) || null;
-    if (!cfg) return null;
-    const C = cfg.center;
-    const wallMat = this._materials.darkConcrete;
-    const floorMat = this._materials.concrete;
-    const doorMat = new THREE.MeshLambertMaterial({ color: 0x5a2b2b });
-    const doorOpenMat = new THREE.MeshLambertMaterial({ color: 0x2e4a34 });
-    const arrowMat = new THREE.MeshBasicMaterial({ color: 0xff3d3d });
-    this.bunker = { center: new THREE.Vector3(C.x, C.y, C.z), wings: [], doors: [], stations: [], plantLoot: [] };
-
-    const addRoom = (x, y, z, w, h, d, mat) => {
-      // Floor slab
-      const fl = new THREE.Mesh(new THREE.BoxGeometry(w, 0.4, d), floorMat);
-      fl.position.set(x, y - 0.2, z);
-      this.scene.add(fl);
-      return fl;
-    };
-    const addWallSeg = (x, y, z, w, h, d) => {
-      const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wallMat);
-      m.position.set(x, y + h / 2, z);
-      this.scene.add(m);
-      this.shootableMeshes.push(m);
-      return m;
-    };
-    const addArrow = (x, y, z, rotY = 0) => {
-      // Koschei-style red arrow marking pointing toward the central plant
-      const g = new THREE.Group();
-      const shaft = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.35, 0.12), arrowMat);
-      const head = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.9, 0.12), arrowMat);
-      head.position.x = 1.05;
-      head.rotation.z = Math.PI / 4;
-      g.add(shaft, head);
-      g.position.set(x, y, z);
-      g.rotation.y = rotY;
-      this.scene.add(g);
-      return g;
-    };
-
-    // Central plant: two large adjoining halls (Chemical Processing + Weapons Manufacturing)
-    const plant = cfg.plant;
-    addRoom(C.x - 22, C.y, C.z + 8, plant.chemHall.w, 0, plant.chemHall.d);
-    addRoom(C.x + 24, C.y, C.z - 10, plant.weaponsHall.w, 0, plant.weaponsHall.d);
-    // Perimeter walls of central plant (with 4 gated corridor mouths left open)
-    addWallSeg(C.x, C.y, C.z - 34, 96, 5, 1.2);
-    addWallSeg(C.x - 48, C.y, C.z + 6, 1.2, 5, 80);
-    addWallSeg(C.x + 48, C.y, C.z - 6, 1.2, 5, 80);
-    addWallSeg(C.x, C.y, C.z + 40, 96, 5, 1.2);
-    // High-tier plant loot (weapons line + chemical line)
-    const plantLootSpots = [
-      [C.x - 30, C.z + 2, 'military', 'Plant Weapons Line Crate'],
-      [C.x - 14, C.z + 14, 'military', 'Plant Assembly Case'],
-      [C.x + 18, C.z - 18, 'hospital', 'Chemical Processing Cabinet'],
-      [C.x + 34, C.z - 2, 'supply', 'Plant Foreman Stash'],
-      [C.x, C.z + 22, 'valuables', 'Plant Vault Safe']
-    ];
-    for (const [lx, lz, kind, nm] of plantLootSpots) {
-      this._addLootContainer(lx, C.y + 0.16, lz, kind, nm);
-    }
-    // Exfil elevator shaft stub in the plant (back to surface)
-    const ex = plant.exfilElevator;
-    const exMesh = new THREE.Mesh(new THREE.BoxGeometry(6, 7, 6), wallMat);
-    exMesh.position.set(C.x + (ex.x || 0), C.y + 3.5, C.z + (ex.z || 44) - 44);
-    this.scene.add(exMesh);
-    this.bunker.exfil = { x: C.x, y: C.y, z: C.z + 44, label: ex.label };
-
-    // 4 wings: spawn room -> puzzle room -> inner bunker door -> plant
-    const wingDefs = [
-      { cfg: cfg.wings[0], dir: [0, -1], corridorLen: 72, roomW: 16 },
-      { cfg: cfg.wings[1], dir: [1, 0], corridorLen: 72, roomW: 16 },
-      { cfg: cfg.wings[2], dir: [0, 1], corridorLen: 72, roomW: 16 },
-      { cfg: cfg.wings[3], dir: [-1, 0], corridorLen: 72, roomW: 16 }
-    ];
-    wingDefs.forEach((wd, wi) => {
-      const wc = wd.cfg;
-      const [dx, dz] = wd.dir;
-      const sx = C.x + dx * 110, sz = C.z + dz * 110;
-      // Spawn room floor + back wall
-      addRoom(sx, C.y, sz, 18, 0, 18);
-      addWallSeg(sx - dx * 9 - 9, C.y, sz - dz * 9, dx !== 0 ? 1.2 : 19, 5, dz !== 0 ? 1.2 : 19);
-      // Corridor walls toward plant
-      const mx = C.x + dx * 72, mz = C.z + dz * 72;
-      const corrLen = 76;
-      if (dx !== 0) {
-        addWallSeg(mx, C.y, mz - 4.5, corrLen, 4.5, 1.0);
-        addWallSeg(mx, C.y, mz + 4.5, corrLen, 4.5, 1.0);
-      } else {
-        addWallSeg(mx - 4.5, C.y, mz, 1.0, 4.5, corrLen);
-        addWallSeg(mx + 4.5, C.y, mz, 1.0, 4.5, corrLen);
-      }
-      addRoom(mx, C.y, mz, dx !== 0 ? corrLen : 9, 0, dz !== 0 ? corrLen : 9);
-      // Puzzle station prop per wing
-      let station = null;
-      if (wc.puzzle === 'breaker') {
-        const px = C.x + dx * 70 + 6, pz = C.z + dz * 70;
-        const panel = new THREE.Mesh(new THREE.BoxGeometry(2.2, 2.6, 0.6), doorMat);
-        panel.position.set(px, C.y + 1.6, pz);
-        this.scene.add(panel);
-        const btn = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.3), new THREE.MeshBasicMaterial({ color: 0xff3d3d }));
-        btn.position.set(px, C.y + 1.7, pz + 0.45);
-        this.scene.add(btn);
-        station = { id: `bunker_${wc.id}_breaker`, kind: 'breaker', wingId: wc.id, mesh: panel, position: new THREE.Vector3(px, C.y + 1.2, pz + 1.2), solved: false };
-      } else if (wc.puzzle === 'valves') {
-        station = { id: `bunker_${wc.id}_valves`, kind: 'valves', wingId: wc.id, valvesTurned: [false, false], positions: [], solved: false };
-        (wc.puzzleAt || []).forEach(([vx, vy, vz], vi) => {
-          const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.12, 8, 18), new THREE.MeshLambertMaterial({ color: 0x8f6b1e }));
-          wheel.position.set(vx, C.y + 1.4, vz);
-          this.scene.add(wheel);
-          const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 3.2, 8), wallMat);
-          pipe.position.set(vx, C.y + 0.4, vz);
-          this.scene.add(pipe);
-          station.positions.push(new THREE.Vector3(vx, C.y + 1.2, vz + 1.2));
-        });
-      } else if (wc.puzzle === 'lasers') {
-        const [fx, fy, fz] = wc.puzzleAt;
-        const fuse = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.8, 0.5), doorMat);
-        fuse.position.set(fx + 4.5, C.y + 1.4, fz);
-        this.scene.add(fuse);
-        station = { id: `bunker_${wc.id}_fuse`, kind: 'fuse', wingId: wc.id, mesh: fuse, position: new THREE.Vector3(fx + 4.5, C.y + 1.2, fz + 1.2), solved: false };
-        // Laser tripwire beams across the corridor (3 strands)
-        station.beams = [];
-        for (let li = 0; li < 3; li++) {
-          const beam = new THREE.Mesh(
-            new THREE.BoxGeometry(8.6, 0.07, 0.07),
-            new THREE.MeshBasicMaterial({ color: 0xff2222 })
-          );
-          const bx = C.x + dx * (62 - li * 4), bz = C.z + dz * (62 - li * 4);
-          beam.position.set(bx, C.y + 0.55 + li * 0.35, bz);
-          if (dx !== 0) beam.rotation.y = Math.PI / 2;
-          this.scene.add(beam);
-          station.beams.push(beam);
-        }
-      } else if (wc.puzzle === 'airlocks') {
-        station = { id: `bunker_${wc.id}_airlocks`, kind: 'airlocks', wingId: wc.id, stagesDone: 0, positions: [], solved: false };
-        (wc.puzzleAt || []).forEach(([ax, ay, az]) => {
-          const frame = new THREE.Mesh(new THREE.BoxGeometry(1.0, 4.2, 7.5), wallMat);
-          frame.position.set(ax, C.y + 2.1, az);
-          this.scene.add(frame);
-          station.positions.push(new THREE.Vector3(ax + (dx !== 0 ? 1.6 : 0), C.y + 1.2, az + (dz !== 0 ? 1.6 : 0)));
-        });
-      }
-      if (station) this.bunker.stations.push(station);
-      // Inner bunker door (locked until wing puzzle solved)
-      const [doorX, doorY, doorZ] = wc.door;
-      const doorMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(dx !== 0 ? 1.0 : 9, 4.2, dz !== 0 ? 1.0 : 9),
-        doorMat.clone()
-      );
-      doorMesh.position.set(doorX, C.y + 2.1, doorZ);
-      this.scene.add(doorMesh);
-      const door = {
-        id: `bunker_door_${wc.id}`, wingId: wc.id, kind: 'bunker_door',
-        mesh: doorMesh, matLocked: doorMat, matOpen: doorOpenMat,
-        position: new THREE.Vector3(doorX, C.y + 1.2, doorZ + (dz !== 0 ? 1.8 : 0) + (dx !== 0 ? 0 : 0)),
-        locked: true, label: `${wc.name} INNER DOOR`
-      };
-      this.bunker.doors.push(door);
-      // Red arrows guiding wing -> plant (Koschei-style)
-      for (let ai = 1; ai <= 3; ai++) {
-        const t = ai / 4;
-        addArrow(C.x + dx * (104 - t * 58), C.y + 2.6, C.z + dz * (104 - t * 58), Math.atan2(dx, dz) + Math.PI / 2);
-      }
-      // Wing spawn loot (mid-tier) + guaranteed puzzle quest items nearby
-      const lootKind = wc.id === 'lab' ? 'hospital' : (wc.id === 'archive' ? 'office' : 'military');
-      this._addLootContainer(sx + 4, C.y + 0.16, sz + 3, lootKind, `${wc.name} Entry Cache`);
-      this._addLootContainer(sx - 4, C.y + 0.16, sz - 3, 'supply', `${wc.name} Field Crate`);
-      this.bunker.wings.push({
-        id: wc.id, name: wc.name, puzzle: wc.puzzle,
-        spawn: new THREE.Vector3(sx, C.y + 1.7, sz),
-        door, station, desc: wc.desc
-      });
-    });
-    return this.bunker;
-  }
-
-  teleportToBunker(player) {
-    if (!this.bunker || !player) return false;
-    player.position.set(this.bunker.center.x, this.bunker.center.y + 1.7, this.bunker.center.z + 30);
-    if (player.velocity) player.velocity.set(0, 0, 0);
-    return true;
-  }
-
-  teleportToSurface(player) {
-    if (!player) return false;
-    const cfg = (window.GAME_DATA && window.GAME_DATA.BUNKER) || null;
-    const e = cfg ? cfg.surfaceElevator : { x: -510, z: -445 };
-    const y = this.getTerrainHeight(e.x, e.z + 8) + 1.7;
-    player.position.set(e.x, y, e.z + 8);
-    if (player.velocity) player.velocity.set(0, 0, 0);
-    return true;
   }
 
   _addLootContainer(x, y, z, kind = 'supply', customName = null, requiresKey = null) {
@@ -3607,6 +3438,7 @@ class WastelandWorld {
         window.ModelSystem.loadGLTFProp('wooden_military_crate').then((proto) => {
           if (!proto || !this.scene) return;
           const clone = proto.clone(true);
+          clone.userData.staticProp = true;
           const rawH = Math.max(0.05, (proto.userData._rawSize && proto.userData._rawSize.y) || 0.6);
           const sc = (h * 1.05) / rawH;
           clone.scale.setScalar(sc);
@@ -4735,14 +4567,12 @@ class WastelandWorld {
     this._spawnLogicalLooseLoot();
 
     // === ZAVOD-9 MOUNTAIN FORTRESS (NW alpine corner, built into the mountainside) ===
-    // Rough outline: stepped brutalist block + enclosed service-elevator infil to the underground bunker.
+    // Stepped brutalist block + enclosed service elevator: Koschei-style transfer into the separate ZAVOD-9 match.
     this._addSovietBrutalistBlock(-545, -470, 46, 18, 6);
-    this._addServiceElevator(-510, -445);
+    this._addServiceElevator(-540, -455);
     this.pois.push({ name: 'ZAVOD-9 COMPLEX', x: -540, z: -468, color: '#ff5252', threat: 'extreme' });
-    this._addLootContainer(-528, 0.16, -458, 'military', 'Zavod-9 Perimeter Arms Crate');
-    this._addWallFirstAidKit(-522, -452, 'east', 'Zavod-9 Gate First Aid');
-    // Underground bunker (always streamed below the sector; elevator infil + BUNKER zone direct spawns)
-    this._buildBunkerComplex();
+    this._addLootContainer(-528, 0.16, -456, 'military', 'Zavod-9 Perimeter Arms Crate');
+    this._addLootContainer(-551, 0.16, -455, 'hospital', 'Zavod-9 Gate Medical Cabinet');
 
     // === 4 VOSTOK EXTRACTION ZONES ===
     this._addExtractZone('NW MOUNTAIN HELIPAD', -485, -445, 6.5);
