@@ -146,6 +146,9 @@ class GameUI {
     this._pendingWhispers = [];
     this.drawerTab = 'party';
     this.socialDrawerOpen = false;
+    this.chatChannel = { kind: 'party', target: null };
+    this._lastDm = null;
+    this.account = null;
     this.socialTab = 'friends';
     this.activeLootSource = null; // { title, items } or null for backpack-only
     this.matchmakingStage = null;
@@ -168,6 +171,7 @@ class GameUI {
     window.KEYBINDS = { ...window.DEFAULT_KEYBINDS, ...(this.profile.keybinds || {}) };
     window.GAMEPAD_BINDS = { ...window.DEFAULT_GAMEPAD_BINDS, ...(this.profile.gamepadBinds || {}) };
     this.keybindsTab = 'kbm';
+    this._initAccount();
     this._initSocial();
     this._initLobbyChat();
     this._initInventoryItemPingMouse();
@@ -1455,6 +1459,8 @@ class GameUI {
 
   _initSocial() {
     this._ensureIdentity();
+    this.whispers = Array.isArray(this.profile.social.whispers) ? this.profile.social.whispers.slice(-40) : [];
+    this.notifications = Array.isArray(this.profile.social.notifications) ? this.profile.social.notifications.slice(-30) : [];
     this._clientId = 'cli_' + Math.random().toString(36).slice(2, 10) + '_' + Date.now().toString(36);
     this.partyId = 'p_' + this._clientId;
     this.partyHost = this.profile.social.callsign;
@@ -2661,6 +2667,8 @@ class GameUI {
           if (!Array.isArray(p.social.friends)) p.social.friends = [];
           if (!Array.isArray(p.social.incomingFriendRequests)) p.social.incomingFriendRequests = [];
           if (!Array.isArray(p.social.outgoingFriendRequests)) p.social.outgoingFriendRequests = [];
+          if (!Array.isArray(p.social.whispers)) p.social.whispers = [];
+          if (!Array.isArray(p.social.notifications)) p.social.notifications = [];
         }
         return p;
       }
@@ -2670,8 +2678,19 @@ class GameUI {
     return fresh;
   }
 
+  persistSocial() {
+    try {
+      if (this.profile && this.profile.social) {
+        this.profile.social.whispers = (this.whispers || []).slice(-40);
+        this.profile.social.notifications = (this.notifications || []).slice(-30);
+      }
+    } catch (e) {}
+    this.saveProfile();
+  }
+
   saveProfile() {
     try {
+      if (this.syncAccountFromProfile) this.syncAccountFromProfile();
       localStorage.setItem(this.storageKey, JSON.stringify(this.profile));
     } catch (e) {}
   }
@@ -2805,6 +2824,7 @@ class GameUI {
     if (!chatOpen) this._showSocialToast(`Whisper from ${entry.from}`);
   }
   renderWhispers() {
+    try { if (this.profile && this.profile.social) { this.profile.social.whispers = (this.whispers || []).slice(-40); } } catch (e) {}
     const el = document.getElementById('whisper-list');
     if (!el) return;
     el.innerHTML = '';
@@ -2863,6 +2883,9 @@ class GameUI {
       }
     }
     this.updateNotifBadges();
+  }
+  persistNotifStore() {
+    try { if (this.profile && this.profile.social) { this.profile.social.notifications = (this.notifications || []).slice(-30); this.profile.social.whispers = (this.whispers || []).slice(-40); } } catch (e) {}
   }
   updateNotifBadges() {
     const total = (this.notifications || []).length;
