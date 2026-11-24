@@ -926,7 +926,7 @@ class GamepadController {
   }
 
   // Full native gameplay controller support inside the walkable 3D Hideout bunker!
-  updateHideoutRoam(dt, hideoutBunker, { onOpenMenu, onInteractStation } = {}) {
+  updateHideoutRoam(dt, hideoutBunker, { onOpenMenu, onInteractStation, ui } = {}) {
     const pad = this._getPad();
     if (!pad || !hideoutBunker) return;
 
@@ -1000,6 +1000,11 @@ class GamepadController {
       }
     }
 
+    // R3 (11): toggle Party & Social slide-out.
+    if (ui && ui.toggleSocialDrawer && this._justPressed(pad, 11)) {
+      ui.toggleSocialDrawer();
+      this._lockUntilRelease.add(11);
+    }
     this._snapshot(pad);
   }
 
