@@ -696,8 +696,8 @@ window.ModelSystem = (() => {
       // Lathe-turned cold-hammer-forged MP5 barrel + tri-lug adapter
       const barrel = new THREE.Mesh(
         geoLatheZ('mp5_bbl', [
-          [0.06, 0.0105], [0.31, 0.0095], [0.335, 0.0126], [0.352, 0.0126],
-          [0.355, 0.0092], [0.365, 0.0092], [0.365, 0.0045]
+          [0.06, 0.0105], [0.26, 0.0095], [0.285, 0.0126], [0.30, 0.0126],
+          [0.30, 0.0092], [0.31, 0.0092], [0.31, 0.0045]
         ]),
         m.bluedMat
       );
@@ -790,8 +790,8 @@ window.ModelSystem = (() => {
       out.leftHandPos.set(0.0, -0.026, -0.185);
       out.sightHeight = 0.044;
       out.adsZ = -0.25;
-      out.muzzlePos.set(0, 0.001, -0.365);
-      out.flashPos.set(0, 0.01, -0.40);
+      out.muzzlePos.set(0, 0.001, -0.31);
+      out.flashPos.set(0, 0.01, -0.35);
 
       g.add(
         upper, upperTop, fluteL, fluteR, ejPort, boltCarrier, chamberRd,
@@ -1088,7 +1088,7 @@ window.ModelSystem = (() => {
       }), m.bluedMat);
       receiver.position.set(0, 0.016, 0.02);
       const barrel = new THREE.Mesh(
-        geoLatheZ('mosin_bbl', [[0.06, 0.013], [0.65, 0.0095], [0.66, 0.0095], [0.66, 0.004]]),
+        geoLatheZ('mosin_bbl', [[0.06, 0.013], [0.72, 0.0095], [0.73, 0.0095], [0.73, 0.004]]),
         m.bluedMat
       );
       barrel.position.set(0, 0.016, 0);
@@ -1132,8 +1132,8 @@ window.ModelSystem = (() => {
       out.leftHandPos.set(0.0, -0.026, -0.22);
       out.sightHeight = 0.040;
       out.adsZ = -0.24;
-      out.muzzlePos.set(0, 0.016, -0.66);
-      out.flashPos.set(0, 0.02, -0.70);
+      out.muzzlePos.set(0, 0.016, -0.73);
+      out.flashPos.set(0, 0.02, -0.77);
 
       [barrel, cleaningRod, bandFront].forEach((mm) => { mm.renderOrder = -20; });
       g.add(
