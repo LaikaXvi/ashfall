@@ -768,7 +768,7 @@ class Player {
     }
 
     // Place character at player's feet position and orient to player's yaw
-    // In First Person, keep hips/chest safely behind the camera while blending smoothly into the v2.58 FP slide-foot rig!
+    // In First Person, keep chest/collar slightly behind the camera eye so looking down shows full torso & legs cleanly!
     const groundBase = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(this.position.x, this.position.z) : 0;
     const feetY = Math.max(groundBase, this.position.y - this.currentEyeHeight);
     const wantFpSlide = !!(isFP && this.isSliding && !this.isDowned && !this.dead);
@@ -777,8 +777,8 @@ class Player {
     let bodyY = feetY;
     let bodyZ = this.position.z;
     if (isFP) {
-      const baseBack = this.isProne ? 0.32 : (this.stance === 'crouch' ? 0.24 : 0.20);
-      const backDist = THREE.MathUtils.lerp(baseBack, 0.18, this._fpSlideBlend);
+      const baseBack = this.isProne ? 0.34 : (this.stance === 'crouch' ? 0.25 : 0.23);
+      const backDist = THREE.MathUtils.lerp(baseBack, 0.22, this._fpSlideBlend);
       bodyX += Math.sin(this.yaw) * backDist;
       bodyZ += Math.cos(this.yaw) * backDist;
     }
@@ -862,6 +862,8 @@ class Player {
       p._fpSlideState = isFP ? {
         blend: this._fpSlideBlend || 0,
         camera: (ws && ws.camera) || this.camera,
+        eyePos: this.position,
+        feetY: feetY,
         yaw: this.yaw,
         pitch: this.pitch || 0
       } : null;

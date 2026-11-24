@@ -3,11 +3,11 @@
 // Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
 // With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'Alpha RC 0.2.67',
+  VERSION: 'Alpha RC 0.2.68',
   VERSION_INFO: {
     major: 0,
     minor: 2,
-    patch: 67,
+    patch: 68,
     channel: 'Alpha', // Alpha | Beta — never blank while major === 0
     stage: 'RC',     // RC = Release Candidate
     get semver() { return `${this.major}.${this.minor}.${this.patch}`; },
@@ -1111,26 +1111,41 @@ window.GAME_DATA = {
   window.GAME_DATA.VERSION = info.label || window.GAME_DATA.VERSION;
 
   window.GAME_DATA.parseVersion = function parseVersion(v) {
-    const m = String(v || '').match(/(\d+)\.(\d+)\.(\d+)/);
-    if (!m) return null;
-    const parts = m.slice(1, 4).map(n => parseInt(n, 10));
-    const rest = String(v || '').replace(m[0], '').trim();
-    return { major: parts[0], minor: parts[1], patch: parts[2], tag: rest };
+    const raw = String(v || '').trim();
+    if (!raw) return null;
+    const m = raw.match(/\b(\d+)\.(\d+)\.(\d+)\b/);
+    if (m) {
+      const parts = m.slice(1, 4).map(n => parseInt(n, 10) || 0);
+      const rest = raw.replace(m[0], '').trim();
+      const lowerTag = rest.toLowerCase();
+      const channelRank = lowerTag.includes('beta') ? 2 : (lowerTag.includes('alpha') ? 1 : 0);
+      return { major: parts[0], minor: parts[1], patch: parts[2], tag: rest, channelRank };
+    }
+    // Map legacy pre-0.2.65 "v2.64" labels into 0.2.xx (< 0.2.65) so stale tabs never look newer
+    const leg = raw.match(/^v(\d+)\.(\d+)$/i);
+    if (leg) {
+      return { major: 0, minor: parseInt(leg[1], 10) || 0, patch: parseInt(leg[2], 10) || 0, tag: 'legacy', channelRank: 0 };
+    }
+    return null;
   };
   window.GAME_DATA.getCacheBuster = function getCacheBuster() {
     const p = window.GAME_DATA.parseVersion(window.GAME_DATA.VERSION);
-    if (!p) return '0265';
+    if (!p) return '0268';
     return `${p.major}${p.minor}${String(p.patch).padStart(2, '0')}`;
   };
   window.GAME_DATA.isNewerVersion = function isNewerVersion(remote, local) {
     const r = window.GAME_DATA.parseVersion(remote);
     const l = window.GAME_DATA.parseVersion(local);
-    if (!r || !l) return remote !== local;
+    // Never trigger an update alert when either string fails semantic parsing!
+    if (!r || !l) return false;
     for (const k of ['major', 'minor', 'patch']) {
       if ((r[k] || 0) > (l[k] || 0)) return true;
       if ((r[k] || 0) < (l[k] || 0)) return false;
     }
-    return String(remote) !== String(local);
+    if (r.channelRank > 0 && l.channelRank > 0 && r.channelRank !== l.channelRank) {
+      return r.channelRank > l.channelRank;
+    }
+    return false;
   };
   window.GAME_DATA.__versioningReady = true;
 })();

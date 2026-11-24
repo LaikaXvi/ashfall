@@ -911,15 +911,13 @@
         const isHiddenBone = skBones.map((b) => {
           const bn = normName(b.name);
           return bn.includes('head') || bn.includes('neck') || bn.includes('shoulder') ||
-            bn.includes('arm') || bn.includes('forearm') || bn.includes('hand') ||
-            bn.includes('spine2') || bn.includes('spine1');
+            bn.includes('arm') || bn.includes('forearm') || bn.includes('hand');
         });
         const vCount = skinIdx.count;
         const idxArr = skinIdx.array;
         const wtArr = skinWt.array;
         const idxStride = skinIdx.itemSize || 4;
         const wtStride = skinWt.itemSize || 4;
-        const posAttr = geom.attributes.position;
         const fpMaskArr = new Float32Array(vCount);
         for (let i = 0; i < vCount; i++) {
           let hSum = 0;
@@ -929,9 +927,8 @@
             const bi = idxArr[iBase + k] | 0;
             if (isHiddenBone[bi]) hSum += wtArr[wBase + k];
           }
-          // Discard head, neck, shoulders, arms, and upper torso/plate carrier so sliding or looking down never blocks the FP screen
-          const aboveWaist = posAttr ? (posAttr.getZ(i) > 108.0) : false;
-          fpMaskArr[i] = (hSum > 0.05 || aboveWaist) ? 1.0 : 0.0;
+          // Hide head, neck, shoulders & arms (rendered on viewmodel layer), keeping full torso/vest & legs visible when looking down!
+          fpMaskArr[i] = (hSum > 0.38) ? 1.0 : 0.0;
         }
         geom.setAttribute('fpMask', new THREE.BufferAttribute(fpMaskArr, 1));
 
@@ -939,18 +936,20 @@
         const fpBodyMat = origMat ? origMat.clone() : new THREE.MeshLambertMaterial({ color: 0xffffff, skinning: true });
         fpBodyMat.onBeforeCompile = (shader) => {
           shader.uniforms.uFpBodyMode = this._uFpBodyMode;
-          shader.uniforms.uFpBodyFovScale = this._uFpBodyFovScale;
-          shader.vertexShader = 'uniform float uFpBodyMode;\nuniform float uFpBodyFovScale;\nattribute float fpMask;\nvarying float vFpMask;\n' +
+          shader.vertexShader = 'attribute float fpMask;\nvarying float vFpMask;\nvarying float vFpEyeDist;\n' +
             shader.vertexShader
               .replace('#include <begin_vertex>', 'vFpMask = fpMask;\n#include <begin_vertex>')
               .replace(
                 '#include <project_vertex>',
-                '#include <project_vertex>\nif (uFpBodyMode > 0.5) { vec4 fpMv = mvPosition; fpMv.xy *= uFpBodyFovScale; gl_Position = projectionMatrix * fpMv; }'
+                '#include <project_vertex>\nvFpEyeDist = length(mvPosition.xyz);'
               );
-          shader.fragmentShader = 'uniform float uFpBodyMode;\nvarying float vFpMask;\n' +
-            shader.fragmentShader.replace('#include <clipping_planes_fragment>', 'if (uFpBodyMode > 0.5 && vFpMask > 0.5) discard;\n#include <clipping_planes_fragment>');
+          shader.fragmentShader = 'uniform float uFpBodyMode;\nvarying float vFpMask;\nvarying float vFpEyeDist;\n' +
+            shader.fragmentShader.replace(
+              '#include <clipping_planes_fragment>',
+              'if (uFpBodyMode > 0.5 && (vFpMask > 0.5 || vFpEyeDist < 0.19)) discard;\n#include <clipping_planes_fragment>'
+            );
         };
-        fpBodyMat.customProgramCacheKey = () => 'ashfall_fp_body_mask_v3';
+        fpBodyMat.customProgramCacheKey = () => 'ashfall_fp_body_mask_v4';
         fpBodyMat.needsUpdate = true;
         this.body.material = fpBodyMat;
       }
@@ -1082,34 +1081,32 @@
       // 4. Refresh proxy transforms from MW2Animator / manual rotation overrides
       r.root.updateMatrixWorld(true);
 
-      // 5. Hips: proxy pelvis orientation blended with mocap, + vertical bounce offset (+ exact v2.58 FP slide-leg hip placement!)
-      const fpSlide = (this.fpBodyMode && r._fpSlideState && r._fpSlideState.camera && r._fpSlideState.blend > 0.005)
+      // 5. Hips: proxy pelvis orientation blended with mocap, + coherent world-yaw FP slide torso & v2.58 lead-leg placement!
+      const fpSlide = (this.fpBodyMode && r._fpSlideState && r._fpSlideState.eyePos && r._fpSlideState.blend > 0.005)
         ? r._fpSlideState
         : null;
       const fpSlideBlend = fpSlide ? THREE.MathUtils.clamp(fpSlide.blend, 0, 1) : 0;
-      let fpCamPos = null;
-      let fpSlideQ = null;
+      let fpGroundOrigin = null;
+      let fpYawQ = null;
       if (fpSlide) {
-        fpSlide.camera.updateMatrixWorld(true);
-        fpCamPos = fpSlide.camera.getWorldPosition(new THREE.Vector3());
-        const clampedPitch = THREE.MathUtils.clamp((fpSlide.pitch || 0) * 0.35, -0.25, 0.22);
-        fpSlideQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(clampedPitch, fpSlide.yaw || 0, 0, 'YXZ'));
+        fpGroundOrigin = new THREE.Vector3(fpSlide.eyePos.x, fpSlide.feetY || 0, fpSlide.eyePos.z);
+        fpYawQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), fpSlide.yaw || 0);
       }
+      const toSlideGroundW = (lx, ly, lz) => fpGroundOrigin.clone().add(new THREE.Vector3(lx, ly, lz).applyQuaternion(fpYawQ));
 
       const pelWQ = r.pelvis.getWorldQuaternion(new THREE.Quaternion());
-      if (fpSlideBlend > 0.005 && fpSlideQ) {
-        // Keep hips square to slide heading (zero outward pelvis yaw twist!)
-        const squarePelQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(-0.34, (fpSlide.yaw || 0) + Math.PI, 0, 'YXZ'));
-        pelWQ.slerp(squarePelQ, fpSlideBlend);
+      if (fpSlideBlend > 0.005 && fpYawQ) {
+        // Recline pelvis backward (+0.58 rad around +X) facing exact player yaw (NO +Math.PI flip!) so hip sockets & spine stay 100% aligned!
+        const slidePelProxyQ = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.58, fpSlide.yaw || 0, -0.04, 'YXZ'));
+        pelWQ.slerp(slidePelProxyQ, fpSlideBlend);
       }
       RigIK.setWorldQuat(B.hips, pelWQ.clone().multiply(this.corr.hips));
       if (mw > 0.001) B.hips.quaternion.slerp(sv.hipsQuat, mw);
 
       const targetHipsW = r.pelvis.localToWorld(this.hipsOffsetLocal.clone());
       targetHipsW.addScaledVector(this._rootUp, (mocapHipsHeight - this.hipsBindHeight) * mw);
-      if (fpSlideBlend > 0.005 && fpCamPos && fpSlideQ) {
-        // Place B.hips so left hip socket (B.leftupleg) sits at v2.58 thigh root (-0.045, -0.45, -0.10) in camera space
-        const slideHipsW = fpCamPos.clone().add(new THREE.Vector3(0.052, -0.45, -0.09).applyQuaternion(fpSlideQ));
+      if (fpSlideBlend > 0.005 && fpGroundOrigin && fpYawQ) {
+        const slideHipsW = toSlideGroundW(0.04, 0.30, 0.02);
         targetHipsW.lerp(slideHipsW, fpSlideBlend);
       }
       if (B.hips.parent) {
@@ -1118,16 +1115,28 @@
       }
       B.hips.updateMatrixWorld(true);
 
-      // 6. Spine -> Spine1 -> Spine2 -> Neck -> Head (always proxy-driven for aim pitch, recoil & flinch)
+      // 6. Spine -> Spine1 -> Spine2 -> Neck -> Head (reclined coherently behind camera eye during 1P slide!)
       let qSpW = null;
       let qTorW = null;
       if (B.spine && r.spine) {
         qSpW = r.spine.getWorldQuaternion(new THREE.Quaternion()).multiply(this.corr.spine);
+        if (fpSlideBlend > 0.005 && fpYawQ) {
+          const slideSpQ = new THREE.Quaternion()
+            .setFromEuler(new THREE.Euler(0.64, fpSlide.yaw || 0, -0.03, 'YXZ'))
+            .multiply(this.corr.spine);
+          qSpW.slerp(slideSpQ, fpSlideBlend);
+        }
         RigIK.setWorldQuat(B.spine, qSpW);
         B.spine.updateMatrixWorld(true);
       }
       if (r.torso) {
         qTorW = r.torso.getWorldQuaternion(new THREE.Quaternion()).multiply(this.corr.spine2);
+        if (fpSlideBlend > 0.005 && fpYawQ) {
+          const slideTorQ = new THREE.Quaternion()
+            .setFromEuler(new THREE.Euler(0.72, fpSlide.yaw || 0, -0.02, 'YXZ'))
+            .multiply(this.corr.spine2);
+          qTorW.slerp(slideTorQ, fpSlideBlend);
+        }
       }
       if (B.spine1 && qSpW && qTorW) {
         const qMid = this._slerpQ.copy(qSpW).slerp(qTorW, 0.5);
@@ -1149,7 +1158,7 @@
         B.head.updateMatrixWorld(true);
       }
 
-      // 7. Legs: 2-bone IK from proxy hip/knee/ankle, blended toward v2.58 FP slide-foot placement when sliding in 1P!
+      // 7. Legs: 2-bone IK from proxy hip/knee/ankle, blended toward anatomical v2.58 FP slide pose when sliding in 1P!
       this._proxyFwd.set(0, 0, -1).applyQuaternion(pelWQ).normalize();
       const solveLeg = (side) => {
         const legProxy = side === 'left' ? r.leftLeg : r.rightLeg;
@@ -1163,18 +1172,18 @@
         const pole = kneeW.clone().addScaledVector(this._proxyFwd, 0.4);
 
         let slideBootQ = null;
-        if (fpSlideBlend > 0.005 && fpCamPos && fpSlideQ) {
-          const vib = Math.sin(performance.now() * 0.036) * 0.008 * fpSlideBlend;
+        if (fpSlideBlend > 0.005 && fpGroundOrigin && fpYawQ) {
+          const vib = Math.sin(performance.now() * 0.036) * 0.007 * fpSlideBlend;
           if (side === 'left') {
-            // Exact v2.58 slideLegRig lead-foot dimensions & placement in lower-left/center frame, knee pointing straight UP!
-            const slideAnkleW = fpCamPos.clone().add(new THREE.Vector3(-0.055, -0.46 + vib, -0.92).applyQuaternion(fpSlideQ));
-            const slidePoleW = fpCamPos.clone().add(new THREE.Vector3(-0.050, 0.25, -0.50).applyQuaternion(fpSlideQ));
+            // Lead left slide leg: extended straight forward in lower-center-left frame, knee pointing straight UP!
+            const slideAnkleW = toSlideGroundW(-0.055, 0.34 + vib, -0.79);
+            const slidePoleW = toSlideGroundW(-0.056, 0.88, -0.38);
             ankleW.lerp(slideAnkleW, fpSlideBlend);
             pole.lerp(slidePoleW, fpSlideBlend);
 
-            // Upright boot orientation matching v2.58 boot.rotation.x = 0.25 (toes pointing straight UP, zero outward splay!)
-            const toeDirW = new THREE.Vector3(0.015, Math.cos(0.24), Math.sin(0.24)).normalize().applyQuaternion(fpSlideQ);
-            const rightDirW = new THREE.Vector3(1, -0.02, 0).normalize().applyQuaternion(fpSlideQ);
+            // Upright combat boot matching v2.58 boot.rotation.x = 0.25 (toes pointing straight UP, zero outward splay!)
+            const toeDirW = new THREE.Vector3(0.01, Math.cos(0.24), Math.sin(0.24)).normalize().applyQuaternion(fpYawQ);
+            const rightDirW = new THREE.Vector3(1, -0.02, 0).normalize().applyQuaternion(fpYawQ);
             const bBoot = toeDirW.clone().negate().normalize();
             const uBoot = new THREE.Vector3().crossVectors(bBoot, rightDirW).normalize();
             const rOrtho = new THREE.Vector3().crossVectors(uBoot, bBoot).normalize();
@@ -1182,11 +1191,20 @@
               .setFromRotationMatrix(new THREE.Matrix4().makeBasis(rOrtho, uBoot, bBoot))
               .multiply((this.footBootCorr && this.footBootCorr.left) || this.corr.leftfoot);
           } else {
-            // Tuck trailing right leg cleanly rearward behind the camera so only the single lead slide leg appears in 1P
-            const tuckAnkleW = fpCamPos.clone().add(new THREE.Vector3(0.18, -0.66, 0.32).applyQuaternion(fpSlideQ));
-            const tuckPoleW = fpCamPos.clone().add(new THREE.Vector3(0.24, -0.58, 0.06).applyQuaternion(fpSlideQ));
+            // Anatomical hurdler/baseball slide trailing right leg: thigh angled forward-right, knee bent naturally with heel tucked under!
+            const tuckAnkleW = toSlideGroundW(0.18, 0.16, 0.14);
+            const tuckPoleW = toSlideGroundW(0.48, 0.17, -0.44);
             ankleW.lerp(tuckAnkleW, fpSlideBlend);
             pole.lerp(tuckPoleW, fpSlideBlend);
+
+            const rToeDirW = new THREE.Vector3(0.76, -0.12, -0.64).normalize().applyQuaternion(fpYawQ);
+            const rUpDirW = new THREE.Vector3(-0.35, 0.86, -0.36).normalize().applyQuaternion(fpYawQ);
+            const bBootR = rToeDirW.clone().negate().normalize();
+            const rOrthoR = new THREE.Vector3().crossVectors(rUpDirW, bBootR).normalize();
+            const uBootR = new THREE.Vector3().crossVectors(bBootR, rOrthoR).normalize();
+            slideBootQ = new THREE.Quaternion()
+              .setFromRotationMatrix(new THREE.Matrix4().makeBasis(rOrthoR, uBootR, bBootR))
+              .multiply((this.footBootCorr && this.footBootCorr.right) || this.corr.rightfoot);
           }
         }
 

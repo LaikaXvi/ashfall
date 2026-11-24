@@ -1277,32 +1277,38 @@ class GameUI {
     const parseVer = (v) => {
       if (window.GAME_DATA && window.GAME_DATA.parseVersion) {
         const p = window.GAME_DATA.parseVersion(v);
-        return p ? [p.major, p.minor, p.patch] : [0, 0, 0];
+        return p ? [p.major, p.minor, p.patch] : null;
       }
-      const m = String(v || '').match(/(\d+)\.(\d+)\.(\d+)/) || String(v || '').replace(/^v/i, '').match(/(\d+)\.(\d+)/);
-      if (!m) return [0, 0, 0];
-      const nums = m.slice(1).map(n => parseInt(n, 10) || 0);
-      while (nums.length < 3) nums.push(0);
-      return nums;
+      const s = String(v || '').trim();
+      const m3 = s.match(/\b(\d+)\.(\d+)\.(\d+)\b/);
+      if (m3) return [parseInt(m3[1], 10) || 0, parseInt(m3[2], 10) || 0, parseInt(m3[3], 10) || 0];
+      // Legacy pre-0.2.65 "v2.64" strings map below 0.2.65 so old clients never trigger false update alerts
+      const mLegacy = s.match(/^v(\d+)\.(\d+)$/i);
+      if (mLegacy) return [0, parseInt(mLegacy[1], 10) || 0, parseInt(mLegacy[2], 10) || 0];
+      return null;
     };
     const isNewer = (remote, local) => {
+      if (!remote || !local) return false;
       if (window.GAME_DATA && window.GAME_DATA.isNewerVersion) {
         return window.GAME_DATA.isNewerVersion(remote, local);
       }
-      if (!remote || !local || remote === local) return false;
       const r = parseVer(remote);
       const l = parseVer(local);
-      for (let i = 0; i < Math.max(r.length, l.length); i++) {
+      if (!r || !l) return false;
+      for (let i = 0; i < 3; i++) {
         const rv = r[i] || 0;
         const lv = l[i] || 0;
         if (rv > lv) return true;
         if (rv < lv) return false;
       }
-      return remote !== local;
+      return false;
     };
 
     const syncUpdateBadges = () => {
-      if (!latestAvailable) {
+      const localVer = (window.GAME_DATA && GAME_DATA.VERSION) || (verBadge && verBadge.textContent.trim()) || '';
+      if (!latestAvailable || !isNewer(latestAvailable, localVer)) {
+        latestAvailable = null;
+        badge.classList.add('hidden');
         if (raidBadge) raidBadge.classList.add('hidden');
         return;
       }
@@ -1323,12 +1329,13 @@ class GameUI {
     this.syncUpdateBadges = syncUpdateBadges;
 
     const reportRemoteVersion = (remoteVer) => {
+      const cleanRemote = String(remoteVer || '').trim();
       const localVer = (window.GAME_DATA && GAME_DATA.VERSION) || (verBadge && verBadge.textContent.trim()) || '';
-      if (!remoteVer || !localVer) return false;
-      if (isNewer(remoteVer, localVer)) {
+      if (!cleanRemote || !localVer) return false;
+      if (isNewer(cleanRemote, localVer)) {
         const isFirstNotice = !latestAvailable;
-        if (!latestAvailable || isNewer(remoteVer, latestAvailable)) {
-          latestAvailable = remoteVer;
+        if (!latestAvailable || isNewer(cleanRemote, latestAvailable)) {
+          latestAvailable = cleanRemote;
         }
         syncUpdateBadges();
         if (isFirstNotice && typeof window.isInRaid === 'function' && window.isInRaid() && this.addFeedMessage) {
@@ -1357,9 +1364,10 @@ class GameUI {
     const extractVer = (txt) => {
       if (!txt) return null;
       const m1 = txt.match(/VERSION\s*:\s*['"]([^'"]+)['"]/);
-      if (m1 && m1[1]) return m1[1];
-      const m2 = txt.match(/menu-version-badge[^>]*>\s*([^<]*?\d+\.\d+\.\d+[^<]*)\s*</i);
-      return (m2 && m2[1].trim()) || null;
+      if (m1 && m1[1]) return m1[1].trim();
+      const m2 = txt.match(/id=["']menu-version-badge["'][^>]*>\s*([^<]+?)\s*</i);
+      if (m2 && m2[1] && /\d+\.\d+\.\d+/.test(m2[1])) return m2[1].trim();
+      return null;
     };
 
     let lastGhApiCheck = 0;
@@ -1373,15 +1381,31 @@ class GameUI {
         .then((data) => {
           const msg = data && data.commit && data.commit.message;
           if (!msg) return;
-          const m = msg.match(/((?:Alpha|Beta)(?:\s+RC)?\s+)?0\.\d+\.\d+/i) || msg.match(/\b(v\d+\.\d+(?:\.\d+)?)\b/i);
-          if (m && m[1]) reportRemoteVersion(m[1].trim());
+          const firstLine = String(msg).split(/\r?\n/)[0] || '';
+          const m = firstLine.match(/\b(?:(?:Alpha|Beta)(?:\s+RC)?\s+)?0\.\d+\.\d+\b/i);
+          if (m && m[0]) {
+            const found = m[0].trim();
+            const parsed = window.GAME_DATA && window.GAME_DATA.parseVersion ? window.GAME_DATA.parseVersion(found) : null;
+            const normalized = (parsed && !parsed.tag && window.GAME_DATA && GAME_DATA.VERSION_INFO)
+              ? `${GAME_DATA.VERSION_INFO.channel} ${GAME_DATA.VERSION_INFO.stage} ${parsed.major}.${parsed.minor}.${parsed.patch}`.replace(/\s+/g, ' ').trim()
+              : found;
+            reportRemoteVersion(normalized);
+          }
         })
         .catch(() => {});
     };
 
     const checkPagesLive = () => {
       if (window.location.protocol === 'file:') return;
-      fetch(`./index.html?nocache=${Date.now()}`, { cache: 'no-store' })
+      const ts = Date.now();
+      fetch(`./js/data.js?nocache=${ts}`, { cache: 'no-store' })
+        .then(r => (r.ok ? r.text() : ''))
+        .then((txt) => {
+          const v = extractVer(txt);
+          if (v) reportRemoteVersion(v);
+        })
+        .catch(() => {});
+      fetch(`./index.html?nocache=${ts}`, { cache: 'no-store' })
         .then(r => (r.ok ? r.text() : ''))
         .then((txt) => {
           const v = extractVer(txt);
