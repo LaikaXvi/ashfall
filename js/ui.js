@@ -6721,6 +6721,126 @@ class GameUI {
     return `<svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="11" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2h-2V6h-4v2H8zm3 3h2v2h2v2h-2v2h-2v-2H9v-2h2v-2z"/></svg>`;
   }
 
+  // Underground ZAVOD-9 bunker schematic (Koschei-style): 4 puzzle wings converging on the plant.
+  // Shared by the minimap (player-centered) and the full tactical map (absolute bunker coords).
+  _drawBunkerSchematic(ctx, toMap, player, world, opts = {}) {
+    const b = world.bunker;
+    if (!b) return;
+    const C = b.center;
+    const label = opts.label !== false;
+    ctx.save();
+    ctx.fillStyle = 'rgba(8, 10, 12, 0.94)';
+    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.10)';
+    ctx.lineWidth = 1;
+    for (let gx = 0; gx <= ctx.canvas.width; gx += 28) {
+      ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, ctx.canvas.height); ctx.stroke();
+    }
+    for (let gy = 0; gy <= ctx.canvas.height; gy += 28) {
+      ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(ctx.canvas.width, gy); ctx.stroke();
+    }
+    // Central plant halls
+    const plant = (window.GAME_DATA && window.GAME_DATA.BUNKER && window.GAME_DATA.BUNKER.plant) || null;
+    const halls = plant
+      ? [
+        { x: C.x - 22, z: C.z + 8, w: plant.chemHall.w, d: plant.chemHall.d, c: '#2e6b46', t: 'CHEM' },
+        { x: C.x + 24, z: C.z - 10, w: plant.weaponsHall.w, d: plant.weaponsHall.d, c: '#6b4a2e', t: 'WEAPONS' }
+      ]
+      : [{ x: C.x, z: C.z, w: 88, d: 64, c: '#2e4a5e', t: 'PLANT' }];
+    for (const h of halls) {
+      const p = toMap(h.x, h.z);
+      const s = opts.corridorScale || (opts.scale || 1);
+      ctx.fillStyle = h.c;
+      ctx.globalAlpha = 0.55;
+      ctx.fillRect(p.x - (h.w / 2) * s, p.y - (h.d / 2) * s, h.w * s, h.d * s);
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = '#69f0ae';
+      ctx.lineWidth = 1.4;
+      ctx.strokeRect(p.x - (h.w / 2) * s, p.y - (h.d / 2) * s, h.w * s, h.d * s);
+      if (label) {
+        ctx.fillStyle = '#e8eee9';
+        ctx.font = 'bold 9px Consolas, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(h.t, p.x, p.y + 3);
+      }
+    }
+    // Wing corridors + spawn rooms + doors + puzzle stations
+    const s = opts.corridorScale || (opts.scale || 1);
+    for (const wing of (b.wings || [])) {
+      const sp = toMap(wing.spawn.x, wing.spawn.z);
+      const dp = toMap(wing.door.position.x, wing.door.position.z);
+      ctx.strokeStyle = 'rgba(200, 210, 215, 0.5)';
+      ctx.lineWidth = Math.max(2, 7 * s);
+      ctx.beginPath(); ctx.moveTo(sp.x, sp.y); ctx.lineTo(dp.x, dp.y); ctx.stroke();
+      ctx.fillStyle = '#3a4a52';
+      ctx.fillRect(sp.x - 7 * s, sp.y - 7 * s, 14 * s, 14 * s);
+      ctx.strokeStyle = '#9fb4bd';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(sp.x - 7 * s, sp.y - 7 * s, 14 * s, 14 * s);
+      const st = wing.station;
+      if (st) {
+        const pts = st.positions || (st.position ? [st.position] : []);
+        for (const pp of pts) {
+          const q = toMap(pp.x, pp.z);
+          const done = st.solved || (st.valvesTurned && st.valvesTurned.every(Boolean));
+          ctx.fillStyle = done ? '#69f0ae' : '#ffca28';
+          ctx.beginPath(); ctx.arc(q.x, q.y, 3.4, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+      const locked = wing.door.locked;
+      ctx.fillStyle = locked ? '#ff3d3d' : '#69f0ae';
+      ctx.fillRect(dp.x - 4, dp.y - 4, 8, 8);
+      ctx.strokeStyle = '#0a0d0c';
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(dp.x - 4, dp.y - 4, 8, 8);
+      if (label) {
+        ctx.fillStyle = locked ? '#ff8a8a' : '#69f0ae';
+        ctx.font = 'bold 8.5px Consolas, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText(wing.name, (sp.x + dp.x) / 2, (sp.y + dp.y) / 2 - 7);
+      }
+    }
+    // Surface elevator marker (stairwell icon)
+    const ex = b.exfil;
+    if (ex) {
+      const ep = toMap(ex.x, ex.z);
+      ctx.fillStyle = '#69f0ae';
+      ctx.beginPath();
+      ctx.moveTo(ep.x, ep.y - 5);
+      ctx.lineTo(ep.x - 4, ep.y + 4);
+      ctx.lineTo(ep.x + 4, ep.y + 4);
+      ctx.closePath();
+      ctx.fill();
+      if (label) {
+        ctx.fillStyle = '#69f0ae';
+        ctx.font = 'bold 8.5px Consolas, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('EXFIL ELEVATOR', ep.x, ep.y + 14);
+      }
+    }
+    if (label) {
+      ctx.fillStyle = '#ffe27a';
+      ctx.font = 'bold 11px Consolas, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('ZAVOD-9 BUNKER // SUBLEVEL', ctx.canvas.width / 2, 16);
+    }
+    // Player chevron
+    const pp = toMap(player.position.x, player.position.z);
+    ctx.fillStyle = '#f5a623';
+    ctx.beginPath();
+    ctx.moveTo(pp.x, pp.y - 6);
+    ctx.lineTo(pp.x - 4.5, pp.y + 5);
+    ctx.lineTo(pp.x, pp.y + 2.4);
+    ctx.lineTo(pp.x + 4.5, pp.y + 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  _renderBunkerMinimap(ctx, toMap, player, world, cx, cy, scale, W, H) {
+    this._drawBunkerSchematic(ctx, toMap, player, world, { scale, label: true, corridorScale: scale });
+  }
+
   _renderMinimap(player, world, enemyManager, squadManager) {
     this._minimapFrame = ((this._minimapFrame || 0) + 1) % 3;
     if (this._minimapFrame !== 1) return;
@@ -6751,6 +6871,12 @@ class GameUI {
       x: cx + (wx - player.position.x) * scale,
       y: cy + (wz - player.position.z) * scale
     });
+
+    // Underground ZAVOD-9 bunker schematic when the player is below the surface
+    if (player.position.y < -20 && world.bunker) {
+      this._renderBunkerMinimap(ctx, toMap, player, world, cx, cy, scale, W, H);
+      return;
+    }
 
     // Custom Organic Map Silhouette, Red Zone Exterior, Variable-Width Rivers, Dam & Roads on Minimap!
     const halfSize = (world && world.mapHalfSize) || 620;
@@ -7021,6 +7147,13 @@ class GameUI {
     });
     const zoomBadge = document.getElementById('tacmap-zoom-badge');
     if (zoomBadge) zoomBadge.textContent = `${zoom.toFixed(1)}x`;
+
+    // 0. Underground ZAVOD-9 bunker schematic when the player is below the surface
+    if (player.position.y < -20 && world.bunker) {
+      ctx.clearRect(0, 0, W, H);
+      this._drawBunkerSchematic(ctx, toMap, player, world, { scale, label: true, corridorScale: scale });
+      return;
+    }
 
     // 1. Smooth DMZ-style Crimson Red Zone fill across entire canvas
     ctx.clearRect(0, 0, W, H);
