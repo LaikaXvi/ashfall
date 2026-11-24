@@ -138,6 +138,11 @@ class GameUI {
     this.traderCategory = 'weapons';
     this.devTraderCategory = 'all';
     this.activeMenuTab = 'home';
+    this.menuTabs = ['home', 'deploy', 'traders', 'workbench', 'stash', 'gunsmith', 'operator', 'missions', 'settings'];
+    this.partyVisibility = 'invite';
+    this.whispers = [];
+    this.drawerTab = 'party';
+    this.socialDrawerOpen = false;
     this.socialTab = 'friends';
     this.activeLootSource = null; // { title, items } or null for backpack-only
     this.matchmakingStage = null;
@@ -155,6 +160,8 @@ class GameUI {
 
     this.profile = this._loadProfile();
     this._normalizeStash();
+    this._normalizePartyVisibility();
+    this._bindUnifiedMenuNav();
     window.KEYBINDS = { ...window.DEFAULT_KEYBINDS, ...(this.profile.keybinds || {}) };
     window.GAMEPAD_BINDS = { ...window.DEFAULT_GAMEPAD_BINDS, ...(this.profile.gamepadBinds || {}) };
     this.keybindsTab = 'kbm';
@@ -2692,6 +2699,9 @@ class GameUI {
       const el = document.getElementById(`menu-view-${t}`);
       if (el) el.classList.toggle('hidden', tabName !== t);
     });
+    document.querySelectorAll('.menu-tab-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.tab === tabName);
+    });
     document.querySelectorAll('.subnav-btn').forEach((btn) => {
       const activeMatch = btn.dataset.tab === tabName ||
         (btn.dataset.tab === 'deploy' && (tabName === 'map' || tabName === 'matchmaking')) ||
@@ -2711,6 +2721,151 @@ class GameUI {
     }
     if (tabName === 'workbench') this.renderWorkbench();
     if (tabName === 'missions') this.renderMissions();
+  }
+
+  MENU_TAB_ORDER() { return this.menuTabs || ['home', 'deploy', 'traders', 'workbench', 'stash', 'gunsmith', 'operator', 'missions', 'settings']; }
+
+  cycleMenuTab(dir) {
+    const order = this.MENU_TAB_ORDER();
+    let idx = order.indexOf(this.activeMenuTab);
+    if (idx < 0) idx = 0;
+    const next = order[(idx + dir + order.length) % order.length];
+    if (window.soundEngine && window.soundEngine.playTabSwitch) { try { window.soundEngine.playTabSwitch(); } catch (e) {} }
+    this.openMenuTab(next);
+  }
+  toggleSocialDrawer(force) {
+    const open = force !== undefined ? !!force : !this.socialDrawerOpen;
+    this.socialDrawerOpen = open;
+    const d = document.getElementById('social-drawer');
+    const scrim = document.getElementById('social-drawer-scrim');
+    if (d) d.classList.toggle('open', open);
+    if (scrim) scrim.classList.toggle('hidden', !open);
+    if (open) { this._dockLobbyChat(); this.renderSocial(); }
+  }
+  setDrawerTab(name) {
+    this.drawerTab = name;
+    document.querySelectorAll('.drawer-tab-btn').forEach((b) => b.classList.toggle('active', b.dataset.drawer === name));
+    for (const p of ['party', 'chat', 'friends']) {
+      const el = document.getElementById(`drawer-pane-${p}`);
+      if (el) el.classList.toggle('hidden', p !== name);
+    }
+    if (name === 'chat') this._dockLobbyChat();
+  }
+  _normalizePartyVisibility() {
+    const v = this.profile && this.profile.social && this.profile.social.partyVisibility;
+    this.partyVisibility = (v === 'open' || v === 'closed') ? v : 'invite';
+  }
+  setPartyVisibility(v) {
+    if (v !== 'open' && v !== 'invite' && v !== 'closed') return;
+    this.partyVisibility = v;
+    if (this.profile && this.profile.social) { this.profile.social.partyVisibility = v; this.saveProfile(); }
+    document.querySelectorAll('#party-vis-seg .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.vis === v));
+    this._showSocialToast(v === 'open' ? 'PARTY: OPEN — anyone can join' : (v === 'closed' ? 'PARTY: CLOSED — no joins' : 'PARTY: INVITE ONLY'));
+    if (typeof this._broadcastPartySync === 'function' && this.isPartyLeader && this.isPartyLeader()) this._broadcastPartySync();
+  }
+  canJoinParty() { return this.partyVisibility !== 'closed' ? true : false; }
+  sendWhisper(to, text) {
+    const clean = (to || '').trim().toUpperCase();
+    const msg = (text || '').trim();
+    if (!clean || !msg) { this._showSocialToast('Whisper needs a User#1234 + message.'); return false; }
+    const entry = { from: (this.profile.social && this.profile.social.callsign) || 'YOU', to: clean, text: msg.slice(0, 220), out: true, at: Date.now() };
+    this.whispers.push(entry);
+    if (this.whispers.length > 40) this.whispers.splice(0, this.whispers.length - 40);
+    if (this._sendWhisperNet) this._sendWhisperNet(entry);
+    this.renderWhispers();
+    return true;
+  }
+  receiveWhisper(entry) {
+    this.whispers.push({ from: entry.from || 'UNKNOWN', to: entry.to || '', text: (entry.text || '').slice(0, 220), out: false, at: Date.now() });
+    if (this.whispers.length > 40) this.whispers.splice(0, this.whispers.length - 40);
+    this.renderWhispers();
+    this._showSocialToast(`Whisper from ${entry.from}`);
+  }
+  renderWhispers() {
+    const el = document.getElementById('whisper-list');
+    if (!el) return;
+    el.innerHTML = '';
+    for (const w of this.whispers.slice(-20)) {
+      const row = document.createElement('div');
+      row.className = 'whisper-msg' + (w.out ? ' out' : '');
+      const who = w.out ? `YOU → ${w.to}` : w.from;
+      row.innerHTML = `<span class="w-from"></span><span class="w-text"></span>`;
+      row.querySelector('.w-from').textContent = who + ' — ';
+      row.querySelector('.w-text').textContent = w.text;
+      el.appendChild(row);
+    }
+    el.scrollTop = el.scrollHeight;
+  }
+  _dockLobbyChat() {
+    try {
+      const slot = document.getElementById('drawer-chat-slot');
+      const chat = document.getElementById('lobby-chat-panel');
+      if (slot && chat && chat.parentElement !== slot) slot.appendChild(chat);
+    } catch (e) {}
+  }
+  _partyEmblem(name, color) {
+    const ch = (name || '?').trim().charAt(0).toUpperCase() || '?';
+    return { ch, color: color || '#8f968e' };
+  }
+  renderPartyWidget() {
+    const emEl = document.getElementById('party-widget-emblems');
+    const lvEl = document.getElementById('party-widget-level');
+    const members = (this.partyMembers || []).slice(0, 3);
+    if (emEl) {
+      emEl.innerHTML = '';
+      const list = members.length ? members : [{ name: (this.profile.social && this.profile.social.callsign) || 'YOU', squadColor: '#8f968e', isSelf: true }];
+      for (const m of list) {
+        const e = this._partyEmblem(m.name, m.squadColor);
+        const d = document.createElement('span');
+        d.className = 'pw-emblem';
+        d.textContent = e.ch;
+        d.style.background = e.color;
+        d.title = m.name;
+        emEl.appendChild(d);
+      }
+    }
+    if (lvEl) {
+      let lvl = 'LVL 1';
+      try {
+        const ops = (this.profile && this.profile.operators) || [];
+        const act = ops.find((o) => o && o.active) || ops[0];
+        const streak = (act && act.streak) || 0;
+        if (this._dogtagTierForStreak) { const dt = this._dogtagTierForStreak(streak); if (dt && dt.level) lvl = dt.level; }
+      } catch (e) {}
+      lvEl.textContent = lvl;
+    }
+  }
+  _bindUnifiedMenuNav() {
+    document.querySelectorAll('.menu-tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => this.openMenuTab(btn.dataset.tab));
+    });
+    const widget = document.getElementById('btn-party-widget');
+    if (widget) widget.addEventListener('click', () => this.toggleSocialDrawer());
+    const scrim = document.getElementById('social-drawer-scrim');
+    if (scrim) scrim.addEventListener('click', () => this.toggleSocialDrawer(false));
+    const closeBtn = document.getElementById('btn-close-drawer');
+    if (closeBtn) closeBtn.addEventListener('click', () => this.toggleSocialDrawer(false));
+    document.querySelectorAll('.drawer-tab-btn').forEach((b) => {
+      b.addEventListener('click', () => this.setDrawerTab(b.dataset.drawer));
+    });
+    document.querySelectorAll('#party-vis-seg .seg-btn').forEach((b) => {
+      b.addEventListener('click', () => this.setPartyVisibility(b.dataset.vis));
+    });
+    const wSend = document.getElementById('btn-whisper-send');
+    if (wSend) wSend.addEventListener('click', () => {
+      const to = document.getElementById('whisper-to');
+      const tx = document.getElementById('whisper-text');
+      if (this.sendWhisper(to ? to.value : '', tx ? tx.value : '') && tx) tx.value = '';
+    });
+    const wText = document.getElementById('whisper-text');
+    if (wText) wText.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); const to = document.getElementById('whisper-to'); if (this.sendWhisper(to ? to.value : '', wText.value)) wText.value = ''; } e.stopPropagation(); });
+    const dAdd = document.getElementById('drawer-btn-add-friend');
+    if (dAdd) dAdd.addEventListener('click', () => {
+      const inp = document.getElementById('drawer-input-add-friend');
+      if (inp && this.addFriendByTag) this.addFriendByTag(inp.value);
+    });
+    const dLeave = document.getElementById('drawer-btn-leave-party');
+    if (dLeave) dLeave.addEventListener('click', () => { if (this.leaveParty) this.leaveParty(); });
   }
 
   _bindWeaponStagingModal() {
@@ -2842,6 +2997,9 @@ class GameUI {
         }
       });
     }
+    document.querySelectorAll('.menu-tab-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.tab === tabName);
+    });
     document.querySelectorAll('.subnav-btn').forEach((btn) => {
       btn.addEventListener('click', () => this.openMenuTab(btn.dataset.tab));
     });
@@ -3540,6 +3698,8 @@ class GameUI {
 
   addToStash(id, qty = 1, mods = null, rarityOverride = null) {
     this._normalizeStash();
+    this._normalizePartyVisibility();
+    this._bindUnifiedMenuNav();
     const def = GAME_DATA.ITEMS[id];
     if (!def) return false;
     const chemYield = (GAME_DATA.getChemicalYield && GAME_DATA.getChemicalYield(id)) || 0;
@@ -3941,6 +4101,8 @@ class GameUI {
   // ==================== PRE-MATCH LOADOUT SETUP (15 DOUBLE-WIDE WEAPON SLOTS + 64-SLOT STASH + OPERATOR + BACKPACK) ====================
   renderPreMatchLoadout() {
     this._normalizeStash();
+    this._normalizePartyVisibility();
+    this._bindUnifiedMenuNav();
     this._updateDeployResponsiveScale();
     const weaponStashGrid = document.getElementById('prematch-weapon-stash-grid');
     const stashGrid = document.getElementById('prematch-stash-grid');
@@ -5743,6 +5905,8 @@ class GameUI {
 
   renderStash() {
     this._normalizeStash();
+    this._normalizePartyVisibility();
+    this._bindUnifiedMenuNav();
     const list = document.getElementById('stash-list');
     list.innerHTML = '';
     if (this.profile.weaponStash.length === 0 && this.profile.stash.length === 0) {
