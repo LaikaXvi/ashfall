@@ -3,15 +3,15 @@
 // Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
 // With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'Alpha RC 0.2.79',
+  VERSION: 'Alpha RC 0.2.80',
   VERSION_INFO: {
     major: 0,
     minor: 2,
-    patch: 79,
+    patch: 80,
     channel: 'Alpha', // Alpha | Beta — never blank while major === 0
     stage: 'RC',     // RC = Release Candidate
     updated: 'Nov 24, 2026',
-    changelog: 'ZAVOD-9 mountain fortress + elevator infil to underground Bunker rough outline (4 Koschei-style puzzle wings converging on weapons-manufacturing & chemical-processing plant) + bunker map schematics.',
+    changelog: 'ZAVOD-9 Complex is now its own standalone match: the Vostok service elevator extracts your squad and deploys it into a separate underground map rebuilt on the Koschei Complex + Building 21 blueprint (4 isolated puzzle sectors, dark Chemical Plant, Factory, Alpha Cluster, 2-floor Ext-Ops HQ, lift exfils).',
     get semver() { return `${this.major}.${this.minor}.${this.patch}`; },
     get label() { return `${this.channel} ${this.stage} ${this.major}.${this.minor}.${this.patch}`; }
   },
@@ -873,7 +873,7 @@ window.GAME_DATA = {
       desc: 'Panoramic quad-tube night vision goggles for low-light operations.'
     },
 
-    // === BUNKER PUZZLE QUEST ITEMS (ZAVOD-9 underground complex) ===
+    // === ZAVOD-9 COMPLEX QUEST ITEMS (Koschei-style sector puzzles) ===
     bunker_battery: {
       id: 'bunker_battery',
       name: 'Car Battery',
@@ -883,7 +883,7 @@ window.GAME_DATA = {
       value: 400,
       weight: 6.0,
       stackable: false,
-      desc: 'Heavy 12V car battery. Archive wing breaker panel needs one of these + jumper cables.'
+      desc: 'Heavy 12V car battery. With Jumper Cables it powers the A/1 rotunda breaker or the C/1-C/2 Alpha Cluster airlock panels.'
     },
     jumper_cables: {
       id: 'jumper_cables',
@@ -894,30 +894,74 @@ window.GAME_DATA = {
       value: 250,
       weight: 1.2,
       stackable: false,
-      desc: 'Insulated jumper leads. Archive wing breaker panel needs these + a car battery.'
+      desc: 'Insulated jumper leads. Pair with a Car Battery at a ZAVOD-9 breaker or power panel.'
     },
-    rad_filter: {
-      id: 'rad_filter',
-      name: 'Radiation Filter',
+    bunker_fuse: {
+      id: 'bunker_fuse',
+      name: 'Security Fuse',
       type: 'quest',
       category: 'quest',
-      rarity: 'rare',
-      value: 900,
-      weight: 0.4,
+      rarity: 'uncommon',
+      value: 300,
+      weight: 0.3,
       stackable: true,
-      maxStack: 3,
-      desc: 'Sealed NBC filter canister. Consumed by the Lab wing (W) radiation airlocks.'
+      maxStack: 4,
+      desc: 'Ceramic 60A security fuse. The B/2 fuse box needs two to kill the laser gates and open the airlock.'
     },
-    bunker_keycard: {
-      id: 'bunker_keycard',
-      name: 'ZAVOD-9 Keycard',
+    drd_key_a: {
+      id: 'drd_key_a',
+      name: 'DRD Exit Key A',
       type: 'key',
       category: 'quest',
       rarity: 'epic',
-      value: 2500,
+      value: 1800,
       weight: 0.05,
       stackable: false,
-      desc: 'Scorched ZAVOD-9 security keycard. Opens the service-elevator lobby bypass door.'
+      desc: 'Defense Research Division exit key (A). With key B it opens the yellow hermetic seal straight to the Factory.'
+    },
+    drd_key_b: {
+      id: 'drd_key_b',
+      name: 'DRD Exit Key B',
+      type: 'key',
+      category: 'quest',
+      rarity: 'epic',
+      value: 1800,
+      weight: 0.05,
+      stackable: false,
+      desc: 'Defense Research Division exit key (B). With key A it opens the yellow hermetic seal straight to the Factory.'
+    },
+    zavod_factory_key: {
+      id: 'zavod_factory_key',
+      name: 'Factory Key',
+      type: 'key',
+      category: 'quest',
+      rarity: 'epic',
+      value: 2200,
+      weight: 0.05,
+      stackable: false,
+      desc: 'Hidden in the Chemical Plant ventilation shafts. Opens airlock D/1 or D/2 into the Weapons Manufacturing Factory.'
+    },
+    zavod_l2_keycard: {
+      id: 'zavod_l2_keycard',
+      name: 'L2 Keycard',
+      type: 'key',
+      category: 'quest',
+      rarity: 'legendary',
+      value: 4800,
+      weight: 0.05,
+      stackable: false,
+      desc: 'Level-2 security keycard. Opens the Alpha Cluster L2 door and activates the L2 exfil lift (visible to every team).'
+    },
+    zavod_laptop: {
+      id: 'zavod_laptop',
+      name: 'al-Qatala Laptop',
+      type: 'quest',
+      category: 'quest',
+      rarity: 'rare',
+      value: 1400,
+      weight: 1.6,
+      stackable: false,
+      desc: 'Encrypted field laptop. Uplink three at the Alpha Cluster platforms to open the sealed archive.'
     },
 
     // === SELF-REVIVE, KEYS & HIGH-VALUE VOSTOK VALUABLES ===
@@ -1286,34 +1330,18 @@ window.GAME_DATA = {
     },
     bunker: {
       id: 'bunker',
-      name: 'ZAVOD-9 Bunker',
-      raidDuration: 1200, // 20 minutes underground
-      enemyCount: 12,
-      raiderChance: 0.55,
-      heavyChance: 0.30,
-      lootTierBonus: 2,
-      fogColor: 0x3a4148,
-      skyColor: 0x22262b,
+      name: 'ZAVOD-9 Complex',
+      mapType: 'zavod',
       underground: true,
-      desc: 'Expansive underground weapons-manufacturing & chemical-processing plant. 4 puzzle wings feed the central plant.'
-    }
-  },
-
-  // Rough outline: ZAVOD-9 underground bunker — 4 separated spawn wings, each with a
-  // Koschei/Building-21-inspired puzzle gating its inner bunker door to the central plant.
-  BUNKER: {
-    surfaceElevator: { x: -510, z: -445, label: 'ZAVOD-9 SERVICE ELEVATOR' },
-    center: { x: 0, y: -58, z: 0 },
-    wings: [
-      { id: 'archive', name: 'ARCHIVE (Information Extraction)', spawn: [0, -58, -110], door: [0, -58, -38], puzzle: 'breaker', puzzleAt: [6, -58, -70], desc: 'Install car battery + jumper cables at the breaker, then hit the red button.' },
-      { id: 'pump', name: 'PUMP HALL (External Ops)', spawn: [110, -58, 0], door: [38, -58, 0], puzzle: 'valves', puzzleAt: [[64, -58, 6], [64, -58, -6]], desc: 'Turn both pump-hall drain valves to lower the floodwater, then push through.' },
-      { id: 'barracks', name: 'BARRACKS', spawn: [0, -58, 110], door: [0, -58, 38], puzzle: 'lasers', puzzleAt: [0, -58, 70], desc: 'Slide under (or disable at the fuse box) the laser tripwire corridor.' },
-      { id: 'lab', name: 'LAB (Defense Research)', spawn: [-110, -58, 0], door: [-38, -58, 0], puzzle: 'airlocks', puzzleAt: [[-70, -58, 0], [-58, -58, 0], [-46, -58, 0]], desc: 'Burn one radiation filter per airlock door (3 total) to reach the plant.' }
-    ],
-    plant: {
-      chemHall: { x: -22, z: 8, w: 44, d: 30, label: 'CHEMICAL PROCESSING' },
-      weaponsHall: { x: 24, z: -10, w: 48, d: 34, label: 'WEAPONS MANUFACTURING' },
-      exfilElevator: { x: 0, z: 44, label: 'PLANT EXFIL ELEVATOR (surface)' }
+      transferOnly: true, // Reached only through the Vostok ZAVOD-9 service elevator (Koschei-style)
+      raidDuration: 1200, // 20 minutes underground (final 4 minutes = Final Exfil)
+      enemyCount: 40,
+      raiderChance: 0.7,
+      heavyChance: 0.3,
+      lootTierBonus: 2,
+      fogColor: 0x0b0d0f,
+      skyColor: 0x050607,
+      desc: 'Standalone underground weapons-manufacturing & chemical-processing complex. 4 isolated puzzle sectors feed the dark Chemical Plant, Factory & Alpha Cluster.'
     }
   },
 
