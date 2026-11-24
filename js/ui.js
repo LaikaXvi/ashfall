@@ -6721,124 +6721,104 @@ class GameUI {
     return `<svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="11" rx="2"/><path d="M8 8V6a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2h-2V6h-4v2H8zm3 3h2v2h2v2h-2v2h-2v-2H9v-2h2v-2z"/></svg>`;
   }
 
-  // Underground ZAVOD-9 bunker schematic (Koschei-style): 4 puzzle wings converging on the plant.
-  // Shared by the minimap (player-centered) and the full tactical map (absolute bunker coords).
-  _drawBunkerSchematic(ctx, toMap, player, world, opts = {}) {
-    const b = world.bunker;
-    if (!b) return;
-    const C = b.center;
-    const label = opts.label !== false;
+  // ZAVOD-9 standalone map: Koschei-style floorplan (sector-coloured rooms, airlocks, puzzle nodes)
+  _drawZavodFloorplan(ctx, toMap, scale, world, player, opts = {}) {
+    const zv = world.zavod;
+    if (!zv) return;
+    const G = zv.grid;
+    const W = ctx.canvas.width, H = ctx.canvas.height;
     ctx.save();
-    ctx.fillStyle = 'rgba(8, 10, 12, 0.94)';
-    ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.10)';
+    ctx.fillStyle = '#07090a';
+    ctx.fillRect(0, 0, W, H);
+    if (!zv._mapRects) {
+      zv._mapRects = G.mergedRects(0, (i, j) => { const v = G.at(0, i, j); return v >= 0 ? v : null; })
+        .map(rc => ({ x0: G.wx(rc.i0), z0: G.wz(rc.j0), x1: G.wx(rc.i1), z1: G.wz(rc.j1), r: G.regions[rc.k] }));
+      zv._mapRectsUp = G.mergedRects(1, (i, j) => { const v = G.at(1, i, j); return v >= 0 ? v : null; })
+        .map(rc => ({ x0: G.wx(rc.i0), z0: G.wz(rc.j0), x1: G.wx(rc.i1), z1: G.wz(rc.j1), r: G.regions[rc.k] }));
+    }
+    const sectorCol = { PLANT: '#2f4a3a', FACTORY: '#3c4448', ALPHA: '#3e3352', A1: '#4d3a22', A2: '#4a4a22', B1: '#22404d', B2: '#4d2626' };
+    const feetY = player ? player.position.y - (player.currentEyeHeight || 1.7) : 0;
+    const upstairs = feetY > 3.0;
+    const drawRect = (rc, fill, stroke) => {
+      const a = toMap(rc.x0, rc.z0), b = toMap(rc.x1, rc.z1);
+      if (b.x < -4 || b.y < -4 || a.x > W + 4 || a.y > H + 4) return;
+      ctx.fillStyle = fill;
+      ctx.fillRect(a.x, a.y, b.x - a.x, b.y - a.y);
+      if (stroke) { ctx.strokeStyle = stroke; ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y); }
+    };
     ctx.lineWidth = 1;
-    for (let gx = 0; gx <= ctx.canvas.width; gx += 28) {
-      ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, ctx.canvas.height); ctx.stroke();
+    for (const rc of zv._mapRects) {
+      const r = rc.r;
+      let fill = sectorCol[r.sector] || '#33383a';
+      if (r.dark) fill = '#1b2a22';
+      if (r.kind === 'corridor') fill = '#2c3134';
+      if (r.flood && zv.floods[r.flood] && zv.floods[r.flood].level > 0.05) fill = '#1d3f5c';
+      if (r.rad && zv.rads[r.rad] && zv.rads[r.rad].active) fill = '#4f5a12';
+      drawRect(rc, fill, null);
     }
-    for (let gy = 0; gy <= ctx.canvas.height; gy += 28) {
-      ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(ctx.canvas.width, gy); ctx.stroke();
-    }
-    // Central plant halls
-    const plant = (window.GAME_DATA && window.GAME_DATA.BUNKER && window.GAME_DATA.BUNKER.plant) || null;
-    const halls = plant
-      ? [
-        { x: C.x - 22, z: C.z + 8, w: plant.chemHall.w, d: plant.chemHall.d, c: '#2e6b46', t: 'CHEM' },
-        { x: C.x + 24, z: C.z - 10, w: plant.weaponsHall.w, d: plant.weaponsHall.d, c: '#6b4a2e', t: 'WEAPONS' }
-      ]
-      : [{ x: C.x, z: C.z, w: 88, d: 64, c: '#2e4a5e', t: 'PLANT' }];
-    for (const h of halls) {
-      const p = toMap(h.x, h.z);
-      const s = opts.corridorScale || (opts.scale || 1);
-      ctx.fillStyle = h.c;
-      ctx.globalAlpha = 0.55;
-      ctx.fillRect(p.x - (h.w / 2) * s, p.y - (h.d / 2) * s, h.w * s, h.d * s);
+    if (upstairs) {
+      ctx.globalAlpha = 0.9;
+      for (const rc of zv._mapRectsUp) drawRect(rc, '#5a3a3a', 'rgba(255,255,255,0.35)');
       ctx.globalAlpha = 1;
-      ctx.strokeStyle = '#69f0ae';
-      ctx.lineWidth = 1.4;
-      ctx.strokeRect(p.x - (h.w / 2) * s, p.y - (h.d / 2) * s, h.w * s, h.d * s);
-      if (label) {
-        ctx.fillStyle = '#e8eee9';
-        ctx.font = 'bold 9px Consolas, monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(h.t, p.x, p.y + 3);
+    } else {
+      ctx.setLineDash([3, 3]);
+      for (const rc of zv._mapRectsUp) {
+        const a = toMap(rc.x0, rc.z0), b = toMap(rc.x1, rc.z1);
+        ctx.strokeStyle = 'rgba(255,255,255,0.10)';
+        ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
       }
+      ctx.setLineDash([]);
     }
-    // Wing corridors + spawn rooms + doors + puzzle stations
-    const s = opts.corridorScale || (opts.scale || 1);
-    for (const wing of (b.wings || [])) {
-      const sp = toMap(wing.spawn.x, wing.spawn.z);
-      const dp = toMap(wing.door.position.x, wing.door.position.z);
-      ctx.strokeStyle = 'rgba(200, 210, 215, 0.5)';
-      ctx.lineWidth = Math.max(2, 7 * s);
-      ctx.beginPath(); ctx.moveTo(sp.x, sp.y); ctx.lineTo(dp.x, dp.y); ctx.stroke();
-      ctx.fillStyle = '#3a4a52';
-      ctx.fillRect(sp.x - 7 * s, sp.y - 7 * s, 14 * s, 14 * s);
-      ctx.strokeStyle = '#9fb4bd';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(sp.x - 7 * s, sp.y - 7 * s, 14 * s, 14 * s);
-      const st = wing.station;
-      if (st) {
-        const pts = st.positions || (st.position ? [st.position] : []);
-        for (const pp of pts) {
-          const q = toMap(pp.x, pp.z);
-          const done = st.solved || (st.valvesTurned && st.valvesTurned.every(Boolean));
-          ctx.fillStyle = done ? '#69f0ae' : '#ffca28';
-          ctx.beginPath(); ctx.arc(q.x, q.y, 3.4, 0, Math.PI * 2); ctx.fill();
-        }
-      }
-      const locked = wing.door.locked;
-      ctx.fillStyle = locked ? '#ff3d3d' : '#69f0ae';
-      ctx.fillRect(dp.x - 4, dp.y - 4, 8, 8);
-      ctx.strokeStyle = '#0a0d0c';
-      ctx.lineWidth = 1.2;
-      ctx.strokeRect(dp.x - 4, dp.y - 4, 8, 8);
-      if (label) {
-        ctx.fillStyle = locked ? '#ff8a8a' : '#69f0ae';
-        ctx.font = 'bold 8.5px Consolas, monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText(wing.name, (sp.x + dp.x) / 2, (sp.y + dp.y) / 2 - 7);
-      }
+    // Blast doors / airlocks
+    for (const d of zv.doors) {
+      const p = toMap(d.x, d.z);
+      const len = Math.max(4, d.width * scale);
+      ctx.fillStyle = d.open ? '#69f0ae' : '#ff3d3d';
+      if (d.o === 'v') ctx.fillRect(p.x - 2, p.y - len / 2, 4, len);
+      else ctx.fillRect(p.x - len / 2, p.y - 2, len, 4);
     }
-    // Surface elevator marker (stairwell icon)
-    const ex = b.exfil;
-    if (ex) {
-      const ep = toMap(ex.x, ex.z);
-      ctx.fillStyle = '#69f0ae';
+    // Laser gates
+    for (const l of zv.lasers) {
+      if (!l.enabled) continue;
+      const a = toMap(l.x, l.z0), b = toMap(l.x, l.z1);
+      ctx.strokeStyle = 'rgba(255,40,40,0.8)';
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    }
+    // Puzzle stations
+    for (const st of zv.stations) {
+      const p = toMap(st.x, st.z);
+      if (p.x < -6 || p.y < -6 || p.x > W + 6 || p.y > H + 6) continue;
+      const ready = (st.requires || []).every(id => { const s2 = zv.stations.find(x => x.id === id); return s2 && s2.solved; });
+      ctx.fillStyle = st.solved ? '#69f0ae' : (ready ? '#ffb53a' : '#ff5252');
       ctx.beginPath();
-      ctx.moveTo(ep.x, ep.y - 5);
-      ctx.lineTo(ep.x - 4, ep.y + 4);
-      ctx.lineTo(ep.x + 4, ep.y + 4);
+      ctx.moveTo(p.x, p.y - 3.6); ctx.lineTo(p.x + 3.6, p.y); ctx.lineTo(p.x, p.y + 3.6); ctx.lineTo(p.x - 3.6, p.y);
       ctx.closePath();
       ctx.fill();
-      if (label) {
-        ctx.fillStyle = '#69f0ae';
-        ctx.font = 'bold 8.5px Consolas, monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('EXFIL ELEVATOR', ep.x, ep.y + 14);
-      }
     }
-    if (label) {
+    if (opts.labels) {
+      ctx.textAlign = 'center';
+      for (const sec of zv.sectors || []) {
+        const p = toMap(sec.x, sec.z);
+        ctx.font = 'bold 11px Consolas, monospace';
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillText(sec.name, p.x + 1, p.y + 1);
+        ctx.fillStyle = sec.color;
+        ctx.fillText(sec.name, p.x, p.y);
+      }
+      if (opts.doorLabels) {
+        ctx.font = 'bold 9px Consolas, monospace';
+        for (const d of zv.doors) {
+          if (!/^(A1|A2|B1|B2|C1|C2|D1|D2|L2|VAULT|ARCHIVE|YELLOW)$/.test(d.id)) continue;
+          const p = toMap(d.x, d.z);
+          ctx.fillStyle = d.open ? '#69f0ae' : '#ff8a8a';
+          ctx.fillText(d.id, p.x, p.y - 6);
+        }
+      }
       ctx.fillStyle = '#ffe27a';
       ctx.font = 'bold 11px Consolas, monospace';
-      ctx.textAlign = 'center';
-      ctx.fillText('ZAVOD-9 BUNKER // SUBLEVEL', ctx.canvas.width / 2, 16);
+      ctx.fillText(upstairs ? 'ZAVOD-9 COMPLEX // UPPER FLOOR' : 'ZAVOD-9 COMPLEX // SUBLEVEL', W / 2, opts.titleY || 16);
     }
-    // Player chevron
-    const pp = toMap(player.position.x, player.position.z);
-    ctx.fillStyle = '#f5a623';
-    ctx.beginPath();
-    ctx.moveTo(pp.x, pp.y - 6);
-    ctx.lineTo(pp.x - 4.5, pp.y + 5);
-    ctx.lineTo(pp.x, pp.y + 2.4);
-    ctx.lineTo(pp.x + 4.5, pp.y + 5);
-    ctx.closePath();
-    ctx.fill();
     ctx.restore();
-  }
-
-  _renderBunkerMinimap(ctx, toMap, player, world, cx, cy, scale, W, H) {
-    this._drawBunkerSchematic(ctx, toMap, player, world, { scale, label: true, corridorScale: scale });
   }
 
   _renderMinimap(player, world, enemyManager, squadManager) {
@@ -6851,7 +6831,7 @@ class GameUI {
     const H = canvas.height;
     const cx = W * 0.5;
     const cy = H * 0.5;
-    const scale = 0.42; // world meters -> px (covers ~340m across expanded 380x380m sector)
+    const scale = (world && world.isBunkerMap) ? 1.15 : 0.42; // world meters -> px (ZAVOD-9 interiors use a tighter scale)
 
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = 'rgba(10, 14, 16, 0.92)';
@@ -6872,12 +6852,10 @@ class GameUI {
       y: cy + (wz - player.position.z) * scale
     });
 
-    // Underground ZAVOD-9 bunker schematic when the player is below the surface
-    if (player.position.y < -20 && world.bunker) {
-      this._renderBunkerMinimap(ctx, toMap, player, world, cx, cy, scale, W, H);
-      return;
-    }
-
+    // ZAVOD-9 standalone underground map: floorplan replaces the Vostok terrain layers
+    if (world.isBunkerMap && world.zavod) {
+      this._drawZavodFloorplan(ctx, toMap, scale, world, player, { labels: false });
+    } else {
     // Custom Organic Map Silhouette, Red Zone Exterior, Variable-Width Rivers, Dam & Roads on Minimap!
     const halfSize = (world && world.mapHalfSize) || 620;
     const traceBoundaryMini = () => {
@@ -7005,9 +6983,10 @@ class GameUI {
     ctx.lineWidth = 1.7;
     ctx.stroke();
     ctx.restore();
+    }
 
     // POIs
-    if (world.pois) {
+    if (world.pois && !world.isBunkerMap) {
       for (const poi of world.pois) {
         const p = toMap(poi.x, poi.z);
         ctx.fillStyle = poi.color || 'rgba(255,255,255,0.22)';
@@ -7018,6 +6997,7 @@ class GameUI {
     // Extract Zones (Green triangles)
     if (world.extractZones) {
       for (const ez of world.extractZones) {
+        if (ez.locked) continue;
         const p = toMap(ez.position.x, ez.position.z);
         ctx.fillStyle = '#69f0ae';
         ctx.beginPath();
@@ -7148,13 +7128,12 @@ class GameUI {
     const zoomBadge = document.getElementById('tacmap-zoom-badge');
     if (zoomBadge) zoomBadge.textContent = `${zoom.toFixed(1)}x`;
 
-    // 0. Underground ZAVOD-9 bunker schematic when the player is below the surface
-    if (player.position.y < -20 && world.bunker) {
+    // 0. ZAVOD-9 standalone underground map: floorplan replaces the Vostok terrain layers
+    const isZavod = !!(world.isBunkerMap && world.zavod);
+    if (isZavod) {
       ctx.clearRect(0, 0, W, H);
-      this._drawBunkerSchematic(ctx, toMap, player, world, { scale, label: true, corridorScale: scale });
-      return;
-    }
-
+      this._drawZavodFloorplan(ctx, toMap, scale, world, player, { labels: true, doorLabels: true, titleY: 34 });
+    } else {
     // 1. Smooth DMZ-style Crimson Red Zone fill across entire canvas
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = '#220a0b';
@@ -7373,9 +7352,10 @@ class GameUI {
       ctx.beginPath(); ctx.moveTo(hLeft.x, hLeft.y); ctx.lineTo(hRight.x, hRight.y); ctx.stroke();
     }
     ctx.restore();
+    }
 
     // 5. Labeled POIs
-    if (world.pois) {
+    if (world.pois && !isZavod) {
       ctx.save();
       ctx.font = 'bold 10px Consolas, monospace';
       ctx.textAlign = 'center';
@@ -7410,6 +7390,7 @@ class GameUI {
       ctx.font = 'bold 9.5px Consolas, monospace';
       ctx.textAlign = 'center';
       for (const ez of world.extractZones) {
+        if (ez.locked) continue;
         const p = toMap(ez.position.x, ez.position.z);
         ctx.fillStyle = 'rgba(105, 240, 174, 0.22)';
         ctx.beginPath();
@@ -7560,7 +7541,7 @@ class GameUI {
 
     // 11. DMZ-Style Top (A-J) & Left (0-9) Coordinate Header Strips
     const rulerW = 20;
-    const gridExtRuler = Math.max(800, halfSize + 180);
+    const gridExtRuler = (world && world.tacMapBaseExtent) ? world.tacMapBaseExtent : Math.max(800, halfSize + 180);
     const cellWorldRuler = (gridExtRuler * 2) / 10;
     const activeCol = Math.floor((player.position.x + gridExtRuler) / cellWorldRuler);
     const activeRow = Math.floor((player.position.z + gridExtRuler) / cellWorldRuler);
@@ -7634,6 +7615,7 @@ class GameUI {
     addMarker(270, 'W', 'cardinal');
 
     for (const ez of world.extractZones) {
+      if (ez.locked) continue;
       const dx = ez.position.x - player.position.x;
       const dz = ez.position.z - player.position.z;
       const dist = Math.round(Math.hypot(dx, dz));
@@ -9900,7 +9882,7 @@ class GameUI {
   // ==================== v2.64 TAC-MAP ZOOM/PAN/RADIAL, INVENTORY ITEM PING & SCOPED BLURRED CHAT ====================
   getTacMapViewExtent(world = null) {
     const halfSize = (world && world.mapHalfSize) || 620;
-    const baseExtent = Math.max(800, halfSize + 180);
+    const baseExtent = (world && world.tacMapBaseExtent) ? world.tacMapBaseExtent : Math.max(800, halfSize + 180);
     const zoom = THREE.MathUtils.clamp(this.tacMapZoom || 1.0, 1.0, 4.5);
     return { halfSize, baseExtent, zoom, viewExtent: baseExtent / zoom };
   }
