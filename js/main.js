@@ -1613,6 +1613,86 @@
 
   function openNearbyInteractable() {
     if (!nearbyInteractable) return false;
+  function unlockBunkerDoor(wingId) {
+    if (!world.bunker) return;
+    for (const door of world.bunker.doors) {
+      if (door.wingId !== wingId) continue;
+      if (!door.locked) return;
+      door.locked = false;
+      if (door.mesh && door.mesh.material) door.mesh.material = door.matOpen || door.mesh.material;
+      ui.addFeedMessage(`${door.label} UNLOCKED — breach the plant`, '#69f0ae');
+    }
+  }
+
+  function solveBunkerPuzzle(station, stationIdx = 0) {
+    if (!station || !world.bunker) return false;
+    const hasItem = (id) => player.backpack && player.backpack.some(it => it && it.id === id && (it.qty || 1) > 0);
+    const takeItem = (id, qty = 1) => {
+      const idx = player.backpack.findIndex(it => it && it.id === id);
+      if (idx === -1) return false;
+      player.backpack[idx].qty -= qty;
+      if (player.backpack[idx].qty <= 0) player.backpack.splice(idx, 1);
+      return true;
+    };
+    if (station.kind === 'breaker' && !station.solved) {
+      if (!hasItem('bunker_battery') || !hasItem('jumper_cables')) {
+        ui.showCenterToast('NEED CAR BATTERY + JUMPER CABLES', '#ff5252');
+        ui.addFeedMessage('Archive breaker needs a car battery + jumper cables', '#ff5252');
+        return false;
+      }
+      takeItem('bunker_battery', 1);
+      takeItem('jumper_cables', 1);
+      station.solved = true;
+      if (station.mesh) station.mesh.visible = true;
+      ui.addFeedMessage('Archive breaker powered — inner door unlocked', '#69f0ae');
+      unlockBunkerDoor(station.wingId);
+      return true;
+    }
+    if (station.kind === 'valves') {
+      station.valvesTurned = station.valvesTurned || [false, false];
+      if (station.valvesTurned[stationIdx]) return true;
+      station.valvesTurned[stationIdx] = true;
+      if (window.soundEngine && window.soundEngine.playClick) { try { window.soundEngine.playClick(); } catch (e) {} }
+      if (station.valvesTurned.every(Boolean)) {
+        station.solved = true;
+        ui.addFeedMessage('Pump hall drained — inner door unlocked', '#69f0ae');
+        unlockBunkerDoor(station.wingId);
+      } else {
+        ui.addFeedMessage(`Drain valve ${stationIdx + 1}/2 turned — one more`, '#f5a623');
+      }
+      return true;
+    }
+    if (station.kind === 'fuse' && !station.solved) {
+      station.solved = true;
+      if (station.beams) for (const b of station.beams) b.visible = false;
+      ui.addFeedMessage('Laser tripwires disabled — inner door unlocked', '#69f0ae');
+      unlockBunkerDoor(station.wingId);
+      return true;
+    }
+    if (station.kind === 'airlocks') {
+      station.stagesDone = station.stagesDone || 0;
+      if (station.stagesDone >= 3) {
+        station.solved = true;
+        unlockBunkerDoor(station.wingId);
+        return true;
+      }
+      if (!hasItem('rad_filter')) {
+        ui.showCenterToast('NEED RADIATION FILTER', '#ff5252');
+        ui.addFeedMessage('Lab airlock needs a radiation filter', '#ff5252');
+        return false;
+      }
+      takeItem('rad_filter', 1);
+      station.stagesDone += 1;
+      ui.addFeedMessage(`Lab airlock ${station.stagesDone}/3 purged`, '#69f0ae');
+      if (station.stagesDone >= 3) {
+        station.solved = true;
+        unlockBunkerDoor(station.wingId);
+      }
+      return true;
+    }
+    return false;
+  }
+
     if (nearbyInteractable.type === 'munition_box' && nearbyInteractable.box && player && player.resupplyFromMunitionBox) {
       const msg = player.resupplyFromMunitionBox(nearbyInteractable.box);
       if (msg) ui.showNotice(msg, '#69f0ae');
@@ -1627,6 +1707,48 @@
       if (weaponSystem && weaponSystem.triggerGrabAnim) weaponSystem.triggerGrabAnim('container');
       window._lastInteractCheckMs = 0;
       checkInteractions();
+      return true;
+    }
+    if (nearbyInteractable.type === 'bunker_elevator' && world && world.teleportToBunker) {
+      if (world.teleportToBunker(player)) {
+        ui.addFeedMessage('Infil: ZAVOD-9 Bunker — clear your wing puzzle to breach the plant', '#69f0ae');
+        if (window.soundEngine && window.soundEngine.playClick) { try { window.soundEngine.playClick(); } catch (e) {} }
+        if (weaponSystem && weaponSystem.triggerGrabAnim) weaponSystem.triggerGrabAnim('container');
+        window._lastInteractCheckMs = 0;
+        nearbyInteractable = null;
+        checkInteractions();
+      }
+      return true;
+    }
+    if (nearbyInteractable.type === 'bunker_exfil' && world && world.teleportToSurface) {
+      if (world.teleportToSurface(player)) {
+        ui.addFeedMessage('Exfil: surface — Zavod-9 gate', '#69f0ae');
+        if (weaponSystem && weaponSystem.triggerGrabAnim) weaponSystem.triggerGrabAnim('container');
+        window._lastInteractCheckMs = 0;
+        nearbyInteractable = null;
+        checkInteractions();
+      }
+      return true;
+    }
+    if (nearbyInteractable.type === 'bunker_puzzle' && nearbyInteractable.station) {
+      const done = solveBunkerPuzzle(nearbyInteractable.station, nearbyInteractable.stationIdx || 0);
+      if (weaponSystem && weaponSystem.triggerGrabAnim) weaponSystem.triggerGrabAnim('container');
+      window._lastInteractCheckMs = 0;
+      checkInteractions();
+      return done;
+    }
+    if (nearbyInteractable.type === 'bunker_door' && nearbyInteractable.door) {
+      const door = nearbyInteractable.door;
+      if (door.locked) {
+        ui.showCenterToast('INNER DOOR SEALED — SOLVE THE WING PUZZLE', '#ff5252');
+      } else if (world.bunker) {
+        door.mesh.visible = false;
+        ui.addFeedMessage(`${door.label} breached — plant access open`, '#69f0ae');
+        if (window.soundEngine && window.soundEngine.playClick) { try { window.soundEngine.playClick(); } catch (e) {} }
+        nearbyInteractable = null;
+        window._lastInteractCheckMs = 0;
+        checkInteractions();
+      }
       return true;
     }
     if (nearbyInteractable.type === 'ground') {
@@ -3716,6 +3838,53 @@
       if (d < bestDist && hasInteractLineOfSight(c.position, c.mesh)) {
         bestDist = d;
         nearbyInteractable = { type: 'crate', label: c.name, items: c.items, container: c };
+      }
+    }
+
+    // ZAVOD-9 service elevator (surface -> underground bunker infil)
+    if (world.bunkerElevators) {
+      for (const el of world.bunkerElevators) {
+        const d = Math.hypot(player.position.x - el.position.x, player.position.z - el.position.z);
+        const dy = Math.abs(player.position.y - el.position.y);
+        if (d < 3.4 && dy < 3.2 && d < bestDist) {
+          bestDist = d;
+          nearbyInteractable = { type: 'bunker_elevator', elevator: el, label: 'INFIL ZAVOD-9 BUNKER (SERVICE ELEVATOR)' };
+        }
+      }
+    }
+    // Underground bunker: puzzle stations, inner doors, plant exfil elevator
+    if (world.bunker && player.position.y < -20) {
+      for (const st of world.bunker.stations) {
+        const pts = st.positions || (st.position ? [st.position] : []);
+        for (let si = 0; si < pts.length; si++) {
+          const p = pts[si];
+          const d = Math.hypot(player.position.x - p.x, player.position.z - p.z);
+          const dy = Math.abs(player.position.y - p.y);
+          if (d > 3.0 || dy > 2.6 || d >= bestDist) continue;
+          if (st.kind === 'valves' && st.valvesTurned && st.valvesTurned[si]) continue;
+          bestDist = d;
+          const lbl = st.kind === 'breaker' ? 'INSTALL BATTERY + CABLES (ARCHIVE BREAKER)'
+            : st.kind === 'valves' ? `TURN DRAIN VALVE ${si + 1}/2 (PUMP HALL)`
+            : st.kind === 'fuse' ? 'DISABLE LASER TRIPWIRES (BARRACKS FUSE BOX)'
+            : `OPEN AIRLOCK ${((st.stagesDone || 0) + 1)}/3 (LAB — NEEDS RAD FILTER)`;
+          nearbyInteractable = { type: 'bunker_puzzle', station: st, stationIdx: si, label: lbl };
+        }
+      }
+      for (const door of world.bunker.doors) {
+        const d = Math.hypot(player.position.x - door.position.x, player.position.z - door.position.z);
+        const dy = Math.abs(player.position.y - door.position.y);
+        if (d < 3.2 && dy < 2.8 && d < bestDist) {
+          bestDist = d;
+          nearbyInteractable = { type: 'bunker_door', door, label: door.locked ? `${door.label} (LOCKED — SOLVE WING PUZZLE)` : `${door.label} (SEALED — HOLD E TO FORCE)` };
+        }
+      }
+      const ex = world.bunker.exfil;
+      if (ex) {
+        const d = Math.hypot(player.position.x - ex.x, player.position.z - ex.z);
+        if (d < 3.2 && d < bestDist) {
+          bestDist = d;
+          nearbyInteractable = { type: 'bunker_exfil', label: 'EXFIL TO SURFACE (PLANT ELEVATOR)' };
+        }
       }
     }
 
