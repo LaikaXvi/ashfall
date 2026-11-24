@@ -1312,8 +1312,8 @@ class Player {
             if (tp.boltMesh) tp.boltMesh.position.z = tp.boltRestPos.z + pull * 0.055;
             lShX = 1.06 - pull * 0.18; lElbX = 1.04; lShZ = -0.36;
           }
-        } else if (wId === 'ak74m') {
-          // AK-74M: grab fresh mag from chest rig -> flick old mag out with new mag -> rock new mag in -> right-hand bolt rack!
+        } else if (wId === 'ak47') {
+          // AK-47: grab fresh mag from chest rig -> flick old mag out with new mag -> rock new mag in -> right-hand bolt rack!
           const magEnd = ws.wasEmptyReload ? 0.74 : 1.0;
           if (rp < magEnd) {
             const mp = rp / magEnd;
@@ -1906,7 +1906,7 @@ class Player {
       this.isDowned = true;
       this.downedHp = 55;
       this.downedBleedTimer = this.downedBleedMax;
-      this.downedBy = attackerInfo || { name: 'HOSTILE', weaponId: 'ak74m', weaponName: 'AK-74M' };
+      this.downedBy = attackerInfo || { name: 'HOSTILE', weaponId: 'ak47', weaponName: 'AK-47' };
       this.reviveProgress = 0;
       this.stance = 'prone';
       this.isSliding = false;
