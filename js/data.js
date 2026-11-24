@@ -3,15 +3,15 @@
 // Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
 // With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'Alpha RC 0.2.82',
+  VERSION: 'Alpha RC 0.2.83',
   VERSION_INFO: {
     major: 0,
     minor: 2,
-    patch: 82,
+    patch: 83,
     channel: 'Alpha', // Alpha | Beta — never blank while major === 0
     stage: 'RC',     // RC = Release Candidate
     updated: 'Nov 24, 2026',
-    changelog: 'Koschei Complex ZAVOD-9 expansion + Engine Remaster: 4 sector bunker entrances across Vostok, Factory Admin & Shopkeeper dead-drop barter, Dual Bosses (The Rhinoceros & The Sniper) with C4 laser tripwires and Weapons Case Vault, R4D UV Detector cipher boards, single-WebGL-context consolidation, GeoPool/PBR shader pipeline, and O(1) AABB slab raycaster.',
+    changelog: 'Unified frosted-glass HUD/UI + top menu tab bar (Q/E, LB/RB) + Party & Social slide-out (whispers, FOB/Party chat, Open/Invite/Closed) + Koschei Complex ZAVOD-9 expansion + Engine Remaster: 4 sector bunker entrances across Vostok, Factory Admin & Shopkeeper dead-drop barter, Dual Bosses (The Rhinoceros & The Sniper) with C4 laser tripwires and Weapons Case Vault, R4D UV Detector cipher boards, single-WebGL-context consolidation, GeoPool/PBR shader pipeline, and O(1) AABB slab raycaster.',
     get semver() { return `${this.major}.${this.minor}.${this.patch}`; },
     get label() { return `${this.channel} ${this.stage} ${this.major}.${this.minor}.${this.patch}`; }
   },
