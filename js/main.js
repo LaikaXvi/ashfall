@@ -548,7 +548,7 @@
                   const dz = ally.position.z - player.position.z;
                   const len = Math.hypot(dx, dz) || 1;
                   const pan = (dx / len) * Math.cos(player.yaw) - (dz / len) * Math.sin(player.yaw);
-                  window.soundEngine.playGunshot(pkt.weaponId || ally.weaponId || 'ak74m', shotDist, !!pkt.suppressed, { pan });
+                  window.soundEngine.playGunshot(pkt.weaponId || ally.weaponId || 'ak47', shotDist, !!pkt.suppressed, { pan });
                 }
               }
               if (weaponSystem && weaponSystem.spawnEnemyShot && pkt.tx !== undefined) {
@@ -660,7 +660,7 @@
                     const dz = e.position.z - player.position.z;
                     const len = Math.hypot(dx, dz) || 1;
                     const pan = (dx / len) * Math.cos(player.yaw) - (dz / len) * Math.sin(player.yaw);
-                    window.soundEngine.playGunshot(e.weaponId || 'ak74m', eDist, false, { pan });
+                    window.soundEngine.playGunshot(e.weaponId || 'ak47', eDist, false, { pan });
                   }
                 }
                 if (weaponSystem && weaponSystem.spawnEnemyShot && pkt.tx !== undefined) {
@@ -677,15 +677,15 @@
                 name: pkt.fromName || 'SQUAD',
                 isPlayer: false,
                 isOperator: false,
-                weaponId: pkt.weaponId || 'ak74m',
-                weaponName: pkt.weaponName || 'AK-74M'
+                weaponId: pkt.weaponId || 'ak47',
+                weaponName: pkt.weaponName || 'AK-47'
               });
               if (killed && target.isOperator) {
                 ui.addKillFeedEntry({
                   killerName: pkt.fromName || 'SQUAD',
                   killerIsEnemy: false,
-                  weaponId: pkt.weaponId || 'ak74m',
-                  weaponName: pkt.weaponName || 'AK-74M',
+                  weaponId: pkt.weaponId || 'ak47',
+                  weaponName: pkt.weaponName || 'AK-47',
                   victimName: target.name,
                   victimIsEnemy: true,
                   action: 'eliminated'
@@ -774,8 +774,8 @@
               }
               const attackerInfo = {
                 name: pkt.fromName || 'SQUAD',
-                weaponId: pkt.weaponId || 'ak74m',
-                weaponName: pkt.weaponName || 'AK-74M'
+                weaponId: pkt.weaponId || 'ak47',
+                weaponName: pkt.weaponName || 'AK-47'
               };
               const res = player.takeDamage(pkt.dmg || 20, attackerInfo);
               refreshHudNow();
@@ -3403,7 +3403,7 @@
         const endPt = player.position.clone().addScaledVector(dir, 45);
         mpSession.sendEvent({
           type: 'shot',
-          weaponId: (wDef && wDef.id) || 'ak74m',
+          weaponId: (wDef && wDef.id) || 'ak47',
           suppressed: !!(wDef && wDef.suppressed),
           tx: Math.round(endPt.x * 10) / 10,
           ty: Math.round(endPt.y * 10) / 10,
@@ -3643,10 +3643,10 @@
 
     // Show the spectated ally's equipped 1st-person weapon viewmodel!
     if (weaponSystem && weaponSystem.viewmodelGroup) {
-      const specWpnId = spec.weaponId || 'ak74m';
+      const specWpnId = spec.weaponId || 'ak47';
       if (specWpnId !== lastSpectatedWeaponId) {
         lastSpectatedWeaponId = specWpnId;
-        const wDef = GAME_DATA.ITEMS[specWpnId] || GAME_DATA.ITEMS.ak74m;
+        const wDef = GAME_DATA.ITEMS[specWpnId] || GAME_DATA.ITEMS.ak47;
         if (wDef && weaponSystem.buildViewmodel) {
           weaponSystem.buildViewmodel(wDef, {}, true);
         }
@@ -4059,8 +4059,8 @@
             const ewDef = GAME_DATA.ITEMS[enemy.weaponId];
             const attackerInfo = {
               name: enemy.name,
-              weaponId: enemy.weaponId || 'ak74m',
-              weaponName: ewDef ? ewDef.name : 'AK-74M'
+              weaponId: enemy.weaponId || 'ak47',
+              weaponName: ewDef ? ewDef.name : 'AK-47'
             };
             const res = player.takeDamage(dmg, attackerInfo);
             if (res === 'downed') {
@@ -4126,8 +4126,8 @@
             ui.addKillFeedEntry({
               killerName: shooter ? shooter.name : 'HOSTILE',
               killerIsEnemy: true,
-              weaponId: (info && info.weaponId) || (shooter && shooter.weaponId) || 'ak74m',
-              weaponName: (info && info.weaponName) || 'AK-74M',
+              weaponId: (info && info.weaponId) || (shooter && shooter.weaponId) || 'ak47',
+              weaponName: (info && info.weaponName) || 'AK-47',
               victimName: victim.name,
               victimIsEnemy: true,
               action: evtType
@@ -4138,7 +4138,7 @@
         // Handle player bleedout expiration
         if (player._justBledOut) {
           player._justBledOut = false;
-          const db = player.downedBy || { name: 'HOSTILE', weaponId: 'ak74m', weaponName: 'AK-74M' };
+          const db = player.downedBy || { name: 'HOSTILE', weaponId: 'ak47', weaponName: 'AK-47' };
           ui.addKillFeedEntry({
             killerName: db.name,
             killerIsEnemy: true,
@@ -4172,8 +4172,8 @@
                 ui.addKillFeedEntry({
                   killerName: ally.name,
                   killerIsEnemy: false,
-                  weaponId: ally.weaponId || 'ak74m',
-                  weaponName: wDef ? wDef.name : 'AK-74M',
+                  weaponId: ally.weaponId || 'ak47',
+                  weaponName: wDef ? wDef.name : 'AK-47',
                   victimName: enemy.name,
                   victimIsEnemy: true,
                   action: action || 'eliminated'
@@ -4185,8 +4185,8 @@
                 ui.addKillFeedEntry({
                   killerName: (info && info.name) || 'HOSTILE',
                   killerIsEnemy: true,
-                  weaponId: (info && info.weaponId) || 'ak74m',
-                  weaponName: (info && info.weaponName) || 'AK-74M',
+                  weaponId: (info && info.weaponId) || 'ak47',
+                  weaponName: (info && info.weaponName) || 'AK-47',
                   victimName: target.name || getPlayerCallsign(),
                   victimIsEnemy: false,
                   action: evtType
@@ -4278,7 +4278,7 @@
         let hudSubject = player;
         if (player && player.dead && player.spectatingAlly) {
           const spec = player.spectatingAlly;
-          const wDefSpec = GAME_DATA.ITEMS[spec.weaponId || 'ak74m'] || GAME_DATA.ITEMS.ak74m;
+          const wDefSpec = GAME_DATA.ITEMS[spec.weaponId || 'ak47'] || GAME_DATA.ITEMS.ak47;
           const specSlot = { id: wDefSpec.id, mag: (typeof spec._remoteMag === 'number') ? spec._remoteMag : (wDefSpec.magSize || 30), mods: {} };
           hudSubject = Object.assign(Object.create(Object.getPrototypeOf(player)), player, {
             hp: spec.hp ?? 100,
