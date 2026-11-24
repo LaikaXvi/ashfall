@@ -445,6 +445,22 @@ class DevConsole {
       }
     });
 
+    this.registerCommand('zavod', {
+      aliases: ['zavod9', 'bunker'],
+      usage: '/zavod [A1|A2|B1|B2]',
+      desc: 'Transfer into a new ZAVOD-9 Complex match (optionally pick the spawn sector).',
+      handler: (args) => {
+        if (!this._requireRaid()) return;
+        const wing = String((args && args[0]) || '').toUpperCase();
+        const wings = ['A1', 'A2', 'B1', 'B2'];
+        const pick = wings.includes(wing) ? wing : wings[Math.floor(Math.random() * wings.length)];
+        if (typeof window.transferToZavod !== 'function') return this.log('ZAVOD-9 transfer unavailable.', 'err');
+        if (window.ZavodBunker) window.ZavodBunker.showLoading(pick);
+        window.transferToZavod(pick, `dev_zavod9_${Date.now().toString(36)}`);
+        this.log(`Transferring to ZAVOD-9 — sector ${pick}.`, 'ok');
+      }
+    });
+
     this.registerCommand('noclip', {
       aliases: ['fly', 'nc'],
       usage: '/noclip',
