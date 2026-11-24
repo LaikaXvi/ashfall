@@ -2802,6 +2802,8 @@ class GameUI {
         (btn.dataset.tab === 'settings' && tabName === 'keybinds');
       btn.classList.toggle('active', activeMatch);
     });
+    this.renderChatChannel();
+    if (typeof this.renderAccountSettings === 'function' && (tabName === 'settings')) { try { this.renderAccountSettings(); } catch (e) {} }
     if (tabName === 'traders') {
       this.renderTrader();
     }
@@ -2886,6 +2888,7 @@ class GameUI {
     this.whispers.push({ from: entry.from || 'UNKNOWN', to: entry.to || '', text: (entry.text || '').slice(0, 220), out: false, at: Date.now() });
     if (this.whispers.length > 40) this.whispers.splice(0, this.whispers.length - 40);
     this.renderWhispers();
+    this._lastDm = (entry.from || 'UNKNOWN').toUpperCase();
     const fromUp = (entry.from || 'UNKNOWN').toUpperCase();
     const chatOpen = this.socialDrawerOpen && this.drawerTab === 'chat';
     this.addNotification({ kind: 'whisper', title: `Whisper from ${entry.from || 'UNKNOWN'}`, sub: (entry.text || '').slice(0, 90), from: fromUp, silent: chatOpen });
@@ -2992,7 +2995,7 @@ class GameUI {
       mk('ACCEPT', () => { this.acceptFriendRequest(n.from); }, '#69f0ae');
       mk('DECLINE', () => { this.declineFriendRequest(n.from); });
     } else if (n.kind === 'whisper') {
-      mk('OPEN CHAT', () => { this.closeNotifCtx(); this.toggleSocialDrawer(true); this.setDrawerTab('chat'); }, '#4fc3f7');
+      mk('OPEN CHAT', () => { const f = n.from; this.closeNotifCtx(); this.toggleSocialDrawer(true); this.setDrawerTab('chat'); if (f) this.setChatChannel('whisper', f); }, '#4fc3f7');
     }
     mk('DISMISS', () => { this.clearNotif(id); });
     menu.classList.remove('hidden');
@@ -3092,6 +3095,12 @@ class GameUI {
     });
     const dLeave = document.getElementById('drawer-btn-leave-party');
     if (dLeave) dLeave.addEventListener('click', () => { if (this.leaveParty) this.leaveParty(); });
+    const expBtn = document.getElementById('btn-account-export');
+    if (expBtn) expBtn.addEventListener('click', () => { const ta = document.getElementById('account-code-box'); if (ta) { ta.value = this.exportAccountCode(); ta.select(); try { document.execCommand('copy'); } catch (e) {} this._showSocialToast('Account code copied — store it to restore on any device.'); } });
+    const impBtn = document.getElementById('btn-account-import');
+    if (impBtn) impBtn.addEventListener('click', () => { const ta = document.getElementById('account-code-box'); if (ta) this.importAccountCode(ta.value); });
+    const newBtn = document.getElementById('btn-account-new');
+    if (newBtn) newBtn.addEventListener('click', () => { try { localStorage.removeItem(this._accountKey || 'ashfall_account_v1'); } catch (e) {} window.location.reload(); });
   }
 
   _bindWeaponStagingModal() {
@@ -10667,6 +10676,44 @@ class GameUI {
     this.refreshLobbyChatRoleBadge();
   }
 
+  // ==================== CHAT CHANNELS: [user] whispers | [Match] | [Party] ====================
+  setChatChannel(kind, target) {
+    if (kind !== 'match' && kind !== 'whisper') kind = 'party';
+    if (kind === 'whisper' && !target) kind = 'party';
+    this.chatChannel = { kind, target: kind === 'whisper' ? String(target).toUpperCase() : null };
+    this.renderChatChannel();
+  }
+
+  cycleChatChannel() {
+    const inRaid = typeof window.isInRaid === 'function' ? !!window.isInRaid() : (this._chatScope === 'match');
+    const order = ['party'];
+    if (inRaid) order.push('match');
+    if (this._lastDm) order.push('whisper');
+    const cur = (this.chatChannel && this.chatChannel.kind) || 'party';
+    let idx = order.indexOf(cur);
+    const next = order[(idx + 1) % order.length];
+    this.setChatChannel(next, next === 'whisper' ? this._lastDm : null);
+    if (window.soundEngine && window.soundEngine.playTabSwitch) { try { window.soundEngine.playTabSwitch(); } catch (e) {} }
+  }
+  renderChatChannel() {
+    const el = document.getElementById('lobby-chat-channel');
+    if (!el) return;
+    const ch = this.chatChannel || { kind: 'party' };
+    el.textContent = ch.kind === 'match' ? '[Match]' : (ch.kind === 'whisper' ? `[$${ch.target || '?'}]` : '[Party]');
+  }
+  focusChat() {
+    const panel = document.getElementById('lobby-chat-panel');
+    const input = document.getElementById('lobby-chat-input');
+    if (!panel || !input) return;
+    if (!panel.offsetParent) { this.toggleSocialDrawer(true); this.setDrawerTab('chat'); }
+    this.revealLobbyChat(30);
+    setTimeout(() => { try { input.focus(); } catch (e) {} }, 60);
+  }
+  blurChat() {
+    const input = document.getElementById('lobby-chat-input');
+    if (input) input.blur();
+    this._relockGameplayPointerIfNeeded();
+  }
   _initLobbyChat() {
     this.isChatInputActive = false;
     this._chatVisibleUntil = performance.now() + 5000;
@@ -10704,6 +10751,7 @@ class GameUI {
 
     input.addEventListener('keydown', (e) => {
       e.stopPropagation();
+      if (e.code === 'Tab') { e.preventDefault(); this.cycleChatChannel(); return; }
       if (e.code === 'Escape') {
         e.preventDefault();
         input.blur();
@@ -10807,6 +10855,7 @@ class GameUI {
     if (!msgBox || !entry) return;
     const row = document.createElement('div');
     row.className = 'lc-msg' + (entry.cls ? ` ${entry.cls}` : '');
+    if (entry.chTag) { const ct = document.createElement('span'); ct.className = 'lc-tag'; ct.style.background = 'rgba(255,202,40,0.14)'; ct.style.border = '1px solid rgba(255,202,40,0.5)'; ct.style.color = '#ffca28'; ct.textContent = entry.chTag; row.appendChild(ct); }
 
     if (entry.system) {
       row.textContent = entry.text || '';
@@ -10890,6 +10939,17 @@ class GameUI {
       return;
     }
 
+    const chNow = this.chatChannel || { kind: 'party', target: null };
+    if (chNow.kind === 'whisper' && chNow.target) {
+      this.sendWhisper(chNow.target, trimmed);
+      const inRaidNow = typeof window.isInRaid === 'function' ? !!window.isInRaid() : false;
+      const hideout = document.getElementById('hideout-screen');
+      const hideoutRoam = !!(hideout && hideout.classList.contains('hideout-roam-mode'));
+      if ((inRaidNow && !this.isTacMapOpen) || hideoutRoam) { const inp = document.getElementById('lobby-chat-input'); if (inp) inp.blur(); this._relockGameplayPointerIfNeeded(); }
+      return;
+    }
+    const inRaidNow = typeof window.isInRaid === 'function' ? !!window.isInRaid() : false;
+    const usePartyScope = !inRaidNow || chNow.kind === 'party';
     if (!this._chatRoomId) {
       this._chatRoomId = this.partyId || ('p_' + (this._clientId || 'local'));
     }
@@ -10897,8 +10957,8 @@ class GameUI {
     const pkt = {
       type: 'lobby_chat',
       msgId: `${this._clientId}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      scope: this._chatScope || 'fob',
-      roomId: this._chatRoomId,
+      scope: usePartyScope ? (inRaidNow ? 'party' : (this._chatScope || 'fob')) : 'match',
+      roomId: usePartyScope ? (this.partyId || ('p_' + (this._clientId || 'local'))) : this._chatRoomId,
       fromId: this._clientId,
       from: myCallsign,
       partyId: this.partyId || null,
@@ -10926,6 +10986,9 @@ class GameUI {
       this._seenChatMsgIds.delete(first);
     }
 
+    if (msg.scope === 'party') {
+      if (String(msg.roomId) !== String(this.partyId)) return;
+    }
     // Strict Match / FOB Room Isolation: ONLY display messages from the exact active Match or exact active FOB!
     const inRaidNow = typeof window.isInRaid === 'function' ? !!window.isInRaid() : (this._chatScope === 'match');
     if (msg.scope === 'match' && !inRaidNow) return;
@@ -10935,6 +10998,7 @@ class GameUI {
     const isSelf = msg.fromId === this._clientId;
     const isPartyPeer = !isSelf && !!(msg.partyId && this.partyId && msg.partyId === this.partyId);
     this.appendLobbyChatMessage({
+      chTag: msg.scope === 'party' ? '[Party]' : (msg.scope === 'match' ? '[Match]' : ''),
       system: false,
       isSelf,
       isPartyPeer,
