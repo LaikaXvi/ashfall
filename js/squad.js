@@ -656,8 +656,8 @@ class SquadMate {
     this.mw2Anim.update(dt, {
       speed: spd,
       stance: opts.stance || 'stand',
-      isSprinting: !!opts.moving && spd >= 6.0,
-      isTacSprinting: !!opts.moving && spd >= 9.2,
+      isSprinting: !!opts.moving && spd >= 5.4,
+      isTacSprinting: !!opts.moving && spd >= 7.4,
       isADS: !!opts.isADS,
       isPlating: !!opts.isPlating,
       plateProgress: opts.plateProgress || 0,
@@ -736,11 +736,19 @@ class SquadMate {
             this.opModel.weaponMount.rotation.set(0, 0, 0);
           }
           const tLoop = (performance.now() * 0.001);
+          const rInvDt = 1 / Math.max(0.001, dt);
+          const rVx = (this.position.x - prevX) * rInvDt;
+          const rVz = (this.position.z - prevZ) * rInvDt;
+          const rYaw = this.group ? (this.group.rotation.y + Math.PI) : 0;
+          const rCos = Math.cos(rYaw);
+          const rSin = Math.sin(rYaw);
           this.mw2Anim.update(dt, {
             speed: moving ? moveDist : 0,
+            velLocalX: moving ? (rVx * rCos - rVz * rSin) : 0,
+            velLocalZ: moving ? (rVx * rSin + rVz * rCos) : 0,
             stance: isProne ? 'prone' : (isCrouch ? 'crouch' : 'stand'),
-            isSprinting: moving && moveDist >= 7.8,
-            isTacSprinting: !!this._remoteTacSprint && moving,
+            isSprinting: moving && moveDist >= 5.6,
+            isTacSprinting: (!!this._remoteTacSprint || moveDist >= 7.45) && moving,
             isSliding: isSlide,
             slideProgress: 0.5,
             isADS: !!this._remoteAds,

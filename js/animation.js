@@ -19,6 +19,9 @@
   const _vD = new THREE.Vector3();
   const _vE = new THREE.Vector3();
   const _qA = new THREE.Quaternion();
+  const _qB = new THREE.Quaternion();
+  const _qC = new THREE.Quaternion();
+  const _eulA = new THREE.Euler(0, 0, 0, 'YXZ');
   const _mA = new THREE.Matrix4();
   const _upY = new THREE.Vector3(0, 1, 0);
   const _negY = new THREE.Vector3(0, -1, 0);
@@ -91,6 +94,117 @@
       0,
       0
     );
+  }
+
+  // Analytical 2-Bone Leg IK in pelvis-local space (Law of Cosines + knee pole vector)
+  // Thigh length L1 = 0.42, shin length L2 = 0.38, rest leg points along -Y,
+  // knee flexion (-X rotation) swings shin toward local +Z so knee points forward (-Z).
+  function solveLegIKInRigSpace(leg, targetInPelvis, poleDirInPelvis, footQuatInPelvis, toeBend = 0) {
+    if (!leg || !leg.hip || !leg.knee || !leg.ankle) return;
+    const L1 = 0.42;
+    const L2 = 0.38;
+    const hipPos = leg.hip.position;
+    _vA.subVectors(targetInPelvis, hipPos);
+    const rawDist = _vA.length();
+    if (rawDist < 0.001) return;
+
+    const maxReach = (L1 + L2) * 0.992;
+    const minReach = Math.abs(L1 - L2) + 0.06;
+    const d = THREE.MathUtils.clamp(rawDist, minReach, maxReach);
+    _vA.multiplyScalar(1 / rawDist); // unit dir from hip to ankle target
+
+    const cosAlpha = THREE.MathUtils.clamp((L1 * L1 + d * d - L2 * L2) / (2 * L1 * d), -1, 1);
+    const alpha = Math.acos(cosAlpha);
+
+    // Bend plane defined by forward/outward knee pole
+    _vB.copy(poleDirInPelvis).addScaledVector(_vA, -poleDirInPelvis.dot(_vA));
+    if (_vB.lengthSq() < 1e-5) _vB.set(0, 0, -1);
+    _vB.normalize();
+
+    // Desired thigh unit vector (hip -> knee)
+    _vC.copy(_vA).multiplyScalar(Math.cos(alpha)).addScaledVector(_vB, Math.sin(alpha)).normalize();
+
+    // Knee position & desired shin unit vector (knee -> target)
+    _vD.copy(hipPos).addScaledVector(_vC, L1);
+    _vE.subVectors(targetInPelvis, _vD);
+    const shinLenSq = _vE.lengthSq();
+    if (shinLenSq < 1e-6) _vE.copy(_vC);
+    else _vE.multiplyScalar(1 / Math.sqrt(shinLenSq));
+
+    // Align hip local +Y opposite thigh (-_vC) and local +Z toward rearward shin bend
+    const yAxis = _vD.copy(_vC).multiplyScalar(-1).normalize();
+    const bendBack = _vB.copy(_vE).addScaledVector(_vC, -_vE.dot(_vC));
+    if (bendBack.lengthSq() < 1e-5) {
+      bendBack.copy(poleDirInPelvis).multiplyScalar(-1).addScaledVector(_vC, poleDirInPelvis.dot(_vC));
+      if (bendBack.lengthSq() < 1e-5) bendBack.set(0, 0, 1);
+    }
+    const zAxis = bendBack.normalize();
+    const xAxis = _vA.crossVectors(yAxis, zAxis).normalize();
+    zAxis.crossVectors(xAxis, yAxis).normalize();
+
+    _mA.makeBasis(xAxis, yAxis, zAxis);
+    _qA.setFromRotationMatrix(_mA);
+    leg.hip.quaternion.copy(_qA);
+
+    const cosKnee = THREE.MathUtils.clamp((L1 * L1 + L2 * L2 - d * d) / (2 * L1 * L2), -1, 1);
+    const kneeBend = Math.PI - Math.acos(cosKnee);
+    leg.knee.rotation.set(-kneeBend, 0, 0);
+
+    if (footQuatInPelvis) {
+      _eulA.set(-kneeBend, 0, 0, 'XYZ');
+      _qB.setFromEuler(_eulA);
+      _qA.multiply(_qB); // qKneeInPelvis
+      _qA.invert().multiply(footQuatInPelvis); // local ankle orientation inside knee
+      leg.ankle.quaternion.copy(_qA);
+    }
+    leg.toeBend = toeBend;
+  }
+
+  // Evaluate ground-locked biomechanical foot target & ankle/toe articulation for 0..1 gait phase u.
+  // Phase u = 0 is heel touchdown out in front; [0..duty] sweeps linearly rearward across stance
+  // pulling the operator forward; [duty..1] folds/drives the knee forward and extends out to touch down.
+  function evalGaitFoot(u, cfg, out) {
+    const p01 = ((u % 1) + 1) % 1;
+    const duty = cfg.duty;
+    let p, y, ankP, toeB;
+    if (p01 < duty) {
+      const s = p01 / duty;
+      p = THREE.MathUtils.lerp(cfg.sFwd, -cfg.sBack, s);
+      y = cfg.groundY;
+      if (s < 0.16) {
+        ankP = cfg.heelPitch * (1 - smoothstep(s / 0.16));
+        toeB = 0;
+      } else if (s <= 0.72) {
+        ankP = 0;
+        toeB = 0;
+      } else {
+        const kPush = smoothstep((s - 0.72) / 0.28);
+        y += kPush * cfg.heelLiftY;
+        ankP = -kPush * cfg.pushPitch;
+        toeB = kPush * cfg.toePush;
+      }
+    } else {
+      const w = (p01 - duty) / Math.max(0.05, 1 - duty);
+      const wSm = smoothstep(w);
+      const pawEnv = 9.481 * w * w * w * (1 - w);
+      p = THREE.MathUtils.lerp(-cfg.sBack, cfg.sFwd, wSm) + pawEnv * cfg.sPaw;
+      y = THREE.MathUtils.lerp(cfg.groundY + cfg.heelLiftY, cfg.groundY, wSm) +
+        Math.pow(Math.sin(w * Math.PI), 0.85) * cfg.swingLift;
+      if (w < 0.35) {
+        ankP = THREE.MathUtils.lerp(-cfg.pushPitch, -cfg.pushPitch * 0.35, smoothstep(w / 0.35));
+      } else {
+        ankP = THREE.MathUtils.lerp(-cfg.pushPitch * 0.35, cfg.heelPitch, smoothstep(Math.min(1, (w - 0.35) / 0.55)));
+      }
+      toeB = w < 0.25 ? cfg.toePush * (1 - smoothstep(w / 0.25)) : 0;
+    }
+    const crossClear = Math.abs(cfg.dirX) * Math.max(0, 1 - Math.abs(p) / 0.20) * 0.045 * cfg.sideSign;
+    out.x = cfg.baseX + p * cfg.dirX;
+    out.y = y;
+    out.z = p * cfg.dirZ + crossClear;
+    out.anklePitch = ankP * cfg.fwdSign;
+    out.ankleRoll = -cfg.dirX * (p / Math.max(0.15, cfg.sFwd)) * 0.10;
+    out.toeBend = toeB * Math.max(0.25, Math.abs(cfg.fwdSign));
+    return out;
   }
 
   // ==========================================================================
@@ -461,7 +575,8 @@
   class MW2Animator {
     constructor(rig) {
       this.rig = rig;
-      this.walkPhase = Math.random() * Math.PI * 2;
+      this.gaitCycle = Math.random();
+      this.walkPhase = this.gaitCycle * Math.PI * 2;
       this.idleTime = Math.random() * 10.0;
       this.crouchWalkBlend = 0;
       // AAA Procedural Momentum-Based Locomotion state
@@ -470,15 +585,22 @@
       this.prevSpeed = 0;
       this.prevWorldYaw = null;
       this.yawRate = 0;
+      this.moveDirX = 0;
+      this.moveDirZ = -1;
       this.prevOnGround = true;
       this.airTime = 0;
       this.landImpact = 0;
       this.startTimer = 0;
       this.stopTimer = 0;
-      this.stopLeadSide = 1;
+      this.stopDur = 0.34;
+      this.stopStrength = 0;
+      this.stopLeadSide = -1;
+      this.pivotTimer = 0;
+      this.pivotSign = 0;
       this.wWalk = 0;
       this.wRun = 0;
       this.wTac = 0;
+      this.gaitBlend = 0;
       this.locoPhase = 'idle';
       this.recoilImpulse = 0;
       this.flinchImpulse = 0;
@@ -487,6 +609,12 @@
       this._lTarget = new THREE.Vector3();
       this._rPole = new THREE.Vector3(0.75, -0.55, 0.35);
       this._lPole = new THREE.Vector3(-0.75, -0.55, 0.30);
+      this._lFootState = { x: -0.115, y: 0.06, z: -0.04, anklePitch: 0, ankleRoll: 0, toeBend: 0 };
+      this._rFootState = { x: 0.125, y: 0.06, z: 0.055, anklePitch: 0, ankleRoll: 0, toeBend: 0 };
+      this._lFootRig = new THREE.Vector3(-0.115, 0.06, -0.04);
+      this._rFootRig = new THREE.Vector3(0.125, 0.06, 0.055);
+      this._legTargetP = new THREE.Vector3();
+      this._legPoleP = new THREE.Vector3();
     }
 
     triggerRecoil(amount = 1.0) {
@@ -515,8 +643,8 @@
       const isProne = stance === 'prone';
       const isCrouch = stance === 'crouch';
       const isADS = !!st.isADS;
-      const isTacSprint = !!st.isTacSprinting && moving && !isProne && !isCrouch && !isADS;
-      const isSprint = (!!st.isSprinting || speed > 4.6) && moving && !isProne && !isCrouch && !isADS;
+      const isTacSprint = (st.isTacSprinting !== undefined ? !!st.isTacSprinting : speed >= 7.45) && moving && !isProne && !isCrouch && !isADS;
+      const isSprint = (st.isSprinting !== undefined ? !!st.isSprinting : speed > 4.9) && moving && !isProne && !isCrouch && !isADS && !isTacSprint;
       const isSlide = !!st.isSliding;
       const isDowned = !!st.isDowned;
       const isDead = !!st.dead;
@@ -530,6 +658,8 @@
       r._animState = {
         speed,
         stance,
+        isSprinting: isSprint || this.wRun > 0.45,
+        isTacSprinting: isTacSprint || this.wTac > 0.45,
         isSliding: isSlide,
         isDowned,
         dead: isDead,
@@ -609,28 +739,74 @@
       this.accelFwd = THREE.MathUtils.lerp(this.accelFwd, THREE.MathUtils.clamp(rawAccel, -28, 28), Math.min(1, cDt * 12));
       this.prevSpeed = speed;
 
-      // Detect explosive Start Launch & Hard-Stop Braking Plant transitions!
+      // 360-degree local travel direction for forward/backward/strafe foot trajectories + pivot detection
+      let rawDirX = 0;
+      let rawDirZ = -1;
+      let hasDirInput = false;
+      if (st.velLocalX !== undefined || st.velLocalZ !== undefined) {
+        const vxL = st.velLocalX || 0;
+        const vzL = st.velLocalZ || 0;
+        const vMag = Math.hypot(vxL, vzL);
+        if (vMag > 0.18) {
+          rawDirX = vxL / vMag;
+          rawDirZ = vzL / vMag;
+          hasDirInput = true;
+        }
+      } else if (Math.abs(st.moveRight || 0) > 0.05 || st.moveForward !== undefined) {
+        const mr = THREE.MathUtils.clamp(st.moveRight || 0, -1, 1);
+        const mf = st.moveForward !== undefined ? st.moveForward : (1 - Math.abs(mr) * 0.35);
+        const mMag = Math.hypot(mr, mf);
+        if (mMag > 0.05) {
+          rawDirX = mr / mMag;
+          rawDirZ = -mf / mMag;
+          hasDirInput = true;
+        }
+      }
+
       const isStanding = !isProne && !isCrouch && !isSlide && !isDowned && !isDead;
+      if (hasDirInput) {
+        const prevX = this.moveDirX;
+        const prevZ = this.moveDirZ;
+        const dirDot = prevX * rawDirX + prevZ * rawDirZ;
+        if (isStanding && onGround && this.velSpeed > 2.2 && dirDot < 0.20 && this.pivotTimer <= 0) {
+          this.pivotTimer = 0.28;
+          this.pivotSign = (prevX * rawDirZ - prevZ * rawDirX) >= 0 ? 1 : -1;
+        }
+        const dLerp = Math.min(1, cDt * 12.5);
+        this.moveDirX = THREE.MathUtils.lerp(this.moveDirX, rawDirX, dLerp);
+        this.moveDirZ = THREE.MathUtils.lerp(this.moveDirZ, rawDirZ, dLerp);
+        const mNorm = Math.hypot(this.moveDirX, this.moveDirZ);
+        if (mNorm > 0.001) {
+          this.moveDirX /= mNorm;
+          this.moveDirZ /= mNorm;
+        }
+      }
+
+      // Detect explosive Start Launch & speed-scaled Gather / Hard-Brake Stop transitions
       if (isStanding && onGround) {
-        if (this.velSpeed < 1.15 && speed > 1.8 && this.accelFwd > 2.8 && this.startTimer <= 0) {
-          this.startTimer = 0.30;
+        if (this.velSpeed < 1.25 && speed > 1.35 && this.accelFwd > 2.2 && this.startTimer <= 0) {
+          this.startTimer = 0.34;
           this.stopTimer = 0;
-        } else if (this.velSpeed > 3.2 && (speed < 0.75 || this.accelFwd < -6.8) && this.stopTimer <= 0) {
-          this.stopTimer = 0.36;
+        } else if (this.velSpeed > 1.15 && (speed < 0.55 || this.accelFwd < -5.8) && this.stopTimer <= 0) {
+          this.stopStrength = THREE.MathUtils.clamp(this.velSpeed / 7.5, 0.28, 1.0);
+          this.stopDur = THREE.MathUtils.lerp(0.24, 0.42, this.stopStrength);
+          this.stopTimer = this.stopDur;
           this.startTimer = 0;
-          this.stopLeadSide = Math.sin(this.walkPhase) >= 0 ? -1 : 1; // plant whichever foot was forward!
+          this.stopLeadSide = this._lFootRig.z <= this._rFootRig.z ? -1 : 1; // plant whichever foot is out front
         }
       } else {
         this.startTimer = 0;
         this.stopTimer = 0;
+        this.pivotTimer = 0;
       }
       if (this.startTimer > 0) this.startTimer = Math.max(0, this.startTimer - cDt);
+      if (this.pivotTimer > 0) this.pivotTimer = Math.max(0, this.pivotTimer - cDt);
       if (this.stopTimer > 0) {
         this.stopTimer = Math.max(0, this.stopTimer - cDt);
-        if (speed > 2.2) this.stopTimer = 0; // cancel stop plant immediately if accelerating again
+        if (speed > 2.0) this.stopTimer = 0; // cancel stop plant immediately if accelerating again
       }
 
-      this.velSpeed = THREE.MathUtils.lerp(this.velSpeed, speed, Math.min(1, cDt * (speed > this.velSpeed ? 11 : 9)));
+      this.velSpeed = THREE.MathUtils.lerp(this.velSpeed, speed, Math.min(1, cDt * (speed > this.velSpeed ? 12.0 : 8.5)));
 
       // Track angular turn velocity for realistic corner-banking roll
       if (typeof st.worldYaw === 'number') {
@@ -644,34 +820,45 @@
         this.yawRate = THREE.MathUtils.lerp(this.yawRate, 0, Math.min(1, cDt * 8));
       }
 
-      // Smoothly blend distinct locomotion phase weights: Walk -> Run -> High-Port Tactical Sprint
-      const wantTac = isStanding && onGround && moving && (isTacSprint || this.velSpeed >= 10.6);
-      const wantRun = isStanding && onGround && moving && !wantTac && (isSprint || this.velSpeed >= 5.2);
+      // Smoothly blend distinct locomotion phase weights: Walk -> Intense Sprint -> High-Port Tactical Sprint
+      const wantTac = isStanding && onGround && moving && isTacSprint;
+      const wantRun = isStanding && onGround && moving && !wantTac && (isSprint || (st.isSprinting === undefined && this.velSpeed >= 5.3));
       const wantWalk = isStanding && onGround && moving && !wantTac && !wantRun;
-      const pLerp = Math.min(1, cDt * 9.5);
+      const pLerp = Math.min(1, cDt * (moving ? 10.5 : 8.5));
       this.wTac  = THREE.MathUtils.lerp(this.wTac,  wantTac  ? 1 : 0, pLerp);
       this.wRun  = THREE.MathUtils.lerp(this.wRun,  wantRun  ? 1 : 0, pLerp);
       this.wWalk = THREE.MathUtils.lerp(this.wWalk, wantWalk ? 1 : 0, pLerp);
+      this.gaitBlend = THREE.MathUtils.lerp(
+        this.gaitBlend,
+        (isStanding && onGround && moving) ? 1 : 0,
+        Math.min(1, cDt * (moving ? 12.0 : 7.5))
+      );
       this.locoPhase = !moving
         ? (this.stopTimer > 0 ? 'stop' : 'idle')
-        : (this.startTimer > 0 ? 'start' : (wantTac ? 'tacSprint' : (wantRun ? 'run' : 'walk')));
+        : (this.startTimer > 0 ? 'start' : (this.pivotTimer > 0 ? 'cut' : (wantTac ? 'tacSprint' : (wantRun ? 'run' : 'walk'))));
       r._animState.locoPhase = this.locoPhase;
 
-      // Advance procedural gait cycle smoothly coupled to momentum & distinct phase cadence
+      // Advance procedural gait cycle cleanly coupled to momentum & distinct 3-tier cadence
       if ((moving || this.velSpeed > 0.35) && !isSlide && !isDowned && onGround) {
-        let freq;
-        if (isProne) freq = 3.1;
-        else if (isCrouch) freq = 5.6 + Math.min(speed, 4.0) * 0.45;
+        let freqRad;
+        if (isProne) freqRad = 3.1;
+        else if (isCrouch) freqRad = 5.6 + Math.min(speed, 4.0) * 0.45;
         else {
-          const walkF = 5.2 + Math.min(this.velSpeed, 5.4) * 0.68;
-          const runF  = 8.6 + Math.max(0, Math.min(this.velSpeed - 5.0, 5.5)) * 0.48;
-          const tacF  = 11.8 + Math.max(0, this.velSpeed - 10.0) * 0.32;
+          const walkHz = 1.05 + Math.min(this.velSpeed, 4.8) * 0.085;
+          const runHz  = 1.62 + Math.max(0, Math.min(this.velSpeed - 4.8, 3.0)) * 0.11;
+          const tacHz  = 1.98 + Math.max(0, Math.min(this.velSpeed - 7.0, 2.5)) * 0.08;
           const wTot = Math.max(0.001, this.wWalk + this.wRun + this.wTac);
-          freq = (walkF * this.wWalk + runF * this.wRun + tacF * this.wTac) / wTot;
+          const cycleHz = (walkHz * this.wWalk + runHz * this.wRun + tacHz * this.wTac) / wTot;
+          this.gaitCycle = (this.gaitCycle + cDt * cycleHz) % 1;
+          freqRad = cycleHz * Math.PI * 2;
         }
-        this.walkPhase += cDt * freq;
+        if (isProne || isCrouch) {
+          this.gaitCycle = (this.gaitCycle + cDt * (freqRad / (Math.PI * 2))) % 1;
+        }
+        this.walkPhase = this.gaitCycle * Math.PI * 2;
       } else if (isDowned && moving) {
-        this.walkPhase += cDt * 4.2;
+        this.gaitCycle = (this.gaitCycle + cDt * (4.2 / (Math.PI * 2))) % 1;
+        this.walkPhase = this.gaitCycle * Math.PI * 2;
       }
       r._animState.gaitPhase = this.walkPhase;
       const stride = Math.sin(this.walkPhase);
@@ -802,11 +989,12 @@
         this._rPole.set(0.75, -0.55, 0.35);
         this._lPole.set(-0.75, -0.55, 0.30);
       } else {
-        // === AAA PROCEDURAL MOMENTUM-BASED LOCOMOTION (START -> WALK -> RUN -> TAC-SPRINT -> STOP + BANKING + AIR/LAND) ===
-        const moveBlend = THREE.MathUtils.clamp(this.wWalk + this.wRun + this.wTac, 0, 1);
-        const startArc = this.startTimer > 0 ? Math.sin((this.startTimer / 0.30) * Math.PI) : 0;
-        const stopProg = this.stopTimer > 0 ? (1 - this.stopTimer / 0.36) : 0;
+        // === AAA PROCEDURAL MOMENTUM-BASED LOCOMOTION (START -> WALK -> INTENSE SPRINT -> HIGH-PORT TAC-SPRINT -> STOP) ===
+        const moveBlend = THREE.MathUtils.clamp(this.gaitBlend, 0, 1);
+        const startArc = this.startTimer > 0 ? Math.sin((this.startTimer / 0.34) * Math.PI) : 0;
+        const stopProg = this.stopTimer > 0 ? (1 - this.stopTimer / Math.max(0.01, this.stopDur)) : 0;
         const stopEnv = this.stopTimer > 0 ? Math.sin(stopProg * Math.PI) : 0;
+        const pivotArc = this.pivotTimer > 0 ? Math.sin((this.pivotTimer / 0.28) * Math.PI) : 0;
         const landArc = this.landImpact > 0.001 ? Math.sin(Math.min(1, this.landImpact) * Math.PI * 0.5) : 0;
 
         if (!onGround) {
@@ -826,136 +1014,192 @@
           wpnPosY += 0.025 * airBlend;
           wpnRotX -= 0.06 * airBlend;
         } else {
-          // Distinct biomechanical parameters blended cleanly across Walk / Run / High-Port Tac-Sprint phases
+          // Distinct biomechanical foot trajectories across Walk / Intense Sprint / High-Port Tac-Sprint
           const wSum = Math.max(0.001, this.wWalk + this.wRun + this.wTac);
           const nW = this.wWalk / wSum;
           const nR = this.wRun / wSum;
           const nT = this.wTac / wSum;
 
-          // Stride hip swing amplitude: controlled walk (0.36) -> athletic run (0.66) -> full-drive sprint (0.86)
-          const phaseAmp = (0.36 * nW + 0.66 * nR + 0.86 * nT) + startArc * 0.14;
-          const amp = phaseAmp * moveBlend;
-          // Knee lift during forward swing: crisp walk fold (0.62) -> high run heel-kick (1.16) -> explosive sprint drive (1.46)
-          const kneeLift = (0.62 * nW + 1.16 * nR + 1.46 * nT) + startArc * 0.18;
-          // Weight-acceptance stance cushion: grounded walk (0.18) -> springy run (0.28) -> power sprint (0.34)
-          const cushionAmp = 0.18 * nW + 0.28 * nR + 0.34 * nT;
+          const groundY = 0.060;
+          const speedRatio = moveBlend > 0.01 ? THREE.MathUtils.clamp(this.velSpeed / 4.2, 0.55, 1.15) : 0.75;
+          const strideScale = nW < 0.99 ? THREE.MathUtils.lerp(speedRatio, 1.0, nR + nT) : speedRatio;
 
-          // 4-subphase biomechanical cycle per leg: Swing Forward -> Heel-Strike -> Stance Cushion -> Toe-Off Push
-          const lSwing = Math.pow(Math.max(0, strideCos), 0.85);
-          const rSwing = Math.pow(Math.max(0, -strideCos), 0.85);
-          const lCushion = Math.max(0, -strideCos) * cushionAmp;
-          const rCushion = Math.max(0, strideCos) * cushionAmp;
+          // At touchdown foot plants ahead at sFwd (during swing extends further out by +sPaw before active paw-back!),
+          // sweeps linearly to -sBack across stance pulling operator forward, then hands off smoothly to opposing lead leg.
+          const gaitCfg = {
+            duty: 0.58 * nW + 0.45 * nR + 0.40 * nT,
+            sFwd: (0.41 * nW + 0.45 * nR + 0.48 * nT) * strideScale + startArc * 0.04,
+            sBack: (0.37 * nW + 0.46 * nR + 0.50 * nT) * strideScale + startArc * 0.06,
+            sPaw: 0.035 * nW + 0.22 * nR + 0.31 * nT,
+            swingLift: 0.115 * nW + 0.24 * nR + 0.30 * nT,
+            heelLiftY: 0.036 * nW + 0.052 * nR + 0.060 * nT,
+            heelPitch: 0.26 * nW + 0.16 * nR + 0.12 * nT,
+            pushPitch: 0.38 * nW + 0.54 * nR + 0.62 * nT,
+            toePush: 0.36 * nW + 0.48 * nR + 0.56 * nT,
+            groundY,
+            dirX: this.moveDirX,
+            dirZ: this.moveDirZ,
+            fwdSign: THREE.MathUtils.clamp(-this.moveDirZ, -1, 1),
+            sideSign: -1,
+            baseX: -0.114 - Math.abs(this.moveDirX) * 0.025 * moveBlend - pivotArc * 0.04
+          };
 
-          // Strafe leg abduction for realistic lateral stepping
-          const strafe = THREE.MathUtils.clamp(st.moveRight || 0, -1, 1);
-          const strafeStep = Math.abs(strafe) * moveBlend;
+          const lf = evalGaitFoot(this.gaitCycle, gaitCfg, this._lFootState);
+          gaitCfg.sideSign = 1;
+          gaitCfg.baseX = 0.114 + Math.abs(this.moveDirX) * 0.025 * moveBlend + pivotArc * 0.04;
+          const rf = evalGaitFoot(this.gaitCycle + 0.5, gaitCfg, this._rFootState);
 
-          let gLHipX = THREE.MathUtils.lerp(0.06, stride * amp + startArc * 0.08, moveBlend);
-          let gRHipX = THREE.MathUtils.lerp(-0.05, -stride * amp + startArc * 0.08, moveBlend);
-          let gLKneeX = THREE.MathUtils.lerp(-0.12, -lSwing * kneeLift - 0.08 - lCushion, moveBlend);
-          let gRKneeX = THREE.MathUtils.lerp(-0.10, -rSwing * kneeLift - 0.08 - rCushion, moveBlend);
-          // Heel-strike dorsiflexion (+) -> flat stance -> powerful toe-off plantarflexion (-)
-          let gLAnkX = THREE.MathUtils.lerp(0.06, -(gLHipX + gLKneeX) * 0.52 + Math.max(0, stride) * 0.26 - Math.max(0, -stride) * (0.22 + nT * 0.14), moveBlend);
-          let gRAnkX = THREE.MathUtils.lerp(0.05, -(gRHipX + gRKneeX) * 0.52 + Math.max(0, -stride) * 0.26 - Math.max(0, stride) * (0.22 + nT * 0.14), moveBlend);
+          // Tactical balanced ready stance at idle (left foot slightly leading, right staggered back)
+          const idleLX = -0.115, idleLZ = -0.045;
+          const idleRX =  0.125, idleRZ =  0.055;
+          let lx = THREE.MathUtils.lerp(idleLX, lf.x, moveBlend);
+          let ly = THREE.MathUtils.lerp(groundY, lf.y, moveBlend);
+          let lz = THREE.MathUtils.lerp(idleLZ, lf.z, moveBlend);
+          let rx = THREE.MathUtils.lerp(idleRX, rf.x, moveBlend);
+          let ry = THREE.MathUtils.lerp(groundY, rf.y, moveBlend);
+          let rz = THREE.MathUtils.lerp(idleRZ, rf.z, moveBlend);
+          let lAnkP = THREE.MathUtils.lerp(0, lf.anklePitch, moveBlend);
+          let rAnkP = THREE.MathUtils.lerp(0, rf.anklePitch, moveBlend);
+          let lAnkR = THREE.MathUtils.lerp(0, lf.ankleRoll, moveBlend);
+          let rAnkR = THREE.MathUtils.lerp(0, rf.ankleRoll, moveBlend);
+          let lToe = THREE.MathUtils.lerp(0, lf.toeBend, moveBlend);
+          let rToe = THREE.MathUtils.lerp(0, rf.toeBend, moveBlend);
 
-          // Phase 5: Hard-Stop Braking Plant (lead foot plants heel-first out front, rear knee absorbs momentum!)
+          // Speed-scaled Gather / Hard-Brake Stop transition (lead foot brakes out front, trailing foot gathers smoothly)
           if (stopEnv > 0.01) {
-            const leadIsLeft = this.stopLeadSide < 0;
-            const sLHip = leadIsLeft ? 0.44 : -0.22;
-            const sRHip = leadIsLeft ? -0.22 : 0.44;
-            const sLKnee = leadIsLeft ? -0.34 : -0.46;
-            const sRKnee = leadIsLeft ? -0.46 : -0.34;
-            const sLAnk = leadIsLeft ? 0.24 : -0.18;
-            const sRAnk = leadIsLeft ? -0.18 : 0.24;
-            gLHipX = THREE.MathUtils.lerp(gLHipX, sLHip, stopEnv);
-            gRHipX = THREE.MathUtils.lerp(gRHipX, sRHip, stopEnv);
-            gLKneeX = THREE.MathUtils.lerp(gLKneeX, sLKnee, stopEnv);
-            gRKneeX = THREE.MathUtils.lerp(gRKneeX, sRKnee, stopEnv);
-            gLAnkX = THREE.MathUtils.lerp(gLAnkX, sLAnk, stopEnv);
-            gRAnkX = THREE.MathUtils.lerp(gRAnkX, sRAnk, stopEnv);
+            const leadLeft = this.stopLeadSide < 0;
+            const sStr = this.stopStrength;
+            const gatherK = smoothstep(Math.min(1, stopProg / 0.86));
+            const leadZ = THREE.MathUtils.lerp(-0.34 * sStr, leadLeft ? idleLZ : idleRZ, smoothstep(Math.max(0, (stopProg - 0.30) / 0.70)));
+            const trailZ = THREE.MathUtils.lerp(0.24 * sStr, leadLeft ? idleRZ : idleLZ, gatherK);
+            const trailLift = Math.sin(gatherK * Math.PI) * 0.065 * sStr;
+            const leadAnk = THREE.MathUtils.lerp(0.20 * sStr, 0, Math.min(1, stopProg / 0.45));
+            const trailAnk = -0.14 * sStr * Math.sin(gatherK * Math.PI);
+            if (leadLeft) {
+              lz = THREE.MathUtils.lerp(lz, leadZ, stopEnv);
+              ly = THREE.MathUtils.lerp(ly, groundY, stopEnv);
+              lAnkP = THREE.MathUtils.lerp(lAnkP, leadAnk, stopEnv);
+              rz = THREE.MathUtils.lerp(rz, trailZ, stopEnv);
+              ry = THREE.MathUtils.lerp(ry, groundY + trailLift, stopEnv);
+              rAnkP = THREE.MathUtils.lerp(rAnkP, trailAnk, stopEnv);
+              lToe *= (1 - stopEnv);
+            } else {
+              rz = THREE.MathUtils.lerp(rz, leadZ, stopEnv);
+              ry = THREE.MathUtils.lerp(ry, groundY, stopEnv);
+              rAnkP = THREE.MathUtils.lerp(rAnkP, leadAnk, stopEnv);
+              lz = THREE.MathUtils.lerp(lz, trailZ, stopEnv);
+              ly = THREE.MathUtils.lerp(ly, groundY + trailLift, stopEnv);
+              lAnkP = THREE.MathUtils.lerp(lAnkP, trailAnk, stopEnv);
+              rToe *= (1 - stopEnv);
+            }
           }
 
-          lHipX = gLHipX;
-          rHipX = gRHipX;
-          lKneeX = gLKneeX - landArc * 0.52;
-          rKneeX = gRKneeX - landArc * 0.52;
-          lAnkX = gLAnkX + landArc * 0.26;
-          rAnkX = gRAnkX + landArc * 0.26;
-          lHipZ = -0.03 - strafeStep * (0.08 + Math.max(0, -stride * Math.sign(strafe || 1)) * 0.12);
-          rHipZ =  0.03 + strafeStep * (0.08 + Math.max(0,  stride * Math.sign(strafe || 1)) * 0.12);
+          // Two-foot terrain IK under each foot's live world footprint
+          let minGroundDrop = 0;
+          if (st.world && st.world.getTerrainHeight && st.worldPos && !isProne && !isSlide) {
+            const yawW = st.worldYaw || 0;
+            const sinY = Math.sin(yawW);
+            const cosY = Math.cos(yawW);
+            const feetY = st.feetY !== undefined ? st.feetY : st.worldPos.y;
+            const lG = st.world.getTerrainHeight(st.worldPos.x + lx * cosY + lz * sinY, st.worldPos.z - lx * sinY + lz * cosY);
+            const rG = st.world.getTerrainHeight(st.worldPos.x + rx * cosY + rz * sinY, st.worldPos.z - rx * sinY + rz * cosY);
+            const dL = THREE.MathUtils.clamp(lG - feetY, -0.32, 0.32);
+            const dR = THREE.MathUtils.clamp(rG - feetY, -0.32, 0.32);
+            minGroundDrop = Math.min(0, dL, dR);
+            ly += dL;
+            ry += dR;
+          }
 
-          // Vertical pelvis trajectory: double-support dip on walk vs athletic flight-arc bounce on run/sprint!
-          const walkBounce = -Math.abs(stride) * 0.030;
-          const runBounce = (Math.abs(strideCos) - 0.48) * (0.068 * nR + 0.095 * nT);
-          pelvisY = 0.89 + (walkBounce * nW + runBounce) * moveBlend - stopEnv * 0.055 - landArc * 0.15;
+          this._lFootRig.set(lx, ly, lz);
+          this._rFootRig.set(rx, ry, rz);
+          this._lFootState.anklePitch = lAnkP;
+          this._rFootState.anklePitch = rAnkP;
+          this._lFootState.ankleRoll = lAnkR;
+          this._rFootState.ankleRoll = rAnkR;
+          this._lFootState.toeBend = lToe;
+          this._rFootState.toeBend = rToe;
 
-          // Pelvis counter-rotation vs stabilized upper ribcage (MW19 tactical weapon-leveling dissociation)
-          const yawAmp = (0.08 * nW + 0.15 * nR + 0.20 * nT) * moveBlend;
-          pelvisYaw = THREE.MathUtils.lerp(0.16, stride * yawAmp, moveBlend);
+          // Pelvis vertical trajectory: inverted pendulum double-support dip on walk vs explosive sprint bounce
+          const stepPhaseSin2 = Math.abs(Math.sin(this.walkPhase));
+          const walkBob = -stepPhaseSin2 * 0.036;
+          const runBob = (Math.abs(strideCos) - 0.45) * (0.072 * nR + 0.095 * nT);
+          const baseIdleY = 0.875 + breath * 0.005;
+          const phaseComY = 0.855 * nW + 0.835 * nR + 0.822 * nT;
+          pelvisY = THREE.MathUtils.lerp(baseIdleY, phaseComY + walkBob * nW + runBob, moveBlend)
+            + minGroundDrop * 0.72
+            - startArc * 0.045
+            - stopEnv * 0.075 * this.stopStrength
+            - pivotArc * 0.055
+            - landArc * 0.14;
+
+          // Pelvis counter-rotation locked in phase to actual foot Z separation (-rz+lz so left hip moves FORWARD with left foot!)
+          const footSepZ = rz - lz;
+          const yawAmp = (0.14 * nW + 0.24 * nR + 0.32 * nT) * moveBlend;
+          pelvisYaw = THREE.MathUtils.lerp(0.14, THREE.MathUtils.clamp(-footSepZ * 0.48, -yawAmp, yawAmp), moveBlend);
           spineYaw = -pelvisYaw * 0.62;
           torsoYaw = -pelvisYaw * 0.38;
 
-          // Momentum-driven forward/backward pitch: Start launch lean, phase combat pitch, Braking counter-lean & landing shock!
+          // Reach-guard so planted stance/strike feet never hover or miss their IK ground contact
+          const maxLegSpan = 0.786;
+          const clampPelvisForFoot = (fX, fY, fZ, hX) => {
+            const cosPY = Math.cos(pelvisYaw), sinPY = Math.sin(pelvisYaw);
+            const hipX = hX * cosPY;
+            const hipZ = -hX * sinPY;
+            const horizSq = (fX - hipX) * (fX - hipX) + (fZ - hipZ) * (fZ - hipZ);
+            const maxDy = Math.sqrt(Math.max(0.06, maxLegSpan * maxLegSpan - horizSq));
+            return fY + 0.04 + maxDy;
+          };
+          pelvisY = Math.max(
+            0.46,
+            Math.min(
+              pelvisY,
+              clampPelvisForFoot(lx, ly, lz, -0.112),
+              clampPelvisForFoot(rx, ry, rz, 0.112)
+            )
+          );
+
+          // Momentum-driven forward/backward torso lean: sprint aggression, start launch, hard brake whip, & landing shock
           const accelLean = THREE.MathUtils.clamp(-this.accelFwd * 0.011, -0.14, 0.10);
-          const stopWhip = stopEnv > 0.01 ? (Math.sin(stopProg * Math.PI * 1.6) * 0.09 * (1 - stopProg * 0.4)) : 0;
-          const phaseSpine = (-0.04 * nW - 0.12 * nR - 0.18 * nT) * moveBlend;
-          const phaseTorso = (-0.05 * nW - 0.14 * nR - 0.20 * nT) * moveBlend;
-          spinePitch = phaseSpine + accelLean * 0.6 - startArc * 0.12 - stopWhip - landArc * 0.12;
+          const stopWhip = stopEnv > 0.01 ? (Math.sin(stopProg * Math.PI * 1.6) * 0.095 * this.stopStrength * (1 - stopProg * 0.4)) : 0;
+          const phaseSpine = (-0.05 * nW - 0.16 * nR - 0.21 * nT) * moveBlend;
+          const phaseTorso = (-0.06 * nW - 0.19 * nR - 0.23 * nT) * moveBlend;
+          spinePitch = phaseSpine + accelLean * 0.6 - startArc * 0.11 - stopWhip - landArc * 0.12;
           torsoPitch = phaseTorso + accelLean * 0.4 - startArc * 0.10 - stopWhip * 0.8 - landArc * 0.14 + breath * 0.016;
 
-          // Athletic corner-banking roll into turns + strafe banking
+          // Athletic corner-banking roll into turns, lateral strafes, and rapid pivot cuts
           const bankRoll = THREE.MathUtils.clamp(this.yawRate * this.velSpeed * 0.018, -0.18, 0.18);
-          rigRoll = -strafe * (0.035 + 0.055 * (this.wRun + this.wTac)) + bankRoll;
-
-          // 2-Foot Uneven Terrain IK (if world & worldPos provided)
-          if (st.world && st.world.getTerrainHeight && st.worldPos && !isProne && !isSlide) {
-            const sinY = Math.sin(st.worldYaw || 0);
-            const cosY = Math.cos(st.worldYaw || 0);
-            const feetY = st.feetY !== undefined ? st.feetY : st.worldPos.y;
-            const spread = 0.21;
-            const stepF = moveBlend > 0.1 ? stride * 0.26 * moveBlend : 0.06;
-            const lG = st.world.getTerrainHeight(st.worldPos.x - cosY * spread - sinY * stepF, st.worldPos.z + sinY * spread - cosY * stepF);
-            const rG = st.world.getTerrainHeight(st.worldPos.x + cosY * spread + sinY * stepF, st.worldPos.z - sinY * spread + cosY * stepF);
-            const dL = THREE.MathUtils.clamp(lG - feetY, -0.34, 0.34);
-            const dR = THREE.MathUtils.clamp(rG - feetY, -0.34, 0.34);
-            const minDrop = Math.min(0, dL, dR);
-            pelvisY += minDrop * 0.62;
-            const liftL = Math.max(0, dL - minDrop);
-            const liftR = Math.max(0, dR - minDrop);
-            lHipX += liftL * 1.40; lKneeX -= liftL * 2.10; lAnkX += liftL * 0.80;
-            rHipX += liftR * 1.40; rKneeX -= liftR * 2.10; rAnkX += liftR * 0.80;
-          }
-
-          // Exact Foot-Contact Ground Clamp so boots never sink below terrain
-          const footDrop = (hX, kX) => 0.04 + 0.42 * Math.cos(hX) + 0.45 * Math.cos(hX + kX);
-          pelvisY = Math.max(0.45, Math.max(footDrop(lHipX, lKneeX), footDrop(rHipX, rKneeX)) + 0.008 - landArc * 0.06);
+          rigRoll = -this.moveDirX * moveBlend * (0.045 + 0.065 * (this.wRun + this.wTac)) + bankRoll + pivotArc * 0.08 * this.pivotSign;
         }
 
         this._rPole.set(0.75, -0.55, 0.35);
         this._lPole.set(-0.75, -0.55, 0.30);
 
-        // Smooth phase-blended weapon carry across Walk -> Combat Run -> High-Port Tactical Sprint!
+        // Smooth phase-blended weapon carry: Tactical Ready Walk -> Aggressive Cross-Chest Sprint -> Skyward High-Port Tac-Sprint!
         if (this.wTac > 0.02 || this.wRun > 0.02) {
           const rW = this.wRun;
           const tW = this.wTac;
-          // Combat Run low-ready cross-chest swing
+          // Intense Combat Sprint cross-chest drive with energetic stride pump
           if (rW > 0.01) {
-            wpnPosX = THREE.MathUtils.lerp(wpnPosX, 0.07 + stride * 0.036, rW);
-            wpnPosY = THREE.MathUtils.lerp(wpnPosY, 0.27 - Math.abs(stride) * 0.024, rW);
-            wpnPosZ = THREE.MathUtils.lerp(wpnPosZ, -0.26, rW);
-            wpnRotX = THREE.MathUtils.lerp(wpnRotX, -0.15 - Math.abs(stride) * 0.04, rW);
-            wpnRotY = THREE.MathUtils.lerp(wpnRotY, 0.44 - stride * 0.06, rW);
-            wpnRotZ = THREE.MathUtils.lerp(wpnRotZ, -0.16 + stride * 0.05, rW);
+            const runPump = Math.sin(this.walkPhase * 2);
+            wpnPosX = THREE.MathUtils.lerp(wpnPosX, 0.04 + strideCos * 0.048, rW);
+            wpnPosY = THREE.MathUtils.lerp(wpnPosY, 0.25 + runPump * 0.028, rW);
+            wpnPosZ = THREE.MathUtils.lerp(wpnPosZ, -0.25, rW);
+            wpnRotX = THREE.MathUtils.lerp(wpnRotX, -0.18 + runPump * 0.05, rW);
+            wpnRotY = THREE.MathUtils.lerp(wpnRotY, 0.50 - strideCos * 0.08, rW);
+            wpnRotZ = THREE.MathUtils.lerp(wpnRotZ, -0.22 + strideCos * 0.06, rW);
           }
-          // High-Port Tactical Sprint one-handed skyward rifle carry + left arm full athletic pump!
+          // High-Port Tactical Sprint: barrel angled ~62° skyward beside helmet + seamless left-arm sprinter pump blend!
           if (tW > 0.01) {
-            wpnPosX = THREE.MathUtils.lerp(wpnPosX, 0.23, tW);
-            wpnPosY = THREE.MathUtils.lerp(wpnPosY, 0.43 + stride * 0.032, tW);
-            wpnPosZ = THREE.MathUtils.lerp(wpnPosZ, -0.15, tW);
-            wpnRotX = THREE.MathUtils.lerp(wpnRotX, 0.72, tW);
-            wpnRotY = THREE.MathUtils.lerp(wpnRotY, 0.32, tW);
-            wpnRotZ = THREE.MathUtils.lerp(wpnRotZ, -0.24, tW);
-            if (tW > 0.35) leftIKWeight = 0.0;
+            const pumpEase = smoothstep((tW - 0.05) / 0.55);
+            const tacBounce = Math.sin(this.walkPhase * 2) * 0.026;
+            wpnPosX = THREE.MathUtils.lerp(wpnPosX, 0.21, tW);
+            wpnPosY = THREE.MathUtils.lerp(wpnPosY, 0.41 + tacBounce, tW);
+            wpnPosZ = THREE.MathUtils.lerp(wpnPosZ, -0.17, tW);
+            wpnRotX = THREE.MathUtils.lerp(wpnRotX, 1.58 + strideCos * 0.04, tW);
+            wpnRotY = THREE.MathUtils.lerp(wpnRotY, 0.22, tW);
+            wpnRotZ = THREE.MathUtils.lerp(wpnRotZ, -0.22, tW);
+            this._rPole.set(0.55, -0.75, 0.20);
+            leftIKWeight *= (1 - pumpEase);
           }
         }
         // Subtle landing weapon drop impulse
@@ -1319,16 +1563,54 @@
       r.head.rotation.y = THREE.MathUtils.lerp(r.head.rotation.y, 0, rate);
       r.head.rotation.z = THREE.MathUtils.lerp(r.head.rotation.z, headRoll, rate);
 
-      // Lower-body legs
-      r.leftLeg.hip.rotation.x = THREE.MathUtils.lerp(r.leftLeg.hip.rotation.x, lHipX, rate);
-      r.leftLeg.hip.rotation.z = THREE.MathUtils.lerp(r.leftLeg.hip.rotation.z, lHipZ, rate);
-      r.leftLeg.knee.rotation.x = THREE.MathUtils.lerp(r.leftLeg.knee.rotation.x, lKneeX, rate);
-      r.leftLeg.ankle.rotation.x = THREE.MathUtils.lerp(r.leftLeg.ankle.rotation.x, lAnkX, rate);
+      // Lower-body legs: ground-locked analytical IK for standing locomotion & idle, FK Euler for special states
+      const useStandingFootIK = isStanding && onGround && !st.ledgeState && !st.mantleState && !isReviving
+        && !(st.stanceTrans && st.stanceTrans.timer > 0);
+      if (useStandingFootIK) {
+        const curPY = r.pelvis.position.y;
+        const curPYaw = r.pelvis.rotation.y;
+        const cosNP = Math.cos(-curPYaw);
+        const sinNP = Math.sin(-curPYaw);
+        _qC.setFromAxisAngle(_upY, -curPYaw); // converts rigPivot orientation -> pelvis space
 
-      r.rightLeg.hip.rotation.x = THREE.MathUtils.lerp(r.rightLeg.hip.rotation.x, rHipX, rate);
-      r.rightLeg.hip.rotation.z = THREE.MathUtils.lerp(r.rightLeg.hip.rotation.z, rHipZ, rate);
-      r.rightLeg.knee.rotation.x = THREE.MathUtils.lerp(r.rightLeg.knee.rotation.x, rKneeX, rate);
-      r.rightLeg.ankle.rotation.x = THREE.MathUtils.lerp(r.rightLeg.ankle.rotation.x, rAnkX, rate);
+        const solveStandFoot = (leg, footPosR, footSt, sideSign, poleX) => {
+          const dxR = footPosR.x;
+          const dyR = footPosR.y - curPY;
+          const dzR = footPosR.z;
+          this._legTargetP.set(dxR * cosNP + dzR * sinNP, dyR, -dxR * sinNP + dzR * cosNP);
+
+          const footYaw = -sideSign * 0.04;
+          _eulA.set(footSt.anklePitch || 0, footYaw, footSt.ankleRoll || 0, 'YXZ');
+          _qB.setFromEuler(_eulA).premultiply(_qC);
+
+          // Knee pole points forward along foot travel slightly outward in pelvis space
+          const pX = poleX + this.moveDirX * 0.15;
+          const pZ = -0.85 + Math.min(0, this.moveDirZ) * 0.25;
+          this._legPoleP.set(pX * cosNP + pZ * sinNP, -0.05, -pX * sinNP + pZ * cosNP);
+          solveLegIKInRigSpace(leg, this._legTargetP, this._legPoleP, _qB, footSt.toeBend || 0);
+        };
+
+        solveStandFoot(r.leftLeg, this._lFootRig, this._lFootState, -1, -0.14);
+        solveStandFoot(r.rightLeg, this._rFootRig, this._rFootState, 1, 0.14);
+      } else {
+        r.leftLeg.hip.rotation.x = THREE.MathUtils.lerp(r.leftLeg.hip.rotation.x, lHipX, rate);
+        r.leftLeg.hip.rotation.y = THREE.MathUtils.lerp(r.leftLeg.hip.rotation.y, 0, rate);
+        r.leftLeg.hip.rotation.z = THREE.MathUtils.lerp(r.leftLeg.hip.rotation.z, lHipZ, rate);
+        r.leftLeg.knee.rotation.x = THREE.MathUtils.lerp(r.leftLeg.knee.rotation.x, lKneeX, rate);
+        r.leftLeg.ankle.rotation.x = THREE.MathUtils.lerp(r.leftLeg.ankle.rotation.x, lAnkX, rate);
+        r.leftLeg.ankle.rotation.y = THREE.MathUtils.lerp(r.leftLeg.ankle.rotation.y, 0, rate);
+        r.leftLeg.ankle.rotation.z = THREE.MathUtils.lerp(r.leftLeg.ankle.rotation.z, 0, rate);
+        r.leftLeg.toeBend = 0;
+
+        r.rightLeg.hip.rotation.x = THREE.MathUtils.lerp(r.rightLeg.hip.rotation.x, rHipX, rate);
+        r.rightLeg.hip.rotation.y = THREE.MathUtils.lerp(r.rightLeg.hip.rotation.y, 0, rate);
+        r.rightLeg.hip.rotation.z = THREE.MathUtils.lerp(r.rightLeg.hip.rotation.z, rHipZ, rate);
+        r.rightLeg.knee.rotation.x = THREE.MathUtils.lerp(r.rightLeg.knee.rotation.x, rKneeX, rate);
+        r.rightLeg.ankle.rotation.x = THREE.MathUtils.lerp(r.rightLeg.ankle.rotation.x, rAnkX, rate);
+        r.rightLeg.ankle.rotation.y = THREE.MathUtils.lerp(r.rightLeg.ankle.rotation.y, 0, rate);
+        r.rightLeg.ankle.rotation.z = THREE.MathUtils.lerp(r.rightLeg.ankle.rotation.z, 0, rate);
+        r.rightLeg.toeBend = 0;
+      }
 
       // Chest-anchored WeaponPivot
       if (r.weaponPivot) {
@@ -1355,21 +1637,37 @@
         r.rightArm.elbow.rotation.set(0.45, 0, 0);
       }
 
+      const tacSuppress = isPlating || isReloading || isHealing || isReviving || isThrowing
+        || !!st.ledgeState || !!st.mantleState || isDowned || isDead || isSlide || isProne || isCrouch;
+      const tacPumpW = (this.wTac > 0.05 && !tacSuppress && !customLeftArm)
+        ? smoothstep((this.wTac - 0.05) / 0.55)
+        : 0;
       if (leftIKWeight > 0.01 && !customLeftArm && r.weaponPivot && r.foregripTarget) {
         this._lTarget.copy(r.foregripTarget.position).applyMatrix4(r.weaponPivot.matrix);
-        solveArmIKInTorsoSpace(r.leftArm, this._lTarget, this._lPole, leftIKWeight);
-      } else if (customLeftArm) {
+        solveArmIKInTorsoSpace(r.leftArm, this._lTarget, this._lPole, tacPumpW > 0.01 ? 1.0 : leftIKWeight);
+      }
+      if (customLeftArm) {
         r.leftArm.shoulder.rotation.x = THREE.MathUtils.lerp(r.leftArm.shoulder.rotation.x, customLeftArm.shX, rate);
         r.leftArm.shoulder.rotation.y = THREE.MathUtils.lerp(r.leftArm.shoulder.rotation.y, 0, rate);
         r.leftArm.shoulder.rotation.z = THREE.MathUtils.lerp(r.leftArm.shoulder.rotation.z, customLeftArm.shZ, rate);
         r.leftArm.elbow.rotation.x = THREE.MathUtils.lerp(r.leftArm.elbow.rotation.x, customLeftArm.elbX, rate);
-      } else if (this.wTac > 0.35 || isTacSprint) {
-        // Athletic left-arm tactical sprint pump in counter-phase to legs
-        const pumpW = Math.max(this.wTac, isTacSprint ? 1 : 0);
-        r.leftArm.shoulder.rotation.x = THREE.MathUtils.lerp(r.leftArm.shoulder.rotation.x, (0.38 - stride * 0.88) * pumpW, rate);
-        r.leftArm.shoulder.rotation.y = 0;
-        r.leftArm.shoulder.rotation.z = THREE.MathUtils.lerp(r.leftArm.shoulder.rotation.z, 0.16, rate);
-        r.leftArm.elbow.rotation.x = THREE.MathUtils.lerp(r.leftArm.elbow.rotation.x, 1.38 + Math.max(0, -stride) * 0.24, rate);
+      } else if (tacPumpW > 0.01) {
+        // Athletic left-arm High-Port sprinter pump in counter-phase to legs, blended seamlessly off the foregrip
+        const armPhase = Math.cos((this.gaitCycle - 0.04) * Math.PI * 2);
+        const pumpShX = 0.48 - armPhase * 0.96;
+        const pumpShZ = 0.16;
+        const pumpElbX = 1.44 + Math.max(0, -armPhase) * 0.28;
+        if (leftIKWeight > 0.01) {
+          _eulA.set(pumpShX, 0, pumpShZ, 'XYZ');
+          _qA.setFromEuler(_eulA);
+          r.leftArm.shoulder.quaternion.slerp(_qA, tacPumpW);
+          r.leftArm.elbow.rotation.x = THREE.MathUtils.lerp(r.leftArm.elbow.rotation.x, pumpElbX, tacPumpW);
+        } else {
+          r.leftArm.shoulder.rotation.x = THREE.MathUtils.lerp(r.leftArm.shoulder.rotation.x, pumpShX, rate);
+          r.leftArm.shoulder.rotation.y = THREE.MathUtils.lerp(r.leftArm.shoulder.rotation.y, 0, rate);
+          r.leftArm.shoulder.rotation.z = THREE.MathUtils.lerp(r.leftArm.shoulder.rotation.z, pumpShZ, rate);
+          r.leftArm.elbow.rotation.x = THREE.MathUtils.lerp(r.leftArm.elbow.rotation.x, pumpElbX, rate);
+        }
       } else if (isDowned) {
         r.leftArm.shoulder.rotation.set(0.45 + stride * 0.24, 0, 0.24);
         r.leftArm.elbow.rotation.set(0.55, 0, 0);
@@ -1379,7 +1677,9 @@
 
   window.MW2Rig = {
     buildCharacterRig,
-    solveArmIKInTorsoSpace
+    solveArmIKInTorsoSpace,
+    solveLegIKInRigSpace,
+    evalGaitFoot
   };
   window.MW2Animator = MW2Animator;
 

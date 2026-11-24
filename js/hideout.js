@@ -690,9 +690,25 @@ class HideoutBunker {
       av.group.position.lerp(av.targetPos, Math.min(1, dt * 10));
       av.group.rotation.y = av.targetYaw;
       if (av.anim) {
-        const instSpd = Math.hypot(av.group.position.x - prevX, av.group.position.z - prevZ) / safeDt;
+        const instVx = (av.group.position.x - prevX) / safeDt;
+        const instVz = (av.group.position.z - prevZ) / safeDt;
+        const instSpd = Math.hypot(instVx, instVz);
         av.speed = THREE.MathUtils.lerp(av.speed || 0, instSpd, Math.min(1, dt * 10));
-        av.anim.update(dt, { speed: av.speed, stance: 'stand', aimPitch: 0 });
+        const avYaw = av.targetYaw || 0;
+        const avCos = Math.cos(avYaw);
+        const avSin = Math.sin(avYaw);
+        av.anim.update(dt, {
+          speed: av.speed,
+          velLocalX: instSpd > 0.18 ? (instVx * avCos - instVz * avSin) : 0,
+          velLocalZ: instSpd > 0.18 ? (instVx * avSin + instVz * avCos) : 0,
+          stance: 'stand',
+          isSprinting: av.speed >= 5.4,
+          isTacSprinting: av.speed >= 7.45,
+          aimPitch: 0,
+          worldPos: av.group.position,
+          worldYaw: avYaw,
+          feetY: av.group.position.y
+        });
       }
     }
     this.pruneRemoteAvatars(4500);

@@ -831,10 +831,17 @@ class Player {
       const isThrowing3P = !isFP && !!this._isThrowing;
       const throwProg3P = this._throwProgress || 0;
 
+      const cosYaw = Math.cos(this.yaw);
+      const sinYaw = Math.sin(this.yaw);
+      const velLocalX = this.velocity.x * cosYaw - this.velocity.z * sinYaw;
+      const velLocalZ = this.velocity.x * sinYaw + this.velocity.z * cosYaw;
+
       // In First Person, suppress 3P upper-body actions (reload/plate/heal/revive/throw/ADS/aimPitch) so only clean torso & legs locomotion + slide render!
       this.mw2Anim.update(dt, {
         speed: this.onGround ? horizSpeed : 0,
         moveRight: strafeInput,
+        velLocalX,
+        velLocalZ,
         stance: this.isProne ? 'prone' : (this.stance === 'crouch' ? 'crouch' : 'stand'),
         isSprinting: this.isSprinting,
         isTacSprinting: this.isTacSprinting,

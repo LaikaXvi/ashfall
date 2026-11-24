@@ -898,6 +898,42 @@
       this.hipsOffsetLocal = rig.pelvis.worldToLocal(hipsWPos.clone());
       this.hipsBindHeight = hipsWPos.y - wrapWPos.y;
 
+      // Calibrate Mixamo ankle-to-sole height offset vs proxy ankle height (prevents boot sole sinking into floor)
+      // and capture bind-pose metatarsal toe hinge axis + rest quat for push-off dorsiflexion.
+      this.ankleHeightOffset = { left: 0, right: 0 };
+      this.toeBindQuat = {
+        left: B.lefttoebase ? B.lefttoebase.quaternion.clone() : null,
+        right: B.righttoebase ? B.righttoebase.quaternion.clone() : null
+      };
+      this.toeLocalFlexAxis = { left: null, right: null };
+      const rootQ0 = rig.root.getWorldQuaternion(_q3);
+      const uRestAxis = new THREE.Vector3(0, 1, 0).applyQuaternion(rootQ0).normalize();
+      ['left', 'right'].forEach((side) => {
+        const legProxy = rig[side + 'Leg'];
+        const bFoot = B[side + 'foot'];
+        const bToe = B[side + 'toebase'];
+        if (legProxy && legProxy.ankle && bFoot) {
+          const paRestY = legProxy.ankle.getWorldPosition(_v1).y - wrapWPos.y;
+          const bfRestY = bFoot.getWorldPosition(_v2).y - wrapWPos.y;
+          this.ankleHeightOffset[side] = THREE.MathUtils.clamp(bfRestY - paRestY, 0, 0.045);
+        }
+        if (bFoot && bToe) {
+          bToe.updateMatrixWorld(true);
+          const fPos = bFoot.getWorldPosition(_v1);
+          const tPos = bToe.getWorldPosition(_v2);
+          const fwdRest = tPos.clone().sub(fPos);
+          fwdRest.addScaledVector(uRestAxis, -fwdRest.dot(uRestAxis));
+          if (fwdRest.lengthSq() < 1e-6) {
+            fwdRest.set(0, 0, -1).applyQuaternion(rootQ0);
+          }
+          fwdRest.normalize();
+          const bRest = fwdRest.clone().negate();
+          const rRest = new THREE.Vector3().crossVectors(uRestAxis, bRest).normalize();
+          const toeInvQ = bToe.getWorldQuaternion(_q2).invert();
+          this.toeLocalFlexAxis[side] = rRest.applyQuaternion(toeInvQ).normalize();
+        }
+      });
+
       this.handBasis = {
         left: RigIK.computeHandBasis(B.lefthand, B, 'left'),
         right: RigIK.computeHandBasis(B.righthand, B, 'right')
@@ -1297,6 +1333,9 @@
         if (!legProxy || !bUp || !bLeg || !bFoot) return;
 
         const ankleW = legProxy.ankle.getWorldPosition(new THREE.Vector3());
+        if (this.ankleHeightOffset && this.ankleHeightOffset[side]) {
+          ankleW.y += this.ankleHeightOffset[side] * (1 - fpSlideBlend);
+        }
         const kneeW = legProxy.knee.getWorldPosition(new THREE.Vector3());
         const pole = kneeW.clone().addScaledVector(this._proxyFwd, 0.4);
 
@@ -1354,6 +1393,16 @@
           bLeg.quaternion.slerp(sv[side + 'leg'], mw);
           bFoot.quaternion.slerp(sv[side + 'foot'], mw);
           bUp.updateMatrixWorld(true);
+        }
+
+        const bToe = B[side + 'toebase'];
+        if (bToe && this.toeBindQuat && this.toeBindQuat[side]) {
+          bToe.quaternion.copy(this.toeBindQuat[side]);
+          const toeBend = legProxy && legProxy.toeBend ? legProxy.toeBend : 0;
+          if (Math.abs(toeBend) > 0.001 && this.toeLocalFlexAxis && this.toeLocalFlexAxis[side] && fpSlideBlend < 0.05 && mw < 0.99) {
+            _q1.setFromAxisAngle(this.toeLocalFlexAxis[side], toeBend * (1 - fpSlideBlend) * (1 - mw));
+            bToe.quaternion.multiply(_q1);
+          }
         }
       };
       solveLeg('left');
