@@ -728,7 +728,7 @@ class WeaponSystem {
       rearPivot.add(rBase, leafL, leafR);
 
       const frontPivot = new THREE.Group();
-      frontPivot.position.set(0, 0.025, -0.61);
+      frontPivot.position.set(0, 0.025, -0.68);
       const fBase = new THREE.Mesh(new THREE.BoxGeometry(0.010, 0.010, 0.018), steelSightMat);
       const fHood = new THREE.Mesh(new THREE.TorusGeometry(0.0085, 0.0014, 6, 14), sightMat);
       fHood.position.set(0, 0.013, 0);
