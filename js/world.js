@@ -3368,7 +3368,7 @@ class WastelandWorld {
   _rollBossKeyRoomLoot() {
     // Guaranteed 1 Legendary weapon (25% chance Ultra), 4 Epic spawns, 8 Rare spawns, ZERO common items!
     const items = [];
-    const wPool = GAME_DATA.LOOT_TABLES.boss_legendary_weapons || ['ak74m', 'm24'];
+    const wPool = GAME_DATA.LOOT_TABLES.boss_legendary_weapons || ['ak47', 'm24'];
     const wId = wPool[Math.floor(Math.random() * wPool.length)];
     const isUltra = Math.random() < 0.25;
     const rolledBossWpn = GAME_DATA.rollRandomAttachmentsForRarity
@@ -5017,7 +5017,7 @@ class WastelandWorld {
     g.add(body, recess, pocket, lidPivot);
     this.scene.add(g);
 
-    const legWpns = (GAME_DATA.LOOT_TABLES && GAME_DATA.LOOT_TABLES.boss_legendary_weapons) || ['ak74m', 'm24', 'm870'];
+    const legWpns = (GAME_DATA.LOOT_TABLES && GAME_DATA.LOOT_TABLES.boss_legendary_weapons) || ['ak47', 'm24', 'm870'];
     const legPick = legWpns[Math.floor(Math.random() * legWpns.length)];
     const legId = typeof legPick === 'string' ? legPick : legPick.id;
     const rolledLeg = GAME_DATA.rollRandomAttachmentsForRarity
@@ -5308,7 +5308,7 @@ class WastelandWorld {
       { id: 'syringe', qty: 1 }, { id: 'gunpowder', qty: 2 }
     ], 0);
     this._addWorkbenchTable(162.0, -348.0, 0, [
-      { id: 'classified_documents', qty: 1 }, { id: 'ammo_545', qty: 24 }
+      { id: 'classified_documents', qty: 1 }, { id: 'ammo_739', qty: 24 }
     ], 0);
     this._addWorkbenchTable(-315.0, -388.0, Math.PI / 2, [
       { id: 'armor_plate', qty: 2 }, { id: 'kevlar_padding', qty: 1 }
