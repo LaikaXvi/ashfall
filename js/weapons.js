@@ -166,8 +166,38 @@ class WeaponSystem {
     this.rightArm = null;
     this.charmPivot = null;
 
-    this.particles = []; // { mesh, vel, life, maxLife, isSmoke }
-    this.tracers = [];   // { line, life }
+    this.particles = []; // active pooled particle entries
+    this.tracers = [];   // active pooled tracer entries
+    this._aimRay = new THREE.Raycaster();
+    this._segRay = new THREE.Raycaster();
+    this._shotOrigin = new THREE.Vector3();
+    this._shotMuzzle = new THREE.Vector3();
+    this._shotCamFwd = new THREE.Vector3();
+    this._shotAimPoint = new THREE.Vector3();
+    this._shotBaseDir = new THREE.Vector3();
+    this._shotLaunchDir = new THREE.Vector3();
+    this._shotVel = new THREE.Vector3();
+    this._shotCurPos = new THREE.Vector3();
+    this._shotNextPos = new THREE.Vector3();
+    this._shotSegVec = new THREE.Vector3();
+    this._shotSegDir = new THREE.Vector3();
+    this._shotToTarget = new THREE.Vector3();
+    this._shotQuat = new THREE.Quaternion();
+    this._shotEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+    this._shotEnemyMeshes = [];
+    this._shotAllyMeshes = [];
+    this._tmpHitArr = [];
+    this._tracePtsBuf = [];
+    for (let i = 0; i < 16; i++) this._tracePtsBuf.push(new THREE.Vector3());
+    this._poolScene = null;
+    this._tracerPool = null;
+    this._smokePool = null;
+    this._impactPool = null;
+    this._tracerCursor = 0;
+    this._smokeCursor = 0;
+    this._impactCursor = 0;
+    this._autoBurstActive = false;
+    this._fireTickedThisFrame = false;
   }
 
   triggerGrabAnim(kind = 'item') {
@@ -2344,8 +2374,14 @@ class WeaponSystem {
     return tpData;
   }
 
-  update(dt, player, weaponDef) {
+  tickFireTimer(dt) {
     if (this.fireTimer > 0) this.fireTimer -= dt;
+    this._fireTickedThisFrame = true;
+  }
+
+  update(dt, player, weaponDef) {
+    if (!this._fireTickedThisFrame && this.fireTimer > 0) this.fireTimer -= dt;
+    this._fireTickedThisFrame = false;
     if (this.muzzleTimer > 0) {
       this.muzzleTimer -= dt;
       if (this.muzzleTimer <= 0) {
@@ -3013,12 +3049,15 @@ class WeaponSystem {
       const rayTargets = (player.world.wallMeshes && player.world.wallMeshes.length > 0) ? player.world.wallMeshes : player.world.shootableMeshes;
 
       const checkRay = (origin) => {
+        if (player.world.raycastWorld) {
+          const hit = player.world.raycastWorld(origin, camDirW, 0.05, barrelLen, { wallsOnly: true, ignoreFloorNormal: 0.85 });
+          return hit ? hit.distance : barrelLen;
+        }
         this._wallRay.set(origin, camDirW);
         this._wallRay.near = 0.05;
         this._wallRay.far = barrelLen;
         const hits = this._wallRay.intersectObjects(rayTargets, false);
         for (const h of hits) {
-          // Ignore flat ground hits when looking down
           if (h.face && h.face.normal && h.face.normal.y > 0.85) continue;
           return h.distance;
         }
@@ -3683,7 +3722,7 @@ class WeaponSystem {
       if (this.reviveRig) this.reviveRig.visible = false;
     }
 
-    // Update particles (impacts & muzzle smoke) & tracers
+    // Update pooled particles (impacts & muzzle smoke) & tracers without runtime alloc/dispose
     for (let i = this.particles.length - 1; i >= 0; i--) {
       const p = this.particles[i];
       p.life -= dt;
@@ -3697,21 +3736,24 @@ class WeaponSystem {
         p.mesh.position.addScaledVector(p.vel, dt);
       }
       if (p.life <= 0) {
-        this.scene.remove(p.mesh);
-        if (p.isSmoke && p.mesh.material) p.mesh.material.dispose();
-        this.particles.splice(i, 1);
+        p.mesh.visible = false;
+        p.active = false;
+        const lastIdx = this.particles.length - 1;
+        if (i !== lastIdx) this.particles[i] = this.particles[lastIdx];
+        this.particles.pop();
       }
     }
 
     for (let i = this.tracers.length - 1; i >= 0; i--) {
       const t = this.tracers[i];
       t.life -= dt;
-      t.line.material.opacity = Math.max(0, t.life / 0.08);
+      t.line.material.opacity = Math.max(0, (t.life / (t.maxLife || 0.08)) * (t.baseOpacity || 0.82));
       if (t.life <= 0) {
-        this.scene.remove(t.line);
-        if (t.line.geometry) t.line.geometry.dispose();
-        if (t.line.material) t.line.material.dispose();
-        this.tracers.splice(i, 1);
+        t.line.visible = false;
+        t.active = false;
+        const lastIdx = this.tracers.length - 1;
+        if (i !== lastIdx) this.tracers[i] = this.tracers[lastIdx];
+        this.tracers.pop();
       }
     }
   }
@@ -5662,7 +5704,7 @@ class WeaponSystem {
     this._resetReloadParts();
   }
 
-  tryFire(player, weaponSlotState, world, enemyManager, onHitCallback, squadManager = null, onAllyHitCallback = null) {
+  tryFire(player, weaponSlotState, world, enemyManager, onHitCallback, squadManager = null, onAllyHitCallback = null, opts = null) {
     const def = player.getActiveWeaponDef ? player.getActiveWeaponDef() : GAME_DATA.ITEMS[weaponSlotState.id];
     if (!def) return false;
     this.cancelInspect();
@@ -5722,7 +5764,12 @@ class WeaponSystem {
     } else {
       weaponSlotState.mag -= 1;
     }
-    this.fireTimer = def.fireRate;
+    // Preserve sub-frame cycle phase while auto-firing so RPM stays locked regardless of FPS fluctuations
+    if (opts && opts.autoCarry && this.fireTimer <= 0 && this.fireTimer > -def.fireRate) {
+      this.fireTimer += def.fireRate;
+    } else {
+      this.fireTimer = def.fireRate;
+    }
     // MW4 DMZ Separated Gun Kick vs Camera Recoil:
     // Affected ADS FOV at wide camera FOV (> 80°) reduces perceived 3D visual bounce; Independent ADS FOV keeps full 80° baseline bounce.
     const gKick = (def.gunKick != null) ? def.gunKick : 1.0;
@@ -5770,12 +5817,13 @@ class WeaponSystem {
 
     window.soundEngine.playGunshot(def.id, 0, !!def.suppressed);
 
-    // Reduced visual camera recoil + authentic vertical & horizontal recoil kick (with post-burst recentering in Player)
-    const camRecScale = player.isADS ? 0.48 : 0.62;
-    const vertKick = def.recoil * camRecScale;
-    const horizKick = (Math.random() - 0.44) * hRec * 1.15 * camRecScale;
-    player.applyRecoil(vertKick, horizKick);
-    this.fireBloom = Math.min(0.055, this.fireBloom + def.recoil * 0.42);
+    // Sync live camera & viewmodel transforms BEFORE sampling aim ray / muzzle position; apply recoil kick AFTER bullets launch!
+    if (player && player.syncCameraAimImmediate) player.syncCameraAimImmediate();
+    if (this.vmCamera && this.vmCamera !== this.camera && !player.isThirdPerson) {
+      this.vmCamera.position.copy(this.camera.position);
+      this.vmCamera.quaternion.copy(this.camera.quaternion);
+      this.vmCamera.updateMatrixWorld(true);
+    }
 
     // Raycast pellets — hipfire accuracy directly matches live crosshair size unless using a laser or 45° Tactical Stance
     let totalSpread;
@@ -5799,10 +5847,10 @@ class WeaponSystem {
       totalSpread = this.currentSpread;
     }
 
-    const origin = new THREE.Vector3();
+    const origin = this._shotOrigin;
     this.camera.getWorldPosition(origin);
 
-    const muzzleWorld = new THREE.Vector3();
+    const muzzleWorld = this._shotMuzzle;
     this.muzzleMesh.getWorldPosition(muzzleWorld);
     this._spawnSmoke(muzzleWorld, 2);
 
@@ -5827,113 +5875,191 @@ class WeaponSystem {
     const zeroDist = def.id === 'awm338' ? 140 : (def.id === 'm24' || def.id === 'mosin9130' ? 115 : (def.id === 'ak74m' ? 75 : 40));
 
     // MW4 DMZ Sight-Aligned Aiming: align aim convergence ray with live physical sight sway & hit flinch during ADS!
-    const camFwd = new THREE.Vector3(0, 0, -1);
+    const camFwd = this._shotCamFwd.set(0, 0, -1);
     if (player.isADS) {
       const zoomSqrt = Math.max(1.0, Math.sqrt(def.adsZoom || 1.25));
       const alignWeight = THREE.MathUtils.clamp(1.0 - (this._tacStanceBlend || 0) * 0.45, 0.45, 1.0);
       const swayPitch = (((this.idleSwayPitch || 0) / zoomSqrt) + (this._flinchPitch || 0) * 0.55) * alignWeight;
       const swayYaw = (-((this.idleSwayYaw || 0) / zoomSqrt) + (this._flinchYaw || 0) * 0.55) * alignWeight;
       if (Math.abs(swayPitch) > 0.00001 || Math.abs(swayYaw) > 0.00001) {
-        camFwd.applyEuler(new THREE.Euler(swayPitch, swayYaw, 0, 'YXZ'));
+        this._shotEuler.set(swayPitch, swayYaw, 0, 'YXZ');
+        camFwd.applyEuler(this._shotEuler);
       }
     }
     camFwd.applyQuaternion(this.camera.quaternion).normalize();
-    const aimRay = new THREE.Raycaster(origin, camFwd, 0.25, def.range);
-    const enemyMeshes = enemyManager.getHitboxMeshes();
-    const allyMeshes = (window.SQUAD_PVP && squadManager && squadManager.getHitboxMeshes) ? squadManager.getHitboxMeshes() : [];
-    const aimHitsW = aimRay.intersectObjects(world.shootableMeshes, false);
-    const aimHitsE = aimRay.intersectObjects(enemyMeshes, false);
-    const aimHitsA = allyMeshes.length > 0 ? aimRay.intersectObjects(allyMeshes, false) : [];
-    const aimDistW = aimHitsW.length > 0 ? aimHitsW[0].distance : def.range;
-    const aimDistE = aimHitsE.length > 0 ? aimHitsE[0].distance : def.range;
-    const aimDistA = aimHitsA.length > 0 ? aimHitsA[0].distance : def.range;
+
+    // Frustum & range pre-filter for enemy/ally hitboxes (avoids raycasting off-screen/out-of-range AI)
+    const maxRangeSq = (def.range + 4) * (def.range + 4);
+    const enemyMeshes = this._shotEnemyMeshes;
+    enemyMeshes.length = 0;
+    if (enemyManager && enemyManager.enemies) {
+      const list = enemyManager.enemies;
+      for (let i = 0; i < list.length; i++) {
+        const e = list[i];
+        if (!e || e.dead || e.extracted || !e.hitboxes || !e.position) continue;
+        this._shotToTarget.set(e.position.x - origin.x, (e.position.y + 1.0) - origin.y, e.position.z - origin.z);
+        const distSq = this._shotToTarget.lengthSq();
+        if (distSq > maxRangeSq) continue;
+        const fwdDot = this._shotToTarget.dot(camFwd);
+        if (distSq < 36 || (fwdDot > 0 && fwdDot * fwdDot > 0.09 * distSq)) {
+          for (let h = 0; h < e.hitboxes.length; h++) enemyMeshes.push(e.hitboxes[h]);
+        }
+      }
+    }
+    const allyMeshes = this._shotAllyMeshes;
+    allyMeshes.length = 0;
+    if (window.SQUAD_PVP && squadManager && squadManager.allies) {
+      const aList = squadManager.allies;
+      for (let i = 0; i < aList.length; i++) {
+        const a = aList[i];
+        if (!a || a.dead || a.extracted || !a.hitboxes || !a.position) continue;
+        this._shotToTarget.set(a.position.x - origin.x, (a.position.y + 1.0) - origin.y, a.position.z - origin.z);
+        const distSq = this._shotToTarget.lengthSq();
+        if (distSq > maxRangeSq) continue;
+        const fwdDot = this._shotToTarget.dot(camFwd);
+        if (distSq < 36 || (fwdDot > 0 && fwdDot * fwdDot > 0.09 * distSq)) {
+          for (let h = 0; h < a.hitboxes.length; h++) allyMeshes.push(a.hitboxes[h]);
+        }
+      }
+    }
+
+    const aimRay = this._aimRay;
+    aimRay.set(origin, camFwd);
+    aimRay.near = 0.25;
+    aimRay.far = def.range;
+    const aimHitW = world && world.raycastWorld ? world.raycastWorld(origin, camFwd, 0.25, def.range) : null;
+    const aimDistW = aimHitW ? aimHitW.distance : def.range;
+    let aimDistE = def.range;
+    if (enemyMeshes.length > 0) {
+      this._tmpHitArr.length = 0;
+      aimRay.intersectObjects(enemyMeshes, false, this._tmpHitArr);
+      if (this._tmpHitArr.length > 0) aimDistE = this._tmpHitArr[0].distance;
+    }
+    let aimDistA = def.range;
+    if (allyMeshes.length > 0) {
+      this._tmpHitArr.length = 0;
+      aimRay.intersectObjects(allyMeshes, false, this._tmpHitArr);
+      if (this._tmpHitArr.length > 0) aimDistA = this._tmpHitArr[0].distance;
+    }
     const minTargetDist = Math.min(aimDistE, aimDistA);
     const convDist = minTargetDist < def.range
       ? Math.max(1.2, Math.min(aimDistW, minTargetDist, zeroDist))
       : Math.max(4.5, Math.min(aimDistW, zeroDist));
-    const aimPoint = origin.clone().addScaledVector(camFwd, convDist);
+    const aimPoint = this._shotAimPoint.copy(origin).addScaledVector(camFwd, convDist);
+
+    const zeroTime = zeroDist / muzzleVel;
+    const zeroCompY = (0.5 * gravity * zeroTime * zeroTime) / zeroDist;
+    const maxSteps = def.pellets > 1 ? 3 : 8;
+    const stepDistTarget = Math.max(12, def.range / maxSteps);
+    const stepDt = stepDistTarget / muzzleVel;
+    const halfGravDtSq = 0.5 * gravity * stepDt * stepDt;
+    const tracerColor = def.boltAction ? 0xffe49e : 0xffdd88;
+    const segRay = this._segRay;
+    segRay.near = 0.01;
 
     for (let p = 0; p < def.pellets; p++) {
       // Spawn bullet directly from the end of the barrel (muzzleWorld), aimed toward sight convergence + spread!
-      const baseDir = aimPoint.clone().sub(muzzleWorld).normalize();
-      const spreadQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(
+      const baseDir = this._shotBaseDir.copy(aimPoint).sub(muzzleWorld).normalize();
+      this._shotEuler.set(
         (Math.random() - 0.5) * 2 * totalSpread,
         (Math.random() - 0.5) * 2 * totalSpread,
         0,
         'YXZ'
-      ));
-      const launchDir = baseDir.applyQuaternion(spreadQuat).normalize();
-      // Compensate slight upward zero angle so shots land dead-on at zeroDist and drop naturally beyond!
-      const zeroTime = zeroDist / muzzleVel;
-      const zeroCompY = (0.5 * gravity * zeroTime * zeroTime) / zeroDist;
+      );
+      this._shotQuat.setFromEuler(this._shotEuler);
+      const launchDir = this._shotLaunchDir.copy(baseDir).applyQuaternion(this._shotQuat).normalize();
       launchDir.y += zeroCompY;
       launchDir.normalize();
 
       // Step parabolic ballistic curve from barrel tip out to def.range
-      const vel = launchDir.clone().multiplyScalar(muzzleVel);
-      const curPos = muzzleWorld.clone();
-      const tracePts = [curPos.clone()];
-      const maxSteps = def.pellets > 1 ? 4 : 18;
-      const stepDistTarget = Math.max(12, def.range / maxSteps);
-      const stepDt = stepDistTarget / muzzleVel;
-      let hitPoint = null;
+      const vel = this._shotVel.copy(launchDir).multiplyScalar(muzzleVel);
+      const curPos = this._shotCurPos.copy(muzzleWorld);
+      let traceCount = 0;
+      this._tracePtsBuf[traceCount++].copy(curPos);
       let totalDist = 0;
 
       for (let step = 0; step < maxSteps && totalDist < def.range; step++) {
-        const nextPos = curPos.clone().addScaledVector(vel, stepDt);
-        nextPos.y -= 0.5 * gravity * stepDt * stepDt;
+        const nextPos = this._shotNextPos.copy(curPos).addScaledVector(vel, stepDt);
+        nextPos.y -= halfGravDtSq;
         vel.y -= gravity * stepDt;
 
-        const segVec = nextPos.clone().sub(curPos);
+        const segVec = this._shotSegVec.copy(nextPos).sub(curPos);
         const segLen = segVec.length();
         if (segLen < 0.001) break;
-        const segDir = segVec.clone().divideScalar(segLen);
-        const segRay = new THREE.Raycaster(curPos, segDir, 0.01, segLen);
+        const segDir = this._shotSegDir.copy(segVec).multiplyScalar(1 / segLen);
 
-        const worldHits = segRay.intersectObjects(world.shootableMeshes, false);
-        const worldDist = worldHits.length > 0 ? worldHits[0].distance : Infinity;
-        const enemyHits = segRay.intersectObjects(enemyMeshes, false);
-        const allyHits = allyMeshes.length > 0 ? segRay.intersectObjects(allyMeshes, false) : [];
-        const enemyDist = enemyHits.length > 0 ? enemyHits[0].distance : Infinity;
-        const allyDist = allyHits.length > 0 ? allyHits[0].distance : Infinity;
+        const worldHit = (world && world.raycastWorld) ? world.raycastWorld(curPos, segDir, 0.01, segLen) : null;
+        const worldDist = worldHit ? worldHit.distance : Infinity;
+        const entityFar = Math.min(segLen, worldDist);
 
-        if (allyDist < worldDist && allyDist < enemyDist && allyDist <= segLen) {
-          const hit = allyHits[0];
-          hitPoint = hit.point.clone();
-          tracePts.push(hitPoint.clone());
-          const { ally, part } = hit.object.userData;
+        let enemyHit = null;
+        let enemyDist = Infinity;
+        if (enemyMeshes.length > 0 && entityFar > 0.01) {
+          segRay.set(curPos, segDir);
+          segRay.far = entityFar;
+          this._tmpHitArr.length = 0;
+          segRay.intersectObjects(enemyMeshes, false, this._tmpHitArr);
+          if (this._tmpHitArr.length > 0) {
+            enemyHit = this._tmpHitArr[0];
+            enemyDist = enemyHit.distance;
+          }
+        }
+
+        let allyHit = null;
+        let allyDist = Infinity;
+        if (allyMeshes.length > 0 && entityFar > 0.01) {
+          segRay.set(curPos, segDir);
+          segRay.far = Math.min(entityFar, enemyDist);
+          this._tmpHitArr.length = 0;
+          segRay.intersectObjects(allyMeshes, false, this._tmpHitArr);
+          if (this._tmpHitArr.length > 0) {
+            allyHit = this._tmpHitArr[0];
+            allyDist = allyHit.distance;
+          }
+        }
+
+        if (allyHit && allyDist < worldDist && allyDist < enemyDist && allyDist <= segLen) {
+          const hitPt = allyHit.point;
+          if (traceCount < this._tracePtsBuf.length) this._tracePtsBuf[traceCount++].copy(hitPt);
+          const { ally, part } = allyHit.object.userData;
           const isHead = part === 'head';
           const dmg = Math.round(def.damage * (isHead ? 1.8 : 1.0));
           const attackerInfo = { name: 'YOU', isPlayer: true, weaponId: weaponSlotState.id, weaponName: def.name };
-          this._spawnImpact(hitPoint, 0x991111, 5);
+          this._spawnImpact(hitPt, 0x991111, 5);
           if (onAllyHitCallback) onAllyHitCallback(isHead, dmg, ally, attackerInfo);
           break;
-        } else if (enemyDist < worldDist && enemyDist <= segLen) {
-          const hit = enemyHits[0];
-          hitPoint = hit.point.clone();
-          tracePts.push(hitPoint.clone());
-          const { enemy, part } = hit.object.userData;
+        } else if (enemyHit && enemyDist < worldDist && enemyDist <= segLen) {
+          const hitPt = enemyHit.point;
+          if (traceCount < this._tracePtsBuf.length) this._tracePtsBuf[traceCount++].copy(hitPt);
+          const { enemy, part } = enemyHit.object.userData;
           const isHead = part === 'head';
           const dmg = Math.round(def.damage * (isHead ? 2.0 : 1.0));
           const attackerInfo = { name: 'YOU', isPlayer: true, weaponId: weaponSlotState.id, weaponName: def.name };
           const killed = enemy.takeDamage(dmg, muzzleWorld, attackerInfo);
-          this._spawnImpact(hitPoint, enemy.lastHitArmor ? 0x4fc3f7 : 0x991111, 5);
+          this._spawnImpact(hitPt, enemy.lastHitArmor ? 0x4fc3f7 : 0x991111, 5);
           onHitCallback(isHead, killed, enemy, attackerInfo, dmg);
           break;
-        } else if (worldHits.length > 0 && worldDist <= segLen) {
-          hitPoint = worldHits[0].point.clone();
-          tracePts.push(hitPoint.clone());
-          this._spawnImpact(hitPoint, 0xc8b898, 4);
+        } else if (worldHit && worldDist <= segLen) {
+          if (traceCount < this._tracePtsBuf.length) this._tracePtsBuf[traceCount++].copy(worldHit.point);
+          this._spawnImpact(worldHit.point, 0xc8b898, 4);
           break;
         }
 
         curPos.copy(nextPos);
         totalDist += segLen;
-        tracePts.push(curPos.clone());
+        if (traceCount < this._tracePtsBuf.length) this._tracePtsBuf[traceCount++].copy(curPos);
       }
 
-      this._spawnCurvedTracer(tracePts, def.boltAction ? 0xffe49e : 0xffdd88);
+      this._spawnCurvedTracer(this._tracePtsBuf, tracerColor, traceCount);
     }
+
+    // Apply camera recoil & bloom AFTER all bullets of this shot leave the barrel so shots match exact crosshair!
+    const camRecScale = player.isADS ? 0.48 : 0.62;
+    const vertKick = def.recoil * camRecScale;
+    const horizKick = (Math.random() - 0.44) * hRec * 1.15 * camRecScale;
+    player.applyRecoil(vertKick, horizKick);
+    if (player.syncCameraAimImmediate) player.syncCameraAimImmediate();
+    this.fireBloom = Math.min(0.055, this.fireBloom + def.recoil * 0.42);
 
     return true;
   }
@@ -6201,24 +6327,30 @@ class WeaponSystem {
 
     for (let rIdx = 0; rIdx < rayDirs.length; rIdx++) {
       const rDir = rayDirs[rIdx];
-      const raycaster = new THREE.Raycaster(origin, rDir, 0.0, reach);
-      const worldHits = (world && world.shootableMeshes) ? raycaster.intersectObjects(world.shootableMeshes, false) : [];
-      const worldDist = worldHits.length > 0 ? worldHits[0].distance : reach;
-      if (rIdx === 0 && worldHits.length > 0) firstWorldHit = worldHits[0];
+      const worldHit = (world && world.raycastWorld) ? world.raycastWorld(origin, rDir, 0.05, reach) : null;
+      const worldDist = worldHit ? worldHit.distance : reach;
+      if (rIdx === 0 && worldHit) firstWorldHit = worldHit;
+
+      const raycaster = this._aimRay;
+      raycaster.set(origin, rDir);
+      raycaster.near = 0.0;
+      raycaster.far = worldDist;
 
       if (enemyMeshes.length > 0) {
-        const eHits = raycaster.intersectObjects(enemyMeshes, false);
-        if (eHits.length > 0 && eHits[0].distance < worldDist) {
-          if (!bestEnemyHit || eHits[0].distance < bestEnemyHit.distance) {
-            bestEnemyHit = eHits[0];
+        this._tmpHitArr.length = 0;
+        raycaster.intersectObjects(enemyMeshes, false, this._tmpHitArr);
+        if (this._tmpHitArr.length > 0 && this._tmpHitArr[0].distance < worldDist) {
+          if (!bestEnemyHit || this._tmpHitArr[0].distance < bestEnemyHit.distance) {
+            bestEnemyHit = this._tmpHitArr[0];
           }
         }
       }
       if (allyMeshes.length > 0) {
-        const aHits = raycaster.intersectObjects(allyMeshes, false);
-        if (aHits.length > 0 && aHits[0].distance < worldDist) {
-          if (!bestAllyHit || aHits[0].distance < bestAllyHit.distance) {
-            bestAllyHit = aHits[0];
+        this._tmpHitArr.length = 0;
+        raycaster.intersectObjects(allyMeshes, false, this._tmpHitArr);
+        if (this._tmpHitArr.length > 0 && this._tmpHitArr[0].distance < worldDist) {
+          if (!bestAllyHit || this._tmpHitArr[0].distance < bestAllyHit.distance) {
+            bestAllyHit = this._tmpHitArr[0];
           }
         }
       }
@@ -6235,10 +6367,12 @@ class WeaponSystem {
     if (!bestEnemyHit && !bestAllyHit) {
       const coneReach = 2.65;
       const checkLOS = (targetPt, dist) => {
-        if (!world || !world.shootableMeshes || dist < 0.2) return true;
-        const losDir = targetPt.clone().sub(origin).normalize();
-        const losRay = new THREE.Raycaster(origin, losDir, 0.05, Math.max(0.1, dist - 0.15));
-        return losRay.intersectObjects(world.shootableMeshes, false).length === 0;
+        if (!world || dist < 0.2) return true;
+        const losDir = this._shotSegDir.copy(targetPt).sub(origin).normalize();
+        if (world.raycastWorld) {
+          return !world.raycastWorld(origin, losDir, 0.05, Math.max(0.1, dist - 0.15));
+        }
+        return true;
       };
 
       if (enemyManager && enemyManager.enemies) {
@@ -6313,92 +6447,162 @@ class WeaponSystem {
       dir.normalize();
     }
 
-    let endPoint = muzzleWorld.clone().addScaledVector(dir, 55);
-    if (!hitPlayer) {
-      const ray = new THREE.Raycaster(muzzleWorld, dir, 0.2, 55);
-      const hits = ray.intersectObjects(world.shootableMeshes, false);
-      if (hits.length > 0) {
-        endPoint = hits[0].point;
+    let endPoint = this._shotNextPos.copy(muzzleWorld).addScaledVector(dir, 55);
+    if (!hitPlayer && world && world.raycastWorld) {
+      const hit = world.raycastWorld(muzzleWorld, dir, 0.2, 55);
+      if (hit) {
+        endPoint = hit.point;
         this._spawnImpact(endPoint, 0xc8b898, 4);
       }
     } else {
-      endPoint = targetPos.clone();
+      endPoint = targetPos;
     }
 
     this._spawnTracer(muzzleWorld, endPoint, 0xff7744);
   }
 
-  _spawnTracer(start, end, color = 0xffdd88) {
-    const geo = new THREE.BufferGeometry().setFromPoints([start, end]);
-    const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.8 });
-    const line = new THREE.Line(geo, mat);
-    this.scene.add(line);
-    this.tracers.push({ line, life: 0.08 });
+  _ensureFxPools() {
+    if (!this.scene) return;
+    if (this._poolScene === this.scene && this._tracerPool) return;
+    this._poolScene = this.scene;
+    this.particles.length = 0;
+    this.tracers.length = 0;
+    this._tracerCursor = 0;
+    this._smokeCursor = 0;
+    this._impactCursor = 0;
+
+    this._tracerPool = [];
+    for (let i = 0; i < 24; i++) {
+      const arr = new Float32Array(16 * 3);
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+      geo.setDrawRange(0, 0);
+      const mat = new THREE.LineBasicMaterial({ color: 0xffdd88, transparent: true, opacity: 0 });
+      const line = new THREE.Line(geo, mat);
+      line.frustumCulled = false;
+      line.visible = false;
+      this.scene.add(line);
+      this._tracerPool.push({ line, arr, life: 0, maxLife: 0.08, baseOpacity: 0.82, active: false });
+    }
+
+    if (!this._sharedImpactGeo) this._sharedImpactGeo = new THREE.BoxGeometry(0.06, 0.06, 0.06);
+    this._impactPool = [];
+    for (let i = 0; i < 56; i++) {
+      const mat = new THREE.MeshBasicMaterial({ color: 0xc8b898 });
+      const m = new THREE.Mesh(this._sharedImpactGeo, mat);
+      m.visible = false;
+      this.scene.add(m);
+      this._impactPool.push({ mesh: m, vel: new THREE.Vector3(), life: 0, maxLife: 0.45, isSmoke: false, active: false });
+    }
+
+    if (!this._sharedSmokeGeo) this._sharedSmokeGeo = new THREE.SphereGeometry(0.08, 5, 5);
+    this._smokePool = [];
+    for (let i = 0; i < 32; i++) {
+      const mat = new THREE.MeshBasicMaterial({ color: 0xbab6ae, transparent: true, opacity: 0.32, depthWrite: false });
+      const m = new THREE.Mesh(this._sharedSmokeGeo, mat);
+      m.visible = false;
+      this.scene.add(m);
+      this._smokePool.push({ mesh: m, vel: new THREE.Vector3(), life: 0, maxLife: 0.5, isSmoke: true, active: false });
+    }
   }
 
-  _spawnCurvedTracer(points, color = 0xffdd88) {
-    if (!points || points.length < 2) return;
-    const geo = new THREE.BufferGeometry().setFromPoints(points);
-    const mat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.86 });
-    const line = new THREE.Line(geo, mat);
-    this.scene.add(line);
-    this.tracers.push({ line, life: 0.13 });
+  _spawnTracer(start, end, color = 0xffdd88) {
+    this._ensureFxPools();
+    if (!this._tracerPool) return;
+    const slot = this._tracerPool[this._tracerCursor];
+    this._tracerCursor = (this._tracerCursor + 1) % this._tracerPool.length;
+    slot.arr[0] = start.x; slot.arr[1] = start.y; slot.arr[2] = start.z;
+    slot.arr[3] = end.x;   slot.arr[4] = end.y;   slot.arr[5] = end.z;
+    slot.line.geometry.attributes.position.needsUpdate = true;
+    slot.line.geometry.setDrawRange(0, 2);
+    slot.line.material.color.setHex(color);
+    slot.line.material.opacity = 0.80;
+    slot.baseOpacity = 0.80;
+    slot.maxLife = 0.08;
+    slot.life = 0.08;
+    slot.line.visible = true;
+    if (!slot.active) {
+      slot.active = true;
+      this.tracers.push(slot);
+    }
+  }
+
+  _spawnCurvedTracer(points, color = 0xffdd88, count = null) {
+    const n = count !== null ? count : (points ? points.length : 0);
+    if (!points || n < 2) return;
+    this._ensureFxPools();
+    if (!this._tracerPool) return;
+    const slot = this._tracerPool[this._tracerCursor];
+    this._tracerCursor = (this._tracerCursor + 1) % this._tracerPool.length;
+    const clampedN = Math.min(n, 16);
+    for (let i = 0; i < clampedN; i++) {
+      const pt = points[i];
+      const off = i * 3;
+      slot.arr[off] = pt.x;
+      slot.arr[off + 1] = pt.y;
+      slot.arr[off + 2] = pt.z;
+    }
+    slot.line.geometry.attributes.position.needsUpdate = true;
+    slot.line.geometry.setDrawRange(0, clampedN);
+    slot.line.material.color.setHex(color);
+    slot.line.material.opacity = 0.86;
+    slot.baseOpacity = 0.86;
+    slot.maxLife = 0.13;
+    slot.life = 0.13;
+    slot.line.visible = true;
+    if (!slot.active) {
+      slot.active = true;
+      this.tracers.push(slot);
+    }
   }
 
   _spawnImpact(pos, color, count) {
-    if (this.particles.length > 72) return;
-    if (!this._sharedImpactGeo) this._sharedImpactGeo = new THREE.BoxGeometry(0.06, 0.06, 0.06);
-    if (!this._impactMatCache) this._impactMatCache = {};
-    let mat = this._impactMatCache[color];
-    if (!mat) {
-      mat = new THREE.MeshBasicMaterial({ color });
-      this._impactMatCache[color] = mat;
-    }
-    const geo = this._sharedImpactGeo;
+    this._ensureFxPools();
+    if (!this._impactPool) return;
     for (let i = 0; i < count; i++) {
-      const m = new THREE.Mesh(geo, mat);
-      m.position.copy(pos);
-      this.scene.add(m);
-      this.particles.push({
-        mesh: m,
-        vel: new THREE.Vector3(
-          (Math.random() - 0.5) * 4.5,
-          Math.random() * 3.8 + 0.5,
-          (Math.random() - 0.5) * 4.5
-        ),
-        life: 0.25 + Math.random() * 0.2,
-        maxLife: 0.45,
-        isSmoke: false
-      });
+      const slot = this._impactPool[this._impactCursor];
+      this._impactCursor = (this._impactCursor + 1) % this._impactPool.length;
+      slot.mesh.material.color.setHex(color);
+      slot.mesh.position.copy(pos);
+      slot.mesh.scale.set(1, 1, 1);
+      slot.vel.set(
+        (Math.random() - 0.5) * 4.5,
+        Math.random() * 3.8 + 0.5,
+        (Math.random() - 0.5) * 4.5
+      );
+      slot.life = 0.25 + Math.random() * 0.2;
+      slot.maxLife = 0.45;
+      slot.mesh.visible = true;
+      if (!slot.active) {
+        slot.active = true;
+        this.particles.push(slot);
+      }
     }
   }
 
   _spawnSmoke(pos, count = 2) {
-    if (this.particles.length > 72) return;
-    if (!this._sharedSmokeGeo) this._sharedSmokeGeo = new THREE.SphereGeometry(0.08, 5, 5);
-    const geo = this._sharedSmokeGeo;
+    this._ensureFxPools();
+    if (!this._smokePool) return;
     for (let i = 0; i < count; i++) {
-      const mat = new THREE.MeshBasicMaterial({
-        color: 0xbab6ae,
-        transparent: true,
-        opacity: 0.32,
-        depthWrite: false
-      });
-      const m = new THREE.Mesh(geo, mat);
-      m.position.copy(pos);
-      this.scene.add(m);
+      const slot = this._smokePool[this._smokeCursor];
+      this._smokeCursor = (this._smokeCursor + 1) % this._smokePool.length;
+      slot.mesh.position.copy(pos);
+      const s = 0.8 + Math.random() * 0.6;
+      slot.mesh.scale.set(s, s, s);
+      slot.mesh.material.opacity = 0.32;
+      slot.vel.set(
+        (Math.random() - 0.5) * 0.6,
+        0.6 + Math.random() * 0.5,
+        (Math.random() - 0.5) * 0.6
+      );
       const life = 0.45 + Math.random() * 0.25;
-      this.particles.push({
-        mesh: m,
-        vel: new THREE.Vector3(
-          (Math.random() - 0.5) * 0.6,
-          0.6 + Math.random() * 0.5,
-          (Math.random() - 0.5) * 0.6
-        ),
-        life,
-        maxLife: life,
-        isSmoke: true
-      });
+      slot.life = life;
+      slot.maxLife = life;
+      slot.mesh.visible = true;
+      if (!slot.active) {
+        slot.active = true;
+        this.particles.push(slot);
+      }
     }
   }
 }

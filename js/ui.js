@@ -6282,16 +6282,25 @@ class GameUI {
   triggerHitmarker(headshot = false, hitArmor = false) {
     const hm = document.getElementById('hitmarker');
     if (!hm) return;
-    hm.classList.toggle('headshot', !!headshot);
-    hm.classList.toggle('armor', !headshot && !!hitArmor);
-    hm.classList.remove('pop');
-    void hm.offsetWidth;
-    hm.classList.add('pop');
+    const nowMs = performance.now();
+    if (headshot) hm.classList.add('headshot');
+    else if (!this._hmPopUntil || nowMs > this._hmPopUntil) hm.classList.remove('headshot');
+    if (!headshot && hitArmor) hm.classList.add('armor');
+    else if (!this._hmPopUntil || nowMs > this._hmPopUntil) hm.classList.remove('armor');
+    if (!this._lastHmReflowMs || (nowMs - this._lastHmReflowMs) >= 28) {
+      this._lastHmReflowMs = nowMs;
+      hm.classList.remove('pop');
+      void hm.offsetWidth;
+      hm.classList.add('pop');
+    }
+    this._hmPopUntil = nowMs + 140;
     hm.style.opacity = '1';
     clearTimeout(this._hmTimer);
     this._hmTimer = setTimeout(() => {
       hm.style.opacity = '0';
       hm.classList.remove('pop');
+      hm.classList.remove('headshot');
+      hm.classList.remove('armor');
     }, 150);
   }
 

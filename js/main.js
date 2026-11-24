@@ -1224,6 +1224,7 @@
     player.yaw -= e.movementX * sens;
     player.pitch -= e.movementY * sens;
     player.pitch = THREE.MathUtils.clamp(player.pitch, -Math.PI / 2 + 0.08, Math.PI / 2 - 0.08);
+    if (player.syncCameraAimImmediate) player.syncCameraAimImmediate();
   });
 
   window.addEventListener('mousedown', (e) => {
@@ -1263,7 +1264,8 @@
       }
       if (throwableSystem && throwableSystem.isBusy()) return;
       player.isFiring = true;
-      firePlayerWeapon();
+      player._triggerBufferTimer = 0.095;
+      if (firePlayerWeapon()) player._triggerBufferTimer = 0;
     } else if (e.button === 2) {
       if (throwableSystem && throwableSystem.state === 'prep') {
         throwableSystem.cancelPrep();
@@ -1770,8 +1772,8 @@
       if (eHits.length > 0 && eHits[0].object && eHits[0].object.userData && eHits[0].object.userData.enemy) {
         const enemy = eHits[0].object.userData.enemy;
         if (!enemy.dead && !enemy.extracted) {
-          const wHits = world && world.shootableMeshes ? ray.intersectObjects(world.shootableMeshes, true) : [];
-          if (wHits.length === 0 || wHits[0].distance >= eHits[0].distance - 0.8) {
+          const wHit = (world && world.raycastWorld) ? world.raycastWorld(origin, dir, 0.5, eHits[0].distance) : null;
+          if (!wHit || wHit.distance >= eHits[0].distance - 0.8) {
             const ey = (world && world.getTerrainHeight) ? Math.max(enemy.position.y, world.getTerrainHeight(enemy.position.x, enemy.position.z)) : enemy.position.y;
             return { pos: new THREE.Vector3(enemy.position.x, ey + 2.25, enemy.position.z), enemy };
           }
@@ -1797,9 +1799,7 @@
         if (perpDist > allowedRadius) continue;
         // Verify line-of-sight isn't blocked by a solid wall/hill
         const losDir = toE.clone().normalize();
-        const losRay = new THREE.Raycaster(origin, losDir, 0.5, along - 0.9);
-        const wHits = (world && world.shootableMeshes) ? losRay.intersectObjects(world.shootableMeshes, true) : [];
-        if (wHits.length > 0) continue;
+        if (world && world.raycastWorld && world.raycastWorld(origin, losDir, 0.5, Math.max(0.6, along - 0.9))) continue;
         const score = perpDist / allowedRadius;
         if (score < bestConeScore) {
           bestConeScore = score;
@@ -1815,8 +1815,8 @@
       if (eHits.length > 0 && eHits[0].object && eHits[0].object.userData && eHits[0].object.userData.enemy) {
         const deadE = eHits[0].object.userData.enemy;
         if (deadE.dead && !deadE.extracted) {
-          const wHits = world && world.shootableMeshes ? ray.intersectObjects(world.shootableMeshes, true) : [];
-          if (wHits.length === 0 || wHits[0].distance >= eHits[0].distance - 0.8) {
+          const wHit = (world && world.raycastWorld) ? world.raycastWorld(origin, dir, 0.5, eHits[0].distance) : null;
+          if (!wHit || wHit.distance >= eHits[0].distance - 0.8) {
             const ey = (world && world.getTerrainHeight) ? Math.max(deadE.position.y, world.getTerrainHeight(deadE.position.x, deadE.position.z)) : deadE.position.y;
             return { pos: new THREE.Vector3(deadE.position.x, ey + 0.65, deadE.position.z), enemy: null, corpse: deadE };
           }
@@ -1837,9 +1837,7 @@
         const perpDist = toC.clone().addScaledVector(dir, -along).length();
         const allowedRadius = Math.max(1.65, along * 0.075);
         if (perpDist > allowedRadius) continue;
-        const losRay = new THREE.Raycaster(origin, toC.clone().normalize(), 0.5, Math.max(0.6, along - 0.8));
-        const wHits = (world && world.shootableMeshes) ? losRay.intersectObjects(world.shootableMeshes, true) : [];
-        if (wHits.length > 0) continue;
+        if (world && world.raycastWorld && world.raycastWorld(origin, toC.clone().normalize(), 0.5, Math.max(0.6, along - 0.8))) continue;
         const score = perpDist / allowedRadius;
         if (score < bestCorpseScore) {
           bestCorpseScore = score;
@@ -1853,10 +1851,10 @@
     }
 
     // 2. Otherwise hit world geometry / ground
-    if (world && world.shootableMeshes) {
-      const wHits = ray.intersectObjects(world.shootableMeshes, true);
-      if (wHits.length > 0) {
-        return { pos: wHits[0].point.clone(), enemy: null, corpse: null };
+    if (world && world.raycastWorld) {
+      const wHit = world.raycastWorld(origin, dir, 0.5, 280);
+      if (wHit) {
+        return { pos: wHit.point.clone(), enemy: null, corpse: null };
       }
     }
     if (dir.y < -0.02) {
@@ -2515,12 +2513,11 @@
     camera.getWorldPosition(origin);
     camera.getWorldDirection(dir);
 
-    // 1. High-accuracy raycast up to 1400m across all world structures & terrain meshes
-    const ray = new THREE.Raycaster(origin, dir, 1.0, 1400);
-    if (world && world.shootableMeshes && world.shootableMeshes.length > 0) {
-      const hits = ray.intersectObjects(world.shootableMeshes, true);
-      if (hits.length > 0) {
-        const pt = hits[0].point;
+    // 1. High-accuracy raycast up to 1400m across all world structures & terrain
+    if (world && world.raycastWorld) {
+      const hit = world.raycastWorld(origin, dir, 1.0, 1400);
+      if (hit) {
+        const pt = hit.point;
         return new THREE.Vector3(pt.x, pt.y + 0.06, pt.z);
       }
     }
@@ -3310,23 +3307,23 @@
     }
   }
 
-  function firePlayerWeapon() {
-    if (player.isDowned || player.dead || player.isRevivingAlly || player.ledgeState || player.mantleState) return;
-    if (uavPhoneAnim && uavPhoneAnim.active) return;
+  function firePlayerWeapon(opts = null) {
+    if (player.isDowned || player.dead || player.isRevivingAlly || player.ledgeState || player.mantleState) return false;
+    if (uavPhoneAnim && uavPhoneAnim.active) return false;
     if (designatorActive) {
       // Holding Fire (LMB / RT) aims the designator; releasing Fire sets the airstrike location!
       designatorFireHeld = true;
-      return;
+      return true;
     }
     if (player.activeSlot === 'melee') {
       performMeleeStrike(false);
-      return;
+      return true;
     }
     const slotObj = player.getActiveWeaponSlot();
     if (!slotObj) {
       // Empty weapon slot -> bare fists punch!
       performMeleeStrike(false);
-      return;
+      return true;
     }
     const fired = weaponSystem.tryFire(player, slotObj, world, enemyManager, (isHead, killed, enemy, attackerInfo, dmg) => {
       window.soundEngine.playHitmarker(isHead);
@@ -3363,7 +3360,7 @@
       } else if (ally && !ally.isRemoteHuman && typeof ally.takeDamage === 'function') {
         ally.takeDamage(dmg || 20, attackerInfo);
       }
-    });
+    }, opts);
     if (fired && gamepad && gamepad.connected) {
       gamepad.rumbleFire(slotObj.id);
     }
@@ -3386,6 +3383,7 @@
         });
       }
     }
+    return !!fired;
   }
 
   function findRevivableAlly() {
@@ -3648,20 +3646,8 @@
     const dist = toTarget.length();
     if (dist < 0.35) return true;
     const dir = toTarget.divideScalar(dist);
-    const ray = new THREE.Raycaster(eye, dir, 0.15, Math.max(0.16, dist - 0.32));
-    const hits = ray.intersectObjects((world.wallMeshes && world.wallMeshes.length > 0) ? world.wallMeshes : world.shootableMeshes, false);
-    for (const h of hits) {
-      // Ignore hits on the container's own mesh (e.g. gun locker body)
-      if (ignoreMeshRoot) {
-        let cur = h.object;
-        let isSelf = false;
-        while (cur) {
-          if (cur === ignoreMeshRoot) { isSelf = true; break; }
-          cur = cur.parent;
-        }
-        if (isSelf) continue;
-      }
-      return false; // blocked by a wall or obstacle!
+    if (world && world.raycastWorld) {
+      return !world.raycastWorld(eye, dir, 0.15, Math.max(0.16, dist - 0.32), { wallsOnly: true, ignoreRoot: ignoreMeshRoot });
     }
     return true;
   }
@@ -3967,13 +3953,29 @@
           return;
         }
 
-        // Auto-fire if holding LMB with automatic weapon
-        const wDef = player.getActiveWeaponDef();
-        if (player.isFiring && wDef && wDef.auto && !isPaused && !isModalOpen && !ui.isTacMapOpen) {
-          firePlayerWeapon();
-        }
-
+        // Update player movement & live camera BEFORE weapon firing so shots match this frame's exact aim
         player.update(dt);
+        if (weaponSystem && weaponSystem.tickFireTimer) weaponSystem.tickFireTimer(dt);
+        const wDef = player.getActiveWeaponDef();
+        const canFireNow = !isPaused && !isModalOpen && !ui.isTacMapOpen && !(throwableSystem && throwableSystem.isBusy());
+        if (canFireNow && player.isFiring && wDef && wDef.auto) {
+          let shotsThisFrame = 0;
+          while (weaponSystem.fireTimer <= 0 && shotsThisFrame < 2) {
+            if (!firePlayerWeapon({ autoCarry: !!weaponSystem._autoBurstActive })) break;
+            weaponSystem._autoBurstActive = true;
+            shotsThisFrame++;
+          }
+        } else {
+          if (weaponSystem) weaponSystem._autoBurstActive = false;
+          if (canFireNow && (player._triggerBufferTimer || 0) > 0) {
+            player._triggerBufferTimer = Math.max(0, player._triggerBufferTimer - dt);
+            if (wDef && !wDef.auto && firePlayerWeapon()) {
+              player._triggerBufferTimer = 0;
+            }
+          } else if (!canFireNow) {
+            player._triggerBufferTimer = 0;
+          }
+        }
         if (mpSession && mpSession.active) {
           mpSession.update(dt, player);
           if (squadManager) squadManager.syncRemotePlayers(mpSession);

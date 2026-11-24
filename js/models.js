@@ -1727,13 +1727,8 @@ window.LensFlareSystem = (() => {
         if (th > _sampleP.y + 0.6) return true;
       }
     }
-    if (world.wallMeshes && world.wallMeshes.length > 0) {
-      if (!_ray) _ray = new THREE.Raycaster();
-      _ray.set(camPos, dirUnit);
-      _ray.near = 0.6;
-      _ray.far = Math.max(0.7, maxRayDist - 0.8);
-      const hits = _ray.intersectObjects(world.wallMeshes, false);
-      if (hits && hits.length > 0) return true;
+    if (world.raycastWorld) {
+      if (world.raycastWorld(camPos, dirUnit, 0.6, Math.max(0.7, maxRayDist - 0.8), { wallsOnly: true })) return true;
     }
     return false;
   }

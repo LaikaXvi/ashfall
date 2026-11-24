@@ -157,6 +157,17 @@ class WastelandWorld {
     this._queryBuf = [];
     this._queryStamp = 0;
 
+    this._rayCellSize = 24;
+    this._shootGrid = new Map();
+    this._wallGrid = new Map();
+    this._rockCells = new Set();
+    this._rockInst = null;
+    this._worldRay = new THREE.Raycaster();
+    this._rayCands = [];
+    this._rayHits = [];
+    this._rayQueryStamp = 0;
+    this.terrainMesh = null;
+
     this._batchEntries = [];
     this._batchingOpen = true;
     this._batchedMeshes = [];
@@ -169,6 +180,7 @@ class WastelandWorld {
     this._buildForestAndFoliage();
     this._batchStaticGeometry();
     this.buildColliderGrid();
+    this.buildRaycastGrid();
 
     // Pick a randomized infil point from Vostok's outer perimeter + 5 inner POI spawn pool!
     const infilPool = (this.operatorSpawns && this.operatorSpawns.length > 0)
@@ -227,6 +239,235 @@ class WastelandWorld {
       }
     }
     return buf;
+  }
+
+  buildRaycastGrid() {
+    this._shootGrid.clear();
+    this._wallGrid.clear();
+    if (this.scene) this.scene.updateMatrixWorld(true);
+    const cs = this._rayCellSize || 24;
+    const tmpBox = new THREE.Box3();
+
+    const indexList = (list, grid) => {
+      if (!list) return;
+      for (let i = 0; i < list.length; i++) {
+        const m = list[i];
+        if (!m || !m.geometry) continue;
+        if (!m.geometry.boundingBox) m.geometry.computeBoundingBox();
+        if (!m.geometry.boundingSphere) m.geometry.computeBoundingSphere();
+        if (!m.parent && m.matrix) m.matrixWorld.copy(m.matrix);
+        tmpBox.copy(m.geometry.boundingBox).applyMatrix4(m.matrixWorld);
+        m._bbMinX = tmpBox.min.x; m._bbMaxX = tmpBox.max.x;
+        m._bbMinY = tmpBox.min.y; m._bbMaxY = tmpBox.max.y;
+        m._bbMinZ = tmpBox.min.z; m._bbMaxZ = tmpBox.max.z;
+        const cx0 = Math.floor(m._bbMinX / cs);
+        const cx1 = Math.floor(m._bbMaxX / cs);
+        const cz0 = Math.floor(m._bbMinZ / cs);
+        const cz1 = Math.floor(m._bbMaxZ / cs);
+        for (let cx = cx0; cx <= cx1; cx++) {
+          for (let cz = cz0; cz <= cz1; cz++) {
+            const key = (cx << 16) ^ cz;
+            let bucket = grid.get(key);
+            if (!bucket) {
+              bucket = [];
+              grid.set(key, bucket);
+            }
+            bucket.push(m);
+          }
+        }
+      }
+    };
+
+    indexList(this.shootableMeshes, this._shootGrid);
+    indexList(this.wallMeshes, this._wallGrid);
+  }
+
+  raycastTerrain(origin, dir, near = 0, far = 300) {
+    const maxD = Math.min(far, 1450);
+    if (maxD <= near) return null;
+    if (origin.y > 64 && dir.y >= 0) return null;
+    let t = Math.max(0.05, near);
+    let prevT = t;
+    let hitFound = false;
+    while (t < maxD) {
+      const step = t < 80 ? 1.6 : (t < 260 ? 3.2 : 6.5);
+      prevT = t;
+      t = Math.min(maxD, t + step);
+      const py = origin.y + dir.y * t;
+      if (py <= 64) {
+        const px = origin.x + dir.x * t;
+        const pz = origin.z + dir.z * t;
+        if (py <= this.getTerrainHeight(px, pz)) {
+          hitFound = true;
+          break;
+        }
+      }
+    }
+    if (!hitFound) return null;
+    let lo = prevT;
+    let hi = t;
+    for (let i = 0; i < 6; i++) {
+      const mid = (lo + hi) * 0.5;
+      const my = origin.y + dir.y * mid;
+      const mx = origin.x + dir.x * mid;
+      const mz = origin.z + dir.z * mid;
+      if (my <= this.getTerrainHeight(mx, mz)) {
+        hi = mid;
+      } else {
+        lo = mid;
+      }
+    }
+    const hx = origin.x + dir.x * hi;
+    const mz = origin.z + dir.z * hi;
+    const hy = this.getTerrainHeight(hx, mz);
+    const nx = this.getTerrainHeight(hx - 0.8, mz) - this.getTerrainHeight(hx + 0.8, mz);
+    const nz = this.getTerrainHeight(hx, mz - 0.8) - this.getTerrainHeight(hx, mz + 0.8);
+    const normal = new THREE.Vector3(nx, 1.6, nz).normalize();
+    return {
+      distance: hi,
+      point: new THREE.Vector3(hx, hy, mz),
+      face: { normal },
+      object: this.terrainMesh
+    };
+  }
+
+  raycastWorld(origin, dir, near = 0.05, far = 300, opts = null) {
+    if (far <= near) return null;
+    const wallsOnly = !!(opts && opts.wallsOnly);
+    const ignoreRoot = (opts && opts.ignoreRoot) || null;
+    const ignoreFloorY = (opts && opts.ignoreFloorNormal) || 0;
+    const grid = wallsOnly ? this._wallGrid : this._shootGrid;
+    const cs = this._rayCellSize || 24;
+
+    const cands = this._rayCands;
+    cands.length = 0;
+    const stamp = ++this._rayQueryStamp;
+    let rockAdded = false;
+
+    const ox = origin.x, oy = origin.y, oz = origin.z;
+    const dx = dir.x, dy = dir.y, dz = dir.z;
+    const sx = ox + dx * near;
+    const sz = oz + dz * near;
+    const ex = ox + dx * far;
+    const ez = oz + dz * far;
+    const segSpan = far - near;
+
+    let cx = Math.floor(sx / cs);
+    let cz = Math.floor(sz / cs);
+    const endCx = Math.floor(ex / cs);
+    const endCz = Math.floor(ez / cs);
+    const stepX = dx > 1e-7 ? 1 : (dx < -1e-7 ? -1 : 0);
+    const stepZ = dz > 1e-7 ? 1 : (dz < -1e-7 ? -1 : 0);
+    const tDeltaX = stepX !== 0 ? Math.abs(cs / dx) : 1e30;
+    const tDeltaZ = stepZ !== 0 ? Math.abs(cs / dz) : 1e30;
+    let tMaxX = stepX > 0 ? (((cx + 1) * cs - sx) / dx) : (stepX < 0 ? ((cx * cs - sx) / dx) : 1e30);
+    let tMaxZ = stepZ > 0 ? (((cz + 1) * cs - sz) / dz) : (stepZ < 0 ? ((cz * cs - sz) / dz) : 1e30);
+
+    const invX = Math.abs(dx) > 1e-8 ? 1 / dx : 0;
+    const invY = Math.abs(dy) > 1e-8 ? 1 / dy : 0;
+    const invZ = Math.abs(dz) > 1e-8 ? 1 / dz : 0;
+    const nearPad = near - 0.05;
+    const farPad = far + 0.05;
+
+    for (let s = 0; s < 120; s++) {
+      const key = (cx << 16) ^ cz;
+      const bucket = grid.get(key);
+      if (bucket) {
+        for (let i = 0; i < bucket.length; i++) {
+          const m = bucket[i];
+          if (m._rqStamp === stamp) continue;
+          m._rqStamp = stamp;
+
+          const minX = m._bbMinX - 0.05, maxX = m._bbMaxX + 0.05;
+          const minY = m._bbMinY - 0.05, maxY = m._bbMaxY + 0.05;
+          const minZ = m._bbMinZ - 0.05, maxZ = m._bbMaxZ + 0.05;
+
+          let tmin = -1e30;
+          let tmax = 1e30;
+          if (invX !== 0) {
+            const tx1 = (minX - ox) * invX;
+            const tx2 = (maxX - ox) * invX;
+            tmin = tx1 < tx2 ? tx1 : tx2;
+            tmax = tx1 > tx2 ? tx1 : tx2;
+          } else if (ox < minX || ox > maxX) {
+            continue;
+          }
+          if (invY !== 0) {
+            const ty1 = (minY - oy) * invY;
+            const ty2 = (maxY - oy) * invY;
+            const tymin = ty1 < ty2 ? ty1 : ty2;
+            const tymax = ty1 > ty2 ? ty1 : ty2;
+            if (tymin > tmin) tmin = tymin;
+            if (tymax < tmax) tmax = tymax;
+          } else if (oy < minY || oy > maxY) {
+            continue;
+          }
+          if (tmin > tmax) continue;
+          if (invZ !== 0) {
+            const tz1 = (minZ - oz) * invZ;
+            const tz2 = (maxZ - oz) * invZ;
+            const tzmin = tz1 < tz2 ? tz1 : tz2;
+            const tzmax = tz1 > tz2 ? tz1 : tz2;
+            if (tzmin > tmin) tmin = tzmin;
+            if (tzmax < tmax) tmax = tzmax;
+          } else if (oz < minZ || oz > maxZ) {
+            continue;
+          }
+          if (tmax >= Math.max(nearPad, tmin) && tmin <= farPad) {
+            cands.push(m);
+          }
+        }
+      }
+      if (!wallsOnly && !rockAdded && this._rockInst && this._rockCells.has(key)) {
+        rockAdded = true;
+        cands.push(this._rockInst);
+      }
+      if (cx === endCx && cz === endCz) break;
+      if (tMaxX < tMaxZ) {
+        if (tMaxX > segSpan + 0.1) break;
+        tMaxX += tDeltaX;
+        cx += stepX;
+      } else {
+        if (tMaxZ > segSpan + 0.1) break;
+        tMaxZ += tDeltaZ;
+        cz += stepZ;
+      }
+    }
+
+    let bestHit = null;
+    if (cands.length > 0) {
+      const ray = this._worldRay;
+      ray.set(origin, dir);
+      ray.near = near;
+      ray.far = far;
+      const hits = this._rayHits;
+      hits.length = 0;
+      ray.intersectObjects(cands, false, hits);
+      for (let i = 0; i < hits.length; i++) {
+        const h = hits[i];
+        if (ignoreFloorY > 0 && h.face && h.face.normal && h.face.normal.y > ignoreFloorY) continue;
+        if (ignoreRoot) {
+          let cur = h.object;
+          let isSelf = false;
+          while (cur) {
+            if (cur === ignoreRoot) { isSelf = true; break; }
+            cur = cur.parent;
+          }
+          if (isSelf) continue;
+        }
+        bestHit = h;
+        break;
+      }
+    }
+
+    if (!wallsOnly) {
+      const terrFar = bestHit ? bestHit.distance : far;
+      const terrHit = this.raycastTerrain(origin, dir, near, terrFar);
+      if (terrHit && (!bestHit || terrHit.distance < bestHit.distance)) {
+        bestHit = terrHit;
+      }
+    }
+    return bestHit;
   }
 
   registerLightSource(pos, opts = {}) {
@@ -1358,7 +1599,7 @@ class WastelandWorld {
     const ground = new THREE.Mesh(groundGeo, this._materials.ground);
     ground.receiveShadow = true;
     this.scene.add(ground);
-    this.shootableMeshes.push(ground);
+    this.terrainMesh = ground;
 
     // Terrain-conforming segmented asphalt highways + walkable 3D concrete river bridges!
     const evalRoadY = (wx, wz) => {
@@ -1892,12 +2133,27 @@ class WastelandWorld {
         minY: y - 0.5, maxY: y + 1.85 * s,
         minZ: z - rz, maxZ: z + rz
       });
+      const rCs = this._rayCellSize || 24;
+      const rcx0 = Math.floor((x - rx) / rCs);
+      const rcx1 = Math.floor((x + rx) / rCs);
+      const rcz0 = Math.floor((z - rz) / rCs);
+      const rcz1 = Math.floor((z + rz) / rCs);
+      for (let rcx = rcx0; rcx <= rcx1; rcx++) {
+        for (let rcz = rcz0; rcz <= rcz1; rcz++) {
+          this._rockCells.add((rcx << 16) ^ rcz);
+        }
+      }
       placedRocks++;
     }
     rockInst.count = placedRocks;
     rockInst.instanceMatrix.needsUpdate = true;
+    if (rockInst.geometry) {
+      rockInst.geometry.computeBoundingSphere();
+      rockInst.geometry.computeBoundingBox();
+    }
+    rockInst.updateMatrixWorld(true);
     this.scene.add(rockInst);
-    this.shootableMeshes.push(rockInst);
+    this._rockInst = rockInst;
   }
 
   _addBox(x, y, z, w, h, d, material, addCollider = true) {
@@ -1965,7 +2221,13 @@ class WastelandWorld {
         totalVerts += g.attributes.position.count;
         totalIndices += g.index ? g.index.count : g.attributes.position.count;
         if (e.castShadow) anyCastShadow = true;
-        if (e.source) e.source.visible = false;
+        if (e.source) {
+          e.source.matrixWorld.copy(e.source.matrix);
+          if (g && !g.boundingBox) g.computeBoundingBox();
+          if (g && !g.boundingSphere) g.computeBoundingSphere();
+          e.source.visible = false;
+          if (this.scene) this.scene.remove(e.source);
+        }
       }
 
       const positions = new Float32Array(totalVerts * 3);
@@ -4823,13 +5085,8 @@ class WastelandWorld {
       this._indoorTimer += dt;
       if (this._indoorTimer >= 0.25) {
         this._indoorTimer = 0;
-        if (!this._indoorRay) this._indoorRay = new THREE.Raycaster();
         this._indoorOrigin.set(playerPos.x, Number.isFinite(playerPos.y) ? playerPos.y : 1.7, playerPos.z);
-        this._indoorRay.set(this._indoorOrigin, this._indoorUp);
-        this._indoorRay.near = 0;
-        this._indoorRay.far = 25;
-        const hits = this._indoorRay.intersectObjects(this.wallMeshes, false);
-        const nextIndoor = hits.length > 0;
+        const nextIndoor = !!this.raycastWorld(this._indoorOrigin, this._indoorUp, 0.05, 25, { wallsOnly: true });
         if (nextIndoor !== this.isIndoors) {
           this.isIndoors = nextIndoor;
           if (window.soundEngine && window.soundEngine.setIndoor) {

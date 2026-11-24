@@ -3199,7 +3199,10 @@ class Player {
     this._updateThirdPersonModel(dt);
 
     // Apply to camera (1st-person or 3rd-person over-the-shoulder debug camera)
-    const euler = new THREE.Euler(this.pitch, this.yaw, -this.lean * 0.165 + this.headRoll + this.slideRoll, 'YXZ');
+    const camRoll = -this.lean * 0.165 + this.headRoll + this.slideRoll;
+    this._lastCamRoll = camRoll;
+    if (!this._camEuler) this._camEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+    const euler = this._camEuler.set(this.pitch, this.yaw, camRoll, 'YXZ');
     if (this.isThirdPerson) {
       const lookBack = new THREE.Vector3(0, 0, 1).applyEuler(new THREE.Euler(this.pitch * 0.65, this.yaw, 0, 'YXZ'));
       const shoulderOff = rightVec.clone().multiplyScalar(0.55);
@@ -3216,11 +3219,19 @@ class Player {
       const tpPos = pivot.clone().addScaledVector(lookBack, dist);
       tpPos.y = Math.max(0.30, tpPos.y);
       this.camera.position.copy(tpPos);
-      this.camera.quaternion.setFromEuler(new THREE.Euler(this.pitch, this.yaw, 0, 'YXZ'));
+      this.camera.quaternion.setFromEuler(this._camEuler.set(this.pitch, this.yaw, 0, 'YXZ'));
     } else {
       camPos.y += this.headBobY;
       this.camera.position.copy(camPos);
       this.camera.quaternion.setFromEuler(euler);
     }
+  }
+
+  syncCameraAimImmediate() {
+    if (!this.camera || this.dead || this.mantleState || this.ledgeState) return;
+    if (!this._camEuler) this._camEuler = new THREE.Euler(0, 0, 0, 'YXZ');
+    this._camEuler.set(this.pitch, this.yaw, this.isThirdPerson ? 0 : (this._lastCamRoll || 0), 'YXZ');
+    this.camera.quaternion.setFromEuler(this._camEuler);
+    this.camera.updateMatrixWorld();
   }
 }

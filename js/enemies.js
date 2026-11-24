@@ -1104,10 +1104,11 @@ class Enemy {
       }
     }
 
-    // 4. Raycast solid building walls & structures
-    const ray = new THREE.Raycaster(eye, dir, 0.22, dist - 0.15);
-    const hits = ray.intersectObjects((this.world.wallMeshes && this.world.wallMeshes.length > 0) ? this.world.wallMeshes : this.world.shootableMeshes, false);
-    return hits.length === 0;
+    // 4. Raycast solid building walls & structures via spatial grid
+    if (this.world && this.world.raycastWorld) {
+      return !this.world.raycastWorld(eye, dir, 0.22, Math.max(0.25, dist - 0.15), { wallsOnly: true });
+    }
+    return true;
   }
 
   _lerpYaw(targetYaw, rate) {
@@ -1630,9 +1631,10 @@ class Enemy {
     const dist = dir.length();
     if (dist < 0.3 || dist > 48) return false;
     dir.normalize();
-    const ray = new THREE.Raycaster(eye, dir, 0.2, dist - 0.3);
-    const hits = ray.intersectObjects((this.world.wallMeshes && this.world.wallMeshes.length > 0) ? this.world.wallMeshes : this.world.shootableMeshes, false);
-    return hits.length === 0;
+    if (this.world && this.world.raycastWorld) {
+      return !this.world.raycastWorld(eye, dir, 0.2, Math.max(0.25, dist - 0.3), { wallsOnly: true });
+    }
+    return true;
   }
 
   _findBestCoverSpot(threatPos, maxRadius = 18) {

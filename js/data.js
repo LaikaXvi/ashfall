@@ -3,15 +3,15 @@
 // Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
 // With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'Alpha RC 0.2.74',
+  VERSION: 'Alpha RC 0.2.75',
   VERSION_INFO: {
     major: 0,
     minor: 2,
-    patch: 74,
+    patch: 75,
     channel: 'Alpha', // Alpha | Beta — never blank while major === 0
     stage: 'RC',     // RC = Release Candidate
     updated: 'Nov 24, 2026',
-    changelog: 'Warzone-inspired Vostok map & dramatic geography overhaul, intricate multi-floor POI architecture, new declarative & GLTF-instanced ModelSystem, CoD MW2019+ reload/inspect animations, ACES lighting + optical lens flares, and automatic Chemicals conversion in backpack.',
+    changelog: 'Spatial 2D raycast grid + analytical terrain raymarch (eliminates firing FPS drops), pooled tracers/particles, WebAudio node cleanup, sub-frame fire-rate accumulator, semi-auto trigger buffer, and zero-lag camera/viewmodel aim sync.',
     get semver() { return `${this.major}.${this.minor}.${this.patch}`; },
     get label() { return `${this.channel} ${this.stage} ${this.major}.${this.minor}.${this.patch}`; }
   },

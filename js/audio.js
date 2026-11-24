@@ -551,6 +551,15 @@ class SoundEngine {
 
   playGunshot(weaponId, distance = 0, suppressed = false, opts = {}) {
     if (this.muted || !this.ctx || !this.gunBus) return;
+    // Cap simultaneous remote AI/ally gunshots within 50ms window to prevent WebAudio Convolver spikes
+    if (distance > 1.5) {
+      const nowMs = performance.now();
+      if (!this._recentRemoteShots) this._recentRemoteShots = [];
+      const q = this._recentRemoteShots;
+      while (q.length > 0 && nowMs - q[0] > 50) q.shift();
+      if (q.length >= 5) return;
+      q.push(nowMs);
+    }
     const now = this.ctx.currentTime;
     const wCls = this._weaponClass(weaponId);
     const isDistant = distance >= 60;
@@ -566,8 +575,9 @@ class SoundEngine {
     shotOut.frequency.setValueAtTime(suppressed ? Math.min(airCutoff, 3000) : airCutoff, t0);
 
     let routeOut = shotOut;
+    let panner = null;
     if (opts && typeof opts.pan === 'number' && isFinite(opts.pan) && this.ctx.createStereoPanner) {
-      const panner = this.ctx.createStereoPanner();
+      panner = this.ctx.createStereoPanner();
       panner.pan.setValueAtTime(Math.max(-1, Math.min(1, opts.pan)), t0);
       shotOut.connect(panner);
       routeOut = panner;
@@ -575,25 +585,34 @@ class SoundEngine {
     routeOut.connect(this.gunBus);
 
     // Outdoor canyon / valley tail send (attenuated indoors) + close indoor concrete room reflection
+    let tailG = null;
     if (this.tailBus) {
       let sendAmt = suppressed ? (0.04 * distAtten) : ((0.22 + Math.min(0.4, distance * 0.004)) * distAtten);
       if (this.indoor) sendAmt *= 0.3;
       if (sendAmt > 0.002) {
-        const tailG = this.ctx.createGain();
+        tailG = this.ctx.createGain();
         tailG.gain.setValueAtTime(sendAmt, t0);
         routeOut.connect(tailG);
         tailG.connect(this.tailBus);
       }
     }
+    let roomSendG = null;
     if (this.indoor && !isDistant && this.roomBus) {
       const roomSendAmt = (suppressed ? 0.12 : 0.38) * distAtten;
       if (roomSendAmt > 0.002) {
-        const roomSendG = this.ctx.createGain();
+        roomSendG = this.ctx.createGain();
         roomSendG.gain.setValueAtTime(roomSendAmt, t0);
         routeOut.connect(roomSendG);
         roomSendG.connect(this.roomBus);
       }
     }
+    // Release shot mix/send nodes after audio finishes so gunBus/tailBus/roomBus never accumulate live filter chains
+    setTimeout(() => {
+      try { shotOut.disconnect(); } catch (e) {}
+      if (panner) { try { panner.disconnect(); } catch (e) {} }
+      if (tailG) { try { tailG.disconnect(); } catch (e) {} }
+      if (roomSendG) { try { roomSendG.disconnect(); } catch (e) {} }
+    }, Math.ceil((speedDelay + 0.48) * 1000));
 
     // (e) Distant gunfire model (>= 60m): skip CC0 close sample; supersonic crack (rifles/snipers) + distant lowpassed boom delayed by distance/343
     if (isDistant) {
@@ -803,6 +822,11 @@ class SoundEngine {
 
   playHitmarker(headshot = false) {
     if (this.muted || !this.ctx) return;
+    // Prevent shotgun multi-pellet hits on the same frame from stacking 8x oscillators
+    const nowMs = performance.now();
+    if (this._lastHmMs && (nowMs - this._lastHmMs) < 22 && (!headshot || this._lastHmHead)) return;
+    this._lastHmMs = nowMs;
+    this._lastHmHead = !!headshot;
     const now = this.ctx.currentTime;
     // Warzone tactile hit tick: 4.5kHz bandpass burst (22ms) + 1.9kHz crisp sine ping (40ms)
     const tickN = this._makeNoise(now, 0.026);
