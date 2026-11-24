@@ -803,7 +803,7 @@ window.ModelSystem = (() => {
       return out;
     }
 
-    if (id === 'ak74m') {
+    if (id === 'ak47') {
       const receiver = new THREE.Mesh(geoRoundedBox(0.044, 0.050, 0.35, 0.005, 0.0018), m.steelMat);
       receiver.position.set(0, -0.003, 0.04);
       const dimpleR = new THREE.Mesh(geoRoundedBox(0.003, 0.016, 0.036, 0.002, 0.0005), m.bluedMat);
@@ -824,9 +824,9 @@ window.ModelSystem = (() => {
         g.add(rib);
       }
 
-      // Single Lathe-turned AK-74M stepped barrel + integral twin-chamber brake profile
+      // Single Lathe-turned AK-47 stepped barrel + integral twin-chamber brake profile
       const barrel = new THREE.Mesh(
-        geoLatheZ('ak74m_bbl', [
+        geoLatheZ('ak47_bbl', [
           [0.10, 0.0112], [0.535, 0.0098], [0.538, 0.0138], [0.566, 0.0138],
           [0.570, 0.0122], [0.578, 0.0146], [0.606, 0.0146], [0.606, 0.0048]
         ]),
