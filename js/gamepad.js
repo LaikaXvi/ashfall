@@ -911,16 +911,17 @@ class GamepadController {
       const dir = this._justPressed(pad, 5) ? 1 : -1;
       if (gunsmith && gunsmith.isOpen) {
         gunsmith.setMode(gunsmith.mode === 'attachments' ? 'customize' : 'attachments');
-      } else if (ui && ui.activeMenuTab && ui.activeMenuTab !== 'home') {
-        const tabs = ['deploy', 'stash', 'operator', 'settings'];
-        const cur = tabs.indexOf(ui.activeMenuTab);
-        if (cur >= 0) {
-          ui.openMenuTab(tabs[(cur + dir + tabs.length) % tabs.length]);
-          this._setMenuFocus(null);
-        }
+      } else if (ui && ui.cycleMenuTab) {
+        ui.cycleMenuTab(dir);
+        this._setMenuFocus(null);
       }
     }
 
+    // R3 (11): toggle Party & Social slide-out.
+    if (ui && ui.toggleSocialDrawer && this._justPressed(pad, 11)) {
+      ui.toggleSocialDrawer();
+      this._lockUntilRelease.add(11);
+    }
     this._snapshot(pad);
   }
 
