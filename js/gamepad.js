@@ -274,9 +274,14 @@ class GamepadController {
       }
     }
 
-    // Start (9): Toggle Pause
-    if (this._justPressed(pad, bPause) && actions.togglePause) {
-      actions.togglePause();
+    // Start (9): TAP = Toggle Pause (or blur chatbox), HOLD >=450ms = engage chatbox
+    if (this._justPressed(pad, bPause)) this._pauseHoldT = performance.now();
+    if (this._pauseHoldT != null && !this._isDown(pad, bPause)) {
+      const heldMs = performance.now() - this._pauseHoldT;
+      this._pauseHoldT = null;
+      if (ui && ui.isChatInputActive) { if (heldMs < 450 && ui.blurChat) ui.blurChat(); }
+      else if (heldMs >= 450) { if (ui && ui.focusChat) ui.focusChat(); }
+      else if (actions.togglePause) actions.togglePause();
     }
     // Back / Select (8): Toggle Full-Size Tactical Map
     if (this._justPressed(pad, bMap) && actions.toggleTacMap) {
@@ -595,8 +600,10 @@ class GamepadController {
     if (!rtDown && this._lastRtDown) player.isFiring = false;
     this._lastRtDown = rtDown;
 
-    // === L3: SPRINT / TAC SPRINT ===
-    if (this._justPressed(pad, bSprint)) {
+    // === L3: cycle chat channel while chatbox open, else SPRINT / TAC SPRINT ===
+    if (ui && ui.isChatInputActive && this._justPressed(pad, bSprint)) {
+      ui.cycleChatChannel();
+    } else if (this._justPressed(pad, bSprint)) {
       if (player.padMoveY > 0.35) {
         this.sprintToggled = true;
         player.onSprintKeyDown();
@@ -925,6 +932,19 @@ class GamepadController {
       ui.toggleSocialDrawer();
       this._lockUntilRelease.add(11);
     }
+    // L3 (10): cycle chat channel while chatbox open (menu).
+    if (ui && ui.isChatInputActive && ui.cycleChatChannel && this._justPressed(pad, 10)) {
+      ui.cycleChatChannel();
+      this._lockUntilRelease.add(10);
+    }
+    // Start (9) hold: engage chatbox from menu.
+    if (this._justPressed(pad, 9)) this._menuStartHoldT = performance.now();
+    if (this._menuStartHoldT != null && !this._isDown(pad, 9)) {
+      const heldM = performance.now() - this._menuStartHoldT;
+      this._menuStartHoldT = null;
+      if (heldM >= 450 && ui && ui.focusChat) ui.focusChat();
+      else if (ui && ui.isChatInputActive && ui.blurChat) ui.blurChat();
+    }
     this._snapshot(pad);
   }
 
@@ -1007,6 +1027,19 @@ class GamepadController {
     if (ui && ui.toggleSocialDrawer && this._justPressed(pad, 11)) {
       ui.toggleSocialDrawer();
       this._lockUntilRelease.add(11);
+    }
+    // L3 (10): cycle chat channel while chatbox open (menu).
+    if (ui && ui.isChatInputActive && ui.cycleChatChannel && this._justPressed(pad, 10)) {
+      ui.cycleChatChannel();
+      this._lockUntilRelease.add(10);
+    }
+    // Start (9) hold: engage chatbox from menu.
+    if (this._justPressed(pad, 9)) this._menuStartHoldT = performance.now();
+    if (this._menuStartHoldT != null && !this._isDown(pad, 9)) {
+      const heldM = performance.now() - this._menuStartHoldT;
+      this._menuStartHoldT = null;
+      if (heldM >= 450 && ui && ui.focusChat) ui.focusChat();
+      else if (ui && ui.isChatInputActive && ui.blurChat) ui.blurChat();
     }
     this._snapshot(pad);
   }
