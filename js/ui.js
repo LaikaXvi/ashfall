@@ -2954,6 +2954,7 @@ class GameUI {
       }
     }
     this.updateNotifBadges();
+    this.persistNotifStore();
   }
   persistNotifStore() {
     try { if (this.profile && this.profile.social) { this.profile.social.notifications = (this.notifications || []).slice(-30); this.profile.social.whispers = (this.whispers || []).slice(-40); } } catch (e) {}
