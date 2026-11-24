@@ -1467,7 +1467,8 @@ class GameUI {
       ready: false,
       squadColor: '#69f0ae'
     }];
-    this.pendingPartyInvite = null; // { partyId, from, fromClientId, leaderWeapon }
+    this.pendingPartyInvite = null;
+    this.clearNotifsFor('party_invite'); // { partyId, from, fromClientId, leaderWeapon }
 
     // REAL online clients only (cross-device live WebSocket lobby + local same-browser fallback, zero fake players!)
     this.onlinePlayers = [];
@@ -2003,7 +2004,7 @@ class GameUI {
   }
 
   _showSocialToast(msg) {
-    const el = document.getElementById('social-toast');
+    const el = document.getElementById('drawer-social-toast');
     if (!el) return;
     el.textContent = msg;
     el.classList.remove('hidden');
@@ -2115,6 +2116,7 @@ class GameUI {
       toClientId,
       ts: Date.now()
     });
+    this.clearNotifsFor('friend_request', keyUp);
     this.renderSocial();
     this._showSocialToast(`Accepted ${keyUp}'s friend request! You are now friends.`);
   }
@@ -2138,6 +2140,7 @@ class GameUI {
       toClientId,
       ts: Date.now()
     });
+    this.clearNotifsFor('friend_request', keyUp);
     this.renderSocial();
     this._showSocialToast(`Declined friend request from ${keyUp}.`);
   }
@@ -2275,6 +2278,7 @@ class GameUI {
     const inv = this.pendingPartyInvite;
     if (!inv) return;
     this.pendingPartyInvite = null;
+    this.clearNotifsFor('party_invite');
     this.partyId = inv.partyId;
     this.partyHost = inv.from;
     const L = this.profile.loadout || {};
@@ -2326,6 +2330,7 @@ class GameUI {
 
   declinePendingPartyInvite() {
     this.pendingPartyInvite = null;
+    this.clearNotifsFor('party_invite');
     this.renderSocial();
   }
 
@@ -2426,27 +2431,17 @@ class GameUI {
     const friends = this.profile.social.friends || [];
     const onlineSet = new Map((this.onlinePlayers || []).map(p => [p.name.toUpperCase(), p]));
 
-    const onlineCountEl = document.getElementById('social-online-count');
-    if (onlineCountEl) {
-      onlineCountEl.textContent = this._wsConnected
-        ? `● LIVE · ${this.onlinePlayers.length} ONLINE`
-        : `${this.onlinePlayers.length} ONLINE`;
-      onlineCountEl.style.color = this._wsConnected ? '#69f0ae' : '#f5a623';
-    }
+    const dOnline = document.getElementById('drawer-online-count');
+    if (dOnline) dOnline.textContent = this.onlinePlayers.length;
     const incomingReqs = this.profile.social.incomingFriendRequests || [];
     const outgoingReqs = this.profile.social.outgoingFriendRequests || [];
-    const fCountEl = document.getElementById('friends-count');
-    if (fCountEl) {
-      fCountEl.textContent = incomingReqs.length > 0 ? `${friends.length} (+${incomingReqs.length})` : `${friends.length}`;
-      fCountEl.style.color = incomingReqs.length > 0 ? '#ffca28' : '';
-    }
-    const oTabCountEl = document.getElementById('online-tab-count');
-    if (oTabCountEl) oTabCountEl.textContent = this.onlinePlayers.length;
+    const dFriends = document.getElementById('drawer-friends-count');
+    if (dFriends) dFriends.textContent = incomingReqs.length > 0 ? `${friends.length} (+${incomingReqs.length})` : `${friends.length}`;
 
     // Render current party with squad colors (Green, Blue, Yellow, Pink when >1 teammate)
-    const partyTitle = document.getElementById('party-title');
-    const leaveBtn = document.getElementById('btn-leave-party');
-    const partyEl = document.getElementById('party-members');
+    const partyTitle = document.getElementById('drawer-party-title');
+    const leaveBtn = document.getElementById('drawer-btn-leave-party');
+    const partyEl = document.getElementById('drawer-party-members');
     const isOwnParty = this.partyHost === this.profile.social.callsign;
     const multiSquad = this.partyMembers.length > 1;
     if (partyTitle) {
@@ -2493,11 +2488,8 @@ class GameUI {
       }
     }
 
-    // Show/hide add-friend search input bar on Friends tab
-    const addBar = document.getElementById('add-friend-bar');
-    if (addBar) addBar.classList.toggle('hidden', this.socialTab !== 'friends');
 
-    const listEl = document.getElementById('social-list');
+    const listEl = document.getElementById('drawer-social-list');
     if (!listEl) return;
     listEl.innerHTML = '';
 
@@ -2639,33 +2631,9 @@ class GameUI {
         }
         listEl.appendChild(row);
       }
-    this._mirrorSocialToDrawer();
     }
-  }
-
-  _mirrorSocialToDrawer() {
-    try {
-      const srcTitle = document.getElementById('party-title');
-      const dstTitle = document.getElementById('drawer-party-title');
-      if (srcTitle && dstTitle) dstTitle.textContent = srcTitle.textContent;
-      const src = document.getElementById('party-members');
-      const dst = document.getElementById('drawer-party-members');
-      if (src && dst) { dst.innerHTML = ''; for (const n of src.childNodes) dst.appendChild(n.cloneNode(true)); }
-      const srcLeave = document.getElementById('btn-leave-party');
-      const dstLeave = document.getElementById('drawer-btn-leave-party');
-      if (srcLeave && dstLeave) {
-        dstLeave.classList.toggle('hidden', srcLeave.classList.contains('hidden'));
-        dstLeave.textContent = srcLeave.textContent;
-      }
-      const srcList = document.getElementById('social-list');
-      const dstList = document.getElementById('drawer-social-list');
-      if (srcList && dstList) { dstList.innerHTML = ''; for (const n of srcList.childNodes) dstList.appendChild(n.cloneNode(true)); }
-      const dToast = document.getElementById('drawer-social-toast');
-      const sToast = document.getElementById('social-toast');
-      if (dToast && sToast && !sToast.classList.contains('hidden')) { dToast.textContent = sToast.textContent; dToast.classList.remove('hidden'); }
-      document.querySelectorAll('#party-vis-seg .seg-btn').forEach((b) => b.classList.toggle('active', b.dataset.vis === this.partyVisibility));
-      this.renderPartyWidget();
-    } catch (e) {}
+    this.renderPartyWidget();
+    this.renderNotifications();
   }
 
   _loadProfile() {
@@ -2784,11 +2752,11 @@ class GameUI {
   setDrawerTab(name) {
     this.drawerTab = name;
     document.querySelectorAll('.drawer-tab-btn').forEach((b) => b.classList.toggle('active', b.dataset.drawer === name));
-    for (const p of ['party', 'chat', 'friends']) {
+    for (const p of ['chat', 'notifs', 'party', 'friends']) {
       const el = document.getElementById(`drawer-pane-${p}`);
       if (el) el.classList.toggle('hidden', p !== name);
     }
-    if (name === 'chat') this._dockLobbyChat();
+    if (name === 'chat') { this._dockLobbyChat(); this.clearWhisperNotifs(); }
   }
   _normalizePartyVisibility() {
     const v = this.profile && this.profile.social && this.profile.social.partyVisibility;
@@ -3006,6 +2974,14 @@ class GameUI {
     if (closeBtn) closeBtn.addEventListener('click', () => this.toggleSocialDrawer(false));
     document.querySelectorAll('.drawer-tab-btn').forEach((b) => {
       b.addEventListener('click', () => this.setDrawerTab(b.dataset.drawer));
+    });
+    document.querySelectorAll('#drawer-social-tabs .tab-btn').forEach((b) => {
+      b.addEventListener('click', () => {
+        document.querySelectorAll('#drawer-social-tabs .tab-btn').forEach((x) => x.classList.remove('active'));
+        b.classList.add('active');
+        this.socialTab = b.dataset.social;
+        this.renderSocial();
+      });
     });
     document.querySelectorAll('#party-vis-seg .seg-btn').forEach((b) => {
       b.addEventListener('click', () => this.setPartyVisibility(b.dataset.vis));
@@ -3716,28 +3692,7 @@ class GameUI {
       userInp.addEventListener('keydown', (e) => { if (e.key === 'Enter') saveUser(); });
     }
 
-    document.querySelectorAll('#social-tabs .tab-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('#social-tabs .tab-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        this.socialTab = btn.dataset.social;
-        this.renderSocial();
-      });
-    });
 
-    const addInput = document.getElementById('input-add-friend');
-    const addBtn = document.getElementById('btn-add-friend');
-    if (addBtn && addInput) {
-      const submitFriend = () => {
-        if (!addInput.value.trim()) return;
-        this.addFriendByName(addInput.value);
-        addInput.value = '';
-      };
-      addBtn.addEventListener('click', submitFriend);
-      addInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitFriend(); });
-    }
-    const leavePartyBtn = document.getElementById('btn-leave-party');
-    if (leavePartyBtn) leavePartyBtn.addEventListener('click', () => this.leaveParty());
 
     document.querySelectorAll('#trader-tabs .tab-btn').forEach(btn => {
       btn.addEventListener('click', () => {
