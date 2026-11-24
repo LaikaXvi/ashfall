@@ -3078,6 +3078,9 @@ class WastelandWorld {
       d.state = 'open';
       d.angVel = THREE.MathUtils.clamp(d.angVel + (pushTau >= 0 ? 1 : -1) * (6.5 + 8.5 * falloff), -14, 14);
     }
+    if (window.ZavodBunker && window.ZavodBunker.onExplosion) {
+      window.ZavodBunker.onExplosion(blastPos, radius);
+    }
   }
 
   updateDoors(dt, player, weaponSystem) {
