@@ -211,6 +211,7 @@
     } else {
       exitHideoutRoam(true);
     }
+    if (ui && ui.revealLobbyChat) ui.revealLobbyChat(5);
   }
 
   function openFobStation(station) {
@@ -272,6 +273,7 @@
 
   function enterHideoutRoam() {
     if (!hideoutBunker || inRaid || (gunsmith && gunsmith.isOpen)) return;
+    const wasRoam = !!hideoutBunker.activeRoam;
     if (ui && ui.activeMenuTab !== 'home') ui.openMenuTab('home');
     hideoutHadPointerLock = false;
     const hideoutScreen = document.getElementById('hideout-screen');
@@ -279,6 +281,7 @@
     if (hideoutScreen) hideoutScreen.classList.add('hideout-roam-mode');
     if (roamHud) roamHud.classList.remove('hidden');
     hideoutBunker.enterRoam(canvas);
+    if (!wasRoam && ui && ui.revealLobbyChat) ui.revealLobbyChat(5);
     if (window.soundEngine && window.soundEngine.startFobAmbience) {
       try { window.soundEngine.startFobAmbience(); } catch (e) {}
     }

@@ -3,11 +3,11 @@
 // Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
 // With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'Alpha RC 0.2.70',
+  VERSION: 'Alpha RC 0.2.71',
   VERSION_INFO: {
     major: 0,
     minor: 2,
-    patch: 70,
+    patch: 71,
     channel: 'Alpha', // Alpha | Beta — never blank while major === 0
     stage: 'RC',     // RC = Release Candidate
     get semver() { return `${this.major}.${this.minor}.${this.patch}`; },
@@ -1130,7 +1130,7 @@ window.GAME_DATA = {
   };
   window.GAME_DATA.getCacheBuster = function getCacheBuster() {
     const p = window.GAME_DATA.parseVersion(window.GAME_DATA.VERSION);
-    if (!p) return '0270';
+    if (!p) return '0271';
     return `${p.major}${p.minor}${String(p.patch).padStart(2, '0')}`;
   };
   window.GAME_DATA.isNewerVersion = function isNewerVersion(remote, local) {

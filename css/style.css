@@ -7623,7 +7623,8 @@ input[type="range"].gp-focus {
   background: linear-gradient(180deg, rgba(15, 21, 26, 0.76) 0%, rgba(9, 13, 17, 0.88) 100%);
 }
 
-.lobby-chat-panel.suppressed {
+.lobby-chat-panel.suppressed,
+.lobby-chat-panel.chat-auto-hidden {
   opacity: 0 !important;
   pointer-events: none !important;
 }

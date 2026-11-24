@@ -40,6 +40,7 @@ window.ADS_FOV_MODE = (_savedUserSettings.adsFovMode === 'independent') ? 'indep
 window.WEAPON_FOV_SCALE = (['narrow', 'default', 'wide'].includes(_savedUserSettings.weaponFovScale)) ? _savedUserSettings.weaponFovScale : 'default';
 window.WEAPON_FOV_MODE = (_savedUserSettings.weaponFovMode === 'independent') ? 'independent' : 'effected';
 window.VIEWMODEL_FOV = (typeof _savedUserSettings.viewmodelFov === 'number' && Number.isFinite(_savedUserSettings.viewmodelFov)) ? _savedUserSettings.viewmodelFov : 75;
+window.CHAT_VISIBLE_SECONDS = ([5, 10, 15].includes(Number(_savedUserSettings.chatVisibleSeconds))) ? Number(_savedUserSettings.chatVisibleSeconds) : 5;
 window._SAVED_AUDIO_SETTINGS = _savedUserSettings.audio || null;
 
 window.saveAllUserSettings = function saveAllUserSettings() {
@@ -54,6 +55,7 @@ window.saveAllUserSettings = function saveAllUserSettings() {
       weaponFovScale: (['narrow', 'default', 'wide'].includes(window.WEAPON_FOV_SCALE)) ? window.WEAPON_FOV_SCALE : 'default',
       weaponFovMode: window.WEAPON_FOV_MODE === 'independent' ? 'independent' : 'effected',
       viewmodelFov: window.VIEWMODEL_FOV || 75,
+      chatVisibleSeconds: ([5, 10, 15].includes(Number(window.CHAT_VISIBLE_SECONDS))) ? Number(window.CHAT_VISIBLE_SECONDS) : 5,
       mouseSens: window.MOUSE_SENS || 1.0,
       ctrlSens: window.CONTROLLER_SENS || 1.0,
       ctrlLsDz: window.CONTROLLER_LS_DEADZONE ?? 0.12,
@@ -3086,8 +3088,28 @@ class GameUI {
           el.style.color = window.SQUAD_PVP ? '#ff6b6b' : '';
         }
       });
+
+      const chatDur = ([5, 10, 15].includes(Number(window.CHAT_VISIBLE_SECONDS))) ? Number(window.CHAT_VISIBLE_SECONDS) : 5;
+      [[5, 'btn-chat-dur-5'], [10, 'btn-chat-dur-10'], [15, 'btn-chat-dur-15']].forEach(([sec, id]) => {
+        const b = document.getElementById(id);
+        if (b) {
+          b.style.borderColor = chatDur === sec ? '#69f0ae' : '';
+          b.style.color = chatDur === sec ? '#69f0ae' : '';
+        }
+      });
     };
     this.syncSettingsUI = syncSettingsUI;
+
+    [[5, 'btn-chat-dur-5'], [10, 'btn-chat-dur-10'], [15, 'btn-chat-dur-15']].forEach(([sec, id]) => {
+      const btnCd = document.getElementById(id);
+      if (btnCd) {
+        btnCd.addEventListener('click', () => {
+          window.CHAT_VISIBLE_SECONDS = sec;
+          if (window.saveAllUserSettings) window.saveAllUserSettings();
+          syncSettingsUI();
+        });
+      }
+    });
 
     ['setting-fov', 'pause-setting-fov'].forEach((id) => {
       const el = document.getElementById(id);
@@ -9807,6 +9829,23 @@ class GameUI {
     }
   }
 
+  getChatMessageVisibleSeconds() {
+    const v = Number(window.CHAT_VISIBLE_SECONDS);
+    return (v === 10 || v === 15) ? v : 5;
+  }
+
+  revealLobbyChat(durationSec = null) {
+    const sec = (typeof durationSec === 'number' && durationSec > 0)
+      ? durationSec
+      : this.getChatMessageVisibleSeconds();
+    this._chatVisibleUntil = performance.now() + sec * 1000;
+    if (this._chatAutoHideTimeout) clearTimeout(this._chatAutoHideTimeout);
+    this._chatAutoHideTimeout = setTimeout(() => {
+      this.updateLobbyChatVisibility();
+    }, Math.round(sec * 1000) + 30);
+    this.updateLobbyChatVisibility();
+  }
+
   updateLobbyChatVisibility() {
     const panel = document.getElementById('lobby-chat-panel');
     if (!panel) return;
@@ -9825,15 +9864,32 @@ class GameUI {
     const hideoutRoam = !!(hideout && hideout.classList.contains('hideout-roam-mode'));
     const onSubMenu = !inRaidNow && !hideoutRoam && this.activeMenuTab !== 'home' && this.activeMenuTab !== 'matchmaking';
 
+    // When dismissing the FOB entry screen or returning from post-raid summary into the FOB, show chat for 5s!
+    const entryGateOpen = !!(sumOpen || fobEnterOpen);
+    if (this._wasEntryGateOpen && !entryGateOpen) {
+      this._chatVisibleUntil = performance.now() + 5000;
+      if (this._chatAutoHideTimeout) clearTimeout(this._chatAutoHideTimeout);
+      this._chatAutoHideTimeout = setTimeout(() => {
+        this.updateLobbyChatVisibility();
+      }, 5030);
+    }
+    this._wasEntryGateOpen = entryGateOpen;
+
     const shouldSuppress = lootOpen || gsOpen || sumOpen || igSetOpen || fobEnterOpen || onSubMenu;
+    const timerActive = (this._chatVisibleUntil || 0) > performance.now();
+    const keepOpenForUser = !!(this.isChatInputActive || (inRaidNow && this.isTacMapOpen));
+    const autoHidden = !shouldSuppress && !keepOpenForUser && !timerActive;
+
     panel.classList.toggle('suppressed', shouldSuppress);
+    panel.classList.toggle('chat-auto-hidden', autoHidden);
     panel.classList.toggle('tacmap-open', !!(inRaidNow && this.isTacMapOpen));
-    panel.classList.toggle('in-raid-idle', !!(inRaidNow && !this.isTacMapOpen && !this.isChatInputActive));
+    panel.classList.toggle('in-raid-idle', !!(inRaidNow && !this.isTacMapOpen && !this.isChatInputActive && !autoHidden));
     this.refreshLobbyChatRoleBadge();
   }
 
   _initLobbyChat() {
     this.isChatInputActive = false;
+    this._chatVisibleUntil = performance.now() + 5000;
     const panel = document.getElementById('lobby-chat-panel');
     const form = document.getElementById('lobby-chat-form');
     const input = document.getElementById('lobby-chat-input');
@@ -9857,7 +9913,7 @@ class GameUI {
     input.addEventListener('focus', () => {
       this.isChatInputActive = true;
       panel.classList.add('chat-active');
-      panel.classList.remove('in-raid-idle');
+      panel.classList.remove('in-raid-idle', 'chat-auto-hidden');
     });
 
     input.addEventListener('blur', () => {
@@ -9908,6 +9964,7 @@ class GameUI {
         if (minBtn) minBtn.textContent = '—';
       }
       this.isChatInputActive = true;
+      panel.classList.remove('chat-auto-hidden');
       const gameCanvas = document.getElementById('game-canvas');
       if (document.pointerLockElement === gameCanvas) {
         try { document.exitPointerLock(); } catch (err) {}
@@ -9916,7 +9973,7 @@ class GameUI {
     });
 
     // Keep visibility synced neatly across UI state transitions
-    this._chatVisTimer = setInterval(() => this.updateLobbyChatVisibility(), 350);
+    this._chatVisTimer = setInterval(() => this.updateLobbyChatVisibility(), 150);
     this.updateLobbyChatVisibility();
   }
 
@@ -9955,13 +10012,17 @@ class GameUI {
         system: true,
         cls: 'sys',
         text: `Connected to ${titleStr} (visible only to players in this ${scopeDesc})${devHint}`
-      });
+      }, { silentTimer: true });
+      // Joining a FOB or joining a Match always displays text chat for 5 seconds before disappearing!
+      this.revealLobbyChat(5);
+      this.refreshLobbyChatRoleBadge();
+      return;
     }
     this.refreshLobbyChatRoleBadge();
     this.updateLobbyChatVisibility();
   }
 
-  appendLobbyChatMessage(entry) {
+  appendLobbyChatMessage(entry, opts = null) {
     const msgBox = document.getElementById('lobby-chat-messages');
     if (!msgBox || !entry) return;
     const row = document.createElement('div');
@@ -10004,6 +10065,11 @@ class GameUI {
       msgBox.removeChild(msgBox.firstChild);
     }
     msgBox.scrollTop = msgBox.scrollHeight;
+
+    // Reveal chat for configured duration (5s default, up to 10s / 15s in Interface settings) when a new message arrives!
+    if (!(opts && opts.silentTimer)) {
+      this.revealLobbyChat(this.getChatMessageVisibleSeconds());
+    }
   }
 
   submitLobbyChat(rawText) {
