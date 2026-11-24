@@ -341,6 +341,7 @@ class Player {
     this.selfReviveProgress = 0;
     this.headgear = loadoutState.headgear || null;
     this.cash = loadoutState.cash || 0;
+    this.chemicals = loadoutState.chemicals || 0;
     this.melee = loadoutState.melee || 'melee_knife';
     this.uavTimer = 0;
     this.deadSilenceTimer = 0;
@@ -1987,6 +1988,16 @@ class Player {
   addToBackpack(id, qty = 1, extra = {}) {
     const def = GAME_DATA.ITEMS[id];
     if (!def || qty <= 0) return false;
+
+    const chemYield = (GAME_DATA.getChemicalYield && GAME_DATA.getChemicalYield(id)) || 0;
+    if (chemYield > 0) {
+      const gained = chemYield * qty;
+      this.chemicals = (this.chemicals || 0) + gained;
+      if (typeof this.onChemicalsConverted === 'function') {
+        try { this.onChemicalsConverted(id, qty, gained, this.chemicals); } catch (e) {}
+      }
+      return true;
+    }
 
     // Weapons can ONLY be looted into a backpack if a Weapon Backpack is equipped and its dedicated double-wide weapon slot is available!
     if (def.type === 'weapon') {

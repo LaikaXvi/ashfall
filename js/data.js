@@ -3,15 +3,26 @@
 // Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
 // With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'Alpha RC 0.2.73',
+  VERSION: 'Alpha RC 0.2.74',
   VERSION_INFO: {
     major: 0,
     minor: 2,
-    patch: 73,
+    patch: 74,
     channel: 'Alpha', // Alpha | Beta — never blank while major === 0
     stage: 'RC',     // RC = Release Candidate
+    updated: 'Nov 24, 2026',
+    changelog: 'Warzone-inspired Vostok map & dramatic geography overhaul, intricate multi-floor POI architecture, new declarative & GLTF-instanced ModelSystem, CoD MW2019+ reload/inspect animations, ACES lighting + optical lens flares, and automatic Chemicals conversion in backpack.',
     get semver() { return `${this.major}.${this.minor}.${this.patch}`; },
     get label() { return `${this.channel} ${this.stage} ${this.major}.${this.minor}.${this.patch}`; }
+  },
+  CHEMICAL_CONVERSION: {
+    syringe: 5,
+    basic_chemicals: 4,
+    scrubs: 3,
+    sterile_cloth: 2
+  },
+  getChemicalYield(itemId) {
+    return (this.CHEMICAL_CONVERSION && this.CHEMICAL_CONVERSION[itemId]) || 0;
   },
   OPERATOR_STATS: {
     maxHp: 75,
@@ -465,10 +476,10 @@ window.GAME_DATA = {
     // === MEDICAL ITEMS (Clinics, Strip-Towns, Med-Tents & Triage Sites) ===
     bandage: { id: 'bandage', name: 'Bandage', type: 'med', category: 'medical', rarity: 'common', value: 260, weight: 0.12, healAmount: 22, stackable: true, maxStack: 5, buyQty: 2, desc: 'Basic rolled gauze dressing (+22 HP).' },
     sterile_bandage: { id: 'sterile_bandage', name: 'Sterile Bandage', type: 'med', category: 'medical', rarity: 'rare', value: 520, weight: 0.15, healAmount: 35, stackable: true, maxStack: 4, buyQty: 2, desc: 'Vacuum-sealed trauma dressing (+35 HP & restores disabled health).' },
-    sterile_cloth: { id: 'sterile_cloth', name: 'Sterile Cloth', type: 'material', category: 'medical', rarity: 'common', value: 300, weight: 0.15, stackable: true, maxStack: 10, desc: 'Autoclaved medical weave used to craft bandages & medkits.' },
-    scrubs: { id: 'scrubs', name: 'Scrubs', type: 'material', category: 'medical', rarity: 'common', value: 340, weight: 0.30, stackable: true, maxStack: 6, desc: 'Vostok clinic surgical scrubs. Salvageable medical textile.' },
-    basic_chemicals: { id: 'basic_chemicals', name: 'Basic Chemicals', type: 'material', category: 'medical', rarity: 'common', value: 420, weight: 0.35, stackable: true, maxStack: 10, desc: 'Antiseptic and reagent bottles for synthesizing syringes & meds.' },
-    syringe: { id: 'syringe', name: 'Syringe', type: 'med', category: 'medical', rarity: 'rare', value: 960, weight: 0.10, healAmount: 45, stackable: true, maxStack: 4, buyQty: 1, desc: 'Combat epinephrine & analgesic syringe (+45 HP & temporary trauma buffer).' },
+    sterile_cloth: { id: 'sterile_cloth', name: 'Sterile Cloth', type: 'material', category: 'medical', rarity: 'common', value: 300, weight: 0.15, stackable: true, maxStack: 10, desc: 'Autoclaved medical weave. Auto-converts into +2 Chemicals in your top-right backpack store.' },
+    scrubs: { id: 'scrubs', name: 'Scrubs', type: 'material', category: 'medical', rarity: 'common', value: 340, weight: 0.30, stackable: true, maxStack: 6, desc: 'Vostok clinic surgical scrubs. Auto-converts into +3 Chemicals in your top-right backpack store.' },
+    basic_chemicals: { id: 'basic_chemicals', name: 'Basic Chemicals', type: 'material', category: 'medical', rarity: 'common', value: 420, weight: 0.35, stackable: true, maxStack: 10, desc: 'Antiseptic & reagent bottles. Auto-converts into +4 Chemicals in your top-right backpack store.' },
+    syringe: { id: 'syringe', name: 'Syringe', type: 'material', category: 'medical', rarity: 'rare', value: 960, weight: 0.10, stackable: true, maxStack: 4, desc: 'Medical injector & reagent vial. Auto-converts into +5 Chemicals in your top-right backpack store.' },
     painkillers: { id: 'painkillers', name: 'Tactical Painkillers', type: 'med', category: 'medical', rarity: 'rare', value: 1100, weight: 0.2, healAmount: 40, stackable: true, maxStack: 3, buyQty: 1, desc: 'Fast-acting analgesic bottle (+40 HP).' },
     medkit: { id: 'medkit', name: 'Medkit', type: 'med', category: 'medical', rarity: 'rare', value: 1500, weight: 0.4, healAmount: 55, stackable: true, maxStack: 3, buyQty: 1, desc: 'Full IFAK field medical kit (+55 HP & clears trauma, Press H).' },
 
@@ -1094,24 +1105,24 @@ window.GAME_DATA = {
       outputId: 'sterile_bandage',
       outputQty: 2,
       name: '2x Sterile Bandages',
-      desc: 'Sanitize sterile cloth with basic chemicals into 2 trauma dressings.',
-      ingredients: [{ id: 'sterile_cloth', qty: 2 }, { id: 'basic_chemicals', qty: 1 }]
+      desc: 'Treat gauze dressings with refined Chemicals into 2 trauma dressings.',
+      ingredients: [{ id: 'bandage', qty: 1 }, { id: 'chemicals', qty: 4 }]
     },
     {
-      id: 'craft_syringe',
-      outputId: 'syringe',
-      outputQty: 2,
-      name: '2x Combat Syringes',
-      desc: 'Synthesize 2 fast-acting combat syringes from basic chemicals.',
-      ingredients: [{ id: 'basic_chemicals', qty: 2 }, { id: 'sterile_cloth', qty: 1 }]
+      id: 'craft_reactive_compounds',
+      outputId: 'reactive_compounds',
+      outputQty: 1,
+      name: 'Reactive Compounds',
+      desc: 'Distill concentrated Chemicals with reactive metals into high-value Reactive Compounds.',
+      ingredients: [{ id: 'chemicals', qty: 12 }, { id: 'reactive_metals', qty: 1 }]
     },
     {
       id: 'craft_medkit',
       outputId: 'medkit',
       outputQty: 1,
       name: 'Medkit',
-      desc: 'Assemble a full IFAK Medkit from sterile cloth, scrubs & chemicals.',
-      ingredients: [{ id: 'sterile_cloth', qty: 2 }, { id: 'basic_chemicals', qty: 1 }]
+      desc: 'Assemble a full IFAK Medkit from refined Chemicals & ballistic cloth.',
+      ingredients: [{ id: 'chemicals', qty: 8 }, { id: 'cloth_roll', qty: 1 }]
     },
     {
       id: 'craft_self_revive',
@@ -1119,7 +1130,7 @@ window.GAME_DATA = {
       outputQty: 1,
       name: 'Self-Revive Kit',
       desc: 'Synthesize an Epic Self-Revive auto-injector for solo or last-stand recovery.',
-      ingredients: [{ id: 'basic_chemicals', qty: 3 }, { id: 'sterile_cloth', qty: 2 }, { id: 'tools', qty: 1 }]
+      ingredients: [{ id: 'chemicals', qty: 14 }, { id: 'tools', qty: 1 }]
     },
     {
       id: 'craft_ammo_545',
@@ -1191,7 +1202,7 @@ window.GAME_DATA = {
     weapons: ['pm9', 'g17', 'mp5k', 'm870', 'ak74m', 'mosin9130', 'm24', 'awm338'],
     ammo: ['ammo_9x18', 'ammo_9x19', 'ammo_12g', 'ammo_545', 'ammo_762', 'ammo_rocket'],
     gear: [
-      'bandage', 'sterile_bandage', 'syringe', 'medkit', 'self_revive',
+      'bandage', 'sterile_bandage', 'painkillers', 'medkit', 'self_revive',
       'gas_mask', 'nvg_goggles', 'armor_plate',
       'vest_1plate', 'vest_2plate', 'vest_2plate_gel', 'vest_2plate_helmet', 'vest_3plate',
       'bag_small', 'bag_medium', 'bag_large', 'bag_weapon',

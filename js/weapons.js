@@ -81,8 +81,9 @@ class WeaponSystem {
 
     this.isInspecting = false;
     this.inspectTimer = 0;
-    this.inspectDuration = 5.2;
+    this.inspectDuration = 4.8;
     this.inspectWeaponId = 'pm9';
+    this._inspectCheckSfxPlayed = false;
 
     this.isPlating = false;
     this.plateTimer = 0;
@@ -152,6 +153,9 @@ class WeaponSystem {
     this.boltMesh = null;
     this.boltRestPos = new THREE.Vector3();
     this.boltRestRot = new THREE.Euler();
+    this.boltCarrierMesh = null;
+    this.boltCarrierRestPos = new THREE.Vector3();
+    this.chamberRoundMesh = null;
     this.leftHand = null;
     this.leftHandRestPos = new THREE.Vector3();
     this.leftHandRestRot = new THREE.Euler();
@@ -222,19 +226,19 @@ class WeaponSystem {
 
   _getReloadStages(weaponId, isEmpty) {
     if (weaponId === 'mp5k') {
-      return { magOutP: 0.42, magInP: 0.72, needsChamber: true };
+      return { magOutP: isEmpty ? 0.42 : 0.24, magInP: isEmpty ? 0.70 : 0.66, needsChamber: !!isEmpty };
     }
     if (weaponId === 'ak74m') {
-      return { magOutP: 0.34, magInP: 0.64, needsChamber: !!isEmpty };
+      return { magOutP: isEmpty ? 0.34 : 0.32, magInP: isEmpty ? 0.64 : 0.70, needsChamber: !!isEmpty };
     }
     if (weaponId === 'mosin9130') {
       return { magOutP: 0.22, magInP: 0.68, needsChamber: true };
     }
     if (weaponId === 'm870') {
-      return { magOutP: 0.12, magInP: isEmpty ? 0.68 : 0.88, needsChamber: !!isEmpty };
+      return { magOutP: 0.12, magInP: isEmpty ? 0.42 : 0.88, needsChamber: false };
     }
     // G17, PM-9, M24, AWM .338
-    return { magOutP: 0.26, magInP: 0.58, needsChamber: !!isEmpty };
+    return { magOutP: isEmpty ? 0.26 : 0.24, magInP: isEmpty ? 0.58 : 0.64, needsChamber: !!isEmpty };
   }
 
   _ensureReviveRig() {
@@ -1744,6 +1748,9 @@ class WeaponSystem {
   }
 
   _getWpnTex() {
+    if (window.ModelSystem && window.ModelSystem.getWeaponTextures) {
+      return window.ModelSystem.getWeaponTextures();
+    }
     if (window._wpnTex) return window._wpnTex;
     const SZ = 256;
     const mk = (drawFn) => {
@@ -1892,916 +1899,63 @@ class WeaponSystem {
       this.currentMesh = null;
     }
     this.spareMagMesh = null;
+    this.boltCarrierMesh = null;
+    this.chamberRoundMesh = null;
     if (withHands) this.scopeOptic = null;
 
-    const g = new THREE.Group();
     const hasCamo = mods.camo && mods.camo !== 'none';
     const gunMat = this._getCamoMaterial(weaponDef, mods.camo);
-    const tex = this._getWpnTex();
-    // Upgraded tactical weapon finishes matching the sculpted soldier model (satin metallic sheen + matte polymer/wood)
-    const steelMat = hasCamo ? gunMat : new THREE.MeshPhongMaterial({ color: 0xffffff, map: tex.parkerized, specular: 0x3a424c, shininess: 32 });
-    const bluedMat = hasCamo ? gunMat : new THREE.MeshPhongMaterial({ color: 0xffffff, map: tex.blued, specular: 0x303c4e, shininess: 42 });
-    const darkMat = new THREE.MeshLambertMaterial({ color: 0xffffff, map: tex.polymer });
-    const magMat = new THREE.MeshPhongMaterial({ color: 0xffffff, map: tex.brushedSteel, specular: 0x525a64, shininess: 46 });
-    const bakeliteMat = new THREE.MeshPhongMaterial({ color: 0xffffff, map: tex.bakelite, specular: 0x2e1e16, shininess: 22 });
-    const brassMat = new THREE.MeshPhongMaterial({ color: 0xffffff, map: tex.brass, specular: 0x665530, shininess: 56 });
-    const woodMat = new THREE.MeshLambertMaterial({ color: 0xffffff, map: tex.wood });
-    const chassisMat = hasCamo ? gunMat : new THREE.MeshLambertMaterial({ color: 0xffffff, map: tex.composite });
-    const shellRedMat = new THREE.MeshPhongMaterial({ color: 0xffffff, map: tex.shellRed, specular: 0x381c1c, shininess: 24 });
-
-    // Helper: smooth rounded/beveled box along Z (replaces sharp-edged BoxGeometry for receivers, slides & handguards)
-    const roundedBox = (w, h, d, r = 0.004, bevel = 0.0018) => {
-      const rr = Math.min(r, w * 0.42, h * 0.42);
-      const hw = w * 0.5;
-      const hh = h * 0.5;
-      const sh = new THREE.Shape();
-      sh.moveTo(-hw + rr, -hh);
-      sh.lineTo(hw - rr, -hh);
-      sh.quadraticCurveTo(hw, -hh, hw, -hh + rr);
-      sh.lineTo(hw, hh - rr);
-      sh.quadraticCurveTo(hw, hh, hw - rr, hh);
-      sh.lineTo(-hw + rr, hh);
-      sh.quadraticCurveTo(-hw, hh, -hw, hh - rr);
-      sh.lineTo(-hw, -hh + rr);
-      sh.quadraticCurveTo(-hw, -hh, -hw + rr, -hh);
-      const b = Math.min(bevel, d * 0.15, rr * 0.6);
-      const geo = new THREE.ExtrudeGeometry(sh, {
-        depth: Math.max(0.002, d - b * 2),
-        bevelEnabled: b > 0.0002,
-        bevelThickness: b,
-        bevelSize: b * 0.85,
-        bevelSegments: 2,
-        curveSegments: 5
-      });
-      geo.translate(0, 0, -(d - b * 2) * 0.5);
-      return geo;
-    };
-
-    // Helper: ergonomic contoured pistol grip with curved backstrap swell & finger-groove frontstrap
-    const curvedGrip = (w, h, d) => {
-      const sh = new THREE.Shape();
-      const hw = d * 0.5;
-      const hh = h * 0.5;
-      sh.moveTo(-hw * 0.90, hh);
-      sh.lineTo(hw * 0.85, hh);
-      sh.bezierCurveTo(hw * 0.72, hh * 0.35, hw * 1.05, -hh * 0.25, hw * 0.88, -hh);
-      sh.lineTo(-hw * 0.92, -hh);
-      sh.bezierCurveTo(-hw * 1.08, -hh * 0.30, -hw * 0.78, hh * 0.32, -hw * 0.90, hh);
-      const geo = new THREE.ExtrudeGeometry(sh, {
-        depth: w,
-        bevelEnabled: true,
-        bevelThickness: 0.0025,
-        bevelSize: 0.0022,
-        bevelSegments: 2,
-        curveSegments: 8
-      });
-      geo.translate(0, 0, -w * 0.5);
-      geo.rotateY(Math.PI / 2);
-      return geo;
-    };
-
-    // Helper: extrude a 2D side silhouette (x: +fwd/-rear, y: up/down) centered along weapon X width
-    const extrudeSide = (pts, width, holes = null, bevel = false) => {
-      const sh = new THREE.Shape();
-      sh.moveTo(pts[0][0], pts[0][1]);
-      for (let i = 1; i < pts.length; i++) sh.lineTo(pts[i][0], pts[i][1]);
-      sh.closePath();
-      if (holes) {
-        for (const hPts of holes) {
-          const hp = new THREE.Path();
-          hp.moveTo(hPts[0][0], hPts[0][1]);
-          for (let i = 1; i < hPts.length; i++) hp.lineTo(hPts[i][0], hPts[i][1]);
-          hp.closePath();
-          sh.holes.push(hp);
-        }
-      }
-      const geo = new THREE.ExtrudeGeometry(sh, {
-        depth: width,
-        bevelEnabled: bevel,
-        bevelThickness: bevel ? 0.0024 : 0,
-        bevelSize: bevel ? 0.0020 : 0,
-        bevelSegments: 2,
-        curveSegments: 10
-      });
-      geo.translate(0, 0, -width * 0.5);
-      geo.rotateY(Math.PI / 2); // +px -> -Z (forward), -px -> +Z (rear)
-      return geo;
-    };
-
-    const addTriggerGuard = (zPos, yPos) => {
-      // Smooth curved trigger guard bow + curved crescent trigger shoe
-      const guardGeo = extrudeSide([
-        [0.022, 0.004], [0.024, -0.020], [0.014, -0.025], [-0.018, -0.025],
-        [-0.024, -0.018], [-0.024, 0.002], [-0.018, 0.002], [-0.018, -0.018],
-        [0.014, -0.019], [0.018, -0.014], [0.017, 0.004]
-      ], 0.011, null, true);
-      const guard = new THREE.Mesh(guardGeo, darkMat);
-      guard.position.set(0, yPos, zPos);
-      const trigGeo = extrudeSide([
-        [-0.002, 0.002], [0.003, 0.002], [-0.001, -0.010], [-0.006, -0.017],
-        [-0.010, -0.015], [-0.006, -0.008]
-      ], 0.005, null, false);
-      const trig = new THREE.Mesh(trigGeo, magMat);
-      trig.position.set(0, yPos - 0.001, zPos + 0.002);
-      g.add(guard, trig);
-    };
-
-    // DMZ 2022 Tactical Weapon Detail Helpers: milled Picatinny rail teeth & receiver takedown cross-pins
-    const addPicatinnyRail = (yPos, zStart, zEnd, width = 0.021, step = 0.013, mat = darkMat) => {
-      const zMin = Math.min(zStart, zEnd);
-      const zMax = Math.max(zStart, zEnd);
-      const toothGeo = new THREE.BoxGeometry(width, 0.0036, step * 0.56);
-      for (let z = zMin + step * 0.4; z <= zMax - step * 0.4; z += step) {
-        const tooth = new THREE.Mesh(toothGeo, mat);
-        tooth.position.set(0, yPos, z);
-        g.add(tooth);
-      }
-    };
-    const addReceiverPins = (xHalf, coords) => {
-      const pinGeo = new THREE.CylinderGeometry(0.0030, 0.0030, xHalf * 2 + 0.004, 8);
-      pinGeo.rotateZ(Math.PI / 2);
-      for (const [py, pz] of coords) {
-        const pin = new THREE.Mesh(pinGeo, magMat);
-        pin.position.set(0, py, pz);
-        g.add(pin);
-      }
-    };
-
-    if (weaponDef.slot === 'secondary') {
-      const isG17 = weaponDef.id === 'g17';
-      const slideLen = isG17 ? 0.24 : 0.21;
-      let slideGroup;
-
-      if (isG17) {
-        // Authentic Glock 17 Gen4: Beveled polymer dustcover frame with Picatinny slot + beavertail + contoured grip
-        const frameGeo = extrudeSide([
-          [0.095, -0.008], [0.095, -0.024], [0.045, -0.024], [0.030, -0.020],
-          [-0.038, -0.020], [-0.042, -0.036], [-0.056, -0.116], [-0.100, -0.112],
-          [-0.082, -0.024], [-0.102, -0.010], [-0.075, -0.008]
-        ], 0.030, null, true);
-        const frame = new THREE.Mesh(frameGeo, darkMat);
-
-        // Chamfered Glock slide with rounded upper bevels, ejection port recess & rear serrations
-        slideGroup = new THREE.Group();
-        const slideMain = new THREE.Mesh(roundedBox(0.034, 0.025, slideLen, 0.0045, 0.0018), steelMat);
-        const slideTop = new THREE.Mesh(roundedBox(0.028, 0.009, slideLen - 0.004, 0.0038, 0.0012), steelMat);
-        slideTop.position.set(0, 0.014, 0);
-        const ejPort = new THREE.Mesh(roundedBox(0.005, 0.012, 0.044, 0.002, 0.0005), bluedMat);
-        ejPort.position.set(0.016, 0.005, -0.012);
-        const hood = new THREE.Mesh(roundedBox(0.024, 0.009, 0.036, 0.003, 0.0008), magMat);
-        hood.position.set(0, 0.014, -0.015);
-        slideGroup.add(slideMain, slideTop, ejPort, hood);
-        for (let s = 0; s < 5; s++) {
-          const rib = new THREE.Mesh(new THREE.BoxGeometry(0.0355, 0.017, 0.0024), darkMat);
-          rib.position.set(0, 0.0, 0.072 + s * 0.008);
-          slideGroup.add(rib);
-        }
-        // DMZ Gen5 tactical front slide serrations + frame takedown lever & cross-pins
-        for (let s = 0; s < 3; s++) {
-          const fRib = new THREE.Mesh(new THREE.BoxGeometry(0.0352, 0.015, 0.0022), darkMat);
-          fRib.position.set(0, 0.0, -0.095 + s * 0.008);
-          slideGroup.add(fRib);
-        }
-        const slideStop = new THREE.Mesh(roundedBox(0.004, 0.006, 0.022, 0.001, 0.0004), magMat);
-        slideStop.position.set(-0.016, -0.009, 0.036);
-        g.add(slideStop);
-        addReceiverPins(0.015, [[-0.013, 0.012], [-0.014, 0.068]]);
-        slideGroup.position.set(0, 0.006, 0);
-        this.boltMesh = slideGroup;
-        this.boltRestPos.copy(slideGroup.position);
-
-        const barrelCrown = new THREE.Mesh(new THREE.CylinderGeometry(0.0078, 0.0078, 0.024, 14), magMat);
-        barrelCrown.rotation.x = Math.PI / 2;
-        barrelCrown.position.set(0, 0.008, -slideLen / 2 - 0.002);
-        const railSlot = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.004, 0.032), bluedMat);
-        railSlot.position.set(0, -0.024, -0.075);
-
-        addTriggerGuard(0.018, -0.024);
-
-        const pistolMag = new THREE.Group();
-        const magBody = new THREE.Mesh(roundedBox(0.023, 0.105, 0.033, 0.003, 0.001), darkMat);
-        const magPlate = new THREE.Mesh(roundedBox(0.031, 0.013, 0.045, 0.0035, 0.0012), steelMat);
-        magPlate.position.set(0, -0.056, 0);
-        const magTip = new THREE.Mesh(new THREE.BoxGeometry(0.019, 0.012, 0.028), brassMat);
-        magTip.position.set(0, 0.056, 0);
-        pistolMag.add(magBody, magPlate, magTip);
-        pistolMag.position.set(0, -0.082, 0.075);
-        pistolMag.rotation.x = 0.24;
-        this.magMesh = pistolMag;
-        this.magRestPos.copy(pistolMag.position);
-
-        this.rightHand = this._createHand(true, 'grip');
-        this.rightHand.position.set(0.0, -0.056, 0.072);
-        this.leftHand = this._createHand(false, 'supportPistol');
-        this.leftHand.position.set(-0.004, -0.064, 0.068);
-        this.leftHandRestPos.copy(this.leftHand.position);
-        this.leftHandRestRot.copy(this.leftHand.rotation);
-
-        g.add(frame, railSlot, barrelCrown, slideGroup, pistolMag, this.rightHand, this.leftHand);
-      } else {
-        // Authentic Makarov PM (9x18mm): Rounded blued slide, thumb safety, exposed hammer & ergonomic checkered bakelite grip
-        const frame = new THREE.Mesh(roundedBox(0.026, 0.018, 0.175, 0.004, 0.0015), bluedMat);
-        frame.position.set(0, -0.015, 0.008);
-        const grip = new THREE.Mesh(curvedGrip(0.029, 0.108, 0.044), bakeliteMat);
-        grip.position.set(0, -0.066, 0.072);
-        grip.rotation.x = 0.24;
-        const backstrap = new THREE.Mesh(roundedBox(0.020, 0.100, 0.012, 0.004, 0.001), bluedMat);
-        backstrap.position.set(0, -0.062, 0.092);
-        backstrap.rotation.x = 0.24;
-
-        slideGroup = new THREE.Group();
-        const slideLower = new THREE.Mesh(roundedBox(0.030, 0.020, slideLen, 0.004, 0.0015), bluedMat);
-        const slideCrown = new THREE.Mesh(new THREE.CylinderGeometry(0.0148, 0.0148, slideLen - 0.004, 14), bluedMat);
-        slideCrown.rotation.x = Math.PI / 2;
-        slideCrown.position.set(0, 0.008, 0);
-        const ejPort = new THREE.Mesh(roundedBox(0.004, 0.011, 0.038, 0.002, 0.0005), steelMat);
-        ejPort.position.set(0.014, 0.005, -0.008);
-        const safetyLever = new THREE.Mesh(roundedBox(0.006, 0.010, 0.024, 0.002, 0.0006), steelMat);
-        safetyLever.position.set(-0.017, 0.004, 0.075);
-        const hammer = new THREE.Mesh(roundedBox(0.008, 0.014, 0.016, 0.003, 0.0008), magMat);
-        hammer.position.set(0, 0.002, slideLen / 2 + 0.004);
-        hammer.rotation.x = 0.35;
-        slideGroup.add(slideLower, slideCrown, ejPort, safetyLever, hammer);
-        for (let s = 0; s < 5; s++) {
-          const pmRib = new THREE.Mesh(new THREE.BoxGeometry(0.0314, 0.015, 0.0022), darkMat);
-          pmRib.position.set(0, 0.0, 0.056 + s * 0.007);
-          slideGroup.add(pmRib);
-        }
-        slideGroup.position.set(0, 0.006, 0);
-        this.boltMesh = slideGroup;
-        this.boltRestPos.copy(slideGroup.position);
-
-        const barrelCrown = new THREE.Mesh(new THREE.CylinderGeometry(0.0072, 0.0072, 0.022, 14), magMat);
-        barrelCrown.rotation.x = Math.PI / 2;
-        barrelCrown.position.set(0, 0.008, -slideLen / 2 - 0.002);
-
-        addTriggerGuard(0.016, -0.022);
-
-        const pistolMag = new THREE.Group();
-        const magBody = new THREE.Mesh(roundedBox(0.020, 0.102, 0.030, 0.003, 0.0008), magMat);
-        const magPlate = new THREE.Mesh(roundedBox(0.026, 0.010, 0.040, 0.003, 0.001), bluedMat);
-        magPlate.position.set(0, -0.054, 0);
-        const magTip = new THREE.Mesh(new THREE.BoxGeometry(0.017, 0.011, 0.026), brassMat);
-        magTip.position.set(0, 0.055, 0);
-        pistolMag.add(magBody, magPlate, magTip);
-        pistolMag.position.set(0, -0.082, 0.075);
-        pistolMag.rotation.x = 0.24;
-        this.magMesh = pistolMag;
-        this.magRestPos.copy(pistolMag.position);
-
-        this.rightHand = this._createHand(true, 'grip');
-        this.rightHand.position.set(0.0, -0.056, 0.072);
-        this.leftHand = this._createHand(false, 'supportPistol');
-        this.leftHand.position.set(-0.004, -0.064, 0.068);
-        this.leftHandRestPos.copy(this.leftHand.position);
-        this.leftHandRestRot.copy(this.leftHand.rotation);
-
-        g.add(frame, grip, backstrap, barrelCrown, slideGroup, pistolMag, this.rightHand, this.leftHand);
-      }
-
-      this.sightHeight = 0.030;
-      this.adsZ = -0.32;
-      const hasOptic = !!(mods.optic && mods.optic !== 'none');
-      this._addWeaponIronSights(slideGroup, weaponDef.id, this.sightHeight - slideGroup.position.y, hasOptic, {
-        rearZ: slideLen / 2 - 0.016,
-        frontZ: -slideLen / 2 + 0.014,
-        baseY: 0.019
-      });
-
-      this.muzzleMesh.position.set(0, 0.01, -slideLen / 2 - 0.03);
-      this.muzzleFlash.position.set(0, 0.02, -slideLen / 2 - 0.06);
-    } else if (weaponDef.id === 'mp5k') {
-      // H&K MP5 (Stamped rounded upper receiver + tubular cocking tube + Tropical sloped handguard + Navy lower + curved steel banana mag)
-      const upper = new THREE.Mesh(roundedBox(0.038, 0.034, 0.31, 0.0055, 0.0018), steelMat);
-      upper.position.set(0, 0.007, 0.025);
-      const upperTop = new THREE.Mesh(new THREE.CylinderGeometry(0.0168, 0.0168, 0.31, 14), steelMat);
-      upperTop.rotation.x = Math.PI / 2;
-      upperTop.position.set(0, 0.020, 0.025);
-      const fluteL = new THREE.Mesh(roundedBox(0.005, 0.008, 0.29, 0.002, 0.0006), bluedMat);
-      fluteL.position.set(-0.020, 0.002, 0.03);
-      const fluteR = fluteL.clone();
-      fluteR.position.x = 0.020;
-      const ejPort = new THREE.Mesh(roundedBox(0.004, 0.015, 0.056, 0.002, 0.0005), bluedMat);
-      ejPort.position.set(0.019, 0.010, -0.01);
-
-      const cockingTube = new THREE.Mesh(new THREE.CylinderGeometry(0.0138, 0.0138, 0.25, 14), steelMat);
-      cockingTube.rotation.x = Math.PI / 2;
-      cockingTube.position.set(0, 0.022, -0.175);
-      const tripleFrame = new THREE.Mesh(roundedBox(0.032, 0.044, 0.020, 0.004, 0.0012), bluedMat);
-      tripleFrame.position.set(0, 0.012, -0.295);
-
-      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.0095, 0.010, 0.28, 14), bluedMat);
-      barrel.rotation.x = Math.PI / 2;
-      barrel.position.set(0, 0.001, -0.21);
-      const triLug = new THREE.Mesh(new THREE.CylinderGeometry(0.0125, 0.0125, 0.022, 12), magMat);
-      triLug.rotation.x = Math.PI / 2;
-      triLug.position.set(0, 0.001, -0.345);
-
-      // Sloped wide triangular Tropical handguard (ExtrudeGeometry silhouette)
-      const hgGeo = extrudeSide([
-        [0.09, -0.002], [0.275, -0.002], [0.265, -0.024], [0.165, -0.040], [0.09, -0.036]
-      ], 0.044, null, true);
-      const handguard = new THREE.Mesh(hgGeo, darkMat);
-      const hgPin = new THREE.Mesh(new THREE.CylinderGeometry(0.004, 0.004, 0.048, 10), magMat);
-      hgPin.rotation.z = Math.PI / 2;
-      hgPin.position.set(0, 0.004, -0.255);
-
-      // Contoured Navy trigger housing + steel magwell + paddle release + selector
-      const lower = new THREE.Mesh(roundedBox(0.035, 0.026, 0.175, 0.005, 0.0015), darkMat);
-      lower.position.set(0, -0.019, 0.085);
-      const magWell = new THREE.Mesh(roundedBox(0.038, 0.044, 0.056, 0.0045, 0.0015), steelMat);
-      magWell.position.set(0, -0.026, -0.045);
-      const paddleRel = new THREE.Mesh(roundedBox(0.014, 0.022, 0.010, 0.0025, 0.0008), bluedMat);
-      paddleRel.position.set(0, -0.048, -0.012);
-      const selector = new THREE.Mesh(roundedBox(0.006, 0.012, 0.026, 0.002, 0.0006), magMat);
-      selector.position.set(-0.020, -0.020, 0.115);
-      selector.rotation.x = 0.25;
-
-      const grip = new THREE.Mesh(curvedGrip(0.029, 0.098, 0.042), darkMat);
-      grip.position.set(0, -0.072, 0.132);
-      grip.rotation.x = 0.28;
-      const endCap = new THREE.Mesh(roundedBox(0.042, 0.050, 0.028, 0.006, 0.0018), darkMat);
-      endCap.position.set(0, 0.002, 0.182);
-
-      if (!mods.stock || mods.stock === 'none') {
-        const stRailL = new THREE.Mesh(roundedBox(0.006, 0.009, 0.22, 0.002, 0.0006), magMat);
-        stRailL.position.set(-0.019, 0.002, 0.285);
-        const stRailR = stRailL.clone();
-        stRailR.position.x = 0.019;
-        const stPad = new THREE.Mesh(roundedBox(0.038, 0.105, 0.026, 0.007, 0.0022), darkMat);
-        stPad.position.set(0, -0.022, 0.395);
-        g.add(stRailL, stRailR, stPad);
-      }
-      addTriggerGuard(0.072, -0.038);
-
-      // Single-piece curved 30-round steel MP5 banana magazine (beveled ExtrudeGeometry)
-      const mag = new THREE.Group();
-      const magShape = new THREE.Shape();
-      magShape.moveTo(-0.018, 0.062);
-      magShape.lineTo(0.018, 0.062);
-      magShape.bezierCurveTo(0.024, 0.00, 0.040, -0.062, 0.058, -0.125);
-      magShape.lineTo(0.022, -0.134);
-      magShape.bezierCurveTo(0.004, -0.070, -0.012, -0.008, -0.018, 0.062);
-      const mp5MagGeo = new THREE.ExtrudeGeometry(magShape, { depth: 0.023, bevelEnabled: true, bevelThickness: 0.0018, bevelSize: 0.0016, bevelSegments: 2, curveSegments: 12 });
-      mp5MagGeo.translate(0, 0, -0.0115);
-      mp5MagGeo.rotateY(Math.PI / 2);
-      const mp5MagBody = new THREE.Mesh(mp5MagGeo, magMat);
-      const magFloor = new THREE.Mesh(roundedBox(0.028, 0.009, 0.042, 0.003, 0.001), bluedMat);
-      magFloor.position.set(0, -0.130, -0.040);
-      magFloor.rotation.x = -0.26;
-      const magTip = new THREE.Mesh(new THREE.BoxGeometry(0.020, 0.011, 0.030), brassMat);
-      magTip.position.set(0, 0.066, 0);
-      mag.add(mp5MagBody, magFloor, magTip);
-      mag.position.set(0, -0.096, -0.045);
-      mag.rotation.x = -0.06;
-      this.magMesh = mag;
-      this.magRestPos.copy(mag.position);
-      this.spareMagMesh = mag.clone();
-      this.spareMagMesh.visible = false;
-
-      const boltHandle = new THREE.Group();
-      const chStem = new THREE.Mesh(roundedBox(0.026, 0.010, 0.012, 0.003, 0.0008), magMat);
-      const chKnob = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.009, 0.026, 12), darkMat);
-      chKnob.rotation.z = Math.PI / 2;
-      chKnob.position.set(-0.016, 0.006, 0);
-      boltHandle.add(chStem, chKnob);
-      boltHandle.position.set(-0.022, 0.024, -0.21);
-      this.boltMesh = boltHandle;
-      this.boltRestPos.copy(boltHandle.position);
-
-      this.rightHand = this._createHand(true, 'grip');
-      this.rightHand.position.set(0.0, -0.064, 0.132);
-      this.leftHand = this._createHand(false, 'supportRifle');
-      this.leftHand.position.set(0.0, -0.026, -0.185);
-      this.leftHandRestPos.copy(this.leftHand.position);
-      this.leftHandRestRot.copy(this.leftHand.rotation);
-
-      g.add(
-        upper, upperTop, fluteL, fluteR, ejPort,
-        cockingTube, tripleFrame, barrel, triLug,
-        handguard, hgPin,
-        lower, magWell, paddleRel, selector, grip, endCap,
-        mag, this.spareMagMesh, boltHandle, this.rightHand, this.leftHand
-      );
-      [barrel, triLug, tripleFrame].forEach((m) => { m.renderOrder = -20; });
-      // DMZ 2022 MP5 receiver push-pins, claw-mount lugs & low-profile optics rail
-      addReceiverPins(0.019, [[-0.016, 0.168], [-0.016, 0.012], [-0.021, -0.042]]);
-      addPicatinnyRail(0.036, -0.075, 0.085, 0.018, 0.014, bluedMat);
-
-      this.sightHeight = 0.044;
-      this.adsZ = -0.25;
-      const hasOptic = !!(mods.optic && mods.optic !== 'none');
-      this._addWeaponIronSights(g, 'mp5k', this.sightHeight, hasOptic);
-      this.muzzleMesh.position.set(0, 0.001, -0.365);
-      this.muzzleFlash.position.set(0, 0.01, -0.40);
-    } else if (weaponDef.id === 'ak74m') {
-      // AK-74M: Beveled stamped dimpled receiver + arched ribbed dust cover + 45deg gas block + cleaning rod + twin-chamber muzzle brake + laminated wood/bakelite
-      const receiver = new THREE.Mesh(roundedBox(0.044, 0.050, 0.35, 0.005, 0.0018), steelMat);
-      receiver.position.set(0, -0.003, 0.04);
-      const dimpleR = new THREE.Mesh(roundedBox(0.003, 0.016, 0.036, 0.002, 0.0005), bluedMat);
-      dimpleR.position.set(0.022, -0.012, -0.042);
-      const dimpleL = dimpleR.clone();
-      dimpleL.position.x = -0.022;
-      const safety = new THREE.Mesh(roundedBox(0.004, 0.016, 0.145, 0.002, 0.0006), bluedMat);
-      safety.position.set(0.023, -0.003, 0.065);
-      safety.rotation.x = 0.06;
-
-      // Arched stamped AK ribbed dust cover + rear sight leaf trunnion block
-      const dustCover = new THREE.Mesh(roundedBox(0.036, 0.019, 0.29, 0.008, 0.0018), bluedMat);
-      dustCover.position.set(0, 0.027, 0.075);
-      const rsBlock = new THREE.Mesh(roundedBox(0.040, 0.024, 0.055, 0.004, 0.0014), steelMat);
-      rsBlock.position.set(0, 0.024, -0.085);
-      for (let r = 0; r < 3; r++) {
-        const rib = new THREE.Mesh(roundedBox(0.036, 0.0045, 0.014, 0.002, 0.0006), steelMat);
-        rib.position.set(0, 0.036, 0.015 + r * 0.065);
-        g.add(rib);
-      }
-
-      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.010, 0.0105, 0.44, 14), bluedMat);
-      barrel.rotation.x = Math.PI / 2;
-      barrel.position.set(0, 0.002, -0.34);
-      const cleaningRod = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, 0.36, 10), magMat);
-      cleaningRod.rotation.x = Math.PI / 2;
-      cleaningRod.position.set(0, -0.011, -0.37);
-
-      // 45-degree gas block + hooded front sight block
-      const gasTube = new THREE.Mesh(new THREE.CylinderGeometry(0.0105, 0.0105, 0.22, 14), steelMat);
-      gasTube.rotation.x = Math.PI / 2;
-      gasTube.position.set(0, 0.023, -0.22);
-      const gasBlock = new THREE.Mesh(roundedBox(0.022, 0.036, 0.036, 0.004, 0.0012), bluedMat);
-      gasBlock.position.set(0, 0.014, -0.315);
-      gasBlock.rotation.x = -0.35;
-      const fsbBase = new THREE.Mesh(roundedBox(0.020, 0.040, 0.032, 0.0035, 0.0012), bluedMat);
-      fsbBase.position.set(0, 0.018, -0.49);
-
-      // Two-chamber AK-74M compensator brake (collar + expansion drum)
-      const brakeBase = new THREE.Mesh(new THREE.CylinderGeometry(0.0135, 0.0125, 0.036, 14), steelMat);
-      brakeBase.rotation.x = Math.PI / 2;
-      brakeBase.position.set(0, 0.002, -0.556);
-      const brakeFront = new THREE.Mesh(new THREE.CylinderGeometry(0.0145, 0.0145, 0.032, 14), bluedMat);
-      brakeFront.rotation.x = Math.PI / 2;
-      brakeFront.position.set(0, 0.002, -0.586);
-
-      // Contoured laminated wood AK handguards with steel retainer ferrule
-      const hgLower = new THREE.Mesh(roundedBox(0.044, 0.034, 0.195, 0.010, 0.0022), woodMat);
-      hgLower.position.set(0, -0.009, -0.215);
-      const hgUpper = new THREE.Mesh(new THREE.CylinderGeometry(0.0165, 0.0165, 0.185, 14), woodMat);
-      hgUpper.rotation.x = Math.PI / 2;
-      hgUpper.position.set(0, 0.023, -0.215);
-      const hgFerrule = new THREE.Mesh(roundedBox(0.046, 0.044, 0.014, 0.005, 0.0012), bluedMat);
-      hgFerrule.position.set(0, 0.004, -0.310);
-
-      const grip = new THREE.Mesh(curvedGrip(0.029, 0.10, 0.043), bakeliteMat);
-      grip.position.set(0, -0.075, 0.14);
-      grip.rotation.x = 0.26;
-      const magPaddle = new THREE.Mesh(roundedBox(0.014, 0.020, 0.012, 0.0025, 0.0008), bluedMat);
-      magPaddle.position.set(0, -0.034, 0.008);
-      addTriggerGuard(0.08, -0.032);
-
-      const hasStockMod = !!(mods.stock && mods.stock !== 'none');
-      if (!hasStockMod) {
-        const sShape = new THREE.Shape();
-        sShape.moveTo(0.0, 0.022);
-        sShape.lineTo(0.245, -0.012);
-        sShape.lineTo(0.245, -0.108);
-        sShape.lineTo(0.055, -0.052);
-        sShape.lineTo(0.0, -0.024);
-        sShape.closePath();
-        const sGeo = new THREE.ExtrudeGeometry(sShape, { depth: 0.034, bevelEnabled: true, bevelThickness: 0.003, bevelSize: 0.0025, bevelSegments: 2 });
-        sGeo.translate(0, 0, -0.017);
-        sGeo.rotateY(-Math.PI / 2);
-        const woodButt = new THREE.Mesh(sGeo, woodMat);
-        woodButt.position.set(0, -0.002, 0.215);
-        const buttPlate = new THREE.Mesh(roundedBox(0.038, 0.100, 0.012, 0.005, 0.0015), bluedMat);
-        buttPlate.position.set(0, -0.062, 0.465);
-        const tang = new THREE.Mesh(roundedBox(0.034, 0.010, 0.044, 0.003, 0.001), steelMat);
-        tang.position.set(0, 0.020, 0.233);
-        g.add(woodButt, buttPlate, tang);
-      }
-
-      const buildCurvedAkMag = (isExtended = false) => {
-        const magGrp = new THREE.Group();
-        const magDepth = 0.027;
-        const magH = isExtended ? 0.245 : 0.182;
-        const curveFwd = isExtended ? 0.122 : 0.078;
-        const magThick = 0.052;
-        const shape = new THREE.Shape();
-        shape.moveTo(-magThick * 0.5, 0.048);
-        shape.lineTo(magThick * 0.5, 0.048);
-        shape.bezierCurveTo(
-          magThick * 0.5 + curveFwd * 0.14, 0.048 - magH * 0.34,
-          magThick * 0.5 + curveFwd * 0.56, 0.048 - magH * 0.72,
-          magThick * 0.42 + curveFwd, 0.048 - magH
-        );
-        const tipAngle = isExtended ? 0.46 : 0.36;
-        const rearEndX = magThick * 0.42 + curveFwd - Math.cos(tipAngle) * magThick;
-        const rearEndY = 0.048 - magH - Math.sin(tipAngle) * magThick;
-        shape.lineTo(rearEndX, rearEndY);
-        shape.bezierCurveTo(
-          -magThick * 0.5 + curveFwd * 0.44, 0.048 - magH * 0.68,
-          -magThick * 0.5 + curveFwd * 0.08, 0.048 - magH * 0.32,
-          -magThick * 0.5, 0.048
-        );
-        const geo = new THREE.ExtrudeGeometry(shape, {
-          depth: magDepth,
-          bevelEnabled: true,
-          bevelThickness: 0.002,
-          bevelSize: 0.0018,
-          bevelSegments: 1,
-          curveSegments: 10
-        });
-        geo.translate(0, 0, -magDepth * 0.5);
-        geo.rotateY(Math.PI / 2);
-        const body = new THREE.Mesh(geo, bakeliteMat);
-        const basePlate = new THREE.Mesh(new THREE.BoxGeometry(magDepth + 0.006, 0.009, magThick + 0.006), bluedMat);
-        basePlate.position.set(0, (0.048 - magH + rearEndY) * 0.5 - 0.003, -((magThick * 0.42 + curveFwd + rearEndX) * 0.5));
-        basePlate.rotation.x = -tipAngle;
-        const magTip = new THREE.Mesh(new THREE.BoxGeometry(0.020, 0.010, 0.042), brassMat);
-        magTip.position.set(0, 0.052, 0);
-        magGrp.add(body, basePlate, magTip);
-        return magGrp;
-      };
-
-      const mag = buildCurvedAkMag(mods.magazine === 'ext_mag');
-      mag.position.set(0, -0.048, -0.042);
-      this.magMesh = mag;
-      this.magRestPos.copy(mag.position);
-
-      const boltHandle = new THREE.Group();
-      const carrier = new THREE.Mesh(new THREE.BoxGeometry(0.006, 0.014, 0.048), magMat);
-      const hookKnob = new THREE.Mesh(new THREE.BoxGeometry(0.026, 0.010, 0.012), magMat);
-      hookKnob.position.set(0.012, 0.0, 0.010);
-      boltHandle.add(carrier, hookKnob);
-      boltHandle.position.set(0.022, 0.014, -0.02);
-      this.boltMesh = boltHandle;
-      this.boltRestPos.copy(boltHandle.position);
-
-      this.rightHand = this._createHand(true, 'grip');
-      this.rightHand.position.set(0.0, -0.068, 0.142);
-      this.rightHand.rotation.x = 0.24;
-      this.leftHand = this._createHand(false, 'supportRifle');
-      this.leftHand.position.set(0.0, -0.022, -0.22);
-      this.leftHandRestPos.copy(this.leftHand.position);
-      this.leftHandRestRot.copy(this.leftHand.rotation);
-
-      this.spareMagMesh = mag.clone();
-      this.spareMagMesh.visible = false;
-
-      g.add(
-        receiver, dimpleR, dimpleL, safety, dustCover, rsBlock,
-        barrel, cleaningRod, gasTube, gasBlock, fsbBase, brakeBase, brakeFront,
-        hgLower, hgUpper, hgFerrule, grip, magPaddle,
-        mag, this.spareMagMesh, boltHandle, this.rightHand, this.leftHand
-      );
-      // DMZ 2022 AK-74M Russian side dovetail rail, trunnion rivets & brake compensation ports
-      const sideRail = new THREE.Mesh(roundedBox(0.006, 0.015, 0.132, 0.0015, 0.0005), bluedMat);
-      sideRail.position.set(-0.024, 0.002, 0.078);
-      const sideRailGroove = new THREE.Mesh(new THREE.BoxGeometry(0.007, 0.004, 0.118), darkMat);
-      sideRailGroove.position.set(-0.0245, 0.002, 0.078);
-      const brakePort = new THREE.Mesh(new THREE.BoxGeometry(0.029, 0.011, 0.014), darkMat);
-      brakePort.position.set(0, 0.002, -0.562);
-      g.add(sideRail, sideRailGroove, brakePort);
-      [barrel, cleaningRod, gasBlock, fsbBase, brakeBase, brakeFront, brakePort].forEach((m) => { m.renderOrder = -20; });
-      addReceiverPins(0.022, [[-0.014, 0.045], [-0.014, 0.088], [0.006, -0.085], [-0.010, -0.095]]);
-
-      this.sightHeight = 0.044;
-      this.adsZ = -0.26;
-      const hasOptic = !!(mods.optic && mods.optic !== 'none');
-      this._addWeaponIronSights(g, 'ak74m', this.sightHeight, hasOptic);
-      this.muzzleMesh.position.set(0, 0.004, -0.60);
-      this.muzzleFlash.position.set(0, 0.01, -0.64);
-    } else if (weaponDef.id === 'm870') {
-      // Remington 870 Trench Shotgun (Arched billet steel receiver + heatshield/clamp + ribbed walnut pump + contoured buttstock)
-      const receiver = new THREE.Mesh(roundedBox(0.046, 0.056, 0.28, 0.011, 0.0022), steelMat);
-      receiver.position.set(0, 0.0, 0.04);
-      const ejectionPort = new THREE.Mesh(roundedBox(0.004, 0.020, 0.072, 0.003, 0.0005), magMat);
-      ejectionPort.position.set(0.023, 0.009, -0.01);
-
-      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.0138, 0.0145, 0.52, 14), bluedMat);
-      barrel.rotation.x = Math.PI / 2;
-      barrel.position.set(0, 0.014, -0.34);
-
-      const magTube = new THREE.Mesh(new THREE.CylinderGeometry(0.0128, 0.0128, 0.46, 14), steelMat);
-      magTube.rotation.x = Math.PI / 2;
-      magTube.position.set(0, -0.016, -0.31);
-      const bblClamp = new THREE.Mesh(roundedBox(0.026, 0.048, 0.022, 0.005, 0.0014), bluedMat);
-      bblClamp.position.set(0, -0.001, -0.49);
-
-      // Ribbed corn-cob Remington 870 walnut sliding pump + dual action bars
-      const pump = new THREE.Group();
-      const pumpCore = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.023, 0.18, 14), woodMat);
-      pumpCore.rotation.x = Math.PI / 2;
-      pump.add(pumpCore);
-      for (let r = -2; r <= 2; r++) {
-        const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.0245, 0.0245, 0.012, 14), bluedMat);
-        ring.rotation.x = Math.PI / 2;
-        ring.position.set(0, 0, r * 0.032);
-        pump.add(ring);
-      }
-      const actionBarL = new THREE.Mesh(roundedBox(0.004, 0.007, 0.16, 0.0015, 0.0004), magMat);
-      actionBarL.position.set(-0.021, 0.002, 0.14);
-      const actionBarR = actionBarL.clone();
-      actionBarR.position.x = 0.021;
-      pump.add(actionBarL, actionBarR);
-      pump.position.set(0, -0.016, -0.24);
-      this.boltMesh = pump;
-      this.boltRestPos.copy(pump.position);
-
-      // One-piece sculpted walnut buttstock with semi-pistol wrist swell + rounded rubber recoil pad
-      const stockGeo = extrudeSide([
-        [-0.14, -0.002], [-0.14, -0.032], [-0.175, -0.060], [-0.215, -0.062],
-        [-0.465, -0.098], [-0.465, 0.004], [-0.24, -0.006]
-      ], 0.038, null, true);
-      const stockBody = new THREE.Mesh(stockGeo, woodMat);
-      const stockPad = new THREE.Mesh(roundedBox(0.040, 0.104, 0.020, 0.007, 0.0022), darkMat);
-      stockPad.position.set(0, -0.047, 0.475);
-      addTriggerGuard(0.08, -0.028);
-
-      // 12ga red ribbed shell for loading port animation (nose forward -Z, brass base rearward +Z for thumb push!)
-      const shell = new THREE.Group();
-      const shellHull = new THREE.Mesh(new THREE.CylinderGeometry(0.0095, 0.0095, 0.058, 12), shellRedMat);
-      const shellBrass = new THREE.Mesh(new THREE.CylinderGeometry(0.010, 0.010, 0.016, 12), brassMat);
-      shellBrass.position.set(0, -0.028, 0);
-      shell.add(shellHull, shellBrass);
-      shell.rotation.x = -Math.PI / 2;
-      shell.position.set(0, -0.020, -0.02);
-      this.magMesh = shell;
-      this.magRestPos.copy(shell.position);
-
-      this.rightHand = this._createHand(true, 'shotgunGrip');
-      this.rightHand.position.set(0.004, -0.048, 0.168);
-      this.rightHand.rotation.set(0.22, -0.04, 0.06);
-      this.leftHand = this._createHand(false, 'supportRifle');
-      this.leftHand.position.set(0.0, -0.032, -0.24);
-      this.leftHandRestPos.copy(this.leftHand.position);
-      this.leftHandRestRot.copy(this.leftHand.rotation);
-
-      g.add(receiver, ejectionPort, barrel, magTube, bblClamp, pump, stockBody, stockPad, shell, this.rightHand, this.leftHand);
-      [barrel, magTube, bblClamp].forEach((m) => { m.renderOrder = -20; });
-      // DMZ 2022 Remington 870 receiver trigger pins + milled top rail slots
-      addReceiverPins(0.023, [[-0.012, 0.042], [-0.012, 0.095]]);
-      addPicatinnyRail(0.030, -0.055, 0.095, 0.018, 0.014, bluedMat);
-
-      this.sightHeight = 0.042;
-      this.adsZ = -0.26;
-      const hasOptic = !!(mods.optic && mods.optic !== 'none');
-      this._addWeaponIronSights(g, 'm870', this.sightHeight, hasOptic);
-      this.muzzleMesh.position.set(0, 0.014, -0.61);
-      this.muzzleFlash.position.set(0, 0.02, -0.65);
-    } else if (weaponDef.id === 'mosin9130') {
-      // Mosin-Nagant M91/30 (Full sculpted birch stock + octagonal receiver + dual barrel bands + cleaning rod + exposed internal mag)
-      const stockGeo = extrudeSide([
-        [0.42, -0.002], [0.42, -0.024], [0.08, -0.034], [-0.08, -0.034],
-        [-0.18, -0.056], [-0.415, -0.092], [-0.415, -0.002], [-0.21, -0.010],
-        [-0.08, 0.004], [0.06, 0.006]
-      ], 0.039, null, true);
-      const stockBody = new THREE.Mesh(stockGeo, woodMat);
-      const upperHandguard = new THREE.Mesh(roundedBox(0.034, 0.018, 0.36, 0.007, 0.0018), woodMat);
-      upperHandguard.position.set(0, 0.016, -0.22);
-      const buttPlate = new THREE.Mesh(roundedBox(0.040, 0.092, 0.010, 0.005, 0.0014), bluedMat);
-      buttPlate.position.set(0, -0.047, 0.420);
-
-      const bandRear = new THREE.Mesh(roundedBox(0.044, 0.046, 0.016, 0.008, 0.0014), bluedMat);
-      bandRear.position.set(0, 0.002, -0.18);
-      const bandFront = new THREE.Mesh(roundedBox(0.043, 0.044, 0.016, 0.008, 0.0014), bluedMat);
-      bandFront.position.set(0, 0.002, -0.37);
-      const cleaningRod = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, 0.44, 10), magMat);
-      cleaningRod.rotation.x = Math.PI / 2;
-      cleaningRod.position.set(0, -0.002, -0.44);
-
-      // Classic Soviet hexagonal high-wall receiver + tapered barrel + internal magazine belly
-      const receiver = new THREE.Mesh(new THREE.CylinderGeometry(0.020, 0.020, 0.22, 8), bluedMat);
-      receiver.rotation.x = Math.PI / 2;
-      receiver.position.set(0, 0.016, 0.02);
-      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.0095, 0.0125, 0.60, 14), bluedMat);
-      barrel.rotation.x = Math.PI / 2;
-      barrel.position.set(0, 0.016, -0.36);
-      const internalMag = new THREE.Mesh(roundedBox(0.026, 0.034, 0.095, 0.004, 0.0014), bluedMat);
-      internalMag.position.set(0, -0.044, -0.01);
-      addTriggerGuard(0.08, -0.034);
-
-      const boltGroup = new THREE.Group();
-      const boltBody = new THREE.Mesh(new THREE.CylinderGeometry(0.010, 0.010, 0.10, 12), magMat);
-      boltBody.rotation.x = Math.PI / 2;
-      boltBody.position.set(-0.022, 0.0, 0.0);
-      const boltStem = new THREE.Mesh(roundedBox(0.034, 0.008, 0.009, 0.0025, 0.0006), magMat);
-      const boltKnob = new THREE.Mesh(new THREE.SphereGeometry(0.011, 12, 10), magMat);
-      boltKnob.position.set(0.022, 0.0, 0);
-      boltGroup.add(boltBody, boltStem, boltKnob);
-      boltGroup.position.set(0.022, 0.018, 0.03);
-      this.boltMesh = boltGroup;
-      this.boltRestPos.copy(boltGroup.position);
-
-      const clipGroup = new THREE.Group();
-      const clipRail = new THREE.Mesh(roundedBox(0.018, 0.010, 0.068, 0.002, 0.0006), steelMat);
-      clipRail.position.set(0, 0.028, 0);
-      clipGroup.add(clipRail);
-      for (let c = 0; c < 5; c++) {
-        const round = new THREE.Mesh(new THREE.CylinderGeometry(0.0042, 0.0048, 0.056, 10), brassMat);
-        round.rotation.x = Math.PI / 2;
-        round.position.set(0, 0.020 - c * 0.009, 0);
-        clipGroup.add(round);
-      }
-      clipGroup.position.set(0, 0.032, 0.0);
-      clipGroup.visible = false;
-      clipGroup.userData.isStripperClip = true;
-      this.magMesh = clipGroup;
-      this.magRestPos.copy(clipGroup.position);
-
-      this.rightHand = this._createHand(true, 'grip');
-      this.rightHand.position.set(0.0, -0.048, 0.148);
-      this.leftHand = this._createHand(false, 'supportRifle');
-      this.leftHand.position.set(0.0, -0.026, -0.22);
-      this.leftHandRestPos.copy(this.leftHand.position);
-      this.leftHandRestRot.copy(this.leftHand.rotation);
-
-      g.add(
-        stockBody, upperHandguard, buttPlate,
-        bandRear, bandFront, cleaningRod, receiver, barrel, internalMag,
-        boltGroup, clipGroup, this.rightHand, this.leftHand
-      );
-      [barrel, cleaningRod, bandFront].forEach((m) => { m.renderOrder = -20; });
-
-      this.sightHeight = 0.040;
-      this.adsZ = -0.24;
-      const hasOptic = !!(mods.optic && mods.optic !== 'none');
-      this._addWeaponIronSights(g, 'mosin9130', this.sightHeight, hasOptic);
-      this.muzzleMesh.position.set(0, 0.016, -0.66);
-      this.muzzleFlash.position.set(0, 0.02, -0.70);
-    } else if (weaponDef.id === 'awm338') {
-      // AWM .338 (Accuracy International L96A1 Thumbhole Chassis via Shape+holes ExtrudeGeometry)
-      const hasStockMod = !!(mods.stock && mods.stock !== 'none');
-      const chassisPts = hasStockMod
-        ? [[0.30, 0.016], [0.30, -0.038], [-0.14, -0.038], [-0.15, -0.105], [-0.19, -0.102], [-0.18, 0.008]]
-        : [
-            [0.30, 0.016], [0.30, -0.036], [-0.12, -0.036], [-0.14, -0.106],
-            [-0.185, -0.104], [-0.365, -0.102], [-0.365, 0.012], [-0.18, 0.010]
-          ];
-      const thumbHole = hasStockMod ? null : [
-        [[-0.20, -0.018], [-0.29, -0.018], [-0.29, -0.072], [-0.20, -0.072]]
-      ];
-      const chassis = new THREE.Mesh(extrudeSide(chassisPts, 0.044, thumbHole, true), chassisMat);
-
-      const receiver = new THREE.Mesh(roundedBox(0.042, 0.042, 0.26, 0.007, 0.002), bluedMat);
-      receiver.position.set(0, 0.018, 0.04);
-      const topRail = new THREE.Mesh(roundedBox(0.024, 0.008, 0.24, 0.002, 0.0008), steelMat);
-      topRail.position.set(0, 0.041, 0.02);
-
-      if (!hasStockMod) {
-        const cheekRest = new THREE.Mesh(roundedBox(0.042, 0.024, 0.12, 0.008, 0.002), darkMat);
-        cheekRest.position.set(0, 0.022, 0.27);
-        const buttPad = new THREE.Mesh(roundedBox(0.044, 0.114, 0.022, 0.007, 0.0022), darkMat);
-        buttPad.position.set(0, -0.044, 0.372);
-        g.add(cheekRest, buttPad);
-      }
-
-      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.013, 0.016, 0.58, 14), bluedMat);
-      barrel.rotation.x = Math.PI / 2;
-      barrel.position.set(0, 0.018, -0.40);
-      // Iconic AI multi-port 3-chamber beveled rectangular muzzle brake
-      const muzzleBrake = new THREE.Mesh(roundedBox(0.032, 0.026, 0.068, 0.0045, 0.0014), steelMat);
-      muzzleBrake.position.set(0, 0.018, -0.71);
-      for (let b = -1; b <= 1; b++) {
-        const port = new THREE.Mesh(new THREE.BoxGeometry(0.035, 0.014, 0.010), darkMat);
-        port.position.set(0, 0.018, -0.71 + b * 0.019);
-        g.add(port);
-      }
-
-      const bipodMount = new THREE.Mesh(roundedBox(0.044, 0.022, 0.036, 0.004, 0.0012), darkMat);
-      bipodMount.position.set(0, -0.046, -0.26);
-      const bipodL = new THREE.Mesh(new THREE.CylinderGeometry(0.006, 0.006, 0.20, 10), bluedMat);
-      bipodL.rotation.x = Math.PI / 2;
-      bipodL.position.set(-0.026, -0.046, -0.36);
-      const bipodR = bipodL.clone();
-      bipodR.position.x = 0.026;
-
-      const mag = new THREE.Group();
-      const magBody = new THREE.Mesh(roundedBox(0.032, 0.098, 0.084, 0.004, 0.0012), magMat);
-      const magFloor = new THREE.Mesh(roundedBox(0.035, 0.010, 0.088, 0.003, 0.001), darkMat);
-      magFloor.position.set(0, -0.050, 0);
-      const magTip = new THREE.Mesh(new THREE.BoxGeometry(0.024, 0.014, 0.072), brassMat);
-      magTip.position.set(0, 0.052, 0);
-      mag.add(magBody, magFloor, magTip);
-      mag.position.set(0, -0.074, -0.02);
-      this.magMesh = mag;
-      this.magRestPos.copy(mag.position);
-      this.spareMagMesh = mag.clone();
-      this.spareMagMesh.visible = false;
-      addTriggerGuard(0.095, -0.038);
-
-      const boltGroup = new THREE.Group();
-      const boltStem = new THREE.Mesh(roundedBox(0.036, 0.010, 0.011, 0.0025, 0.0006), magMat);
-      const boltKnob = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.013, 0.024, 12), darkMat);
-      boltKnob.rotation.z = Math.PI / 2;
-      boltKnob.position.set(0.024, -0.004, 0);
-      boltGroup.add(boltStem, boltKnob);
-      boltGroup.position.set(0.024, 0.020, 0.045);
-      this.boltMesh = boltGroup;
-      this.boltRestPos.copy(boltGroup.position);
-
-      this.rightHand = this._createHand(true, 'grip');
-      this.rightHand.position.set(0.0, -0.058, 0.156);
-      this.leftHand = this._createHand(false, 'supportRifle');
-      this.leftHand.position.set(0.0, -0.032, -0.18);
-      this.leftHandRestPos.copy(this.leftHand.position);
-      this.leftHandRestRot.copy(this.leftHand.rotation);
-
-      g.add(
-        chassis, receiver, topRail, barrel, muzzleBrake, bipodMount, bipodL, bipodR,
-        mag, this.spareMagMesh, boltGroup, this.rightHand, this.leftHand
-      );
-      [barrel, muzzleBrake].forEach((m) => { m.renderOrder = -20; });
-      // DMZ 2022 AWM milled top Picatinny rail teeth & chassis mounting bolts
-      addPicatinnyRail(0.0465, -0.092, 0.132, 0.023, 0.013, darkMat);
-      addReceiverPins(0.022, [[-0.014, -0.06], [-0.014, 0.08], [-0.014, -0.20]]);
-
-      this.sightHeight = 0.078;
-      this.adsZ = -0.20;
-      this._addWeaponIronSights(g, 'awm338', this.sightHeight, true);
-      if (!mods.optic || mods.optic === 'none') {
-        this._addScope(g, this.sightHeight, 'sniper', 0.042, withHands);
-      }
-      this.muzzleMesh.position.set(0, 0.018, -0.75);
-      this.muzzleFlash.position.set(0, 0.02, -0.79);
-    } else {
-      // M24 SWS Bolt-Action Rifle (Contoured HS-Precision Kevlar composite stock + cylindrical R700 receiver + Picatinny scope base + tapered free-float barrel)
-      const hasStockMod = !!(mods.stock && mods.stock !== 'none');
-      const m24Pts = hasStockMod
-        ? [[0.24, 0.012], [0.24, -0.028], [-0.14, -0.038], [-0.15, -0.106], [-0.19, -0.102], [-0.18, 0.002]]
-        : [
-            [0.24, 0.012], [0.24, -0.028], [-0.12, -0.038], [-0.14, -0.106],
-            [-0.185, -0.102], [-0.21, -0.052], [-0.465, -0.092], [-0.465, 0.010],
-            [-0.22, 0.002]
-          ];
-      const chassis = new THREE.Mesh(extrudeSide(m24Pts, 0.044, null, true), chassisMat);
-
-      const receiver = new THREE.Mesh(new THREE.CylinderGeometry(0.021, 0.021, 0.24, 14), bluedMat);
-      receiver.rotation.x = Math.PI / 2;
-      receiver.position.set(0, 0.016, 0.04);
-      const topRail = new THREE.Mesh(roundedBox(0.022, 0.007, 0.20, 0.002, 0.0008), steelMat);
-      topRail.position.set(0, 0.038, 0.03);
-      const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.0135, 0.50, 14), bluedMat);
-      barrel.rotation.x = Math.PI / 2;
-      barrel.position.set(0, 0.016, -0.36);
-
-      if (!hasStockMod) {
-        const m24Cheek = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.020, 0.13), darkMat);
-        m24Cheek.position.set(0, 0.016, 0.34);
-        const m24Pad = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.106, 0.020), darkMat);
-        m24Pad.position.set(0, -0.041, 0.475);
-        g.add(m24Cheek, m24Pad);
-      }
-
-      const mag = new THREE.Group();
-      const magBody = new THREE.Mesh(new THREE.BoxGeometry(0.028, 0.085, 0.072), magMat);
-      const magTip = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.012, 0.062), brassMat);
-      magTip.position.set(0, 0.046, 0);
-      mag.add(magBody, magTip);
-      mag.position.set(0, -0.068, -0.02);
-      this.magMesh = mag;
-      this.magRestPos.copy(mag.position);
-      this.spareMagMesh = mag.clone();
-      this.spareMagMesh.visible = false;
-
-      addTriggerGuard(0.09, -0.034);
-
-      const boltGroup = new THREE.Group();
-      const boltStem = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.009, 0.010), magMat);
-      const boltKnob = new THREE.Mesh(new THREE.SphereGeometry(0.011, 8, 6), darkMat);
-      boltKnob.position.set(0.020, -0.004, 0);
-      boltGroup.add(boltStem, boltKnob);
-      boltGroup.position.set(0.024, 0.018, 0.04);
-      this.boltMesh = boltGroup;
-      this.boltRestPos.copy(boltGroup.position);
-
-      this.rightHand = this._createHand(true, 'grip');
-      this.rightHand.position.set(0.0, -0.058, 0.152);
-      this.leftHand = this._createHand(false, 'supportRifle');
-      this.leftHand.position.set(0.0, -0.030, -0.18);
-      this.leftHandRestPos.copy(this.leftHand.position);
-      this.leftHandRestRot.copy(this.leftHand.rotation);
-
-      g.add(chassis, receiver, topRail, barrel, mag, this.spareMagMesh, boltGroup, this.rightHand, this.leftHand);
-      barrel.renderOrder = -20;
-      // DMZ 2022 M24 SWS milled Picatinny scope base teeth & receiver action pins
-      addPicatinnyRail(0.043, -0.062, 0.122, 0.021, 0.013, darkMat);
-      addReceiverPins(0.022, [[-0.014, -0.04], [-0.014, 0.09]]);
-
-      this.sightHeight = 0.074;
-      this.adsZ = -0.22;
-      this._addWeaponIronSights(g, 'm24', this.sightHeight, true);
-      if (!mods.optic || mods.optic === 'none') {
-        this._addScope(g, this.sightHeight, 'lpvo', 0.036, withHands);
-      }
-      this.muzzleMesh.position.set(0, 0.016, -0.62);
-      this.muzzleFlash.position.set(0, 0.02, -0.66);
+    const rig = window.ModelSystem.buildWeaponRig(weaponDef, mods, hasCamo ? gunMat : null);
+    const g = rig.group;
+
+    this.boltMesh = rig.boltMesh;
+    if (this.boltMesh) {
+      this.boltRestPos.copy(this.boltMesh.position);
+      this.boltRestRot.copy(this.boltMesh.rotation);
     }
+    this.boltCarrierMesh = rig.boltCarrierMesh || null;
+    if (this.boltCarrierMesh) {
+      this.boltCarrierRestPos.copy(this.boltCarrierMesh.position);
+    }
+    this.chamberRoundMesh = rig.chamberRoundMesh || null;
+    this.magMesh = rig.magMesh;
+    if (this.magMesh) {
+      this.magRestPos.copy(this.magMesh.position);
+      this.magRestRot.copy(this.magMesh.rotation);
+    }
+    this.spareMagMesh = rig.spareMagMesh || null;
 
-    if (this.magMesh) this.magRestRot.copy(this.magMesh.rotation);
-    if (this.boltMesh) this.boltRestRot.copy(this.boltMesh.rotation);
-    if (this.rightHand) {
-      this.rightHandRestPos.copy(this.rightHand.position);
-      this.rightHandRestRot.copy(this.rightHand.rotation);
+    this.rightHand = this._createHand(true, rig.rightHandStyle || 'grip');
+    this.rightHand.position.copy(rig.rightHandPos);
+    this.rightHand.rotation.copy(rig.rightHandRot);
+    this.rightHandRestPos.copy(this.rightHand.position);
+    this.rightHandRestRot.copy(this.rightHand.rotation);
+
+    this.leftHand = this._createHand(false, rig.leftHandStyle || 'supportRifle');
+    this.leftHand.position.copy(rig.leftHandPos);
+    this.leftHand.rotation.copy(rig.leftHandRot);
+    this.leftHandRestPos.copy(this.leftHand.position);
+    this.leftHandRestRot.copy(this.leftHand.rotation);
+
+    g.add(this.rightHand, this.leftHand);
+
+    this.sightHeight = rig.sightHeight;
+    this.adsZ = rig.adsZ;
+    this.muzzleMesh.position.copy(rig.muzzlePos);
+    this.muzzleFlash.position.copy(rig.flashPos);
+
+    const hasOptic = !!(mods.optic && mods.optic !== 'none');
+    if (rig.ironSightOpts) {
+      const target = rig.ironSightTarget || g;
+      this._addWeaponIronSights(target, weaponDef.id, this.sightHeight - target.position.y, hasOptic, rig.ironSightOpts);
+    } else if (weaponDef.id === 'awm338') {
+      this._addWeaponIronSights(g, 'awm338', this.sightHeight, true);
+      if (!hasOptic) this._addScope(g, this.sightHeight, 'sniper', 0.042, withHands);
+    } else if (weaponDef.id === 'm24') {
+      this._addWeaponIronSights(g, 'm24', this.sightHeight, true);
+      if (!hasOptic) this._addScope(g, this.sightHeight, 'lpvo', 0.036, withHands);
+    } else {
+      this._addWeaponIronSights(g, weaponDef.id, this.sightHeight, hasOptic);
     }
 
     this._attachMods(g, weaponDef, mods, withHands);
@@ -3117,6 +2271,9 @@ class WeaponSystem {
       boltMesh: this.boltMesh,
       boltRestPos: this.boltRestPos.clone(),
       boltRestRot: this.boltRestRot.clone(),
+      boltCarrierMesh: this.boltCarrierMesh,
+      boltCarrierRestPos: this.boltCarrierRestPos.clone(),
+      chamberRoundMesh: this.chamberRoundMesh,
       rightHand: this.rightHand,
       leftHand: this.leftHand,
       rightHandRestPos: this.rightHandRestPos.clone(),
@@ -3165,6 +2322,9 @@ class WeaponSystem {
     this.boltMesh = saved.boltMesh;
     this.boltRestPos.copy(saved.boltRestPos);
     this.boltRestRot.copy(saved.boltRestRot);
+    this.boltCarrierMesh = saved.boltCarrierMesh;
+    this.boltCarrierRestPos.copy(saved.boltCarrierRestPos);
+    this.chamberRoundMesh = saved.chamberRoundMesh;
     this.rightHand = saved.rightHand;
     this.leftHand = saved.leftHand;
     this.rightHandRestPos.copy(saved.rightHandRestPos);
@@ -3638,7 +2798,7 @@ class WeaponSystem {
       } else {
         this.inspectTimer -= dt;
         const ip = THREE.MathUtils.clamp(1 - (this.inspectTimer / this.inspectDuration), 0, 1);
-        this._computeInspectPose(ip, dt, inspectPosOffset, inspectRotOffset);
+        this._computeInspectPose(ip, dt, inspectPosOffset, inspectRotOffset, player);
         if (this.inspectTimer <= 0) {
           this.isInspecting = false;
           this._resetReloadParts();
@@ -3809,16 +2969,31 @@ class WeaponSystem {
           this.boltMesh.position.z = this.boltRestPos.z + 0.068;
           this.boltMesh.position.y = this.boltRestPos.y + 0.016;
           this.boltMesh.rotation.z = 0.55;
+          if (this.boltCarrierMesh) {
+            this.boltCarrierMesh.position.z = this.boltCarrierRestPos.z + 0.055;
+          }
         } else if (weaponDef && weaponDef.id === 'mosin9130' && stg >= 1) {
           this.boltMesh.position.z = this.boltRestPos.z + 0.095;
           this.boltMesh.rotation.z = 0.80;
+          if (this.boltCarrierMesh) {
+            this.boltCarrierMesh.position.z = this.boltCarrierRestPos.z;
+          }
         } else {
           const lockOpen = weaponDef && weaponDef.slot === 'secondary' && slotObj && (slotObj.mag === 0 || (stg >= 1 && slotObj.reloadWasEmpty));
           const offset = lockOpen ? 0.052 : (weaponDef && weaponDef.id === 'm870' ? pumpOffset : this.boltKick);
           this.boltMesh.position.z = this.boltRestPos.z + offset;
           this.boltMesh.position.y = this.boltRestPos.y;
           this.boltMesh.rotation.z = this.boltRestRot.z;
+          if (this.boltCarrierMesh) {
+            const carrierOff = (weaponDef && weaponDef.id === 'm870') ? pumpOffset * 0.72 : (stg >= 1 ? 0.055 : this.boltKick);
+            this.boltCarrierMesh.position.z = this.boltCarrierRestPos.z + carrierOff;
+          }
         }
+      } else if (this.boltCarrierMesh) {
+        this.boltCarrierMesh.position.z = this.boltCarrierRestPos.z;
+      }
+      if (this.chamberRoundMesh) {
+        this.chamberRoundMesh.visible = !!(slotObj && slotObj.mag > 0 && !(stg >= 1 && slotObj.reloadWasEmpty));
       }
     }
 
@@ -4606,7 +3781,63 @@ class WeaponSystem {
     };
 
     if (id === 'mp5k') {
-      // MP5-K: Lock charging handle up -> pull mag straight out -> line up fresh mag -> insert -> H&K slap!
+      restRightHand();
+
+      if (!this.wasEmptyReload) {
+        // MW2019+ MP5-K Tactical Reload (round stays chambered — skip cocking lock & HK slap!)
+        if (p > 0.16 && !this.reloadSfxFlags.magOut) {
+          this.reloadSfxFlags.magOut = true;
+          window.soundEngine.playMagOut(this.reloadWeaponId);
+        }
+        if (p > 0.62 && !this.reloadSfxFlags.magIn) {
+          this.reloadSfxFlags.magIn = true;
+          window.soundEngine.playMagIn(this.reloadWeaponId);
+        }
+        if (this.chamberRoundMesh) this.chamberRoundMesh.visible = true;
+        if (this.boltMesh) { this.boltMesh.position.copy(this.boltRestPos); this.boltMesh.rotation.copy(this.boltRestRot); }
+        if (this.boltCarrierMesh) this.boltCarrierMesh.position.copy(this.boltCarrierRestPos);
+
+        if (p < 0.28) {
+          const t = smooth(p / 0.28);
+          pos.x = -0.10 * t; pos.y = 0.10 * t; pos.z = -0.01 * t;
+          rot.x = 0.26 * t; rot.y = 0.28 * t; rot.z = -0.38 * t;
+          if (this.magMesh) {
+            const dropT = Math.max(0, (p / 0.28 - 0.18) / 0.82);
+            setMagAlong(dropT * 0.21, -Math.max(0, dropT - 0.65) * 0.05);
+            this.magMesh.visible = dropT < 0.88;
+            handOnMag(0.03, 'magGrip');
+          }
+        } else if (p < 0.72) {
+          const rawT = (p - 0.28) / 0.44;
+          const jolt = rawT > 0.82 ? Math.sin(Math.min(1, (rawT - 0.82) / 0.18) * Math.PI) : 0;
+          pos.x = -0.10; pos.y = 0.10 + jolt * 0.022; pos.z = -0.01 - jolt * 0.008;
+          rot.x = 0.26 + jolt * 0.085; rot.y = 0.28; rot.z = -0.38;
+          if (this.magMesh) {
+            this.magMesh.visible = rawT > 0.08;
+            if (rawT < 0.46) {
+              const alignT = smooth(THREE.MathUtils.clamp((rawT - 0.08) / 0.38, 0, 1));
+              setMagAlong(THREE.MathUtils.lerp(0.18, 0.13, alignT), THREE.MathUtils.lerp(-0.055, 0, alignT));
+            } else {
+              const insT = smooth(THREE.MathUtils.clamp((rawT - 0.46) / 0.38, 0, 1));
+              setMagAlong(THREE.MathUtils.lerp(0.13, 0, insT), 0);
+            }
+            handOnMag(0.03, 'magGrip');
+          }
+        } else {
+          const t = smooth((p - 0.72) / 0.28);
+          if (this.magMesh) { this.magMesh.visible = true; this.magMesh.position.copy(this.magRestPos); }
+          restLeftHand();
+          pos.x = THREE.MathUtils.lerp(-0.10, 0, t);
+          pos.y = THREE.MathUtils.lerp(0.10, 0, t);
+          pos.z = THREE.MathUtils.lerp(-0.01, 0, t);
+          rot.x = THREE.MathUtils.lerp(0.26, 0, t);
+          rot.y = THREE.MathUtils.lerp(0.28, 0, t);
+          rot.z = THREE.MathUtils.lerp(-0.38, 0, t);
+        }
+        return;
+      }
+
+      // MP5-K Empty Reload: Lock charging handle into notch -> pull mag -> seat fresh mag -> open-palm H&K Slap!
       if (p > 0.06 && !this.reloadSfxFlags.boltLock) {
         this.reloadSfxFlags.boltLock = true;
         window.soundEngine.playRechamber(this.reloadWeaponId || 'mp5k');
@@ -4615,16 +3846,15 @@ class WeaponSystem {
         this.reloadSfxFlags.magOut = true;
         window.soundEngine.playMagOut(this.reloadWeaponId);
       }
-      if (p > 0.68 && !this.reloadSfxFlags.magIn) {
+      if (p > 0.66 && !this.reloadSfxFlags.magIn) {
         this.reloadSfxFlags.magIn = true;
         window.soundEngine.playMagIn(this.reloadWeaponId);
       }
-      if (p > 0.80 && !this.reloadSfxFlags.rack) {
+      if (p > 0.78 && !this.reloadSfxFlags.rack) {
         this.reloadSfxFlags.rack = true;
         window.soundEngine.playRechamber(this.reloadWeaponId || 'mp5k');
       }
-
-      restRightHand();
+      if (this.chamberRoundMesh) this.chamberRoundMesh.visible = p >= 0.78;
 
       if (p < 0.20) {
         const t = smooth(p / 0.20);
@@ -4634,6 +3864,7 @@ class WeaponSystem {
           this.boltMesh.position.z = this.boltRestPos.z + t * 0.068;
           this.boltMesh.position.y = this.boltRestPos.y + Math.max(0, (t - 0.5) * 2) * 0.016;
           this.boltMesh.rotation.z = Math.max(0, (t - 0.5) * 2) * 0.55;
+          if (this.boltCarrierMesh) this.boltCarrierMesh.position.z = this.boltCarrierRestPos.z + t * 0.055;
           moveLeftHand(this.boltMesh.position.x - 0.018, this.boltMesh.position.y, this.boltMesh.position.z + 0.018, 0.12, 0.18, 0.15, 'leftBoltPinch');
         }
       } else if (p < 0.42) {
@@ -4648,17 +3879,18 @@ class WeaponSystem {
           this.boltMesh.position.y = this.boltRestPos.y + 0.016;
           this.boltMesh.rotation.z = 0.55;
         }
+        if (this.boltCarrierMesh) this.boltCarrierMesh.position.z = this.boltCarrierRestPos.z + 0.055;
         if (this.magMesh) {
           setMagAlong(t * 0.22, -Math.max(0, t - 0.65) * 0.06);
           this.magMesh.visible = t < 0.88;
           handOnMag(0.03, 'magGrip');
         }
-      } else if (p < 0.72) {
-        // Methodical line-up (0.42..0.56) -> straight insertion along magwell (0.56..0.72)
-        const rawT = (p - 0.42) / 0.30;
+      } else if (p < 0.70) {
+        const rawT = (p - 0.42) / 0.28;
         const jolt = rawT > 0.86 ? Math.sin(((rawT - 0.86) / 0.14) * Math.PI) : 0;
         pos.x = -0.13; pos.y = 0.13 + jolt * 0.022;
         rot.x = 0.34 + jolt * 0.08; rot.y = 0.36; rot.z = -0.45;
+        if (this.boltCarrierMesh) this.boltCarrierMesh.position.z = this.boltCarrierRestPos.z + 0.055;
         if (this.magMesh) {
           this.magMesh.visible = rawT > 0.06;
           if (rawT < 0.45) {
@@ -4671,23 +3903,24 @@ class WeaponSystem {
           handOnMag(0.03, 'magGrip');
         }
       } else if (p < 0.90) {
-        const rawT = (p - 0.72) / 0.18;
+        const rawT = (p - 0.70) / 0.20;
         const t = smooth(rawT);
         if (this.magMesh) { this.magMesh.visible = true; this.magMesh.position.copy(this.magRestPos); }
-        const slapJolt = rawT > 0.45 ? Math.sin(Math.min(1, (rawT - 0.45) / 0.35) * Math.PI) : 0;
+        const slapJolt = rawT > 0.42 ? Math.sin(Math.min(1, (rawT - 0.42) / 0.34) * Math.PI) : 0;
         pos.x = THREE.MathUtils.lerp(-0.13, -0.09, t);
-        pos.y = THREE.MathUtils.lerp(0.13, 0.08, t) - slapJolt * 0.025;
-        rot.x = THREE.MathUtils.lerp(0.34, 0.10, t) - slapJolt * 0.10;
+        pos.y = THREE.MathUtils.lerp(0.13, 0.08, t) - slapJolt * 0.026;
+        rot.x = THREE.MathUtils.lerp(0.34, 0.10, t) - slapJolt * 0.11;
         rot.y = THREE.MathUtils.lerp(0.36, -0.22, t);
         rot.z = THREE.MathUtils.lerp(-0.45, 0.26, t);
         if (this.boltMesh) {
-          const snap = rawT < 0.45 ? 0 : smooth((rawT - 0.45) / 0.30);
+          const snap = rawT < 0.42 ? 0 : smooth(Math.min(1, (rawT - 0.42) / 0.26));
           this.boltMesh.position.z = THREE.MathUtils.lerp(this.boltRestPos.z + 0.068, this.boltRestPos.z, snap);
           this.boltMesh.position.y = THREE.MathUtils.lerp(this.boltRestPos.y + 0.016, this.boltRestPos.y, snap);
           this.boltMesh.rotation.z = THREE.MathUtils.lerp(0.55, 0, snap);
+          if (this.boltCarrierMesh) this.boltCarrierMesh.position.z = THREE.MathUtils.lerp(this.boltCarrierRestPos.z + 0.055, this.boltCarrierRestPos.z, snap);
           moveLeftHand(
             this.boltMesh.position.x - 0.022,
-            this.boltMesh.position.y + (1 - snap) * 0.045,
+            this.boltMesh.position.y + (1 - snap) * 0.048,
             this.boltMesh.position.z + 0.010,
             -0.24 + snap * 0.36, 0.14, -0.18, 'slapOpen'
           );
@@ -4695,6 +3928,7 @@ class WeaponSystem {
       } else {
         const t = smooth((p - 0.90) / 0.10);
         if (this.boltMesh) { this.boltMesh.position.copy(this.boltRestPos); this.boltMesh.rotation.copy(this.boltRestRot); }
+        if (this.boltCarrierMesh) this.boltCarrierMesh.position.copy(this.boltCarrierRestPos);
         restLeftHand();
         pos.x = THREE.MathUtils.lerp(-0.09, 0, t);
         pos.y = THREE.MathUtils.lerp(0.08, 0, t);
@@ -4906,39 +4140,98 @@ class WeaponSystem {
     }
 
     if (id === 'm870') {
-      // M870 Trenchgun: Roll to expose bottom loading gate, drive each 12ga shell in with the left THUMB, then pump slide/foregrip if empty!
-      const loadStart = 0.12;
-      const loadEnd = this.wasEmptyReload ? 0.68 : 0.88;
+      // M870 MW2019+: Empty starts with combat EJECTION PORT-LOAD + pump forward, then rolls to bottom gate for remaining shells!
       const count = Math.max(1, this.reloadShellCount);
-
-      if (this.wasEmptyReload && p > 0.72 && !this.reloadSfxFlags.rack) {
-        this.reloadSfxFlags.rack = true;
-        window.soundEngine.playRechamber(this.reloadWeaponId || (weaponDef && weaponDef.id) || 'm870');
-      }
+      const portWindowEnd = this.wasEmptyReload ? (count === 1 ? 0.88 : 0.44) : 0.0;
+      const loadStart = this.wasEmptyReload ? 0.44 : 0.12;
+      const loadEnd = 0.88;
+      const hasTubeShells = !this.wasEmptyReload || count > 1;
 
       restRightHand();
 
-      if (p < loadEnd) {
-        const enterT = smooth(Math.min(1, p / loadStart));
-        pos.x = -0.09 * enterT; pos.y = 0.11 * enterT;
-        rot.x = 0.24 * enterT; rot.y = 0.26 * enterT; rot.z = -0.66 * enterT;
+      if (this.wasEmptyReload && p < portWindowEnd) {
+        // Phase A (Empty): Pump open -> roll right -> drop 12ga shell straight into ejection port -> slam pump forward!
+        const rawT = p / portWindowEnd;
+        const cantIn = smooth(Math.min(1, rawT / 0.25));
+        const pumpBack = rawT < 0.22
+          ? smooth(rawT / 0.22)
+          : (rawT < 0.72 ? 1.0 : 1.0 - smooth((rawT - 0.72) / 0.24));
+
+        pos.x = -0.07 * cantIn; pos.y = 0.08 * cantIn;
+        rot.x = 0.16 * cantIn; rot.y = -0.26 * cantIn; rot.z = 0.44 * cantIn;
+
+        if (rawT > 0.18 && !this.reloadSfxFlags.magOut) {
+          this.reloadSfxFlags.magOut = true;
+          window.soundEngine.playRechamber('m870');
+        }
+        if (rawT > 0.48 && !this.reloadSfxFlags.magIn) {
+          this.reloadSfxFlags.magIn = true;
+          window.soundEngine.playMagIn('m870');
+        }
+        if (rawT > 0.78 && !this.reloadSfxFlags.rack) {
+          this.reloadSfxFlags.rack = true;
+          window.soundEngine.playRechamber('m870');
+        }
+        if (rawT > 0.82 && !this._portShellLoaded) {
+          this._portShellLoaded = true;
+          this.lastShellLoadedIdx = 0;
+          if (player) player.loadSingleShell();
+        }
+
+        this._livePumpOffset = pumpBack * 0.088;
+        if (this.boltMesh) this.boltMesh.position.z = this.boltRestPos.z + this._livePumpOffset;
+        if (this.boltCarrierMesh) this.boltCarrierMesh.position.z = this.boltCarrierRestPos.z + this._livePumpOffset * 0.72;
+        if (this.chamberRoundMesh) this.chamberRoundMesh.visible = rawT > 0.56;
+
+        if (rawT >= 0.22 && rawT < 0.68 && this.magMesh) {
+          const st = (rawT - 0.22) / 0.46;
+          this.magMesh.visible = st < 0.84;
+          const drop = smooth(Math.min(1, st / 0.65));
+          this.magMesh.position.set(
+            THREE.MathUtils.lerp(0.085, 0.012, drop),
+            THREE.MathUtils.lerp(0.082, 0.010, drop),
+            -0.012
+          );
+          this.magMesh.rotation.set(-Math.PI / 2 + THREE.MathUtils.lerp(0.15, 0.0, drop), 0, THREE.MathUtils.lerp(-0.22, 0.0, drop));
+          moveLeftHand(this.magMesh.position.x + 0.024, this.magMesh.position.y + 0.018, this.magMesh.position.z + 0.018, 0.08, 0.14, 0.18, 'shellThumbStage');
+        } else {
+          if (this.magMesh) this.magMesh.visible = false;
+          const rackStyle = this.hasVertGrip ? 'foregrip' : 'supportRifle';
+          moveLeftHand(this.leftHandRestPos.x, this.leftHandRestPos.y, this.leftHandRestPos.z + this._livePumpOffset, this.leftHandRestRot.x, this.leftHandRestRot.y, this.leftHandRestRot.z, rackStyle);
+        }
+      } else if (hasTubeShells && p < loadEnd) {
+        // Phase B: Roll cleanly left to expose bottom loading gate & drive remaining shells in with left thumb
+        const tubeCount = this.wasEmptyReload ? Math.max(1, count - 1) : count;
+        const enterDenom = this.wasEmptyReload ? 0.10 : loadStart;
+        const enterRaw = THREE.MathUtils.clamp((p - (this.wasEmptyReload ? portWindowEnd : 0)) / enterDenom, 0, 1);
+        const enterT = smooth(enterRaw);
+        const fromX = this.wasEmptyReload ? -0.07 : 0, fromY = this.wasEmptyReload ? 0.08 : 0;
+        const fromRx = this.wasEmptyReload ? 0.16 : 0, fromRy = this.wasEmptyReload ? -0.26 : 0, fromRz = this.wasEmptyReload ? 0.44 : 0;
+        pos.x = THREE.MathUtils.lerp(fromX, -0.09, enterT);
+        pos.y = THREE.MathUtils.lerp(fromY, 0.11, enterT);
+        rot.x = THREE.MathUtils.lerp(fromRx, 0.24, enterT);
+        rot.y = THREE.MathUtils.lerp(fromRy, 0.26, enterT);
+        rot.z = THREE.MathUtils.lerp(fromRz, -0.64, enterT);
+        this._livePumpOffset = 0;
+        if (this.boltMesh) this.boltMesh.position.copy(this.boltRestPos);
+        if (this.boltCarrierMesh) this.boltCarrierMesh.position.copy(this.boltCarrierRestPos);
 
         if (p >= loadStart && this.magMesh) {
           const loadProgress = (p - loadStart) / (loadEnd - loadStart);
-          const shellFloat = loadProgress * count;
-          const shellIdx = Math.min(count - 1, Math.floor(shellFloat));
-          const shellT = shellFloat - shellIdx;
+          const shellFloat = loadProgress * tubeCount;
+          const localIdx = Math.min(tubeCount - 1, Math.floor(shellFloat));
+          const globalIdx = this.wasEmptyReload ? (localIdx + 1) : localIdx;
+          const shellT = shellFloat - localIdx;
 
-          if (shellT > 0.46 && shellIdx > this.lastShellSoundIdx) {
-            this.lastShellSoundIdx = shellIdx;
+          if (shellT > 0.46 && globalIdx > this.lastShellSoundIdx) {
+            this.lastShellSoundIdx = globalIdx;
             window.soundEngine.playMagIn(this.reloadWeaponId);
           }
-          if (shellT > 0.72 && shellIdx > this.lastShellLoadedIdx) {
-            this.lastShellLoadedIdx = shellIdx;
+          if (shellT > 0.72 && globalIdx > this.lastShellLoadedIdx) {
+            this.lastShellLoadedIdx = globalIdx;
             if (player) player.loadSingleShell();
           }
 
-          // Tactile receiver nudge when the thumb clicks the brass shell rim past the magazine tube latch!
           const clickPulse = (shellT > 0.54 && shellT < 0.76) ? Math.sin(((shellT - 0.54) / 0.22) * Math.PI) : 0;
           pos.y += clickPulse * 0.006;
           pos.z -= clickPulse * 0.007;
@@ -4946,43 +4239,34 @@ class WeaponSystem {
 
           this.magMesh.visible = shellT < 0.78;
           if (shellT < 0.32) {
-            // Beat 1: Bring 12ga shell up to bottom loading port (red nose angled into gate, left thumb cocked behind brass rim!)
             const alignT = smooth(shellT / 0.32);
             this.magMesh.position.x = THREE.MathUtils.lerp(-0.032, 0.0, alignT);
-            this.magMesh.position.y = THREE.MathUtils.lerp(-0.115, -0.036, alignT);
-            this.magMesh.position.z = THREE.MathUtils.lerp(0.055, -0.004, alignT);
+            this.magMesh.position.y = THREE.MathUtils.lerp(-0.118, -0.042, alignT);
+            this.magMesh.position.z = THREE.MathUtils.lerp(0.055, -0.008, alignT);
             this.magMesh.rotation.x = this.magRestRot.x + THREE.MathUtils.lerp(0.50, 0.34, alignT);
-            moveLeftHand(
-              this.magMesh.position.x - 0.012,
-              this.magMesh.position.y - 0.014,
-              this.magMesh.position.z + 0.042,
-              0.12, 0.08, -0.08,
-              'shellThumbStage'
-            );
+            moveLeftHand(this.magMesh.position.x - 0.014, this.magMesh.position.y - 0.018, this.magMesh.position.z + 0.040, 0.12, 0.08, -0.08, 'shellThumbStage');
           } else if (shellT < 0.78) {
-            // Beat 2: Brace fingers along receiver & flex/drive the LEFT THUMB forward against the brass base to click shell into tube!
             const pushT = smooth(THREE.MathUtils.clamp((shellT - 0.32) / 0.46, 0, 1));
             const levelT = Math.min(1, pushT * 1.6);
             this.magMesh.position.x = 0.0;
-            this.magMesh.position.y = THREE.MathUtils.lerp(-0.036, -0.018, levelT);
-            this.magMesh.position.z = THREE.MathUtils.lerp(-0.004, -0.068, pushT);
+            this.magMesh.position.y = THREE.MathUtils.lerp(-0.042, -0.022, levelT);
+            this.magMesh.position.z = THREE.MathUtils.lerp(-0.008, -0.068, pushT);
             this.magMesh.rotation.x = THREE.MathUtils.lerp(this.magRestRot.x + 0.34, this.magRestRot.x, levelT);
             moveLeftHand(
-              THREE.MathUtils.lerp(-0.012, -0.008, pushT),
-              THREE.MathUtils.lerp(-0.050, -0.032, pushT),
-              THREE.MathUtils.lerp(0.038, -0.012, pushT),
+              THREE.MathUtils.lerp(-0.014, -0.010, pushT),
+              THREE.MathUtils.lerp(-0.056, -0.040, pushT),
+              THREE.MathUtils.lerp(0.036, -0.014, pushT),
               THREE.MathUtils.lerp(0.12, 0.38, pushT),
               THREE.MathUtils.lerp(0.08, 0.04, pushT),
               THREE.MathUtils.lerp(-0.08, 0.14, pushT),
               pushT > 0.18 ? 'shellThumbPush' : 'shellThumbStage'
             );
           } else {
-            // Beat 3: Withdraw thumb cleanly out of the loading port to grab the next shell (or transition to pump/foregrip)
             const exitS = smooth((shellT - 0.78) / 0.22);
             moveLeftHand(
-              THREE.MathUtils.lerp(-0.008, -0.028, exitS),
-              THREE.MathUtils.lerp(-0.032, -0.086, exitS),
-              THREE.MathUtils.lerp(-0.012, 0.042, exitS),
+              THREE.MathUtils.lerp(-0.010, -0.028, exitS),
+              THREE.MathUtils.lerp(-0.040, -0.090, exitS),
+              THREE.MathUtils.lerp(-0.014, 0.040, exitS),
               THREE.MathUtils.lerp(0.38, 0.14, exitS),
               0.08,
               THREE.MathUtils.lerp(0.14, -0.08, exitS),
@@ -4993,35 +4277,24 @@ class WeaponSystem {
           if (this.magMesh) this.magMesh.visible = false;
           restLeftHand();
         }
-      } else if (this.wasEmptyReload && p < 0.90) {
-        const rawT = (p - loadEnd) / (0.90 - loadEnd);
-        const t = smooth(rawT);
-        if (this.magMesh) this.magMesh.visible = false;
-        const pull = rawT > 0.20 && rawT < 0.58 ? smooth((rawT - 0.20) / 0.38) : (rawT >= 0.58 && rawT < 0.88 ? 1 - smooth((rawT - 0.58) / 0.30) : 0);
-        pos.x = THREE.MathUtils.lerp(-0.09, -0.04, t);
-        pos.y = THREE.MathUtils.lerp(0.11, 0.03, t) - pull * 0.012;
-        pos.z = pull * 0.025;
-        rot.x = THREE.MathUtils.lerp(0.24, 0.05, t);
-        rot.y = THREE.MathUtils.lerp(0.26, 0, t);
-        rot.z = THREE.MathUtils.lerp(-0.66, 0, t);
-        this._livePumpOffset = pull * 0.09;
-        if (this.boltMesh) {
-          this.boltMesh.position.z = this.boltRestPos.z + pull * 0.09;
-          const rackStyle = this.hasVertGrip ? 'foregrip' : 'supportRifle';
-          moveLeftHand(this.leftHandRestPos.x, this.leftHandRestPos.y, this.leftHandRestPos.z + pull * 0.09, this.leftHandRestRot.x, this.leftHandRestRot.y, this.leftHandRestRot.z, rackStyle);
-        }
       } else {
-        const startP = this.wasEmptyReload ? 0.90 : loadEnd;
-        const t = smooth((p - startP) / (1 - startP));
+        const startP = loadEnd;
+        const t = smooth(THREE.MathUtils.clamp((p - startP) / (1 - startP), 0, 1));
         if (this.magMesh) this.magMesh.visible = false;
         if (this.boltMesh) this.boltMesh.position.copy(this.boltRestPos);
+        if (this.boltCarrierMesh) this.boltCarrierMesh.position.copy(this.boltCarrierRestPos);
         this._livePumpOffset = 0;
         restLeftHand();
-        pos.x = THREE.MathUtils.lerp(this.wasEmptyReload ? -0.04 : -0.09, 0, t);
-        pos.y = THREE.MathUtils.lerp(this.wasEmptyReload ? 0.03 : 0.11, 0, t);
-        rot.x = THREE.MathUtils.lerp(this.wasEmptyReload ? 0.05 : 0.24, 0, t);
-        rot.y = THREE.MathUtils.lerp(0, 0, t);
-        rot.z = THREE.MathUtils.lerp(this.wasEmptyReload ? 0 : -0.66, 0, t);
+        const peakX = (this.wasEmptyReload && count === 1) ? -0.07 : -0.09;
+        const peakY = (this.wasEmptyReload && count === 1) ? 0.08 : 0.11;
+        const peakRx = (this.wasEmptyReload && count === 1) ? 0.16 : 0.24;
+        const peakRy = (this.wasEmptyReload && count === 1) ? -0.26 : 0.26;
+        const peakRz = (this.wasEmptyReload && count === 1) ? 0.44 : -0.64;
+        pos.x = THREE.MathUtils.lerp(peakX, 0, t);
+        pos.y = THREE.MathUtils.lerp(peakY, 0, t);
+        rot.x = THREE.MathUtils.lerp(peakRx, 0, t);
+        rot.y = THREE.MathUtils.lerp(peakRy, 0, t);
+        rot.z = THREE.MathUtils.lerp(peakRz, 0, t);
       }
       return;
     }
@@ -5267,32 +4540,53 @@ class WeaponSystem {
       const t = smooth(rawT);
       if (this.magMesh) { this.magMesh.visible = true; this.magMesh.position.copy(this.magRestPos); }
 
-      const rackPose = Math.sin(Math.min(1, rawT * 1.15) * Math.PI * 0.5);
-      // Slide is already locked back (0.052): slight slingshot pull (0.052 -> 0.064), then snap forward (0.064 -> 0.0)
-      let slideOffset = 0.052;
-      let nudge = 0;
-      if (rawT < 0.25) {
-        slideOffset = 0.052;
-      } else if (rawT < 0.50) {
-        nudge = smooth((rawT - 0.25) / 0.25);
-        slideOffset = 0.052 + nudge * 0.012;
-      } else if (rawT < 0.72) {
-        const snap = smooth((rawT - 0.50) / 0.22);
-        slideOffset = THREE.MathUtils.lerp(0.064, 0.0, snap);
+      if (isG17) {
+        // Glock 17 Gen4: Left-thumb slide-stop release!
+        const reach = smooth(Math.min(1, rawT / 0.34));
+        const snap = rawT < 0.42 ? 0 : smooth(Math.min(1, (rawT - 0.42) / 0.18));
+        const dip = (rawT >= 0.42 && rawT < 0.72) ? Math.sin(((rawT - 0.42) / 0.30) * Math.PI) : 0;
+        pos.x = THREE.MathUtils.lerp(-0.14, -0.07, t);
+        pos.y = THREE.MathUtils.lerp(0.13, 0.05, t) - dip * 0.012;
+        pos.z = THREE.MathUtils.lerp(-0.04, -0.01, t) - dip * 0.010;
+        rot.x = THREE.MathUtils.lerp(0.42, 0.08, t) - dip * 0.085;
+        rot.y = THREE.MathUtils.lerp(0.48, -0.14, reach);
+        rot.z = THREE.MathUtils.lerp(-0.62, 0.16, reach);
+        if (this.boltMesh) {
+          this.boltMesh.position.z = this.boltRestPos.z + THREE.MathUtils.lerp(0.052, 0.0, snap);
+        }
+        if (rawT < 0.72) {
+          moveLeftHand(-0.022, -0.008 - dip * 0.006, 0.036, 0.06, 0.18, 0.08, 'leftBoltPinch');
+        } else {
+          restLeftHand();
+        }
       } else {
-        slideOffset = 0.0;
-      }
+        // PM-9 Makarov: Overhand rear-serration slingshot rack
+        const rackPose = Math.sin(Math.min(1, rawT * 1.15) * Math.PI * 0.5);
+        let slideOffset = 0.052;
+        let nudge = 0;
+        if (rawT < 0.25) {
+          slideOffset = 0.052;
+        } else if (rawT < 0.50) {
+          nudge = smooth((rawT - 0.25) / 0.25);
+          slideOffset = 0.052 + nudge * 0.012;
+        } else if (rawT < 0.72) {
+          const snap = smooth((rawT - 0.50) / 0.22);
+          slideOffset = THREE.MathUtils.lerp(0.064, 0.0, snap);
+        } else {
+          slideOffset = 0.0;
+        }
 
-      pos.x = THREE.MathUtils.lerp(-0.14, -0.10, t);
-      pos.y = THREE.MathUtils.lerp(0.13, 0.08, t) - nudge * 0.008;
-      pos.z = THREE.MathUtils.lerp(-0.04, -0.02, t) + nudge * 0.012;
-      rot.x = THREE.MathUtils.lerp(isG17 ? 0.42 : 0.34, 0.14, t) + nudge * 0.04;
-      rot.y = THREE.MathUtils.lerp(isG17 ? 0.48 : 0.38, -0.34, rackPose);
-      rot.z = THREE.MathUtils.lerp(isG17 ? -0.62 : -0.48, 0.36, rackPose);
+        pos.x = THREE.MathUtils.lerp(-0.14, -0.10, t);
+        pos.y = THREE.MathUtils.lerp(0.13, 0.08, t) - nudge * 0.008;
+        pos.z = THREE.MathUtils.lerp(-0.04, -0.02, t) + nudge * 0.012;
+        rot.x = THREE.MathUtils.lerp(0.34, 0.14, t) + nudge * 0.04;
+        rot.y = THREE.MathUtils.lerp(0.38, -0.34, rackPose);
+        rot.z = THREE.MathUtils.lerp(-0.48, 0.36, rackPose);
 
-      if (this.boltMesh) {
-        this.boltMesh.position.z = this.boltRestPos.z + slideOffset;
-        moveLeftHand(this.boltMesh.position.x - 0.020, this.boltMesh.position.y + 0.012, this.boltMesh.position.z + 0.018, -0.18, 0.22, 0.12, 'slideGrab');
+        if (this.boltMesh) {
+          this.boltMesh.position.z = this.boltRestPos.z + slideOffset;
+          moveLeftHand(this.boltMesh.position.x - 0.020, this.boltMesh.position.y + 0.012, this.boltMesh.position.z + 0.018, -0.18, 0.22, 0.12, 'slideGrab');
+        }
       }
     } else {
       const startP = this.wasEmptyReload ? 0.90 : 0.58;
@@ -5300,12 +4594,18 @@ class WeaponSystem {
       if (this.magMesh) { this.magMesh.visible = true; this.magMesh.position.copy(this.magRestPos); }
       if (this.boltMesh) { this.boltMesh.position.copy(this.boltRestPos); }
       restLeftHand();
-      pos.x = THREE.MathUtils.lerp(this.wasEmptyReload ? -0.10 : -0.14, 0, t);
-      pos.y = THREE.MathUtils.lerp(this.wasEmptyReload ? 0.08 : 0.13, 0, t);
-      pos.z = THREE.MathUtils.lerp(this.wasEmptyReload ? -0.02 : -0.04, 0, t);
-      rot.x = THREE.MathUtils.lerp(this.wasEmptyReload ? 0.14 : (isG17 ? 0.42 : 0.34), 0, t);
-      rot.y = THREE.MathUtils.lerp(this.wasEmptyReload ? -0.34 : (isG17 ? 0.48 : 0.38), 0, t);
-      rot.z = THREE.MathUtils.lerp(this.wasEmptyReload ? 0.36 : (isG17 ? -0.62 : -0.48), 0, t);
+      const fromX = this.wasEmptyReload ? (isG17 ? -0.07 : -0.10) : -0.14;
+      const fromY = this.wasEmptyReload ? (isG17 ? 0.05 : 0.08) : 0.13;
+      const fromZ = this.wasEmptyReload ? (isG17 ? -0.01 : -0.02) : -0.04;
+      const fromRx = this.wasEmptyReload ? (isG17 ? 0.08 : 0.14) : (isG17 ? 0.42 : 0.34);
+      const fromRy = this.wasEmptyReload ? (isG17 ? -0.14 : -0.34) : (isG17 ? 0.48 : 0.38);
+      const fromRz = this.wasEmptyReload ? (isG17 ? 0.16 : 0.36) : (isG17 ? -0.62 : -0.48);
+      pos.x = THREE.MathUtils.lerp(fromX, 0, t);
+      pos.y = THREE.MathUtils.lerp(fromY, 0, t);
+      pos.z = THREE.MathUtils.lerp(fromZ, 0, t);
+      rot.x = THREE.MathUtils.lerp(fromRx, 0, t);
+      rot.y = THREE.MathUtils.lerp(fromRy, 0, t);
+      rot.z = THREE.MathUtils.lerp(fromRz, 0, t);
     }
   }
 
@@ -5321,6 +4621,12 @@ class WeaponSystem {
     if (this.boltMesh) {
       this.boltMesh.position.copy(this.boltRestPos);
       this.boltMesh.rotation.copy(this.boltRestRot);
+    }
+    if (this.boltCarrierMesh) {
+      this.boltCarrierMesh.position.copy(this.boltCarrierRestPos);
+    }
+    if (this.chamberRoundMesh) {
+      this.chamberRoundMesh.visible = true;
     }
     if (this.leftHand) {
       this.leftHand.position.copy(this.leftHandRestPos);
@@ -5339,100 +4645,146 @@ class WeaponSystem {
     }
   }
 
-  _computeInspectPose(p, dt, pos, rot) {
+  _computeInspectPose(p, dt, pos, rot, player = null) {
     const smoother = (t) => {
       const c = THREE.MathUtils.clamp(t, 0, 1);
       return c * c * c * (c * (c * 6 - 15) + 10);
     };
     const id = this.inspectWeaponId;
-    const handRate = Math.min(1, dt * 11);
+    const handRate = Math.min(1, dt * 13);
+    const slotObj = (player && player.getActiveWeaponSlot) ? player.getActiveWeaponSlot() : null;
+    const hasAmmo = !slotObj || (slotObj.mag || 0) > 0;
+    if (this.chamberRoundMesh) this.chamberRoundMesh.visible = hasAmmo;
 
-    const moveLeftHand = (x, y, z) => {
-      if (this.leftHand) this.leftHand.position.lerp(new THREE.Vector3(x, y, z), handRate);
+    const moveLeftHand = (x, y, z, rx = null, ry = null, rz = null, styleName = null) => {
+      if (!this.leftHand) return;
+      this.leftHand.position.lerp(new THREE.Vector3(x, y, z), handRate);
+      if (rx !== null) {
+        this.leftHand.rotation.x = THREE.MathUtils.lerp(this.leftHand.rotation.x, rx, handRate);
+        this.leftHand.rotation.y = THREE.MathUtils.lerp(this.leftHand.rotation.y, ry || 0, handRate);
+        this.leftHand.rotation.z = THREE.MathUtils.lerp(this.leftHand.rotation.z, rz || 0, handRate);
+      }
+      if (styleName && this.leftHand.userData) this.leftHand.userData.activeStyle = styleName;
     };
-    const moveRightHand = (x, y, z) => {
-      if (this.rightHand) this.rightHand.position.lerp(new THREE.Vector3(x, y, z), handRate);
+    const moveRightHand = (x, y, z, rx = null, ry = null, rz = null, styleName = null) => {
+      if (!this.rightHand) return;
+      this.rightHand.position.lerp(new THREE.Vector3(x, y, z), handRate);
+      if (rx !== null) {
+        this.rightHand.rotation.x = THREE.MathUtils.lerp(this.rightHand.rotation.x, rx, handRate);
+        this.rightHand.rotation.y = THREE.MathUtils.lerp(this.rightHand.rotation.y, ry || 0, handRate);
+        this.rightHand.rotation.z = THREE.MathUtils.lerp(this.rightHand.rotation.z, rz || 0, handRate);
+      }
+      if (styleName && this.rightHand.userData) this.rightHand.userData.activeStyle = styleName;
     };
     const restHands = () => {
-      if (this.leftHand) this.leftHand.position.lerp(this.leftHandRestPos, handRate);
-      if (this.rightHand) this.rightHand.position.lerp(this.rightHandRestPos, handRate);
+      if (this.leftHand) {
+        this.leftHand.position.lerp(this.leftHandRestPos, handRate);
+        this.leftHand.rotation.x = THREE.MathUtils.lerp(this.leftHand.rotation.x, this.leftHandRestRot.x, handRate);
+        this.leftHand.rotation.y = THREE.MathUtils.lerp(this.leftHand.rotation.y, this.leftHandRestRot.y, handRate);
+        this.leftHand.rotation.z = THREE.MathUtils.lerp(this.leftHand.rotation.z, this.leftHandRestRot.z, handRate);
+        if (this.leftHand.userData) this.leftHand.userData.activeStyle = null;
+      }
+      if (this.rightHand) {
+        this.rightHand.position.lerp(this.rightHandRestPos, handRate);
+        this.rightHand.rotation.x = THREE.MathUtils.lerp(this.rightHand.rotation.x, this.rightHandRestRot.x, handRate);
+        this.rightHand.rotation.y = THREE.MathUtils.lerp(this.rightHand.rotation.y, this.rightHandRestRot.y, handRate);
+        this.rightHand.rotation.z = THREE.MathUtils.lerp(this.rightHand.rotation.z, this.rightHandRestRot.z, handRate);
+        if (this.rightHand.userData) this.rightHand.userData.activeStyle = null;
+      }
     };
 
-    // Fluid 5.2s envelope: slow lift (0..0.20), admire left (0.20..0.46), smooth roll (0.46..0.64), admire right (0.64..0.85), settle (0.85..1.0)
-    const enter = p < 0.20 ? smoother(p / 0.20) : (p > 0.85 ? 1 - smoother((p - 0.85) / 0.15) : 1);
-    const flip = p < 0.44 ? 0 : (p < 0.64 ? smoother((p - 0.44) / 0.20) : (p > 0.85 ? 1 - smoother((p - 0.85) / 0.15) : 1));
-    const drift = Math.sin(p * Math.PI * 2.0) * 0.012 * enter;
-    const tiltDrift = Math.sin(p * Math.PI * 3.0) * 0.045 * enter;
+    // MW2019+ 4-Act Inspect Envelope (4.8s):
+    // Act 1 (0.00..0.28): Raise & admire left profile
+    // Act 2 (0.28..0.56): Live Press-Check (crack open breech to verify chambered brass round!)
+    // Act 3 (0.56..0.84): Wrist roll to admire opposite side & optics
+    // Act 4 (0.84..1.00): Damped return to combat ready
+    const enter = p < 0.16 ? smoother(p / 0.16) : (p > 0.84 ? 1 - smoother((p - 0.84) / 0.16) : 1);
+    const flip = p < 0.54 ? 0 : (p < 0.70 ? smoother((p - 0.54) / 0.16) : (p > 0.84 ? 1 - smoother((p - 0.84) / 0.16) : 1));
+    const checkRaw = (p >= 0.28 && p <= 0.54) ? Math.pow(Math.sin(((p - 0.28) / 0.26) * Math.PI), 1.25) : 0;
+    const drift = Math.sin(p * Math.PI * 2.0) * 0.010 * enter;
+    const tiltDrift = Math.sin(p * Math.PI * 3.0) * 0.036 * enter;
 
-    if (id === 'pm9') {
-      pos.x = (-0.14 + drift) * enter;
-      pos.y = (0.10 + drift * 0.5) * enter;
-      pos.z = -0.02 * enter;
-      rot.x = (THREE.MathUtils.lerp(0.18, 0.24, flip) + tiltDrift) * enter;
-      rot.y = THREE.MathUtils.lerp(-0.55, 0.52, flip) * enter;
-      rot.z = THREE.MathUtils.lerp(0.60, -0.56, flip) * enter;
-
-      if (this.boltMesh) {
-        const check = (p > 0.24 && p < 0.42) ? Math.pow(Math.sin(((p - 0.24) / 0.18) * Math.PI), 1.4) : 0;
-        this.boltMesh.position.z = this.boltRestPos.z + check * 0.026;
-        if (p > 0.20 && p < 0.44) {
-          moveLeftHand(this.boltMesh.position.x - 0.025, this.boltMesh.position.y, this.boltMesh.position.z + 0.01);
-        } else {
-          restHands();
-        }
+    if (p > 0.30 && !this._inspectCheckSfxPlayed) {
+      this._inspectCheckSfxPlayed = true;
+      if (window.soundEngine && window.soundEngine.playClick) {
+        try { window.soundEngine.playClick(); } catch (e) {}
       }
-      return;
+    }
+    if (p > 0.50 && !this._inspectSnapSfxPlayed) {
+      this._inspectSnapSfxPlayed = true;
+      if (window.soundEngine && window.soundEngine.playRechamber) {
+        try { window.soundEngine.playRechamber(id); } catch (e) {}
+      }
+      this.addWeaponImpulse(0.004, -0.008, -0.010, -0.032, 0, 0.028);
     }
 
-    if (id === 'g17') {
-      pos.x = (-0.15 + drift) * enter;
-      pos.y = (0.11 + drift * 0.5) * enter;
-      pos.z = -0.03 * enter;
-      rot.x = (THREE.MathUtils.lerp(0.24, 0.16, flip) + tiltDrift) * enter;
-      rot.y = THREE.MathUtils.lerp(-0.60, 0.54, flip) * enter;
-      rot.z = THREE.MathUtils.lerp(0.68, -0.58, flip) * enter;
+    if (id === 'pm9' || id === 'g17') {
+      const isG17 = id === 'g17';
+      pos.x = ((isG17 ? -0.15 : -0.14) + drift) * enter;
+      pos.y = ((isG17 ? 0.11 : 0.10) + drift * 0.5) * enter;
+      pos.z = -0.025 * enter;
+      rot.x = (THREE.MathUtils.lerp(0.20, 0.16, flip) + tiltDrift) * enter;
+      rot.y = THREE.MathUtils.lerp(-0.56, 0.54, flip) * enter;
+      rot.z = THREE.MathUtils.lerp(isG17 ? 0.64 : 0.58, -0.58, flip) * enter;
 
-      if (this.magMesh) {
-        const magCheck = (p > 0.22 && p < 0.44) ? Math.pow(Math.sin(((p - 0.22) / 0.22) * Math.PI), 1.3) : 0;
+      if (this.boltMesh) {
+        this.boltMesh.position.z = this.boltRestPos.z + checkRaw * 0.028;
+      }
+      if (isG17 && this.magMesh) {
+        const magCheck = (p >= 0.60 && p <= 0.82) ? Math.pow(Math.sin(((p - 0.60) / 0.22) * Math.PI), 1.3) : 0;
         const alongMag = new THREE.Vector3(0, -1, 0).applyEuler(this.magRestRot).normalize();
-        this.magMesh.position.copy(this.magRestPos).addScaledVector(alongMag, magCheck * 0.055);
-        if (p > 0.18 && p < 0.46) {
+        this.magMesh.position.copy(this.magRestPos).addScaledVector(alongMag, magCheck * 0.052);
+        if (p >= 0.58 && p <= 0.83) {
           const t = this.magMesh.position.clone().addScaledVector(alongMag, 0.03);
-          moveLeftHand(t.x - 0.01, t.y, t.z);
-        } else {
-          restHands();
+          moveLeftHand(t.x - 0.01, t.y, t.z, 0.18, 0.14, 0.08, 'magGrip');
+          return;
         }
+      }
+      if (p >= 0.25 && p <= 0.56 && this.boltMesh) {
+        moveLeftHand(this.boltMesh.position.x - 0.022, this.boltMesh.position.y + 0.010, this.boltMesh.position.z + 0.010, -0.14, 0.20, 0.10, 'slideGrab');
+      } else {
+        restHands();
       }
       return;
     }
 
     if (id === 'mp5k') {
       pos.x = (-0.12 + drift) * enter;
-      pos.y = (0.09 + drift * 0.5) * enter;
-      pos.z = -0.02 * enter;
+      pos.y = (0.095 + drift * 0.5) * enter;
+      pos.z = -0.015 * enter;
       rot.x = (THREE.MathUtils.lerp(0.16, 0.22, flip) + tiltDrift) * enter;
-      rot.y = THREE.MathUtils.lerp(-0.60, 0.46, flip) * enter;
-      rot.z = THREE.MathUtils.lerp(0.48, -0.40, flip) * enter;
-      restHands();
+      rot.y = THREE.MathUtils.lerp(-0.58, 0.48, flip) * enter;
+      rot.z = THREE.MathUtils.lerp(0.50, -0.44, flip) * enter;
+      if (this.boltMesh) {
+        this.boltMesh.position.z = this.boltRestPos.z + checkRaw * 0.042;
+        if (this.boltCarrierMesh) this.boltCarrierMesh.position.z = this.boltCarrierRestPos.z + checkRaw * 0.038;
+        if (p >= 0.25 && p <= 0.56) {
+          moveLeftHand(this.boltMesh.position.x - 0.018, this.boltMesh.position.y, this.boltMesh.position.z + 0.016, 0.12, 0.18, 0.15, 'leftBoltPinch');
+        } else {
+          restHands();
+        }
+      } else {
+        restHands();
+      }
       return;
     }
 
     if (id === 'ak74m') {
       pos.x = (-0.12 + drift) * enter;
-      pos.y = (0.09 + drift * 0.5) * enter;
+      pos.y = (0.095 + drift * 0.5) * enter;
       pos.z = 0.02 * enter;
       rot.x = (THREE.MathUtils.lerp(0.18, 0.14, flip) + tiltDrift) * enter;
-      rot.y = THREE.MathUtils.lerp(-0.62, 0.44, flip) * enter;
-      rot.z = THREE.MathUtils.lerp(0.48, -0.44, flip) * enter;
-
-      const check = (p > 0.62 && p < 0.82) ? Math.pow(Math.sin(((p - 0.62) / 0.20) * Math.PI), 1.4) : 0;
+      rot.y = THREE.MathUtils.lerp(0.46, -0.60, flip) * enter;
+      rot.z = THREE.MathUtils.lerp(-0.48, 0.52, flip) * enter;
       if (this.boltMesh) {
-        this.boltMesh.position.z = this.boltRestPos.z + check * 0.045;
-        if (p > 0.58 && p < 0.84) {
-          moveRightHand(this.boltMesh.position.x + 0.02, this.boltMesh.position.y - 0.01, this.boltMesh.position.z + 0.02);
+        this.boltMesh.position.z = this.boltRestPos.z + checkRaw * 0.046;
+        if (p >= 0.25 && p <= 0.56) {
+          moveRightHand(this.boltMesh.position.x + 0.026, this.boltMesh.position.y - 0.004, this.boltMesh.position.z + 0.028, 0.08, -0.14, -0.06, 'boltPinch');
         } else {
           restHands();
         }
+      } else {
+        restHands();
       }
       return;
     }
@@ -5441,39 +4793,41 @@ class WeaponSystem {
       pos.x = (-0.12 + drift) * enter;
       pos.y = (0.09 + drift * 0.5) * enter;
       pos.z = 0.02 * enter;
-      rot.x = (THREE.MathUtils.lerp(0.14, 0.22, flip) + tiltDrift) * enter;
-      rot.y = THREE.MathUtils.lerp(-0.60, 0.36, flip) * enter;
-      rot.z = THREE.MathUtils.lerp(0.44, -0.68, flip) * enter;
-
-      const check = (p > 0.62 && p < 0.82) ? Math.pow(Math.sin(((p - 0.62) / 0.20) * Math.PI), 1.4) : 0;
+      rot.x = (THREE.MathUtils.lerp(0.16, 0.20, flip) + tiltDrift) * enter;
+      rot.y = THREE.MathUtils.lerp(0.38, -0.58, flip) * enter;
+      rot.z = THREE.MathUtils.lerp(-0.56, 0.48, flip) * enter;
       if (this.boltMesh) {
-        this.boltMesh.position.z = this.boltRestPos.z + check * 0.05;
-        if (p > 0.58 && p < 0.84) {
-          moveLeftHand(this.leftHandRestPos.x, this.leftHandRestPos.y, this.leftHandRestPos.z + check * 0.05);
+        this.boltMesh.position.z = this.boltRestPos.z + checkRaw * 0.052;
+        if (this.boltCarrierMesh) this.boltCarrierMesh.position.z = this.boltCarrierRestPos.z + checkRaw * 0.040;
+        if (p >= 0.25 && p <= 0.56) {
+          moveLeftHand(this.leftHandRestPos.x, this.leftHandRestPos.y, this.leftHandRestPos.z + checkRaw * 0.052);
         } else {
           restHands();
         }
+      } else {
+        restHands();
       }
       return;
     }
 
-    // M24 Marksman
+    // M24, Mosin 91/30 & AWM .338 Bolt-Action Rifles
     pos.x = (-0.11 + drift) * enter;
-    pos.y = (0.08 + drift * 0.5) * enter;
+    pos.y = (0.085 + drift * 0.5) * enter;
     pos.z = 0.02 * enter;
-    rot.x = (THREE.MathUtils.lerp(0.14, 0.10, flip) + tiltDrift) * enter;
-    rot.y = THREE.MathUtils.lerp(-0.56, 0.38, flip) * enter;
-    rot.z = THREE.MathUtils.lerp(0.42, -0.32, flip) * enter;
-
-    const check = (p > 0.62 && p < 0.82) ? Math.pow(Math.sin(((p - 0.62) / 0.20) * Math.PI), 1.4) : 0;
+    rot.x = (THREE.MathUtils.lerp(0.14, 0.11, flip) + tiltDrift) * enter;
+    rot.y = THREE.MathUtils.lerp(0.38, -0.54, flip) * enter;
+    rot.z = THREE.MathUtils.lerp(-0.34, 0.44, flip) * enter;
     if (this.boltMesh) {
-      this.boltMesh.rotation.z = check * 0.62;
-      this.boltMesh.position.z = this.boltRestPos.z + check * 0.032;
-      if (p > 0.58 && p < 0.84) {
-        moveRightHand(this.boltMesh.position.x + 0.02, this.boltMesh.position.y + check * 0.02, this.boltMesh.position.z + 0.02);
+      const lift = (p >= 0.26 && p <= 0.56) ? Math.sin(Math.min(1, (p - 0.26) / 0.30) * Math.PI) : 0;
+      this.boltMesh.rotation.z = lift * 0.65;
+      this.boltMesh.position.z = this.boltRestPos.z + checkRaw * 0.042;
+      if (p >= 0.25 && p <= 0.56) {
+        moveRightHand(this.boltMesh.position.x + 0.020, this.boltMesh.position.y + lift * 0.022, this.boltMesh.position.z + 0.020, 0.16 + lift * 0.32, -0.22, -0.18, 'boltPinch');
       } else {
         restHands();
       }
+    } else {
+      restHands();
     }
   }
 
@@ -6230,8 +5584,10 @@ class WeaponSystem {
     if (this.isReloading || this.isPlating || this.isHealing || !weaponDef) return;
     this.isInspecting = true;
     this.inspectWeaponId = weaponDef.id;
-    this.inspectDuration = 5.2;
+    this.inspectDuration = 4.8;
     this.inspectTimer = this.inspectDuration;
+    this._inspectCheckSfxPlayed = false;
+    this._inspectSnapSfxPlayed = false;
   }
 
   cancelInspect() {
@@ -6257,6 +5613,7 @@ class WeaponSystem {
     this.reloadShellCount = Math.max(1, shellsToLoad || 1);
     this.lastShellSoundIdx = -1;
     this.lastShellLoadedIdx = -1;
+    this._portShellLoaded = false;
     this.pumpDelayTimer = 0;
     this.pumpTimer = 0;
     this.boltActionDelayTimer = 0;

@@ -37,8 +37,8 @@
         tDiffuse: { value: rt.texture },
         uRes: { value: new THREE.Vector2(rtW, rtH) },
         uScale: { value: curScale },
-        uLevels: { value: 32.0 },
-        uDither: { value: 1.0 }
+        uLevels: { value: 48.0 },
+        uDither: { value: 0.75 }
       },
       vertexShader: `
         varying vec2 vUv;
@@ -127,11 +127,11 @@
       window.renderPipeline.resize();
     }
 
-    // 2. Realtime Shadows (default 1024, throttled update every 3rd frame)
+    // 2. Realtime Shadows (High/Ultra = 2048px, throttled update every 3rd frame)
     renderer.shadowMap.enabled = shadows > 0;
     if (sunLight) {
       sunLight.castShadow = shadows > 0;
-      const res = shadows === 1 ? 512 : (shadows === 2 ? 768 : 1024);
+      const res = shadows === 1 ? 512 : (shadows === 2 ? 1024 : 2048);
       if (sunLight.shadow && sunLight.shadow.mapSize && sunLight.shadow.mapSize.width !== res) {
         sunLight.shadow.mapSize.width = res;
         sunLight.shadow.mapSize.height = res;
@@ -147,8 +147,8 @@
     if (renderer.toneMappingExposure !== undefined) {
       renderer.toneMappingExposure = lighting === 1 ? 0.96 : (lighting === 2 ? 1.02 : (lighting === 3 ? 1.08 : 1.14));
     }
-    if (hemiLight) hemiLight.intensity = lighting === 1 ? 0.72 : (lighting === 2 ? 0.84 : (lighting === 3 ? 0.92 : 1.0));
-    if (rimFillLight) rimFillLight.intensity = lighting === 1 ? 0.0 : (lighting === 2 ? 0.25 : (lighting === 3 ? 0.42 : 0.58));
+    if (hemiLight) hemiLight.intensity = lighting === 1 ? 0.76 : (lighting === 2 ? 0.88 : (lighting === 3 ? 0.96 : 1.04));
+    if (rimFillLight) rimFillLight.intensity = lighting === 1 ? 0.12 : (lighting === 2 ? 0.30 : (lighting === 3 ? 0.48 : 0.62));
 
     // 4. LOD / View Distance
     if (camera) {
@@ -405,16 +405,16 @@
     camera = new THREE.PerspectiveCamera(window.BASE_FOV || 75, window.innerWidth / window.innerHeight, 0.05, 1650);
     scene.add(camera);
 
-    // Redux Atmospheric Lighting (Sky/Ground bounce + Golden-Hour Sun + Cool Rim Fill)
-    hemiLight = new THREE.HemisphereLight(0xcbe0f5, 0x453e32, 0.92);
+    // Upgraded Vostok Atmospheric Lighting (Sky/Ground bounce + Sun aligned to world.sunDir + Cool Rim + 3-Point Viewmodel Rig)
+    hemiLight = new THREE.HemisphereLight(0xcfe4fa, 0x463f33, 0.96);
     scene.add(hemiLight);
 
-    sunLight = new THREE.DirectionalLight(0xffe4b8, 1.35);
-    sunLight.position.set(160, 210, 120);
+    sunLight = new THREE.DirectionalLight(0xffe6be, 1.45);
+    sunLight.position.set(165, 132, 126);
     sunLight.castShadow = true;
-    sunLight.shadow.mapSize.width = 1024;
-    sunLight.shadow.mapSize.height = 1024;
-    sunLight.shadow.bias = -0.0005;
+    sunLight.shadow.mapSize.width = 2048;
+    sunLight.shadow.mapSize.height = 2048;
+    sunLight.shadow.bias = -0.00035;
     sunLight.shadow.camera.near = 15;
     sunLight.shadow.camera.far = 360;
     const d = 85;
@@ -425,7 +425,7 @@
     scene.add(sunLight);
     scene.add(sunLight.target);
 
-    rimFillLight = new THREE.DirectionalLight(0x88b4d8, 0.42);
+    rimFillLight = new THREE.DirectionalLight(0x8cb8e0, 0.48);
     rimFillLight.position.set(-140, 85, -130);
     scene.add(rimFillLight);
 
@@ -433,10 +433,13 @@
     viewmodelScene = new THREE.Scene();
     viewmodelCamera = new THREE.PerspectiveCamera(window.BASE_FOV || 75, window.innerWidth / window.innerHeight, 0.01, 20);
     viewmodelScene.add(viewmodelCamera);
-    viewmodelScene.add(new THREE.HemisphereLight(0xd8cbb8, 0x3b352c, 0.85));
-    const vmSun = new THREE.DirectionalLight(0xffe6c2, 0.95);
-    vmSun.position.set(45, 70, 30);
+    viewmodelScene.add(new THREE.HemisphereLight(0xdce6f2, 0x3b352c, 0.88));
+    const vmSun = new THREE.DirectionalLight(0xffe8c6, 1.12);
+    vmSun.position.set(45, 65, 35);
     viewmodelScene.add(vmSun);
+    const vmRim = new THREE.DirectionalLight(0x8fbce6, 0.52);
+    vmRim.position.set(-40, 30, -35);
+    viewmodelScene.add(vmRim);
 
     world = new WastelandWorld(scene, zone);
     if (window.applyGraphicsSettings) window.applyGraphicsSettings(window.GFX_SETTINGS);
@@ -447,6 +450,9 @@
       ...ui.profile.loadout,
       weaponMods: ui.profile.weaponMods || {}
     });
+    player.onChemicalsConverted = (id, qty, gained, total) => {
+      if (ui && ui.onChemicalsConverted) ui.onChemicalsConverted(id, qty, gained, total);
+    };
     // Pack any pre-match backpack items into the operator's raid backpack
     if (Array.isArray(ui.profile.loadout.backpackItems) && ui.profile.loadout.backpackItems.length > 0) {
       for (const it of ui.profile.loadout.backpackItems) {
@@ -1003,6 +1009,7 @@
     window.onHostCorpseSync = null;
     if (ui) ui.onContainerChanged = null;
     if (mpSession) mpSession.stop();
+    if (window.LensFlareSystem && window.LensFlareSystem.clear) window.LensFlareSystem.clear();
     if (window.soundEngine && window.soundEngine.stopAmbient) {
       try { window.soundEngine.stopAmbient(false); } catch (e) {}
     }
@@ -1034,6 +1041,10 @@
       // Persist all swapped/looted operator equipment & cash back to hideout profile
       ui.profile.credits = (ui.profile.credits || 0) + (player.cash || 0);
       totalVal += (player.cash || 0);
+      if ((player.chemicals || 0) > 0) {
+        ui.profile.chemicals = (ui.profile.chemicals || 0) + player.chemicals;
+        totalVal += player.chemicals * 85;
+      }
       const saveWpnMeta = (slotObj) => {
         if (!slotObj || !slotObj.id) return { mods: null, rarity: null };
         const cleanMods = (window.GAME_DATA && GAME_DATA.normalizeWeaponMods)
@@ -4310,6 +4321,10 @@
           renderer.clearDepth();
           renderer.render(viewmodelScene, viewmodelCamera);
         }
+      }
+      if (window.LensFlareSystem && window.LensFlareSystem.updateAndRender) {
+        const flareBlocked = isPaused || isModalOpen || !!(ui && ui.isTacMapOpen);
+        window.LensFlareSystem.updateAndRender(camera, world, weaponSystem, flareBlocked);
       }
     } else {
       // Update 3D Matchmaking Operator Stage + countdown if active

@@ -1051,13 +1051,20 @@ class GameUI {
     if (!this.profile) return;
     if (!Array.isArray(this.profile.weaponStash)) this.profile.weaponStash = [];
     if (!Array.isArray(this.profile.stash)) this.profile.stash = [];
+    if (typeof this.profile.chemicals !== 'number' || isNaN(this.profile.chemicals)) this.profile.chemicals = 0;
     const L = this.profile.loadout || (this.profile.loadout = {});
     if (!Array.isArray(L.backpackItems)) L.backpackItems = [];
 
     // Move any weapons currently in regular stash into the 15 dedicated double-wide weapon stash slots!
+    // Auto-convert syringes, sterile cloth, basic chemicals & scrubs into Refined Chemicals!
     const nonWeapons = [];
     for (const item of this.profile.stash) {
       if (!item || !GAME_DATA.ITEMS[item.id]) continue;
+      const cYield = (GAME_DATA.getChemicalYield && GAME_DATA.getChemicalYield(item.id)) || 0;
+      if (cYield > 0) {
+        this.profile.chemicals += cYield * Math.max(1, item.qty || 1);
+        continue;
+      }
       const def = GAME_DATA.ITEMS[item.id];
       if (def.type === 'weapon') {
         const count = Math.max(1, item.qty || 1);
@@ -1077,7 +1084,7 @@ class GameUI {
     }
     this.profile.stash = nonWeapons;
 
-    // Ensure regular 1x1 backpackItems never contain weapons
+    // Ensure regular 1x1 backpackItems never contain weapons or unconverted chemical items
     const bagDef = GAME_DATA.ITEMS[L.backpack || 'bag_small'];
     const hasWpnSlot = !!(bagDef && bagDef.weaponSlot);
     if (!hasWpnSlot && L.backpackWeapon) {
@@ -1095,6 +1102,11 @@ class GameUI {
     }
     L.backpackItems = L.backpackItems.filter((item) => {
       if (!item || !GAME_DATA.ITEMS[item.id]) return false;
+      const cYield = (GAME_DATA.getChemicalYield && GAME_DATA.getChemicalYield(item.id)) || 0;
+      if (cYield > 0) {
+        this.profile.chemicals += cYield * Math.max(1, item.qty || 1);
+        return false;
+      }
       const def = GAME_DATA.ITEMS[item.id];
       if (def.type === 'weapon') {
         if (hasWpnSlot && !L.backpackWeapon) {
@@ -3530,6 +3542,11 @@ class GameUI {
     this._normalizeStash();
     const def = GAME_DATA.ITEMS[id];
     if (!def) return false;
+    const chemYield = (GAME_DATA.getChemicalYield && GAME_DATA.getChemicalYield(id)) || 0;
+    if (chemYield > 0) {
+      this.profile.chemicals = (this.profile.chemicals || 0) + chemYield * Math.max(1, qty || 1);
+      return true;
+    }
     // Weapons always go into the 16 dedicated double-wide weapon stash slots!
     if (def.type === 'weapon') {
       const cleanMods = (window.GAME_DATA && GAME_DATA.normalizeWeaponMods)
@@ -3572,6 +3589,23 @@ class GameUI {
       this.profile.stash.push({ id, qty: 1 });
     }
     return true;
+  }
+
+  onChemicalsConverted(itemId, qty, gained, totalRaidChem) {
+    const chemValEl = document.getElementById('bag-chem-val');
+    if (chemValEl) chemValEl.textContent = String(Math.max(0, totalRaidChem || 0));
+    const sChemEl = document.getElementById('sort-chem');
+    if (sChemEl) sChemEl.textContent = String(Math.min(999, Math.max(0, totalRaidChem || 0))).padStart(3, '0');
+    const pill = document.getElementById('bag-chem-pill');
+    if (pill) {
+      pill.classList.remove('chem-pulse');
+      void pill.offsetWidth;
+      pill.classList.add('chem-pulse');
+    }
+    const def = GAME_DATA.ITEMS[itemId];
+    if (def && this._showSocialToast) {
+      this._showSocialToast(`+${gained} Chemicals (${def.name}${qty > 1 ? ' x' + qty : ''})`);
+    }
   }
 
   renderHideout() {
@@ -4585,11 +4619,18 @@ class GameUI {
     const matEl = document.getElementById('workbench-materials');
     if (!recEl || !matEl) return;
 
-    const countMat = (id) => this.profile.stash
-      .filter(i => i.id === id)
-      .reduce((acc, i) => acc + i.qty, 0);
+    const countMat = (id) => {
+      if (id === 'chemicals') return Math.max(0, this.profile.chemicals || 0);
+      return this.profile.stash
+        .filter(i => i.id === id)
+        .reduce((acc, i) => acc + i.qty, 0);
+    };
 
     const consumeMat = (id, needed) => {
+      if (id === 'chemicals') {
+        this.profile.chemicals = Math.max(0, (this.profile.chemicals || 0) - needed);
+        return;
+      }
       let rem = needed;
       for (let i = this.profile.stash.length - 1; i >= 0 && rem > 0; i--) {
         if (this.profile.stash[i].id === id) {
@@ -4603,13 +4644,18 @@ class GameUI {
 
     recEl.innerHTML = '';
     for (const r of (GAME_DATA.WORKBENCH_RECIPES || [])) {
-      const outDef = GAME_DATA.ITEMS[r.output];
+      const outId = r.outputId || r.output;
+      const outQty = r.outputQty || r.qty || 1;
+      const outDef = GAME_DATA.ITEMS[outId];
       if (!outDef) continue;
+      const ingList = Array.isArray(r.ingredients)
+        ? r.ingredients
+        : Object.entries(r.inputs || {}).map(([k, v]) => ({ id: k, qty: v }));
       let canCraft = true;
-      const reqParts = Object.entries(r.inputs).map(([mId, need]) => {
+      const reqParts = ingList.map(({ id: mId, qty: need }) => {
         const have = countMat(mId);
         if (have < need) canCraft = false;
-        const mName = (GAME_DATA.ITEMS[mId] && GAME_DATA.ITEMS[mId].name) || mId;
+        const mName = mId === 'chemicals' ? 'Chemicals' : ((GAME_DATA.ITEMS[mId] && GAME_DATA.ITEMS[mId].name) || mId);
         return `<span style="color:${have >= need ? '#69f0ae' : '#ff6b6b'}">${mName} ${have}/${need}</span>`;
       });
 
@@ -4617,7 +4663,7 @@ class GameUI {
       row.className = `item-row rarity-${outDef.rarity || 'common'}`;
       row.innerHTML = `
         <div class="item-info">
-          <div class="item-name">${outDef.name}${r.qty > 1 ? ' x' + r.qty : ''}</div>
+          <div class="item-name">${outDef.name}${outQty > 1 ? ' x' + outQty : ''}</div>
           <div class="item-meta">${reqParts.join(' · ')}</div>
         </div>
         <button class="btn-small" ${canCraft ? '' : 'disabled'}>CRAFT</button>
@@ -4629,8 +4675,8 @@ class GameUI {
           }
           return;
         }
-        for (const [mId, need] of Object.entries(r.inputs)) consumeMat(mId, need);
-        this.addToStash(r.output, r.qty || 1);
+        for (const { id: mId, qty: need } of ingList) consumeMat(mId, need);
+        this.addToStash(outId, outQty);
         if (window.soundEngine && window.soundEngine.playCraft) {
           try { window.soundEngine.playCraft(); } catch (e) {}
         }
@@ -4641,9 +4687,24 @@ class GameUI {
     }
 
     matEl.innerHTML = '';
+    const chemReserve = Math.max(0, this.profile.chemicals || 0);
+    const chemRow = document.createElement('div');
+    chemRow.className = 'item-row rarity-rare';
+    chemRow.innerHTML = `
+      <div class="item-info">
+        <div class="item-name" style="color:#80f8ff">Refined Chemicals Reserve · ${chemReserve}</div>
+        <div class="item-meta">Auto-converted from Syringes (+5), Basic Chemicals (+4), Scrubs (+3) &amp; Sterile Cloth (+2).</div>
+      </div>
+    `;
+    matEl.appendChild(chemRow);
+
     const mats = this.profile.stash.filter(i => GAME_DATA.ITEMS[i.id] && GAME_DATA.ITEMS[i.id].type === 'material');
-    if (mats.length === 0) {
-      matEl.innerHTML = '<p class="hint" style="padding:12px;">No common materials in stash. Loot sectors to collect Scrap Metal, Cloth, Gunpowder & Polymer.</p>';
+    if (mats.length === 0 && chemReserve === 0) {
+      const hint = document.createElement('p');
+      hint.className = 'hint';
+      hint.style.padding = '12px';
+      hint.textContent = 'No common materials in stash. Loot Vostok sectors to collect Medical Reagents, Scrap Metal, Cloth & Polymer.';
+      matEl.appendChild(hint);
     } else {
       mats.forEach((m) => {
         const def = GAME_DATA.ITEMS[m.id];
@@ -4651,7 +4712,7 @@ class GameUI {
         row.className = `item-row rarity-${def.rarity || 'common'}`;
         row.innerHTML = `
           <div class="item-info">
-            <div class="item-name">${def.name} x${m.qty} / 10</div>
+            <div class="item-name">${def.name} x${m.qty} / ${def.maxStack || 10}</div>
             <div class="item-meta">₽ ${(def.value * m.qty).toLocaleString()} · ${def.desc}</div>
           </div>
         `;
@@ -9460,8 +9521,8 @@ class GameUI {
       bagTotalEl.textContent = `₽ ${player.getBackpackValue().toLocaleString()}`;
     }
 
-    // Sort counts: Docs (keys/intel), Chips (electronics), Chem (meds/gunpowder/fuel), Gear (materials/misc)
-    let cntDocs = 0, cntChips = 0, cntChem = 0, cntGear = 0;
+    // Sort counts: Docs (keys/intel), Chips (electronics), Chem (Backpack Chemicals store), Gear (meds/materials/misc)
+    let cntDocs = 0, cntChips = 0, cntChem = Math.max(0, player.chemicals || 0), cntGear = 0;
     const bagItems = Array.isArray(player.backpack) ? player.backpack : [];
     for (let i = 0; i < bagItems.length; i++) {
       const it = bagItems[i];
@@ -9472,13 +9533,13 @@ class GameUI {
         cntChips += q;
       } else if ((d && d.type === 'key') || it.id === 'boss_key' || it.id === 'dogtag') {
         cntDocs += q;
-      } else if ((d && d.type === 'med') || it.id === 'self_revive' || it.id === 'gunpowder' || it.id === 'fuel_can') {
-        cntChem += q;
       } else {
         cntGear += q;
       }
     }
     const pad3 = (n) => String(Math.min(999, Math.max(0, n))).padStart(3, '0');
+    const bagChemEl = document.getElementById('bag-chem-val');
+    if (bagChemEl) bagChemEl.textContent = String(cntChem);
     const sDocsEl = document.getElementById('sort-docs');
     const sChipsEl = document.getElementById('sort-chips');
     const sChemEl = document.getElementById('sort-chem');
