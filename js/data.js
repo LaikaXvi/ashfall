@@ -3,15 +3,15 @@
 // Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
 // With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'Alpha RC 0.2.75',
+  VERSION: 'Alpha RC 0.2.76',
   VERSION_INFO: {
     major: 0,
     minor: 2,
-    patch: 75,
+    patch: 76,
     channel: 'Alpha', // Alpha | Beta — never blank while major === 0
     stage: 'RC',     // RC = Release Candidate
     updated: 'Nov 24, 2026',
-    changelog: 'Spatial 2D raycast grid + analytical terrain raymarch (eliminates firing FPS drops), pooled tracers/particles, WebAudio node cleanup, sub-frame fire-rate accumulator, semi-auto trigger buffer, and zero-lag camera/viewmodel aim sync.',
+    changelog: 'World-locked ledge-grab hands from frame 0 with uncapped 1P/3P climb reach, unclamped climb wrist alignment, and flush horizontal finger contact eliminating start-of-grab surface clipping.',
     get semver() { return `${this.major}.${this.minor}.${this.patch}`; },
     get label() { return `${this.channel} ${this.stage} ${this.major}.${this.minor}.${this.patch}`; }
   },

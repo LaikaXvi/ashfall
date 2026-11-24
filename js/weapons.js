@@ -2589,11 +2589,9 @@ class WeaponSystem {
         if (this.reviveRig) this.reviveRig.visible = false;
         const ls = player.ledgeState;
         const p = ls.pullProgress || 0;
-        // Hands stay 100% locked onto the world ledge through hang + hoist + mantle press (p <= 0.68),
+        // Hands stay 100% locked onto the exact world ledge lip from frame 0 through hang + hoist + mantle press (p <= 0.68),
         // then push off cleanly (0.68..0.90) as the operator stands up onto the obstacle top!
-        const grabLock = ls.phase === 'grabbing'
-          ? Math.min(1, ls.grabT / 0.52) * Math.min(1, ls.grabT / 0.52) * (3 - 2 * Math.min(1, ls.grabT / 0.52))
-          : 1.0;
+        const grabLock = 1.0;
         const releaseRaw = THREE.MathUtils.clamp((p - 0.68) / 0.22, 0, 1);
         const releaseEase = releaseRaw * releaseRaw * (3 - 2 * releaseRaw);
         const lockBlend = grabLock * (1 - releaseEase);
@@ -2630,23 +2628,24 @@ class WeaponSystem {
           const shZ = THREE.MathUtils.lerp(0.36, 0.14, pressEase);
           for (const arm of [this.ledgeHandsParts.leftArm, this.ledgeHandsParts.rightArm]) {
             const sSign = arm.side;
-            const inwardLip = THREE.MathUtils.lerp(0.014, 0.048, pressEase);
+            const inwardLip = THREE.MathUtils.lerp(0.045, 0.048, pressEase);
+            const palmY = THREE.MathUtils.lerp(0.022, 0.015, pressEase);
             const pushDownY = releaseEase * -0.18;
             const pushBackIn = releaseEase * -0.06;
             const palmWorld = edge.clone()
               .addScaledVector(ledgeRight, sSign * span)
-              .addScaledVector(worldUp, 0.015 + pushDownY)
+              .addScaledVector(worldUp, palmY + pushDownY)
               .addScaledVector(ledgeInward, inwardLip + pushBackIn);
-            // Dynamic world-ledge hand basis: fingers across top surface, dorsal back UP + slightly toward climber (never collinear with forearm!)
+            // World-ledge hand basis: palms & extended fingers rest flat on top surface at grab start, transitioning into press push-off
             const fWorld = new THREE.Vector3()
-              .addScaledVector(ledgeInward, THREE.MathUtils.lerp(0.95, 0.92, pressEase))
-              .addScaledVector(worldUp, THREE.MathUtils.lerp(-0.22, -0.10, pressEase))
-              .addScaledVector(ledgeRight, -sSign * THREE.MathUtils.lerp(0.06, 0.14, pressEase))
+              .addScaledVector(ledgeInward, THREE.MathUtils.lerp(0.985, 0.92, pressEase))
+              .addScaledVector(worldUp, THREE.MathUtils.lerp(0.015, -0.10, pressEase))
+              .addScaledVector(ledgeRight, -sSign * THREE.MathUtils.lerp(0.08, 0.14, pressEase))
               .normalize();
             const backWorld = new THREE.Vector3()
-              .addScaledVector(worldUp, THREE.MathUtils.lerp(0.86, 0.95, pressEase))
-              .addScaledVector(ledgeOutward, THREE.MathUtils.lerp(0.48, 0.22, pressEase))
-              .addScaledVector(ledgeRight, sSign * 0.18)
+              .addScaledVector(worldUp, THREE.MathUtils.lerp(0.96, 0.95, pressEase))
+              .addScaledVector(ledgeOutward, THREE.MathUtils.lerp(0.20, 0.22, pressEase))
+              .addScaledVector(ledgeRight, sSign * THREE.MathUtils.lerp(0.15, 0.18, pressEase))
               .normalize();
             // Singularity-free elbow pole in world ledge space (outward from wall + lateral + downward)
             const poleOffsetWorld = new THREE.Vector3()
@@ -2654,8 +2653,8 @@ class WeaponSystem {
               .addScaledVector(ledgeRight, sSign * THREE.MathUtils.lerp(0.36, 0.46, pressEase))
               .addScaledVector(worldUp, THREE.MathUtils.lerp(-0.36, -0.18, pressEase));
 
-            arm.hand.position.set(sSign * span, 0.015 + pushDownY, -(inwardLip + pushBackIn));
-            arm.hand.rotation.set(-0.14 - pressEase * 0.10, sSign * -0.06, sSign * 0.04);
+            arm.hand.position.set(sSign * span, palmY + pushDownY, -(inwardLip + pushBackIn));
+            arm.hand.rotation.set(-0.04 - pressEase * 0.20, sSign * -0.06, sSign * 0.04);
             if (arm.hand.userData) {
               arm.hand.userData.activeStyle = pressEase > 0.52
                 ? (sSign > 0 ? 'ledgePressR' : 'ledgePressL')
@@ -2667,12 +2666,18 @@ class WeaponSystem {
                 fWorld,
                 backWorld,
                 poleOffsetWorld,
+                curl: [
+                  THREE.MathUtils.lerp(0.05, 0.20, pressEase),
+                  THREE.MathUtils.lerp(0.11, 0.24, pressEase),
+                  THREE.MathUtils.lerp(0.08, 0.16, pressEase)
+                ],
+                thumb: THREE.MathUtils.lerp(0.18, 0.28, pressEase),
                 bodyYaw: ls.ledgeYaw ?? player.yaw,
                 isMantle: false
               };
             }
             const shoulderLocal = new THREE.Vector3(sSign * 0.22, shY, shZ);
-            const wristLocal = new THREE.Vector3(sSign * span, 0.012 + pushDownY, -(inwardLip + pushBackIn) + 0.035);
+            const wristLocal = new THREE.Vector3(sSign * span, palmY - 0.003 + pushDownY, -(inwardLip + pushBackIn) + 0.035);
             this._currentAimHand = arm.hand;
             this._aimArm(arm.forearm, shoulderLocal, wristLocal);
           }

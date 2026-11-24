@@ -1015,9 +1015,8 @@
           customRightArm = { shX: armLift, shZ: -0.18, elbX: 0.42 + pullArc * 0.72 };
 
           if (ls.edgePos) {
-            const grabLock = ls.phase === 'grabbing' ? smoothstep(Math.min(1, (ls.grabT || 0) / 0.52)) : 1.0;
             const relEase = smoothstep(THREE.MathUtils.clamp((p - 0.68) / 0.22, 0, 1));
-            const lockW = grabLock * (1 - relEase);
+            const lockW = 1 - relEase;
             const pressEase = smoothstep(THREE.MathUtils.clamp(p / 0.58, 0, 1));
             const ledgeInward = new THREE.Vector3(ls.inwardX || 0, 0, ls.inwardZ || 0);
             if (ledgeInward.lengthSq() < 1e-5) ledgeInward.set(-Math.sin(ls.ledgeYaw || 0), 0, -Math.cos(ls.ledgeYaw || 0));
@@ -1026,33 +1025,34 @@
             const worldUp = new THREE.Vector3(0, 1, 0);
             const ledgeRight = new THREE.Vector3().crossVectors(ledgeInward, worldUp).normalize();
             const span = ls.edgeHalfWidth || 0.20;
-            const inwardLip = THREE.MathUtils.lerp(0.014, 0.048, pressEase);
+            const inwardLip = THREE.MathUtils.lerp(0.045, 0.048, pressEase);
+            const palmY = THREE.MathUtils.lerp(0.022, 0.015, pressEase);
             const mkSide = (sSign) => ({
               blend: lockW,
               palmWorld: ls.edgePos.clone()
                 .addScaledVector(ledgeRight, sSign * span)
-                .addScaledVector(worldUp, 0.015)
+                .addScaledVector(worldUp, palmY)
                 .addScaledVector(ledgeInward, inwardLip),
               fWorld: new THREE.Vector3()
-                .addScaledVector(ledgeInward, THREE.MathUtils.lerp(0.95, 0.92, pressEase))
-                .addScaledVector(worldUp, THREE.MathUtils.lerp(-0.22, -0.10, pressEase))
-                .addScaledVector(ledgeRight, -sSign * THREE.MathUtils.lerp(0.06, 0.14, pressEase))
+                .addScaledVector(ledgeInward, THREE.MathUtils.lerp(0.985, 0.92, pressEase))
+                .addScaledVector(worldUp, THREE.MathUtils.lerp(0.015, -0.10, pressEase))
+                .addScaledVector(ledgeRight, -sSign * THREE.MathUtils.lerp(0.08, 0.14, pressEase))
                 .normalize(),
               backWorld: new THREE.Vector3()
-                .addScaledVector(worldUp, THREE.MathUtils.lerp(0.86, 0.95, pressEase))
-                .addScaledVector(ledgeOutward, THREE.MathUtils.lerp(0.48, 0.22, pressEase))
-                .addScaledVector(ledgeRight, sSign * 0.18)
+                .addScaledVector(worldUp, THREE.MathUtils.lerp(0.96, 0.95, pressEase))
+                .addScaledVector(ledgeOutward, THREE.MathUtils.lerp(0.20, 0.22, pressEase))
+                .addScaledVector(ledgeRight, sSign * THREE.MathUtils.lerp(0.15, 0.18, pressEase))
                 .normalize(),
               poleOffsetWorld: new THREE.Vector3()
                 .addScaledVector(ledgeOutward, THREE.MathUtils.lerp(0.42, 0.46, pressEase))
                 .addScaledVector(ledgeRight, sSign * THREE.MathUtils.lerp(0.36, 0.46, pressEase))
                 .addScaledVector(worldUp, THREE.MathUtils.lerp(-0.36, -0.18, pressEase)),
               curl: [
-                THREE.MathUtils.lerp(0.76, 0.20, pressEase),
-                THREE.MathUtils.lerp(0.90, 0.24, pressEase),
-                THREE.MathUtils.lerp(0.64, 0.16, pressEase)
+                THREE.MathUtils.lerp(0.05, 0.20, pressEase),
+                THREE.MathUtils.lerp(0.11, 0.24, pressEase),
+                THREE.MathUtils.lerp(0.08, 0.16, pressEase)
               ],
-              thumb: THREE.MathUtils.lerp(0.54, 0.28, pressEase)
+              thumb: THREE.MathUtils.lerp(0.18, 0.28, pressEase)
             });
             r._climbWorldHands = { left: mkSide(-1), right: mkSide(1) };
           }

@@ -426,15 +426,17 @@
       if (this._atForeDir.lengthSq() < 1e-6) return;
       this._atForeDir.normalize();
 
-      const maxBend = isClimbArm ? 0.68 : 0.73;
-      const dotF = THREE.MathUtils.clamp(fW.dot(this._atForeDir), -1, 1);
-      if (Math.acos(dotF) > maxBend) {
-        this._atPerp.copy(fW).addScaledVector(this._atForeDir, -dotF);
-        if (this._atPerp.lengthSq() > 1e-6) {
-          this._atPerp.normalize();
-          fW.copy(this._atForeDir).multiplyScalar(Math.cos(maxBend)).addScaledVector(this._atPerp, Math.sin(maxBend)).normalize();
-        } else {
-          fW.copy(this._atForeDir);
+      if (!isClimbArm) {
+        const maxBend = 0.73;
+        const dotF = THREE.MathUtils.clamp(fW.dot(this._atForeDir), -1, 1);
+        if (Math.acos(dotF) > maxBend) {
+          this._atPerp.copy(fW).addScaledVector(this._atForeDir, -dotF);
+          if (this._atPerp.lengthSq() > 1e-6) {
+            this._atPerp.normalize();
+            fW.copy(this._atForeDir).multiplyScalar(Math.cos(maxBend)).addScaledVector(this._atPerp, Math.sin(maxBend)).normalize();
+          } else {
+            fW.copy(this._atForeDir);
+          }
         }
       }
 
@@ -448,28 +450,30 @@
           this._atHbP.normalize();
           const rSin = this._atCross.crossVectors(this._atFbP, this._atHbP).dot(this._atForeDir);
           const rCos = THREE.MathUtils.clamp(this._atFbP.dot(this._atHbP), -1, 1);
-          const maxRoll = isClimbArm ? 1.26 : 1.45;
+          const maxRoll = isClimbArm ? 1.42 : 1.45;
           const rClamped = THREE.MathUtils.clamp(Math.atan2(rSin, rCos), -maxRoll, maxRoll) * 0.68;
           this._atQRot.setFromAxisAngle(this._atForeDir, rClamped);
           this.setWorldQuat(bFore, this._atQRot.multiply(this._atQL));
           bFore.updateMatrixWorld(true);
         }
 
-        // 3. Guard residual wrist roll relative to rolled forearm dorsal axis (prevents candy-wrapper wrist!)
-        bFore.getWorldQuaternion(this._atQL);
-        this._atFbW.copy(hb.bLocal).applyQuaternion(this._atQL);
-        this._atRfP.copy(this._atFbW).addScaledVector(fW, -this._atFbW.dot(fW));
-        this._atBwP.copy(backW).addScaledVector(fW, -backW.dot(fW));
-        if (this._atRfP.lengthSq() > 1e-5 && this._atBwP.lengthSq() > 1e-5) {
-          this._atRfP.normalize();
-          this._atBwP.normalize();
-          const wSin = this._atCross.crossVectors(this._atRfP, this._atBwP).dot(fW);
-          const wCos = THREE.MathUtils.clamp(this._atRfP.dot(this._atBwP), -1, 1);
-          const wAng = Math.atan2(wSin, wCos);
-          const maxWristTwist = isClimbArm ? 0.63 : 1.38;
-          if (Math.abs(wAng) > maxWristTwist) {
-            this._atQRot.setFromAxisAngle(fW, THREE.MathUtils.clamp(wAng, -maxWristTwist, maxWristTwist));
-            backW.copy(this._atRfP).applyQuaternion(this._atQRot).normalize();
+        // 3. Guard residual wrist roll relative to rolled forearm dorsal axis (prevents candy-wrapper wrist; preserve world-locked ledge palm on climbs)
+        if (!isClimbArm) {
+          bFore.getWorldQuaternion(this._atQL);
+          this._atFbW.copy(hb.bLocal).applyQuaternion(this._atQL);
+          this._atRfP.copy(this._atFbW).addScaledVector(fW, -this._atFbW.dot(fW));
+          this._atBwP.copy(backW).addScaledVector(fW, -backW.dot(fW));
+          if (this._atRfP.lengthSq() > 1e-5 && this._atBwP.lengthSq() > 1e-5) {
+            this._atRfP.normalize();
+            this._atBwP.normalize();
+            const wSin = this._atCross.crossVectors(this._atRfP, this._atBwP).dot(fW);
+            const wCos = THREE.MathUtils.clamp(this._atRfP.dot(this._atBwP), -1, 1);
+            const wAng = Math.atan2(wSin, wCos);
+            const maxWristTwist = 1.38;
+            if (Math.abs(wAng) > maxWristTwist) {
+              this._atQRot.setFromAxisAngle(fW, THREE.MathUtils.clamp(wAng, -maxWristTwist, maxWristTwist));
+              backW.copy(this._atRfP).applyQuaternion(this._atQRot).normalize();
+            }
           }
         }
       }
@@ -912,6 +916,17 @@
         rightupleg: B.rightupleg ? B.rightupleg.quaternion.clone() : null,
         rightleg: B.rightleg ? B.rightleg.quaternion.clone() : null
       };
+      this.bindBonePos = {
+        leftforearm: B.leftforearm ? B.leftforearm.position.clone() : null,
+        lefthand: B.lefthand ? B.lefthand.position.clone() : null,
+        rightforearm: B.rightforearm ? B.rightforearm.position.clone() : null,
+        righthand: B.righthand ? B.righthand.position.clone() : null
+      };
+      B.rightarm.updateMatrixWorld(true);
+      const _pA3 = B.rightarm.getWorldPosition(new THREE.Vector3());
+      const _pF3 = B.rightforearm.getWorldPosition(new THREE.Vector3());
+      const _pH3 = B.righthand.getWorldPosition(new THREE.Vector3());
+      this.armReach3P = Math.max(0.25, _pA3.distanceTo(_pF3) + _pF3.distanceTo(_pH3));
 
       // Mount sculpted 3D backpack flush on Spine2 rear SAPI plate
       this.backpackMount = null;
@@ -1352,6 +1367,11 @@
         const bHand = B[side + 'hand'];
         if (!armProxy || !bUp || !bLow || !bHand) return;
 
+        if (this.bindBonePos) {
+          if (this.bindBonePos[side + 'forearm']) bLow.position.copy(this.bindBonePos[side + 'forearm']);
+          if (this.bindBonePos[side + 'hand']) bHand.position.copy(this.bindBonePos[side + 'hand']);
+        }
+
         const shW = armProxy.shoulder.getWorldPosition(new THREE.Vector3());
         const elW = armProxy.elbow.getWorldPosition(new THREE.Vector3());
         const wrW = armProxy.wrist.getWorldPosition(new THREE.Vector3());
@@ -1378,8 +1398,16 @@
           wrW.lerp(climbWristW, cb);
           bUp.parent.updateWorldMatrix(true, false);
           bUp.updateMatrixWorld(true);
-          const climbPoleW = bUp.getWorldPosition(new THREE.Vector3()).add(cw.poleOffsetWorld);
+          const sh3PW = bUp.getWorldPosition(new THREE.Vector3());
+          const climbPoleW = sh3PW.clone().add(cw.poleOffsetWorld);
           pole.lerp(climbPoleW, cb);
+          const live3PDist = wrW.distanceTo(sh3PW);
+          const reach3P = (this.armReach3P || 0.56) * 0.95;
+          if (live3PDist > reach3P) {
+            const segScale3P = live3PDist / reach3P;
+            bLow.position.multiplyScalar(segScale3P);
+            bHand.position.multiplyScalar(segScale3P);
+          }
         }
 
         RigIK.solveTwoBone(
@@ -1508,8 +1536,8 @@
     medGauzeGripR:     { f: new THREE.Vector3(-0.42,  0.24, -0.87), back: new THREE.Vector3( 0.76,  0.56, -0.33), palmOffset: new THREE.Vector3( 0.022,  0.008,  0.014), curl: [1.04, 1.16, 0.80], thumb: 0.76 },
     grabReach:      { f: new THREE.Vector3( 0.28, -0.26, -0.92), back: new THREE.Vector3(-0.36,  0.88, -0.30), palmOffset: new THREE.Vector3(-0.008,  0.010, 0.004), curl: [0.24, 0.28, 0.20], thumb: 0.30 },
     grabClose:      { f: new THREE.Vector3( 0.32, -0.18, -0.93), back: new THREE.Vector3(-0.46,  0.82, -0.34), palmOffset: new THREE.Vector3(-0.010,  0.006, 0.004), curl: [1.28, 1.40, 0.90], thumb: 0.88 },
-    ledgeGrabL:     { f: new THREE.Vector3( 0.06, -0.22, -0.97), back: new THREE.Vector3(-0.16,  0.88,  0.45), palmOffset: new THREE.Vector3(-0.004,  0.008, 0.002), curl: [0.76, 0.90, 0.64], thumb: 0.54 },
-    ledgeGrabR:     { f: new THREE.Vector3(-0.06, -0.22, -0.97), back: new THREE.Vector3( 0.16,  0.88,  0.45), palmOffset: new THREE.Vector3( 0.004,  0.008, 0.002), curl: [0.76, 0.90, 0.64], thumb: 0.54 },
+    ledgeGrabL:     { f: new THREE.Vector3( 0.08,  0.01, -0.996), back: new THREE.Vector3(-0.15,  0.96,  0.20), palmOffset: new THREE.Vector3(-0.004,  0.010, 0.002), curl: [0.05, 0.11, 0.08], thumb: 0.18 },
+    ledgeGrabR:     { f: new THREE.Vector3(-0.08,  0.01, -0.996), back: new THREE.Vector3( 0.15,  0.96,  0.20), palmOffset: new THREE.Vector3( 0.004,  0.010, 0.002), curl: [0.05, 0.11, 0.08], thumb: 0.18 },
     ledgePressL:    { f: new THREE.Vector3( 0.14, -0.10, -0.985), back: new THREE.Vector3(-0.18, 0.95,  0.22), palmOffset: new THREE.Vector3(-0.004,  0.010, 0.002), curl: [0.20, 0.24, 0.16], thumb: 0.28 },
     ledgePressR:    { f: new THREE.Vector3(-0.14, -0.10, -0.985), back: new THREE.Vector3( 0.18, 0.95,  0.22), palmOffset: new THREE.Vector3( 0.004,  0.010, 0.002), curl: [0.20, 0.24, 0.16], thumb: 0.28 }
   };
@@ -1795,6 +1823,19 @@
           curCurl[1] = THREE.MathUtils.lerp(curCurl[1], style.curl[1], curlLerp);
           curCurl[2] = THREE.MathUtils.lerp(curCurl[2], style.curl[2], curlLerp);
           this._curThumb[side] = THREE.MathUtils.lerp(this._curThumb[side], style.thumb, curlLerp);
+          if (!this._wasClimbing) this._wasClimbing = { left: false, right: false };
+          if (cb > 0.001 && climbLock && Array.isArray(climbLock.curl)) {
+            const snapClimb = !this._wasClimbing[side] || cb >= 0.99;
+            const cBlend = snapClimb ? 1.0 : cb;
+            curCurl[0] = THREE.MathUtils.lerp(curCurl[0], climbLock.curl[0], cBlend);
+            curCurl[1] = THREE.MathUtils.lerp(curCurl[1], climbLock.curl[1], cBlend);
+            curCurl[2] = THREE.MathUtils.lerp(curCurl[2], climbLock.curl[2], cBlend);
+            const tgtThumb = typeof climbLock.thumb === 'number' ? climbLock.thumb : 0.22;
+            this._curThumb[side] = THREE.MathUtils.lerp(this._curThumb[side], tgtThumb, cBlend);
+            this._wasClimbing[side] = true;
+          } else {
+            this._wasClimbing[side] = false;
+          }
           this._wasVisible[side] = true;
 
           let handWQ = camQ;
@@ -1918,6 +1959,13 @@
               .addScaledVector(bodyBack, 0.08);
             climbAnchor.y -= 0.25;
 
+            const preSpan = climbAnchor.clone().sub(wristTarget);
+            const preDist = preSpan.length();
+            const naturalClimbReach = this.reach * 1.32;
+            if (preDist > naturalClimbReach && preDist > 1e-5) {
+              climbAnchor.copy(wristTarget).addScaledVector(preSpan, naturalClimbReach / preDist);
+            }
+
             const cAnc = cam.worldToLocal(climbAnchor.clone());
             if (cAnc.z < 0.05) {
               const safeY = -Math.max(0, -cAnc.z) * halfTanY - 0.085;
@@ -1930,8 +1978,9 @@
             pole.lerp(climbPole, cb);
 
             const liveDist = wristTarget.distanceTo(anchor);
-            if (liveDist > this.reach * 0.90) {
-              const segScale = THREE.MathUtils.clamp(liveDist / (this.reach * 0.90), 1.0, 1.82);
+            const baseLim = this.reach * 0.95;
+            if (liveDist > baseLim) {
+              const segScale = liveDist / baseLim;
               bFore.position.multiplyScalar(segScale);
               bHand.position.multiplyScalar(segScale);
             }
