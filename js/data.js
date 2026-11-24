@@ -3,15 +3,15 @@
 // Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
 // With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'Alpha RC 0.2.77',
+  VERSION: 'Alpha RC 0.2.79',
   VERSION_INFO: {
     major: 0,
     minor: 2,
-    patch: 77,
+    patch: 79,
     channel: 'Alpha', // Alpha | Beta — never blank while major === 0
     stage: 'RC',     // RC = Release Candidate
     updated: 'Nov 24, 2026',
-    changelog: 'Remastered 3P locomotion with momentum-based start/stop/pivot transitions, heel-to-toe ground-locked leg IK, directional strafing, intense sprint drive, and skyward High-Port Tactical Sprint.',
+    changelog: 'ZAVOD-9 mountain fortress + elevator infil to underground Bunker rough outline (4 Koschei-style puzzle wings converging on weapons-manufacturing & chemical-processing plant) + bunker map schematics.',
     get semver() { return `${this.major}.${this.minor}.${this.patch}`; },
     get label() { return `${this.channel} ${this.stage} ${this.major}.${this.minor}.${this.patch}`; }
   },
@@ -873,6 +873,53 @@ window.GAME_DATA = {
       desc: 'Panoramic quad-tube night vision goggles for low-light operations.'
     },
 
+    // === BUNKER PUZZLE QUEST ITEMS (ZAVOD-9 underground complex) ===
+    bunker_battery: {
+      id: 'bunker_battery',
+      name: 'Car Battery',
+      type: 'quest',
+      category: 'quest',
+      rarity: 'rare',
+      value: 400,
+      weight: 6.0,
+      stackable: false,
+      desc: 'Heavy 12V car battery. Archive wing breaker panel needs one of these + jumper cables.'
+    },
+    jumper_cables: {
+      id: 'jumper_cables',
+      name: 'Jumper Cables',
+      type: 'quest',
+      category: 'quest',
+      rarity: 'common',
+      value: 250,
+      weight: 1.2,
+      stackable: false,
+      desc: 'Insulated jumper leads. Archive wing breaker panel needs these + a car battery.'
+    },
+    rad_filter: {
+      id: 'rad_filter',
+      name: 'Radiation Filter',
+      type: 'quest',
+      category: 'quest',
+      rarity: 'rare',
+      value: 900,
+      weight: 0.4,
+      stackable: true,
+      maxStack: 3,
+      desc: 'Sealed NBC filter canister. Consumed by the Lab wing (W) radiation airlocks.'
+    },
+    bunker_keycard: {
+      id: 'bunker_keycard',
+      name: 'ZAVOD-9 Keycard',
+      type: 'key',
+      category: 'quest',
+      rarity: 'epic',
+      value: 2500,
+      weight: 0.05,
+      stackable: false,
+      desc: 'Scorched ZAVOD-9 security keycard. Opens the service-elevator lobby bypass door.'
+    },
+
     // === SELF-REVIVE, KEYS & HIGH-VALUE VOSTOK VALUABLES ===
     self_revive: {
       id: 'self_revive',
@@ -1236,6 +1283,37 @@ window.GAME_DATA = {
       lootTierBonus: 1,
       fogColor: 0x6d7982,
       skyColor: 0x5c6973
+    },
+    bunker: {
+      id: 'bunker',
+      name: 'ZAVOD-9 Bunker',
+      raidDuration: 1200, // 20 minutes underground
+      enemyCount: 12,
+      raiderChance: 0.55,
+      heavyChance: 0.30,
+      lootTierBonus: 2,
+      fogColor: 0x3a4148,
+      skyColor: 0x22262b,
+      underground: true,
+      desc: 'Expansive underground weapons-manufacturing & chemical-processing plant. 4 puzzle wings feed the central plant.'
+    }
+  },
+
+  // Rough outline: ZAVOD-9 underground bunker — 4 separated spawn wings, each with a
+  // Koschei/Building-21-inspired puzzle gating its inner bunker door to the central plant.
+  BUNKER: {
+    surfaceElevator: { x: -510, z: -445, label: 'ZAVOD-9 SERVICE ELEVATOR' },
+    center: { x: 0, y: -58, z: 0 },
+    wings: [
+      { id: 'archive', name: 'ARCHIVE (Information Extraction)', spawn: [0, -58, -110], door: [0, -58, -38], puzzle: 'breaker', puzzleAt: [6, -58, -70], desc: 'Install car battery + jumper cables at the breaker, then hit the red button.' },
+      { id: 'pump', name: 'PUMP HALL (External Ops)', spawn: [110, -58, 0], door: [38, -58, 0], puzzle: 'valves', puzzleAt: [[64, -58, 6], [64, -58, -6]], desc: 'Turn both pump-hall drain valves to lower the floodwater, then push through.' },
+      { id: 'barracks', name: 'BARRACKS', spawn: [0, -58, 110], door: [0, -58, 38], puzzle: 'lasers', puzzleAt: [0, -58, 70], desc: 'Slide under (or disable at the fuse box) the laser tripwire corridor.' },
+      { id: 'lab', name: 'LAB (Defense Research)', spawn: [-110, -58, 0], door: [-38, -58, 0], puzzle: 'airlocks', puzzleAt: [[-70, -58, 0], [-58, -58, 0], [-46, -58, 0]], desc: 'Burn one radiation filter per airlock door (3 total) to reach the plant.' }
+    ],
+    plant: {
+      chemHall: { x: -22, z: 8, w: 44, d: 30, label: 'CHEMICAL PROCESSING' },
+      weaponsHall: { x: 24, z: -10, w: 48, d: 34, label: 'WEAPONS MANUFACTURING' },
+      exfilElevator: { x: 0, z: 44, label: 'PLANT EXFIL ELEVATOR (surface)' }
     }
   },
 
