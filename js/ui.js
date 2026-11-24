@@ -1032,14 +1032,14 @@ class GameUI {
         }
       },
       weaponStash: [
-        { id: 'ak74m', qty: 1 },
+        { id: 'ak47', qty: 1 },
         { id: 'm870', qty: 1 },
         { id: 'm24', qty: 1 },
         { id: 'g17', qty: 1 }
       ],
       stash: [
         { id: 'bag_weapon', qty: 1 },
-        { id: 'ammo_545', qty: 60 },
+        { id: 'ammo_739', qty: 60 },
         { id: 'medkit', qty: 2 },
         { id: 'armor_plate', qty: 3 },
         { id: 'throwing_knife', qty: 2 },
@@ -1786,7 +1786,7 @@ class GameUI {
           partyId: msg.partyId,
           from: (msg.from || 'OPERATOR').toUpperCase(),
           fromClientId: msg.clientId,
-          leaderWeapon: msg.leaderWeapon || 'ak74m'
+          leaderWeapon: msg.leaderWeapon || 'ak47'
         };
         this.addNotification({ kind: 'party_invite', title: `Party invite from ${this.pendingPartyInvite.from}`, sub: 'Accept or decline from Notifications', from: this.pendingPartyInvite.from });
         this._showSocialToast(`Party invite from ${this.pendingPartyInvite.from}! Click ACCEPT in COMMS.`);
@@ -1817,7 +1817,7 @@ class GameUI {
             isSelf: false,
             isLeader: false,
             isRemoteHuman: true,
-            weaponId: msg.weaponId || 'ak74m',
+            weaponId: msg.weaponId || 'ak47',
             gearLabel: msg.gearLabel || 'OPERATOR',
             ready: false
           });
@@ -1847,7 +1847,7 @@ class GameUI {
           isSelf: m.clientId === this._clientId,
           isLeader: !!m.isLeader,
           isRemoteHuman: m.clientId !== this._clientId,
-          weaponId: m.weaponId || 'ak74m',
+          weaponId: m.weaponId || 'ak47',
           gearLabel: m.gearLabel || 'OPERATOR',
           ready: m.clientId === this._clientId ? (myPrev ? !!myPrev.ready : !!m.ready) : !!m.ready
         }));
@@ -2299,7 +2299,7 @@ class GameUI {
         clientId: m.clientId,
         name: m.name,
         isLeader: !!m.isLeader,
-        weaponId: m.weaponId || 'ak74m',
+        weaponId: m.weaponId || 'ak47',
         gearLabel: m.gearLabel || 'OPERATOR',
         ready: !!m.ready
       }))
@@ -2367,7 +2367,7 @@ class GameUI {
         isSelf: false,
         isLeader: true,
         isRemoteHuman: true,
-        weaponId: inv.leaderWeapon || 'ak74m',
+        weaponId: inv.leaderWeapon || 'ak47',
         gearLabel: 'LEADER',
         ready: false
       },
@@ -2434,7 +2434,7 @@ class GameUI {
       from: this.profile.social.callsign,
       to: peer.name,
       toClientId: peer.clientId,
-      leaderWeapon: L.primary || L.secondary || 'ak74m'
+      leaderWeapon: L.primary || L.secondary || 'ak47'
     });
     this._showSocialToast(`Party invite sent to ${peer.name} — waiting for acceptance...`);
   }
@@ -2450,7 +2450,7 @@ class GameUI {
     this.partyId = 'p_' + peer.clientId;
     this.partyHost = peer.name;
     this.partyMembers = [
-      { clientId: peer.clientId, name: peer.name, isSelf: false, isLeader: true, isRemoteHuman: true, weaponId: 'ak74m', gearLabel: 'LEADER', ready: false },
+      { clientId: peer.clientId, name: peer.name, isSelf: false, isLeader: true, isRemoteHuman: true, weaponId: 'ak47', gearLabel: 'LEADER', ready: false },
       { clientId: this._clientId, name: this.profile.social.callsign, isSelf: true, isLeader: false, isRemoteHuman: false, weaponId: myWpn, gearLabel: myWpn.toUpperCase(), ready: false }
     ];
     this._partyReady = false;
@@ -3861,7 +3861,7 @@ class GameUI {
 
     document.getElementById('btn-dev-grant').addEventListener('click', () => {
       this.profile.credits += 50000;
-      ['pm9', 'g17', 'mp5k', 'ak74m', 'm870', 'mosin9130', 'm24', 'awm338', 'vest_1plate', 'vest_2plate_gel', 'vest_2plate_helmet', 'vest_3plate', 'bag_large', 'bag_weapon', 'boss_key', 'melee_karambit', 'fu_dead_silence', 'ks_uav', 'ks_airstrike'].forEach(id => this.addToStash(id, 1));
+      ['pm9', 'g17', 'mp5k', 'ak47', 'm870', 'mosin9130', 'm24', 'awm338', 'vest_1plate', 'vest_2plate_gel', 'vest_2plate_helmet', 'vest_3plate', 'bag_large', 'bag_weapon', 'boss_key', 'melee_karambit', 'fu_dead_silence', 'ks_uav', 'ks_airstrike'].forEach(id => this.addToStash(id, 1));
       this.addToStash('medkit', 5);
       this.addToStash('armor_plate', 6);
       this.addToStash('scrap_metal', 10);
@@ -4076,7 +4076,7 @@ class GameUI {
       const squadHtml = allies.length > 0
         ? `<div style="width:100%;border-top:1px solid rgba(255,255,255,0.08);padding-top:8px;margin-top:4px;display:flex;flex-wrap:wrap;gap:10px;">` +
           `<span style="color:#69f0ae;font-weight:700;">SQUAD INFIL (${this.partyMembers.length}/3):</span>` +
-          allies.map(a => `<span><b>${a.name}</b> (${a.gearLabel || 'AK-74M · 2-Plate'} · <span style="color:#69f0ae;">READY</span>)</span>`).join('') +
+          allies.map(a => `<span><b>${a.name}</b> (${a.gearLabel || 'AK-47 · 2-Plate'} · <span style="color:#69f0ae;">READY</span>)</span>`).join('') +
           `</div>`
         : '';
       const bagCount = Array.isArray(L.backpackItems) ? L.backpackItems.length : 0;
@@ -4277,8 +4277,8 @@ class GameUI {
 
   _getItemShortTag(id, def) {
     const map = {
-      pm9: 'PM9', g17: 'G17', mp5k: 'MP5', ak74m: 'AK', m870: '870', m24: 'M24', mosin9130: 'M91', awm338: 'AWM',
-      ammo_9x18: '918', ammo_9x19: '9MM', ammo_12g: '12G', ammo_545: '545', ammo_762: '762', ammo_rocket: 'RKT',
+      pm9: 'PM9', g17: 'G17', mp5k: 'MP5', ak47: 'AK', m870: '870', m24: 'M24', mosin9130: 'M91', awm338: 'AWM',
+      ammo_9x18: '918', ammo_9x19: '9MM', ammo_12g: '12G', ammo_739: '739', ammo_762: '762', ammo_rocket: 'RKT',
       medkit: 'MED', bandage: 'BND', painkillers: 'PK', self_revive: 'SR',
       armor_plate: 'PLT', vest_1plate: 'V1', vest_2plate: 'V2', vest_2plate_gel: 'V2G', vest_2plate_helmet: 'V2H', vest_3plate: 'V3',
       bag_small: 'BG1', bag_medium: 'BG2', bag_large: 'BG3', bag_weapon: 'BGW',
