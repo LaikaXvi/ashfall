@@ -3911,7 +3911,6 @@ class GameUI {
   addToStash(id, qty = 1, mods = null, rarityOverride = null) {
     this._normalizeStash();
     this._normalizePartyVisibility();
-    this._bindUnifiedMenuNav();
     const def = GAME_DATA.ITEMS[id];
     if (!def) return false;
     const chemYield = (GAME_DATA.getChemicalYield && GAME_DATA.getChemicalYield(id)) || 0;
@@ -4314,7 +4313,6 @@ class GameUI {
   renderPreMatchLoadout() {
     this._normalizeStash();
     this._normalizePartyVisibility();
-    this._bindUnifiedMenuNav();
     this._updateDeployResponsiveScale();
     const weaponStashGrid = document.getElementById('prematch-weapon-stash-grid');
     const stashGrid = document.getElementById('prematch-stash-grid');
@@ -6118,7 +6116,6 @@ class GameUI {
   renderStash() {
     this._normalizeStash();
     this._normalizePartyVisibility();
-    this._bindUnifiedMenuNav();
     const list = document.getElementById('stash-list');
     list.innerHTML = '';
     if (this.profile.weaponStash.length === 0 && this.profile.stash.length === 0) {
