@@ -57,6 +57,52 @@
     return door;
   };
 
+
+  // ---------------------------------------------------------------------------------
+  // Explosive-destructible plank barricade (Koschei B/1 breach wall with X mark)
+  // ---------------------------------------------------------------------------------
+  P._zvPlankBarricade = function (op, MZ) {
+    const alongZ = op.o === 'v';
+    const w = op.width, h = op.h, t = 0.24;
+    const by = op.baseY || 0;
+    const g = new THREE.Group();
+    const plankN = 6;
+    for (let k = 0; k < plankN; k++) {
+      const py = 0.28 + (k / plankN) * (h - 0.35);
+      const pw = w + (k % 2 ? -0.08 : 0.04);
+      const plank = new THREE.Mesh(new THREE.BoxGeometry(alongZ ? t : pw, 0.32, alongZ ? pw : t), MZ.wood);
+      plank.position.y = py;
+      g.add(plank);
+    }
+    // Circled-X explosive breach marker on both faces
+    const markMat = new THREE.MeshBasicMaterial({ color: 0xff5252 });
+    for (const sgn of [-1, 1]) {
+      for (const ang of [0.7, -0.7]) {
+        const bar = new THREE.Mesh(new THREE.BoxGeometry(alongZ ? 0.04 : 1.35, 0.14, alongZ ? 1.35 : 0.04), markMat);
+        bar.position.set(alongZ ? sgn * (t / 2 + 0.03) : 0, h * 0.5, alongZ ? 0 : sgn * (t / 2 + 0.03));
+        if (alongZ) bar.rotation.x = ang; else bar.rotation.z = ang;
+        g.add(bar);
+      }
+    }
+    g.position.set(op.x, by, op.z);
+    this.scene.add(g);
+    const half = alongZ ? { x: 0.25, z: w / 2 } : { x: w / 2, z: 0.25 };
+    const collider = { minX: op.x - half.x, maxX: op.x + half.x, minY: by, maxY: by + h, minZ: op.z - half.z, maxZ: op.z + half.z };
+    this.colliders.push(collider);
+    const proxy = new THREE.Mesh(new THREE.BoxGeometry(alongZ ? t : w, h, alongZ ? w : t), MZ.wood);
+    proxy.position.set(op.x, by + h / 2, op.z);
+    proxy.updateMatrix();
+    proxy.matrixWorld.copy(proxy.matrix);
+    this.shootableMeshes.push(proxy);
+    this.wallMeshes.push(proxy);
+    const bar = {
+      id: op.id, label: op.label || op.id, o: op.o, x: op.x, z: op.z, baseY: by, width: w, height: h,
+      broken: false, group: g, collider, proxy
+    };
+    this.zavod.barricades.push(bar);
+    return bar;
+  };
+
   // ---------------------------------------------------------------------------------
   // Prop helpers (all accept a floor base Y so upper floors can be furnished)
   // ---------------------------------------------------------------------------------
@@ -129,6 +175,8 @@
         this._addDoor(op.x, op.baseY || 0, op.z, Math.min(op.width - 0.25, 1.75), 2.6, rotY, op.label || 'Door', 'steel');
       } else if (op.door === 'blast') {
         this._zvBlastDoor(op, MZ);
+      } else if (op.door === 'planks') {
+        this._zvPlankBarricade(op, MZ);
       }
     }
     const doorById = (id) => Z.doors.find(d => d.id === id);
@@ -222,6 +270,12 @@
     addStation({ id: 'b1_lockbtn', kind: 'button', sector: 'B1', x: 104, z: -32.5, rotY: 0, label: 'B/1 AIRLOCK CONTROL', hold: 0.8,
       requires: ['b1_valve1', 'b1_valve2'], hint: 'Pumps flooded — open both drain valves (Block T & R)',
       actions: [{ open: ['B1'] }, { alarm: 'B1' }] });
+    addStation({ id: 'b1_secret_panel', kind: 'socket', sector: 'B1', x: 122, z: -150, rotY: Math.PI / 2, label: 'BARRACKS SECRET EXIT PANEL', hold: 1.2,
+      needs: [{ id: 'b1_key_a', qty: 1 }, { id: 'b1_key_b', qty: 1 }],
+      hint: 'Needs Barracks Exit Key A (flooded dorms) + Key B (submerged secret room)',
+      actions: [{ open: ['B1_SECRET'] }, { alarm: 'B1_SECRET' }, { msg: 'Barracks secret passage open — direct route to the Factory!' }] });
+    addStation({ id: 'b1_secret_fbtn', kind: 'button', sector: 'FACTORY', x: 88.6, z: -149, rotY: -Math.PI / 2, label: 'BARRACKS SECRET EXIT CONTROL', hold: 0.8,
+      actions: [{ open: ['B1_SECRET'] }] });
     // ===== B/2 EXTERNAL OPS: 2 fuses -> fuse box kills laser gates & opens airlock =====
     addStation({ id: 'b2_fusebox', kind: 'socket', sector: 'B2', x: 116, z: 32, rotY: 0, label: 'B/2 SECURITY FUSE BOX',
       needs: [{ id: 'bunker_fuse', qty: 2 }], hold: 1.8, hint: 'Needs 2 Security Fuses (Ext-Ops HQ, both floors)',
@@ -282,13 +336,16 @@
     // --- Flood (B/1) ---
     const floodLevel = 1.35;
     Z.floods.b1 = { level: floodLevel, target: floodLevel, meshes: [] };
-    for (const rc of G.mergedRects(0, (i, j) => { const v = G.at(0, i, j); return (v >= 0 && G.regions[v].flood === 'b1') ? v : null; })) {
-      const x0 = G.wx(rc.i0), x1 = G.wx(rc.i1), z0 = G.wz(rc.j0), z1 = G.wz(rc.j1);
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, z1 - z0), MZ.water);
-      m.rotation.x = -Math.PI / 2;
-      m.position.set((x0 + x1) / 2, floodLevel, (z0 + z1) / 2);
-      this.scene.add(m);
-      Z.floods.b1.meshes.push(m);
+    for (const [fKey, fLvl] of [['b1', floodLevel], ['b1_secret', 3.15]]) {
+      if (!Z.floods[fKey]) Z.floods[fKey] = { level: fLvl, target: fLvl, meshes: [] };
+      for (const rc of G.mergedRects(0, (i, j) => { const v = G.at(0, i, j); return (v >= 0 && G.regions[v].flood === fKey) ? v : null; })) {
+        const x0 = G.wx(rc.i0), x1 = G.wx(rc.i1), z0 = G.wz(rc.j0), z1 = G.wz(rc.j1);
+        const m = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, z1 - z0), MZ.water);
+        m.rotation.x = -Math.PI / 2;
+        m.position.set((x0 + x1) / 2, fLvl, (z0 + z1) / 2);
+        this.scene.add(m);
+        Z.floods[fKey].meshes.push(m);
+      }
     }
     // --- Laser gates (B/2 security corridor) ---
     const laserMat = new THREE.MeshBasicMaterial({ color: 0xff1a1a, transparent: true, opacity: 0.9 });
@@ -321,6 +378,11 @@
     // A/2: DRD exit keys in the locked labs
     loose('drd_key_a', -204, -216, 0, 'a');
     loose('drd_key_b', -171, -120, 0, 'b');
+    // B/1: Rebreather + Exit Key A in main dorms, Exit Key B in submerged secret vault
+    loose('zavod_rebreather', 316, -118, 0, 'b1r');
+    loose('zavod_rebreather', 254, -80, 0, 'b1pump');
+    loose('b1_key_a', 252, -196, 0, 'b1t');
+    loose('b1_key_b', 182, -184, 0, 'b1sec');
     // B/2: security fuses (1F + 2F) and a battery set for Alpha
     {
       const f1 = pick([[252, 128], [262, 186]]);
@@ -353,6 +415,8 @@
       ['ХИМЦЕХ →', 'CHEMICAL PLANT', -261.6, 2.6, 150, Math.PI / 2, '#ffa726'],
       ['ХИМЦЕХ →', 'CHEMICAL PLANT', -150, 2.6, -105.6, 0, '#e6e14a'],
       ['ХИМЦЕХ ←', 'CHEMICAL PLANT', 222, 2.6, -99.6, 0, '#4fc3f7'],
+      ['ПРОЛОМ', 'EXPLOSIVES — REBREATHER', 184, 2.6, -109.6, 0, '#4fc3f7'],
+      ['ЗАВОД-9 →', 'FACTORY SECRET EXIT', 121.6, 3.0, -155, Math.PI / 2, '#4fc3f7'],
       ['ХИМЦЕХ ←', 'CHEMICAL PLANT', 170, 2.6, 41.6, Math.PI, '#ff5252'],
       ['ЗАВОД-9', 'WEAPONS MANUFACTURING', 0, 9.5, -199.6, 0, '#b0bec5'],
       ['АЛЬФА', 'ALPHA CLUSTER — DATA CORE', 0, 6.0, 176.3, 0, '#b388ff'],
