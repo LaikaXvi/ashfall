@@ -1382,6 +1382,7 @@
         hideoutBunker.keys[e.code] = true;
         return;
       }
+      if (e.code === 'Escape' && ui && ui.closeNotifCtx && ui.closeNotifCtx()) return;
       if (ui && ui.socialDrawerOpen && (e.code === 'Escape')) { ui.toggleSocialDrawer(false); return; }
       if (!typing && !gunsmith.isOpen && ui && ui.cycleMenuTab && (e.code === 'KeyQ' || e.code === 'KeyE')) {
         e.preventDefault();
