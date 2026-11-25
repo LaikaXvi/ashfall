@@ -4552,7 +4552,7 @@ class WeaponSystem {
       }
       if (this.wasEmptyReload && p > 0.64 && !this.reloadSfxFlags.rack) {
         this.reloadSfxFlags.rack = true;
-        window.soundEngine.playRechamber(this.reloadWeaponId || (weaponDef && weaponDef.id) || 'ak47');
+        window.soundEngine.playRechamber(this.reloadWeaponId || id || 'ak47');
       }
 
       if (p < 0.26) {

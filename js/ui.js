@@ -7147,7 +7147,7 @@ class GameUI {
     }
     if (world && world.groundItems) {
       for (const gi of world.groundItems) {
-        if (gi && !gi.picked && gi.itemId === 'zavod_weapons_case' && gi.position) {
+        if (gi && !gi.picked && (gi.id === 'zavod_weapons_case' || gi.itemId === 'zavod_weapons_case') && gi.position) {
           return { x: gi.position.x, z: gi.position.z, carried: false };
         }
       }

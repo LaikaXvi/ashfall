@@ -216,6 +216,7 @@
     const M = this._materials;
     const tint = (base, color, tile = null) => {
       const m = base.clone();
+      if (m.userData) delete m.userData._ashShared;
       m.color = new THREE.Color(color);
       if (tile) m.userData.tile = tile;
       return m;
@@ -331,7 +332,7 @@
         material: mat,
         castShadow: false,
         source: null,
-        disposeAfterBatch: !opts.shoot && !(geo.userData && geo.userData._ashShared)
+        disposeAfterBatch: !(geo.userData && geo.userData._ashShared)
       });
     } else {
       this.scene.add(mesh);

@@ -2986,18 +2986,21 @@ class EnemyManager {
     }
 
     // 3. Spawn Sector Boss(es)
+    const bossPoi = (world.pois || []).find(p => (p.name || '').toLowerCase().includes('boss'));
+    let bx = bossPoi ? bossPoi.x + 2.5 : 312.5;
+    let bz = bossPoi ? bossPoi.z + 3.5 : -266.5;
+    let bossPos = (world.bossSpawnPos && world.bossSpawnPos.clone)
+      ? world.bossSpawnPos.clone()
+      : new THREE.Vector3(bx, world.getTerrainHeight ? world.getTerrainHeight(bx, bz) : 0, bz);
     if (Array.isArray(world.bossSpawns) && world.bossSpawns.length > 0) {
       for (const bs of world.bossSpawns) {
         if (!bs || !bs.pos) continue;
-        this.enemies.push(new Enemy(scene, world, bs.pos.clone(), bs.tier || 'boss', null, weaponSystem));
+        bossPos = bs.pos.clone();
+        bx = bossPos.x;
+        bz = bossPos.z;
+        this.enemies.push(new Enemy(scene, world, bossPos.clone(), bs.tier || 'boss', null, weaponSystem));
       }
     } else {
-      const bossPoi = (world.pois || []).find(p => (p.name || '').toLowerCase().includes('boss'));
-      const bx = bossPoi ? bossPoi.x + 2.5 : 312.5;
-      const bz = bossPoi ? bossPoi.z + 3.5 : -266.5;
-      const bossPos = (world.bossSpawnPos && world.bossSpawnPos.clone)
-        ? world.bossSpawnPos.clone()
-        : new THREE.Vector3(bx, world.getTerrainHeight ? world.getTerrainHeight(bx, bz) : 0, bz);
       this.enemies.push(new Enemy(scene, world, bossPos, 'boss', null, weaponSystem));
     }
 

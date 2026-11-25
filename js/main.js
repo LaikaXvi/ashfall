@@ -406,6 +406,7 @@
     // Pack any pre-match backpack items into the operator's raid backpack
     if (Array.isArray(ui.profile.loadout.backpackItems) && ui.profile.loadout.backpackItems.length > 0) {
       for (const it of ui.profile.loadout.backpackItems) {
+        if (!it || !it.id) continue;
         player.addToBackpack(it.id, it.qty, { mods: it.mods || null, rarityOverride: it.rarityOverride || null });
       }
       ui.profile.loadout.backpackItems = [];
@@ -977,9 +978,18 @@
         startRaid('bunker', matchId, { wingId });
       } catch (err) {
         console.error('[ZAVOD] transfer failed', err);
+        if (ui && ui.profile && ui.profile.loadout && Array.isArray(ui.profile.loadout.backpackItems) && ui.profile.loadout.backpackItems.length > 0) {
+          for (const it of ui.profile.loadout.backpackItems) {
+            if (it && it.id) ui.addToStash(it.id, it.qty || 1, it.mods || null, it.rarityOverride || null);
+          }
+          ui.profile.loadout.backpackItems = [];
+          ui.saveProfile();
+        }
         if (window.ZavodBunker) window.ZavodBunker.hideLoading();
+        ui.renderHideout();
         ui.showScreen('hideout');
         enterHideoutRoam();
+        if (ui && ui.showCenterToast) ui.showCenterToast('ZAVOD-9 TRANSFER ERROR — GEAR RETURNED TO STASH', '#ff5252');
       }
     }, 1400);
   }
@@ -1067,7 +1077,12 @@
       ui.profile.loadout.selfRevive = player.selfRevive || null;
       ui.profile.loadout.headgear = player.headgear || null;
       ui.profile.loadout.plates = player.plates;
+      ui.profile.loadout.lethal = (player.lethal && (player.lethalQty || 0) > 0) ? player.lethal : null;
+      ui.profile.loadout.lethalQty = (player.lethal && (player.lethalQty || 0) > 0) ? player.lethalQty : 0;
+      ui.profile.loadout.tactical = (player.tactical && (player.tacticalQty || 0) > 0) ? player.tactical : null;
+      ui.profile.loadout.tacticalQty = (player.tactical && (player.tacticalQty || 0) > 0) ? player.tacticalQty : 0;
       ui.profile.loadout.ammo = {};
+      if (isTransfer) ui.profile.loadout.backpackItems = [];
 
       if (player.backpackWeapon && GAME_DATA.ITEMS[player.backpackWeapon.id]) {
         const bwDef = GAME_DATA.ITEMS[player.backpackWeapon.id];
@@ -1107,6 +1122,10 @@
         backpackWeaponMods: null,
         backpackWeaponRarity: null,
         armor: null,
+        lethal: null,
+        lethalQty: 0,
+        tactical: null,
+        tacticalQty: 0,
         backpackItems: [],
         ammo: {}
       };
