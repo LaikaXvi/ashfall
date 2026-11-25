@@ -607,6 +607,10 @@ window.VostokCityBuilder = (() => {
       box(266, roofY + 3.55, -376, 32.5, 0.3, 10.5, mats.darkConcrete, true);
       box(256, roofY + 4.2, -381, 12, 1.0, 0.25, mats.concrete, true);
       box(276, roofY + 4.2, -381, 12, 1.0, 0.25, mats.concrete, true);
+      box(256, roofY + 4.2, -370.9, 12, 1.0, 0.25, mats.concrete, true);
+      box(276, roofY + 4.2, -370.9, 12, 1.0, 0.25, mats.concrete, true);
+      box(249.9, roofY + 4.2, -376, 0.25, 1.0, 10.5, mats.concrete, true);
+      box(282.1, roofY + 4.2, -376, 0.25, 1.0, 10.5, mats.concrete, true);
       box(266, roofY + 1.6, -382.5, 6, 0.25, 1.2, mats.metal, false);
       box(266, roofY + 3.0, -382.5, 6, 0.25, 1.2, mats.metal, false);
       // ---- SOUTH BLOCK: Actibase Office + cubicles + lobby + edge walk ----
@@ -623,9 +627,15 @@ window.VostokCityBuilder = (() => {
       world._addPartition(276, -361, 276, -351, roofY, 3.4, [{ at: -356, w: 1.5, door: 'wood', label: 'Actibase Side Office' }]);
       box(266, roofY + 3.55, -356, 32.5, 0.3, 10.5, mats.darkConcrete, true);
       box(266, roofY + 4.2, -350.5, 32, 1.0, 0.25, mats.concrete, true);
+      box(266, roofY + 4.2, -361.25, 32, 1.0, 0.25, mats.concrete, true);
+      box(249.9, roofY + 4.2, -356, 0.25, 1.0, 10.5, mats.concrete, true);
+      box(282.1, roofY + 4.2, -356, 0.25, 1.0, 10.5, mats.concrete, true);
       box(266, roofY + 1.6, -349, 6, 0.25, 1.2, mats.metal, false);
       box(266, roofY + 3.0, -349, 6, 0.25, 1.2, mats.metal, false);
       box(263.5, roofY + 0.8, -349, 0.18, 1.6, 0.18, mats.metal, true);
+      box(260.5, roofY + 0.8, -349, 0.18, 1.6, 0.18, mats.metal, true);
+      box(263.5, roofY - 4.7, -349, 0.15, 5.5, 0.15, mats.concrete, true);
+      box(268.5, roofY - 4.7, -349, 0.15, 5.5, 0.15, mats.concrete, true);
       box(268.5, roofY + 0.8, -349, 0.18, 1.6, 0.18, mats.metal, true);
       // ---- tunnel corridors to the Pit terrace ----
       box(286, roofY + 1.3, -376, 8, 2.6, 0.25, mats.darkConcrete, true);
@@ -659,9 +669,14 @@ window.VostokCityBuilder = (() => {
       // ---- tilted south scaffolding + west crane platforms on a wire ----
       for (const sx of [258, 266, 274]) {
         if (A && A.pushRotatedBeam) A.pushRotatedBeam(world, sx, roofY - 1.2, -373.8, sx, roofY + 0.4, -375.6, 0.22, 0.22, mats.hazardAmber, false);
+      if (A && A.pushRotatedBeam) A.pushRotatedBeam(world, sx, roofY - 1.2, -353.5, sx, roofY + 0.4, -351.8, 0.22, 0.22, mats.hazardAmber, false);
         if (A && A.pushRotatedBeam) A.pushRotatedBeam(world, sx, roofY - 1.2, -353.5, sx, roofY + 0.4, -351.8, 0.22, 0.22, mats.hazardAmber, false);
       }
       box(242.5, roofY + 3.5, -366, 0.25, 7.0, 0.25, mats.metal, true);
+      box(236.5, roofY + 5.9, -366, 0.08, 1.2, 0.08, mats.metal, false);
+      box(238.1, roofY + 5.77, -366, 0.08, 0.95, 0.08, mats.metal, false);
+      box(239.3, roofY + 5.37, -366, 0.08, 1.33, 0.08, mats.metal, false);
+      box(240.9, roofY + 5.23, -366, 0.08, 1.07, 0.08, mats.metal, false);
       box(236.5, roofY + 5.9, -366, 0.08, 1.2, 0.08, mats.metal, false);
       box(238.1, roofY + 5.77, -366, 0.08, 0.95, 0.08, mats.metal, false);
       box(239.3, roofY + 5.37, -366, 0.08, 1.33, 0.08, mats.metal, false);
