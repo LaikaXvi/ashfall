@@ -2392,6 +2392,34 @@ class WastelandWorld {
 
     for (const bucket of groups.values()) {
       const list = bucket.entries;
+      // Saltline P1: repeat-dimension runs become ONE InstancedMesh (instance = translate x scale)
+      if (bucket.isBoxRun && list.length >= 2) {
+        const unitBox = (window.AshfallRenderer && window.AshfallRenderer.GeoPool)
+          ? window.AshfallRenderer.GeoPool.unitBox()
+          : new THREE.BoxGeometry(1, 1, 1);
+        const inst = new THREE.InstancedMesh(unitBox, bucket.material, list.length);
+        const m4 = new THREE.Matrix4();
+        const q0 = new THREE.Quaternion();
+        const p0 = new THREE.Vector3();
+        const s0 = new THREE.Vector3();
+        for (let k = 0; k < list.length; k++) {
+          const e = list[k];
+          p0.set(e.x, e.y, e.z); s0.set(e.w, e.h, e.d);
+          m4.compose(p0, q0, s0);
+          inst.setMatrixAt(k, m4);
+        }
+        inst.instanceMatrix.needsUpdate = true;
+        inst.castShadow = list.some(e => e.castShadow);
+        inst.receiveShadow = true;
+        inst.frustumCulled = true;
+        if (!unitBox.boundingSphere) unitBox.computeBoundingSphere();
+        this.scene.add(inst);
+        this._batchedMeshes.push(inst);
+        P1_STATS.instanced += list.length;
+        P1_STATS.meshes++;
+        continue;
+      }
+      P1_STATS.meshes++;
       let totalVerts = 0;
       let totalIndices = 0;
       let anyCastShadow = false;
@@ -2515,6 +2543,7 @@ class WastelandWorld {
       this._batchedMeshes.push(batchMesh);
     }
 
+    try { console.log(`[P1] boxes=${P1_STATS.boxes} instanced=${P1_STATS.instanced} batchMeshes=${P1_STATS.meshes}`); } catch (e) {}
     this._batchingOpen = false;
     this._batchEntries = null;
   }
