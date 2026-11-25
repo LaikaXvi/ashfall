@@ -299,11 +299,11 @@ class GunsmithController {
           { slot: 'magazine', label: 'MAG', pos: new THREE.Vector3(0, -0.15, 0.10) }
         ]
       : [
-          { slot: 'optic', label: 'OPTIC', pos: new THREE.Vector3(0, 0.14, 0.14) },
-          { slot: 'muzzle', label: 'MUZZLE', pos: new THREE.Vector3(0, 0.06, -0.44) },
-          { slot: 'underbarrel', label: 'RAIL', pos: new THREE.Vector3(0, -0.12, -0.16) },
+          { slot: 'optic', label: 'OPTIC', pos: new THREE.Vector3(0, 0.14, this.activeWeaponId === 'mp7' ? 0.10 : 0.14) },
+          { slot: 'muzzle', label: 'MUZZLE', pos: new THREE.Vector3(0, 0.06, this.activeWeaponId === 'mp7' ? -0.20 : (this.activeWeaponId === 'mp5k' ? -0.30 : -0.44)) },
+          { slot: 'underbarrel', label: 'RAIL', pos: new THREE.Vector3(0, -0.12, this.activeWeaponId === 'mp7' ? -0.11 : -0.16) },
           { slot: 'magazine', label: 'MAG', pos: new THREE.Vector3(0, -0.17, 0.12) },
-          ...(availOpts.stock ? [{ slot: 'stock', label: 'STOCK', pos: new THREE.Vector3(0, 0.02, 0.42) }] : [])
+          ...(availOpts.stock ? [{ slot: 'stock', label: 'STOCK', pos: new THREE.Vector3(0, 0.02, this.activeWeaponId === 'mp7' ? 0.38 : 0.42) }] : [])
         ];
 
     for (const a of anchors) {

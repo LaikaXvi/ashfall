@@ -807,7 +807,8 @@ class Player {
       // Sync 3rd-person weapon bolt blowback & M870 Trench Gun pump slide (along with any pump-mounted vertical foregrip!)
       const tpPumpOff = (!isFP && ws && this.tpWeapon && this.tpWeapon.weaponId === 'm870') ? (ws._livePumpOffset || 0) : 0;
       if (!isFP && ws && this.tpWeapon && this.tpWeapon.boltMesh && !ws.isReloading) {
-        this.tpWeapon.boltMesh.position.z = this.tpWeapon.boltRestPos.z + (this.tpWeapon.weaponId === 'm870' ? tpPumpOff : (ws.boltKick || 0));
+        const isNonRecipCh = this.tpWeapon.weaponId === 'm4a1' || this.tpWeapon.weaponId === 'mp7';
+        this.tpWeapon.boltMesh.position.z = this.tpWeapon.boltRestPos.z + (this.tpWeapon.weaponId === 'm870' ? tpPumpOff : (isNonRecipCh ? 0 : (ws.boltKick || 0)));
       }
       let tpFgPivotPos = null;
       if (!isFP && this.tpWeapon && this.tpWeapon.hasVertGrip && this.tpWeapon.foregripAnchor && p.weaponPivot) {
@@ -1198,7 +1199,8 @@ class Player {
               pumpOff = (pt < 0.48 ? smooth(pt / 0.48) : 1 - smooth((pt - 0.48) / 0.52)) * 0.088;
               lShX -= pumpOff * 2.2;
             }
-            this.tpWeapon.boltMesh.position.z = this.tpWeapon.boltRestPos.z + (this.tpWeapon.weaponId === 'm870' ? pumpOff : ws.boltKick);
+            const isNonRecipCh = this.tpWeapon.weaponId === 'm4a1' || this.tpWeapon.weaponId === 'mp7';
+            this.tpWeapon.boltMesh.position.z = this.tpWeapon.boltRestPos.z + (this.tpWeapon.weaponId === 'm870' ? pumpOff : (isNonRecipCh ? 0 : ws.boltKick));
           }
         }
         // Mocap recoil absorption: shoulders & torso absorb rearward kick while hands hold weapon steady on target!
@@ -1345,6 +1347,40 @@ class Player {
             lShX = 0.96 + Math.sin(sp * Math.PI) * 0.16;
             lElbX = 1.06;
             lShZ = -0.34;
+          }
+        } else if (wId === 'mp7') {
+          // HK MP7A1: drop 4.6x30mm curved steel mag straight from pistol grip -> seat fresh mag -> sweep left hand forward to thumb bolt release!
+          const magEnd = ws.wasEmptyReload ? 0.72 : 1.0;
+          if (rp < magEnd) {
+            const mp = rp / magEnd;
+            if (mp < 0.28) {
+              const t = smooth(mp / 0.28);
+              if (tp.magMesh) tp.magMesh.position.y = tp.magRestPos.y - t * 0.22;
+              lShX = THREE.MathUtils.lerp(0.84, chestShX, t);
+              lElbX = THREE.MathUtils.lerp(0.76, chestElbX, t);
+              lShZ = THREE.MathUtils.lerp(-0.26, chestShZ, t);
+            } else if (mp < 0.56) {
+              const t = smooth((mp - 0.28) / 0.28);
+              if (tp.magMesh) tp.magMesh.visible = false;
+              if (p.handMag) p.handMag.visible = mp > 0.36;
+              lShX = THREE.MathUtils.lerp(chestShX, 0.92, t);
+              lElbX = THREE.MathUtils.lerp(chestElbX, 0.98, t);
+              lShZ = THREE.MathUtils.lerp(chestShZ, -0.32, t);
+            } else {
+              const t = smooth(Math.min(1, (mp - 0.56) / 0.34));
+              if (p.handMag) p.handMag.visible = t < 0.65;
+              if (tp.magMesh) {
+                tp.magMesh.visible = t >= 0.65;
+                tp.magMesh.position.y = tp.magRestPos.y - (1 - t) * 0.14;
+              }
+              lShX = 0.92; lElbX = 0.96; lShZ = -0.30;
+            }
+          } else {
+            const sp = (rp - magEnd) / (1 - magEnd);
+            wpnRotZ = 0.16;
+            lShX = 0.95 + Math.sin(sp * Math.PI) * 0.14;
+            lElbX = 1.02;
+            lShZ = -0.32;
           }
         } else if (wId === 'ak47') {
           // AK-47: grab fresh mag from chest rig -> flick old mag out with new mag -> rock new mag in -> right-hand bolt rack!

@@ -531,7 +531,7 @@ class SoundEngine {
     if (weaponId === 'pm9' || weaponId === 'g17') return 'pistol';
     if (weaponId === 'm870') return 'shotgun';
     if (weaponId === 'm24' || weaponId === 'mosin9130' || weaponId === 'awm338') return 'sniper';
-    if (weaponId === 'mp5k') return 'smg';
+    if (weaponId === 'mp5k' || weaponId === 'mp7') return 'smg';
     return 'rifle';
   }
 
@@ -540,6 +540,7 @@ class SoundEngine {
       m4a1:     { bodyHz: 1380, bodyQ: 1.65, bodyDur: 0.068, thumpHz: 92, thumpDur: 0.078, thumpGain: 0.38 },
       ak47:     { bodyHz: 1100, bodyQ: 1.5, bodyDur: 0.075, thumpHz: 85, thumpDur: 0.090, thumpGain: 0.42 },
       mp5k:      { bodyHz: 1800, bodyQ: 2.0, bodyDur: 0.048, thumpHz: 95, thumpDur: 0.060, thumpGain: 0.30 },
+      mp7:       { bodyHz: 1950, bodyQ: 1.9, bodyDur: 0.044, thumpHz: 102, thumpDur: 0.055, thumpGain: 0.32 },
       m870:      { bodyHz: 520,  bodyQ: 1.0, bodyDur: 0.145, thumpHz: 70, thumpDur: 0.140, thumpGain: 0.72 },
       m24:       { bodyHz: 820,  bodyQ: 1.3, bodyDur: 0.165, thumpHz: 55, thumpDur: 0.160, thumpGain: 0.65 },
       mosin9130: { bodyHz: 940,  bodyQ: 1.4, bodyDur: 0.155, thumpHz: 58, thumpDur: 0.150, thumpGain: 0.62 },
@@ -710,6 +711,19 @@ class SoundEngine {
         bufG.connect(shotOut);
         bufOsc.start(mechStart);
         bufOsc.stop(mechStart + 0.045);
+      } else if (weaponId === 'mp7') {
+        // Crisp short-stroke gas-piston snap
+        const pisOsc = this.ctx.createOscillator();
+        pisOsc.type = 'triangle';
+        pisOsc.frequency.setValueAtTime(3450, mechStart);
+        pisOsc.frequency.exponentialRampToValueAtTime(2200, mechStart + 0.022);
+        const pisG = this.ctx.createGain();
+        pisG.gain.setValueAtTime(0.028 * mechMult * distAtten, mechStart);
+        pisG.gain.exponentialRampToValueAtTime(0.001, mechStart + 0.022);
+        pisOsc.connect(pisG);
+        pisG.connect(shotOut);
+        pisOsc.start(mechStart);
+        pisOsc.stop(mechStart + 0.025);
       }
     } else if (wCls === 'pistol') {
       // Crisp pistol slide snap
@@ -755,12 +769,12 @@ class SoundEngine {
     thOsc.stop(t0 + ch.thumpDur + 0.015);
 
     // (a) Real CC0 close/mid firearm sample layer (< 60m)
-    const sampleKey = (weaponId === 'awm338' || weaponId === 'mosin9130') ? 'm24' : (weaponId === 'm4a1' ? 'ak47' : weaponId);
+    const sampleKey = (weaponId === 'awm338' || weaponId === 'mosin9130') ? 'm24' : (weaponId === 'm4a1' ? 'ak47' : (weaponId === 'mp7' ? 'mp5k' : weaponId));
     const sampleBuf = this.gunBuffers[sampleKey] || this.gunBuffers.ak47;
     if (sampleBuf) {
       const src = this.ctx.createBufferSource();
       src.buffer = sampleBuf;
-      const baseRate = weaponId === 'm4a1' ? 1.16 : (weaponId === 'awm338' ? 0.80 : (weaponId === 'mosin9130' ? 1.08 : 1.0));
+      const baseRate = weaponId === 'm4a1' ? 1.16 : (weaponId === 'mp7' ? 1.24 : (weaponId === 'awm338' ? 0.80 : (weaponId === 'mosin9130' ? 1.08 : 1.0)));
       src.playbackRate.setValueAtTime(baseRate * (suppressed ? 1.18 : 1.0) * (0.96 + Math.random() * 0.08), t0);
 
       const lp = this.ctx.createBiquadFilter();
@@ -772,6 +786,7 @@ class SoundEngine {
         pm9:   { hold: 0.055, end: 0.135 },
         g17:   { hold: 0.060, end: 0.145 },
         mp5k:  { hold: 0.048, end: 0.092 },
+        mp7:   { hold: 0.040, end: 0.082 },
         m4a1:  { hold: 0.048, end: 0.094 },
         ak47: { hold: 0.052, end: 0.098 },
         m870:  { hold: 0.085, end: 0.240 },
@@ -800,6 +815,7 @@ class SoundEngine {
       pm9:   { snapFreq: 2600, bodyFreq: 1150, bodyQ: 0.7, bodyDur: 0.095, subFreq: 115, subGain: 0.45, gain: 0.85 },
       g17:   { snapFreq: 2900, bodyFreq: 1300, bodyQ: 0.75, bodyDur: 0.09,  subFreq: 120, subGain: 0.48, gain: 0.90 },
       mp5k:  { snapFreq: 3100, bodyFreq: 1450, bodyQ: 0.8, bodyDur: 0.075, subFreq: 125, subGain: 0.42, gain: 0.82 },
+      mp7:   { snapFreq: 3350, bodyFreq: 1580, bodyQ: 0.82, bodyDur: 0.072, subFreq: 118, subGain: 0.44, gain: 0.88 },
       m4a1:  { snapFreq: 2850, bodyFreq: 1240, bodyQ: 0.72, bodyDur: 0.125, subFreq: 105, subGain: 0.62, gain: 1.00 },
       ak47: { snapFreq: 2400, bodyFreq: 980,  bodyQ: 0.65, bodyDur: 0.145, subFreq: 95,  subGain: 0.72, gain: 1.05 },
       m870:  { snapFreq: 1700, bodyFreq: 540,  bodyQ: 0.55, bodyDur: 0.24,  subFreq: 72,  subGain: 1.05, gain: 1.20 },
@@ -1001,7 +1017,7 @@ class SoundEngine {
     const now = this.ctx.currentTime;
     const wCls = this._weaponClass(weaponId);
     const pm = wCls === 'pistol' ? 1.28 : (wCls === 'smg' ? 1.12 : (wCls === 'sniper' ? 0.82 : (wCls === 'shotgun' ? 0.86 : 1.0)));
-    const isSteel = weaponId === 'm4a1' || weaponId === 'ak47' || weaponId === 'mp5k' || weaponId === 'awm338' || weaponId === 'm24';
+    const isSteel = weaponId === 'm4a1' || weaponId === 'ak47' || weaponId === 'mp5k' || weaponId === 'mp7' || weaponId === 'awm338' || weaponId === 'm24';
 
     // 1. Magazine catch release click
     this._playMetallicClick(now, 2150 * pm, 3.2, 0.026, 0.24, 950);

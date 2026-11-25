@@ -431,6 +431,15 @@ window.AshfallPBR = (() => {
           mixT = Math.max(0, Math.min(1, macro * 0.45 + fbm * 0.35 + edgeWear * 0.55));
           rgh = baseRough + (0.48 - bead) * roughVar - oilSheen - edgeWear * 0.18;
           ao = 0.88 + 0.12 * (1 - oilSheen * 0.4);
+        } else if (kind === 'glass_polymer') {
+          // German HK glass-fiber-reinforced polyamide-66: fine pebble mold grain, sparse glass micro-flecks & subtle grip oil sheen
+          const pebble = fine * 0.42 + micro * 0.24;
+          const fiberFleck = micro > 0.78 ? (micro - 0.78) * 0.55 : 0;
+          const handSheen = macro > 0.60 ? (macro - 0.60) * 0.22 : 0;
+          hVal = 0.44 + pebble + fiberFleck * 0.25;
+          mixT = Math.max(0, Math.min(1, macro * 0.38 + fbm * 0.36 + fiberFleck * 0.50));
+          rgh = baseRough + (0.46 - pebble) * roughVar - handSheen;
+          ao = 0.89 + 0.11 * (1 - pebble * 0.30);
         }
 
         hf[idx] = hVal;
@@ -520,6 +529,8 @@ window.AshfallPBR = (() => {
     m4_anodized_receiver:{ seed: 116, pattern: 'anodized_forged', c0: [30, 33, 38], c1: [46, 51, 58], rough: 0.43, roughVar: 0.16, metal: 0.84, bump: 1.55 },
     m4_phosphate_steel:  { seed: 117, pattern: 'anodized_forged', c0: [38, 41, 44], c1: [58, 63, 66], rough: 0.48, roughVar: 0.18, metal: 0.86, bump: 1.95 },
     stanag_gray_teflon:  { seed: 118, pattern: 'brushed_metal', c0: [68, 73, 77], c1: [98, 104, 108], rough: 0.39, roughVar: 0.15, metal: 0.85, bump: 1.60 },
+    hk_polymer_chassis:  { seed: 119, pattern: 'glass_polymer', c0: [26, 28, 31], c1: [42, 45, 50], rough: 0.58, roughVar: 0.16, metal: 0.05, bump: 2.35 },
+    hk_tenifer_steel:    { seed: 120, pattern: 'anodized_forged', c0: [32, 36, 41], c1: [54, 60, 68], rough: 0.34, roughVar: 0.14, metal: 0.91, bump: 1.45 },
 
     // --- Soldier Uniforms, Armor, Gear & Skin ---
     cordura_olive:       { seed: 201, pattern: 'cordura', c0: [58, 68, 48], c1: [78, 90, 64], rough: 0.82, roughVar: 0.14, metal: 0.02, bump: 3.0 },

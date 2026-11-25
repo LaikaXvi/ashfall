@@ -3,15 +3,15 @@
 // Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
 // With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'Alpha RC 0.2.97',
+  VERSION: 'Alpha RC 0.2.98',
   VERSION_INFO: {
     major: 0,
     minor: 2,
-    patch: 97,
+    patch: 98,
     channel: 'Alpha', // Alpha | Beta — never blank while major === 0
     stage: 'RC',     // RC = Release Candidate
     updated: 'Nov 24, 2026',
-    changelog: 'Colt M4A1 Carbine (5.56x45mm NATO) Remaster Release: modeled 1:1 millimeter CAD Colt M4A1 / AR-15 direct-impingement platform with KAC M4 RAS quad rail, M203 step-cut barrel, functional bolt catch & non-reciprocating T-charging handle, native 720p anodized/phosphate/STANAG PBR textures, and fluid MW2019 tactical mag-retention reload, empty bolt-catch paddle slap, and press-check inspect animations; Killstreak First-Person IK Hands Overhaul: rebuilt UAV ATAK tactical comms phone and Precision Airstrike binocular laser designator to use sculpted Mixamo RiggedFPArms IK hands & AshfallPBR materials with calibrated clavicle/thumb/finger poses and coordinated weapon/throwable guards; Hotfix: fixed Deploy / Deploy Now and Matchmaking ReferenceError (slideGroup scope on PM9 secondary weapon rig), reassigned non-indexed UV-unwrapped extrude geometries in js/models.js, and hardened startRaid error boundary and hideout roam cleanup; Full 720p Photorealistic PBR & High-Poly Engine Remaster: added js/pbr.js procedural 720p/1024px albedo + Sobel tangent-space normal + roughness synthesis with metric seam-stitched UVs/UV2 and dual outdoor/indoor equirectangular PMREM reflection probes; upgraded WebGL2 renderer post pipeline (HDR HalfFloat bloom, 6-tap depth SSAO, CAS sharpening, ACES Filmic, sRGB, antialiasing & HD pixel default OFF); rebuilt all 8 firearms, extended mags, 3 melees, 4 throwables, and 10 functional attachments to 1:1 millimeter CAD specs with Mixamo skeletal 2-bone IK + finger curls; eliminated all ZAVOD-9 invisible walls & surfaces (a1_round rotunda overlap, enclosed Layer-1 atrium office walls, distance-culled closed doors/barricades, station/pylon/trap hitboxes & stanchions, hinged door bullet blocking, and Layer-1 floor item drops) alongside wet concrete/tile/water PBR; remastered Vostok 256x256 terrain, animated normal-mapped rivers/reservoir/ocean, 5-tier pines, sculpted granite boulders, BTR-80 APC, VAZ sedan, Mi-8/FOB choppers, and The Rhinoceros curved polycarbonate riot shield + Prior Alpha RC 0.2.93 ZAVOD-9 transfer, Social Drawer & FOB workflow fixes.',
+    changelog: 'Heckler & Koch MP7A1 PDW (4.6x30mm) Release: engineered 1:1 millimeter CAD HK MP7A1 short-stroke gas-piston rotating-bolt PDW with monolithic polymer chassis, integral folding vertical foregrip (converting to MP7A2 bottom rail under foregrip attachments), ambidextrous paddle bolt catch, non-reciprocating dual-latch rear T-charging handle, 3-position telescoping twin-strut stock, and grip-fed 30/40rd curved steel magazines; wrapped in native 720p glass-filled HK polymer & Tenifer steel AshfallPBR textures; animated with MW2019 grip-fed tactical swap, empty bolt-release press, and press-check / LRBHO inspect; + Prior Alpha RC 0.2.97 Colt M4A1 Carbine, IK Killstreak Hands & 720p PBR Remaster.',
     get semver() { return `${this.major}.${this.minor}.${this.patch}`; },
     get label() { return `${this.channel} ${this.stage} ${this.major}.${this.minor}.${this.patch}`; }
   },
@@ -174,6 +174,37 @@ window.GAME_DATA = {
       pellets: 1,
       color: 0x26292c,
       desc: '9x19mm submachine gun. High ROF, CQB dominant.'
+    },
+    mp7: {
+      id: 'mp7',
+      name: 'HK MP7A1 PDW',
+      type: 'weapon',
+      slot: 'primary',
+      rarity: 'rare',
+      value: 7800,
+      weight: 2.1,
+      ammoType: 'ammo_46x30',
+      magSize: 30,
+      damage: 25,
+      fireRate: 0.063,
+      auto: true,
+      reloadTime: 1.75,
+      spread: 0.020,
+      adsSpread: 0.0042,
+      recoil: 0.015,
+      adsFov: 55,
+      adsZoom: 1.35,
+      adsTime: 0.175,
+      sprintToFire: 0.095,
+      tacSprintToFire: 0.165,
+      adsMoveMult: 0.84,
+      idleSway: 0.64,
+      gunKick: 0.74,
+      flinchRes: 0.93,
+      range: 110,
+      pellets: 1,
+      color: 0x22252a,
+      desc: '4.6x30mm short-stroke gas-piston PDW with folding foregrip and 950 RPM cyclic rate.'
     },
     ak47: {
       id: 'ak47',
@@ -360,6 +391,18 @@ window.GAME_DATA = {
       maxStack: 120,
       buyQty: 30,
       desc: 'Light SMG & pistol cartridges. Stacks up to 120.'
+    },
+    ammo_46x30: {
+      id: 'ammo_46x30',
+      name: '4.6x30mm PDW Ammo',
+      type: 'ammo',
+      rarity: 'common',
+      value: 22,
+      weight: 0.007,
+      stackable: true,
+      maxStack: 120,
+      buyQty: 40,
+      desc: 'High-velocity armor-piercing PDW cartridges. Stacks up to 120.'
     },
     ammo_556: {
       id: 'ammo_556',
@@ -1356,6 +1399,14 @@ window.GAME_DATA = {
       ingredients: [{ id: 'chemicals', qty: 14 }, { id: 'tools', qty: 1 }]
     },
     {
+      id: 'craft_ammo_46x30',
+      outputId: 'ammo_46x30',
+      outputQty: 80,
+      name: '80x 4.6x30mm PDW Ammo',
+      desc: 'Press 80 high-velocity armor-piercing 4.6mm PDW rounds from brass casings & gunpowder.',
+      ingredients: [{ id: 'brass_casings', qty: 2 }, { id: 'gunpowder', qty: 2 }]
+    },
+    {
       id: 'craft_ammo_556',
       outputId: 'ammo_556',
       outputQty: 60,
@@ -1430,8 +1481,8 @@ window.GAME_DATA = {
   ],
 
   TRADER_STOCK: {
-    weapons: ['pm9', 'g17', 'mp5k', 'm870', 'm4a1', 'ak47', 'mosin9130', 'm24', 'awm338'],
-    ammo: ['ammo_9x18', 'ammo_9x19', 'ammo_12g', 'ammo_556', 'ammo_739', 'ammo_762', 'ammo_rocket'],
+    weapons: ['pm9', 'g17', 'mp5k', 'mp7', 'm870', 'm4a1', 'ak47', 'mosin9130', 'm24', 'awm338'],
+    ammo: ['ammo_9x18', 'ammo_9x19', 'ammo_46x30', 'ammo_12g', 'ammo_556', 'ammo_739', 'ammo_762', 'ammo_rocket'],
     gear: [
       'bandage', 'sterile_bandage', 'painkillers', 'medkit', 'self_revive',
       'gas_mask', 'nvg_goggles', 'zavod_rebreather', 'armor_plate',
@@ -1540,10 +1591,12 @@ window.GAME_DATA = {
       { id: 'pm9', min: 1, max: 1, w: 10 },
       { id: 'g17', min: 1, max: 1, w: 10 },
       { id: 'mp5k', min: 1, max: 1, w: 7 },
+      { id: 'mp7', min: 1, max: 1, w: 5 },
       { id: 'm4a1', min: 1, max: 1, w: 4 },
       { id: 'm870', min: 1, max: 1, w: 7 },
       { id: 'armor_plate', min: 1, max: 3, w: 14 },
       { id: 'ammo_9x19', min: 20, max: 45, w: 12 },
+      { id: 'ammo_46x30', min: 25, max: 50, w: 9 },
       { id: 'ammo_556', min: 20, max: 45, w: 8 },
       { id: 'ammo_12g', min: 8, max: 16, w: 10 },
       { id: 'tools', min: 1, max: 2, w: 10 },
@@ -1564,6 +1617,7 @@ window.GAME_DATA = {
       { id: 'concussion_grenade', min: 1, max: 2, w: 8 },
       { id: 'metallic_alloy', min: 1, max: 2, w: 9 },
       { id: 'reactive_metals', min: 1, max: 1, w: 5 },
+      { id: 'ammo_46x30', min: 30, max: 60, w: 12 },
       { id: 'ammo_556', min: 24, max: 60, w: 14 },
       { id: 'ammo_739', min: 20, max: 45, w: 14 },
       { id: 'ammo_762', min: 8, max: 18, w: 9 },
@@ -1576,6 +1630,7 @@ window.GAME_DATA = {
       { id: 'gas_mask', min: 1, max: 1, w: 4 },
       { id: 'nvg_goggles', min: 1, max: 1, w: 3 },
       { id: 'zavod_rebreather', min: 1, max: 1, w: 5 },
+      { id: 'mp7', min: 1, max: 1, w: 6 },
       { id: 'm4a1', min: 1, max: 1, w: 6 },
       { id: 'ak47', min: 1, max: 1, w: 6 },
       { id: 'mosin9130', min: 1, max: 1, w: 5 },
@@ -1624,7 +1679,7 @@ window.GAME_DATA = {
       'vest_2plate_gel', 'bag_medium', 'decorative_bowl', 'ancient_coin', 'nylon_cloth_roll',
       'kevlar_padding', 'metallic_alloy', 'sterile_bandage', 'syringe', 'medkit', 'ammo_762'
     ],
-    boss_legendary_weapons: ['m4a1', 'ak47', 'm24', 'awm338', 'mosin9130', 'mp5k', 'm870']
+    boss_legendary_weapons: ['m4a1', 'ak47', 'mp7', 'm24', 'awm338', 'mosin9130', 'mp5k', 'm870']
   },
 
   normalizeWeaponMods(mods) {
@@ -1769,7 +1824,7 @@ window.GAME_DATA = {
         magazine: ['none', 'ext_mag']
       };
     }
-    const optics = weaponId === 'mp5k'
+    const optics = (weaponId === 'mp5k' || weaponId === 'mp7')
       ? ['none', 'red_dot', 'holo', 'acog_2x', 'lpvo_4x']
       : ['none', 'red_dot', 'holo', 'acog_2x', 'lpvo_4x', 'sniper_8x'];
     return {

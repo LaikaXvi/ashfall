@@ -259,6 +259,9 @@ class WeaponSystem {
     if (weaponId === 'mp5k') {
       return { magOutP: isEmpty ? 0.42 : 0.24, magInP: isEmpty ? 0.70 : 0.66, needsChamber: !!isEmpty };
     }
+    if (weaponId === 'mp7') {
+      return { magOutP: isEmpty ? 0.24 : 0.28, magInP: isEmpty ? 0.62 : 0.68, needsChamber: !!isEmpty };
+    }
     if (weaponId === 'm4a1') {
       return { magOutP: isEmpty ? 0.28 : 0.34, magInP: isEmpty ? 0.64 : 0.72, needsChamber: !!isEmpty };
     }
@@ -644,6 +647,40 @@ class WeaponSystem {
         rearPivot.position.y = rearBaseY - 0.003;
         frontPivot.rotation.x = Math.PI / 2.2;
         frontPivot.position.y = frontBaseY + 0.002;
+      }
+      frontPivot.traverse((ch) => { if (ch.isMesh) ch.renderOrder = -20; });
+      ironGroup.add(rearPivot, frontPivot);
+    } else if (weaponId === 'mp7') {
+      // Authentic H&K MP7A1: KSK Flip-Up Dual-Mode Iron Sights (upright peep + hooded blade; folds flat under optics!)
+      const rearPivot = new THREE.Group();
+      rearPivot.position.set(0, 0.032, 0.218);
+      const rClamp = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.005, 0.022), steelSightMat);
+      const rEarL = new THREE.Mesh(new THREE.BoxGeometry(0.0026, 0.017, 0.012), sightMat);
+      rEarL.position.set(-0.0074, 0.011, 0);
+      const rEarR = rEarL.clone();
+      rEarR.position.x = 0.0074;
+      const rRing = new THREE.Mesh(new THREE.TorusGeometry(0.0044, 0.0014, 12, 22), sightMat);
+      rRing.position.set(0, 0.018, 0.001);
+      rearPivot.add(rClamp, rEarL, rEarR, rRing);
+
+      const frontPivot = new THREE.Group();
+      frontPivot.position.set(0, 0.032, -0.114);
+      const fClamp = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.005, 0.020), steelSightMat);
+      const fEarL = new THREE.Mesh(new THREE.BoxGeometry(0.0024, 0.017, 0.011), sightMat);
+      fEarL.position.set(-0.0072, 0.011, 0);
+      const fEarR = fEarL.clone();
+      fEarR.position.x = 0.0072;
+      const fPost = new THREE.Mesh(new THREE.BoxGeometry(0.0018, 0.011, 0.0024), sightMat);
+      fPost.position.set(0, 0.013, 0);
+      const fDot = new THREE.Mesh(new THREE.BoxGeometry(0.0020, 0.0022, 0.0028), tritGreen);
+      fDot.position.set(0, 0.018, 0);
+      frontPivot.add(fClamp, fEarL, fEarR, fPost, fDot);
+
+      if (hasOptic) {
+        rearPivot.rotation.x = -Math.PI / 2.08;
+        rearPivot.position.y = 0.030;
+        frontPivot.rotation.x = Math.PI / 2.08;
+        frontPivot.position.y = 0.030;
       }
       frontPivot.traverse((ch) => { if (ch.isMesh) ch.renderOrder = -20; });
       ironGroup.add(rearPivot, frontPivot);
@@ -1157,7 +1194,7 @@ class WeaponSystem {
 
     // 1. Optic (pass exact receiver top height so scope stanchions bolt flush to the receiver!)
     const isLongRifle = weaponDef.id === 'm24' || weaponDef.id === 'awm338' || weaponDef.id === 'mosin9130';
-    const recTopY = (weaponDef.id === 'm24' || weaponDef.id === 'awm338') ? 0.038 : (weaponDef.id === 'mosin9130' ? 0.032 : (weaponDef.id === 'ak47' ? 0.034 : (weaponDef.id === 'm4a1' ? 0.031 : (weaponDef.id === 'm870' ? 0.028 : 0.029))));
+    const recTopY = (weaponDef.id === 'm24' || weaponDef.id === 'awm338') ? 0.038 : (weaponDef.id === 'mosin9130' ? 0.032 : (weaponDef.id === 'ak47' ? 0.034 : ((weaponDef.id === 'm4a1' || weaponDef.id === 'mp7') ? 0.031 : (weaponDef.id === 'm870' ? 0.028 : 0.029))));
     if (mods.optic === 'red_dot') {
       if (weaponDef.slot === 'secondary' && this.boltMesh) {
         const y = 0.034;
@@ -1227,17 +1264,19 @@ class WeaponSystem {
     }
 
     // 3. Underbarrel: Zenitco RK-1 on B-25U Clamp OR L3Harris AN/PEQ-15 ATPIAL
-    this.hasVertGrip = false;
-    this.foregripAnchor = null;
+    if (!this.foregripAnchor || mods.underbarrel === 'vert_grip') {
+      this.hasVertGrip = false;
+      this.foregripAnchor = null;
+    }
     if (mods.underbarrel === 'vert_grip' && weaponDef.slot !== 'secondary') {
       this.hasVertGrip = true;
       const isTrenchGun = weaponDef.id === 'm870';
       const gripZ = isTrenchGun
         ? -0.24
-        : (weaponDef.id === 'mp5k' ? -0.175 : (weaponDef.id === 'm4a1' ? -0.195 : ((weaponDef.id === 'awm338' || weaponDef.id === 'm24') ? -0.185 : -0.215)));
+        : (weaponDef.id === 'mp5k' ? -0.175 : (weaponDef.id === 'mp7' ? -0.106 : (weaponDef.id === 'm4a1' ? -0.195 : ((weaponDef.id === 'awm338' || weaponDef.id === 'm24') ? -0.185 : -0.215))));
       const collarWorldY = isTrenchGun
         ? -0.039
-        : (weaponDef.id === 'mp5k' ? -0.036 : (weaponDef.id === 'm4a1' ? -0.028 : (weaponDef.id === 'ak47' ? -0.024 : -0.031)));
+        : (weaponDef.id === 'mp5k' ? -0.036 : (weaponDef.id === 'mp7' ? -0.025 : (weaponDef.id === 'm4a1' ? -0.028 : (weaponDef.id === 'ak47' ? -0.024 : -0.031))));
 
       const vGripGroup = new THREE.Group();
       const railClamp = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.015, 0.046), matAnod);
@@ -1281,9 +1320,9 @@ class WeaponSystem {
     } else if (mods.underbarrel === 'laser') {
       // L3Harris AN/PEQ-15 ATPIAL (117x71x41mm FDE polymer box + vis/IR bezels + mode turret)
       const hasOpticM4 = !!(mods.optic && mods.optic !== 'none');
-      const lx = weaponDef.slot === 'secondary' ? 0.0 : (weaponDef.id === 'm4a1' ? (hasOpticM4 ? 0.0 : 0.028) : 0.030);
-      const ly = weaponDef.slot === 'secondary' ? -0.026 : (weaponDef.id === 'm4a1' ? (hasOpticM4 ? 0.041 : 0.004) : 0.006);
-      const lz = weaponDef.slot === 'secondary' ? -0.062 : (weaponDef.id === 'm4a1' ? (hasOpticM4 ? -0.225 : -0.215) : -0.235);
+      const lx = weaponDef.slot === 'secondary' ? 0.0 : (weaponDef.id === 'mp7' ? 0.026 : (weaponDef.id === 'm4a1' ? (hasOpticM4 ? 0.0 : 0.028) : 0.030));
+      const ly = weaponDef.slot === 'secondary' ? -0.026 : (weaponDef.id === 'mp7' ? 0.006 : (weaponDef.id === 'm4a1' ? (hasOpticM4 ? 0.041 : 0.004) : 0.006));
+      const lz = weaponDef.slot === 'secondary' ? -0.062 : (weaponDef.id === 'mp7' ? -0.084 : (weaponDef.id === 'm4a1' ? (hasOpticM4 ? -0.225 : -0.215) : -0.235));
       const peqGrp = new THREE.Group();
       const bodyGeo = new THREE.BoxGeometry(0.036, 0.022, 0.078);
       if (P && P.UVUnwrap) P.UVUnwrap.unwrapBox(bodyGeo, 0.16);
@@ -1299,6 +1338,7 @@ class WeaponSystem {
       peqGrp.add(peq, lensIR, lensVis, modeDial);
       peqGrp.position.set(lx, ly, lz);
       if (weaponDef.slot === 'secondary') peqGrp.scale.setScalar(0.68);
+      else if (weaponDef.id === 'mp7') peqGrp.scale.setScalar(0.82);
       g.add(peqGrp);
 
       if (withHands) {
@@ -1311,7 +1351,7 @@ class WeaponSystem {
       }
     }
 
-    // 4. Extended Magazine (M870 Nordic +2 tube; PM9/G17/MP5/AK/M4A1/M24/Mosin/AWM handled in ModelSystem)
+    // 4. Extended Magazine (M870 Nordic +2 tube; PM9/G17/MP5/MP7/AK/M4A1/M24/Mosin/AWM handled in ModelSystem)
     if (mods.magazine === 'ext_mag' && weaponDef.id === 'm870') {
       const extTube = new THREE.Mesh(new THREE.CylinderGeometry(0.0130, 0.0130, 0.115, 22), matSteel);
       extTube.rotation.x = Math.PI / 2;
@@ -1329,7 +1369,7 @@ class WeaponSystem {
 
     // 5. Stock Attachment (HK A3 Wire / Magpul CTR / Magpul PRS Gen3)
     if (mods.stock && mods.stock !== 'none' && weaponDef.slot !== 'secondary' && weaponDef.id !== 'm870') {
-      const stockZ = weaponDef.id === 'mp5k' ? 0.14 : (weaponDef.id === 'm4a1' ? 0.125 : (weaponDef.id === 'm24' ? 0.18 : 0.16));
+      const stockZ = weaponDef.id === 'mp5k' ? 0.14 : (weaponDef.id === 'mp7' ? 0.245 : (weaponDef.id === 'm4a1' ? 0.125 : (weaponDef.id === 'm24' ? 0.18 : 0.16)));
       const stockGroup = new THREE.Group();
       stockGroup.position.set(0, -0.008, stockZ);
 
@@ -2052,6 +2092,8 @@ class WeaponSystem {
     }
     this.boltCatchMesh = rig.boltCatchMesh || null;
     this.chamberRoundMesh = rig.chamberRoundMesh || null;
+    this.foregripAnchor = rig.foregripAnchor || null;
+    this.hasVertGrip = !!this.foregripAnchor;
     this.magMesh = rig.magMesh;
     if (this.magMesh) {
       this.magRestPos.copy(this.magMesh.position);
@@ -3105,7 +3147,7 @@ class WeaponSystem {
     if (this.boltCycleTimer > 0) {
       this.boltCycleTimer = Math.max(0, this.boltCycleTimer - dt);
       const cp = 1 - (this.boltCycleTimer / Math.max(0.01, this.boltCycleDuration));
-      const stroke = (weaponDef && weaponDef.id === 'ak47') ? 0.078 : ((weaponDef && weaponDef.id === 'm4a1') ? 0.062 : (weaponDef && weaponDef.slot === 'secondary' ? 0.052 : 0.058));
+      const stroke = (weaponDef && weaponDef.id === 'ak47') ? 0.078 : ((weaponDef && weaponDef.id === 'm4a1') ? 0.062 : ((weaponDef && weaponDef.id === 'mp7') ? 0.048 : (weaponDef && weaponDef.slot === 'secondary' ? 0.052 : 0.058)));
       if (cp < 0.30) {
         // Fast rearward gas-piston / blowback stroke
         this.boltKick = (cp / 0.30) * stroke;
@@ -3235,16 +3277,18 @@ class WeaponSystem {
           if (this.boltCarrierMesh) {
             this.boltCarrierMesh.position.z = this.boltCarrierRestPos.z;
           }
-        } else if (weaponDef && weaponDef.id === 'm4a1') {
-          const lockOpenM4 = !!(slotObj && (slotObj.mag === 0 || (stg >= 1 && slotObj.reloadWasEmpty)));
-          // Non-reciprocating T-charging handle stays locked forward while DI bolt carrier locks open on empty
+        } else if (weaponDef && (weaponDef.id === 'm4a1' || weaponDef.id === 'mp7')) {
+          const lockOpen = !!(slotObj && (slotObj.mag === 0 || (stg >= 1 && slotObj.reloadWasEmpty)));
+          const lockStroke = weaponDef.id === 'mp7' ? 0.048 : 0.062;
+          const catchAngle = weaponDef.id === 'mp7' ? -0.20 : -0.22;
+          // Non-reciprocating T-charging handle stays locked forward while DI/piston bolt carrier locks open on empty
           this.boltMesh.position.copy(this.boltRestPos);
           this.boltMesh.rotation.copy(this.boltRestRot);
           if (this.boltCarrierMesh) {
-            this.boltCarrierMesh.position.z = this.boltCarrierRestPos.z + (lockOpenM4 ? 0.062 : this.boltKick);
+            this.boltCarrierMesh.position.z = this.boltCarrierRestPos.z + (lockOpen ? lockStroke : this.boltKick);
           }
           if (this.boltCatchMesh) {
-            this.boltCatchMesh.rotation.z = lockOpenM4 ? -0.22 : 0;
+            this.boltCatchMesh.rotation.z = lockOpen ? catchAngle : 0;
           }
         } else {
           const lockOpen = weaponDef && weaponDef.slot === 'secondary' && slotObj && (slotObj.mag === 0 || (stg >= 1 && slotObj.reloadWasEmpty));
@@ -3270,7 +3314,7 @@ class WeaponSystem {
     let targetWallPush = this._lastTargetWallPush || 0;
     if (this._wallCheckFrame === 0 && weaponDef && player.world && (player.world.wallMeshes || player.world.shootableMeshes) && !this.isThirdPerson) {
       targetWallPush = 0;
-      const baseLen = weaponDef.slot === 'secondary' ? 0.78 : (weaponDef.id === 'mp5k' ? 0.94 : 1.16);
+      const baseLen = weaponDef.slot === 'secondary' ? 0.78 : (weaponDef.id === 'mp7' ? 0.82 : (weaponDef.id === 'mp5k' ? 0.94 : 1.16));
       const barrelLen = baseLen + (weaponDef.suppressed ? 0.14 : 0);
 
       const camPosW = new THREE.Vector3();
@@ -3432,8 +3476,9 @@ class WeaponSystem {
 
     const wWeight = !weaponDef ? 0.75
       : (weaponDef.slot === 'secondary' ? 0.72
+      : (weaponDef.id === 'mp7' ? 0.80
       : (weaponDef.id === 'mp5k' ? 0.86
-      : (weaponDef.id === 'm24' || weaponDef.id === 'awm338' || weaponDef.id === 'mosin9130' || weaponDef.id === 'm870' ? 1.24 : 1.05)));
+      : (weaponDef.id === 'm24' || weaponDef.id === 'awm338' || weaponDef.id === 'mosin9130' || weaponDef.id === 'm870' ? 1.24 : 1.05))));
     const adsZoom = (weaponDef && weaponDef.adsZoom) ? weaponDef.adsZoom : 1.25;
     const zoomDamp = isAdsActive ? (1 / Math.max(1.0, adsZoom)) : 1.0;
     const swayMult = (isAdsActive ? (0.28 * zoomDamp) : 1.0) * wWeight;
@@ -4209,6 +4254,193 @@ class WeaponSystem {
         rot.x = THREE.MathUtils.lerp(0.10, 0, t);
         rot.y = THREE.MathUtils.lerp(-0.22, 0, t);
         rot.z = THREE.MathUtils.lerp(0.26, 0, t);
+      }
+      return;
+    }
+
+    if (id === 'mp7') {
+      // HK MP7A1 MW2019 Grip-Fed Handling:
+      //  - Tactical: cant PDW right -> L-grip fresh 4.6x30mm steel mag beside grip -> strip old mag -> seat & palm-heel tap
+      //  - Empty: flick-drop empty mag from grip (bolt locked open) -> slam fresh 4.6mm mag -> sweep forward & press left bolt catch lever!
+      restRightHand();
+      if (this.spareMagMesh) this.spareMagMesh.visible = false;
+
+      if (!this.wasEmptyReload) {
+        if (this.chamberRoundMesh) this.chamberRoundMesh.visible = true;
+        if (this.boltMesh) { this.boltMesh.position.copy(this.boltRestPos); this.boltMesh.rotation.copy(this.boltRestRot); }
+        if (this.boltCarrierMesh) this.boltCarrierMesh.position.copy(this.boltCarrierRestPos);
+        if (this.boltCatchMesh) this.boltCatchMesh.rotation.z = 0;
+
+        if (p > 0.22 && !this.reloadSfxFlags.magOut) {
+          this.reloadSfxFlags.magOut = true;
+          window.soundEngine.playMagOut(this.reloadWeaponId);
+        }
+        if (p > 0.62 && !this.reloadSfxFlags.magIn) {
+          this.reloadSfxFlags.magIn = true;
+          window.soundEngine.playMagIn(this.reloadWeaponId);
+        }
+
+        if (p < 0.20) {
+          const t = smooth(p / 0.20);
+          pos.x = -0.09 * t; pos.y = 0.09 * t; pos.z = 0.01 * t;
+          rot.x = 0.24 * t; rot.y = 0.22 * t; rot.z = -0.36 * t;
+          if (this.magMesh) { this.magMesh.visible = true; this.magMesh.position.copy(this.magRestPos); this.magMesh.rotation.copy(this.magRestRot); }
+          if (this.spareMagMesh && t > 0.35) {
+            const st = smooth((t - 0.35) / 0.65);
+            this.spareMagMesh.visible = true;
+            this.spareMagMesh.position.set(this.magRestPos.x - 0.036, THREE.MathUtils.lerp(this.magRestPos.y - 0.16, this.magRestPos.y - 0.075, st), this.magRestPos.z - 0.012);
+            this.spareMagMesh.rotation.set(0.16, 0.16, -0.24);
+          }
+          moveLeftHand(this.magRestPos.x - 0.036, THREE.MathUtils.lerp(this.leftHandRestPos.y, this.magRestPos.y - 0.09, t), THREE.MathUtils.lerp(this.leftHandRestPos.z, this.magRestPos.z - 0.01, t), 0.14, 0.16, 0.08, 'magGrip');
+        } else if (p < 0.44) {
+          const rawT = (p - 0.20) / 0.24;
+          const pullT = smooth(rawT);
+          pos.x = -0.09; pos.y = 0.09 - Math.sin(rawT * Math.PI) * 0.008; pos.z = 0.01;
+          rot.x = 0.24; rot.y = 0.22; rot.z = -0.36;
+          if (this.magMesh) {
+            setMagAlong(pullT * 0.16, -pullT * 0.024);
+            this.magMesh.visible = pullT < 0.68;
+          }
+          if (this.spareMagMesh) {
+            this.spareMagMesh.visible = true;
+            this.spareMagMesh.position.set(
+              THREE.MathUtils.lerp(this.magRestPos.x - 0.036, this.magRestPos.x, pullT),
+              THREE.MathUtils.lerp(this.magRestPos.y - 0.075, this.magRestPos.y - 0.115, pullT),
+              THREE.MathUtils.lerp(this.magRestPos.z - 0.012, this.magRestPos.z - 0.016, pullT)
+            );
+            this.spareMagMesh.rotation.set(THREE.MathUtils.lerp(0.16, this.magRestRot.x, pullT), 0.16 * (1 - pullT), -0.24 * (1 - pullT));
+          }
+          moveLeftHand(this.magRestPos.x - 0.015, this.magRestPos.y - 0.125, this.magRestPos.z - 0.010, 0.12, 0.14, 0.06, 'magGrip');
+        } else if (p < 0.78) {
+          const rawT = (p - 0.44) / 0.34;
+          const insT = smooth(THREE.MathUtils.clamp(rawT / 0.56, 0, 1));
+          const tapArc = rawT > 0.66 && rawT < 0.92 ? Math.sin(((rawT - 0.66) / 0.26) * Math.PI) : 0;
+          if (rawT > 0.66 && !this.reloadSfxFlags.tapImpulse) {
+            this.reloadSfxFlags.tapImpulse = true;
+            this.addWeaponImpulse(0.004, 0.016, -0.006, 0.050, 0.018, -0.025);
+            if (this.fpArms && this.fpArms.applyShoulderImpulse) {
+              this.fpArms.applyShoulderImpulse('left', 0.006, 0.016, -0.008, 0.38);
+            }
+          }
+          pos.x = -0.09; pos.y = 0.09 + tapArc * 0.018; pos.z = 0.01 - tapArc * 0.005;
+          rot.x = 0.24 + tapArc * 0.065; rot.y = 0.22; rot.z = -0.36;
+          if (this.magMesh) {
+            this.magMesh.visible = true;
+            this.magMesh.rotation.copy(this.magRestRot);
+            setMagAlong(THREE.MathUtils.lerp(0.115, 0, insT), 0);
+            if (rawT < 0.60) {
+              handOnMag(0.03, 'magGrip');
+            } else {
+              moveLeftHand(this.magRestPos.x - 0.006, this.magRestPos.y - 0.120 + tapArc * 0.030, this.magRestPos.z - 0.010, -0.18 + tapArc * 0.12, 0.10, -0.10, 'slapOpen');
+            }
+          }
+        } else {
+          const t = smooth((p - 0.78) / 0.22);
+          if (this.magMesh) { this.magMesh.visible = true; this.magMesh.position.copy(this.magRestPos); this.magMesh.rotation.copy(this.magRestRot); }
+          restLeftHand();
+          pos.x = THREE.MathUtils.lerp(-0.09, 0, t);
+          pos.y = THREE.MathUtils.lerp(0.09, 0, t);
+          pos.z = THREE.MathUtils.lerp(0.01, 0, t);
+          rot.x = THREE.MathUtils.lerp(0.24, 0, t);
+          rot.y = THREE.MathUtils.lerp(0.22, 0, t);
+          rot.z = THREE.MathUtils.lerp(-0.36, 0, t);
+        }
+        return;
+      }
+
+      // MP7A1 Empty Reload: eject from pistol grip -> seat fresh 4.6mm stick -> sweep forward & press left-side bolt release paddle!
+      if (p > 0.10 && !this.reloadSfxFlags.magOut) {
+        this.reloadSfxFlags.magOut = true;
+        window.soundEngine.playMagOut(this.reloadWeaponId);
+      }
+      if (p > 0.54 && !this.reloadSfxFlags.magIn) {
+        this.reloadSfxFlags.magIn = true;
+        window.soundEngine.playMagIn(this.reloadWeaponId);
+      }
+      if (p > 0.74 && !this.reloadSfxFlags.rack) {
+        this.reloadSfxFlags.rack = true;
+        window.soundEngine.playRechamber('mp7');
+      }
+      if (this.chamberRoundMesh) this.chamberRoundMesh.visible = p >= 0.75;
+      if (this.boltMesh) { this.boltMesh.position.copy(this.boltRestPos); this.boltMesh.rotation.copy(this.boltRestRot); }
+      if (this.boltCarrierMesh) {
+        const boltClose = p < 0.74 ? 1 : (p < 0.79 ? 1 - smooth((p - 0.74) / 0.05) : 0);
+        this.boltCarrierMesh.position.z = this.boltCarrierRestPos.z + boltClose * 0.048;
+      }
+      if (this.boltCatchMesh) {
+        this.boltCatchMesh.rotation.z = p < 0.74 ? -0.20 : (p < 0.79 ? THREE.MathUtils.lerp(-0.20, 0.07, Math.sin(((p - 0.74) / 0.05) * Math.PI)) : 0);
+      }
+
+      if (p < 0.26) {
+        const t = smooth(p / 0.26);
+        pos.x = -0.095 * t; pos.y = 0.085 * t; pos.z = 0.015 * t;
+        rot.x = 0.20 * t; rot.y = 0.22 * t; rot.z = -0.38 * t;
+        if (this.magMesh) {
+          setMagAlong(t * 0.24, -t * 0.03);
+          this.magMesh.visible = t < 0.72;
+        }
+        moveLeftHand(this.magRestPos.x - 0.045, this.magRestPos.y - 0.16, this.magRestPos.z + 0.01, 0.12, 0.10, 0.08, 'magGrip');
+      } else if (p < 0.62) {
+        const rawT = (p - 0.26) / 0.36;
+        const jolt = rawT > 0.76 ? Math.sin(Math.min(1, (rawT - 0.76) / 0.20) * Math.PI) : 0;
+        if (rawT > 0.76 && !this.reloadSfxFlags.seatImpulse) {
+          this.reloadSfxFlags.seatImpulse = true;
+          this.addWeaponImpulse(0.004, 0.016, -0.006, 0.044, 0.016, -0.022);
+          if (this.fpArms && this.fpArms.applyShoulderImpulse) {
+            this.fpArms.applyShoulderImpulse('left', 0.006, 0.015, -0.008, 0.34);
+          }
+        }
+        pos.x = -0.095; pos.y = 0.085 + jolt * 0.020; pos.z = 0.015 - jolt * 0.005;
+        rot.x = 0.20 + jolt * 0.070; rot.y = 0.22; rot.z = -0.38;
+        if (this.magMesh) {
+          this.magMesh.visible = rawT > 0.06;
+          this.magMesh.rotation.copy(this.magRestRot);
+          if (rawT < 0.42) {
+            const alignT = smooth(THREE.MathUtils.clamp((rawT - 0.06) / 0.36, 0, 1));
+            setMagAlong(THREE.MathUtils.lerp(0.18, 0.115, alignT), THREE.MathUtils.lerp(-0.04, 0, alignT));
+          } else {
+            const insT = smooth(THREE.MathUtils.clamp((rawT - 0.42) / 0.40, 0, 1));
+            setMagAlong(THREE.MathUtils.lerp(0.115, 0, insT), 0);
+          }
+          handOnMag(0.03, 'magGrip');
+        }
+      } else if (p < 0.88) {
+        const rawT = (p - 0.62) / 0.26;
+        const rollT = smooth(THREE.MathUtils.clamp(rawT / 0.36, 0, 1));
+        const slapArc = rawT > 0.36 && rawT < 0.68 ? Math.sin(((rawT - 0.36) / 0.32) * Math.PI) : 0;
+        if (this.magMesh) { this.magMesh.visible = true; this.magMesh.position.copy(this.magRestPos); this.magMesh.rotation.copy(this.magRestRot); }
+        if (rawT >= 0.42 && !this.reloadSfxFlags.slapImpulse) {
+          this.reloadSfxFlags.slapImpulse = true;
+          this.addWeaponImpulse(-0.009, -0.010, 0.012, -0.028, -0.016, -0.048);
+          if (this.fpArms && this.fpArms.applyShoulderImpulse) {
+            this.fpArms.applyShoulderImpulse('left', 0.014, -0.010, 0.008, 0.40);
+          }
+        }
+        pos.x = THREE.MathUtils.lerp(-0.095, -0.05, rollT) + slapArc * 0.014;
+        pos.y = THREE.MathUtils.lerp(0.085, 0.055, rollT) - slapArc * 0.012;
+        pos.z = THREE.MathUtils.lerp(0.015, 0.01, rollT);
+        rot.x = THREE.MathUtils.lerp(0.20, 0.10, rollT);
+        rot.y = THREE.MathUtils.lerp(0.22, -0.14, rollT);
+        rot.z = THREE.MathUtils.lerp(-0.38, 0.18, rollT) - slapArc * 0.05;
+        moveLeftHand(
+          THREE.MathUtils.lerp(-0.048, -0.026, rollT) + slapArc * 0.012,
+          THREE.MathUtils.lerp(-0.080, -0.010, rollT),
+          THREE.MathUtils.lerp(0.110, 0.052, rollT),
+          0.10, 0.12, -0.16,
+          rawT >= 0.42 ? 'grabClose' : 'slapOpen'
+        );
+      } else {
+        const t = smooth((p - 0.88) / 0.12);
+        if (this.magMesh) { this.magMesh.visible = true; this.magMesh.position.copy(this.magRestPos); this.magMesh.rotation.copy(this.magRestRot); }
+        if (this.boltCarrierMesh) this.boltCarrierMesh.position.copy(this.boltCarrierRestPos);
+        if (this.boltCatchMesh) this.boltCatchMesh.rotation.z = 0;
+        restLeftHand();
+        pos.x = THREE.MathUtils.lerp(-0.05, 0, t);
+        pos.y = THREE.MathUtils.lerp(0.055, 0, t);
+        pos.z = THREE.MathUtils.lerp(0.01, 0, t);
+        rot.x = THREE.MathUtils.lerp(0.10, 0, t);
+        rot.y = THREE.MathUtils.lerp(-0.14, 0, t);
+        rot.z = THREE.MathUtils.lerp(0.18, 0, t);
       }
       return;
     }
@@ -5229,6 +5461,39 @@ class WeaponSystem {
           restHands();
         }
       } else {
+        restHands();
+      }
+      return;
+    }
+
+    if (id === 'mp7') {
+      // HK MP7A1 MW2019 4-Act Inspect: examine monolithic HK polymer chassis -> T-handle press-check / empty LRBHO view -> flip to ejection port
+      pos.x = (THREE.MathUtils.lerp(-0.12, -0.09, flip) + drift * 0.85) * enter;
+      pos.y = (THREE.MathUtils.lerp(0.095, 0.072, flip) + drift * 0.45) * enter;
+      pos.z = THREE.MathUtils.lerp(0.015, 0.024, flip) * enter;
+      rot.x = (THREE.MathUtils.lerp(0.18, 0.24, flip) + tiltDrift * 0.5) * enter;
+      rot.y = (THREE.MathUtils.lerp(-0.74, 0.78, flip) + tiltDrift * 0.4) * enter;
+      rot.z = THREE.MathUtils.lerp(-0.26, 0.50, flip) * enter;
+      if (this.chamberRoundMesh) this.chamberRoundMesh.visible = hasAmmo;
+      if (hasAmmo) {
+        if (this.boltCatchMesh) this.boltCatchMesh.rotation.z = 0;
+        if (checkRaw > 0.02) {
+          pos.z += checkRaw * 0.010;
+          rot.y += checkRaw * 0.14;
+          rot.z += checkRaw * 0.12;
+          if (this.boltMesh) this.boltMesh.position.z = this.boltRestPos.z + checkRaw * 0.024;
+          if (this.boltCarrierMesh) this.boltCarrierMesh.position.z = this.boltCarrierRestPos.z + checkRaw * 0.024;
+          moveLeftHand(-0.004, 0.024, this.boltRestPos.z + checkRaw * 0.024, -0.06, 0.0, -0.24, 'leftBoltPinch');
+        } else {
+          if (this.boltMesh) this.boltMesh.position.copy(this.boltRestPos);
+          if (this.boltCarrierMesh) this.boltCarrierMesh.position.copy(this.boltCarrierRestPos);
+          restHands();
+        }
+      } else {
+        // Empty mag: LRBHO holds rotating bolt carrier rearward for visual empty chamber inspection
+        if (this.boltMesh) this.boltMesh.position.copy(this.boltRestPos);
+        if (this.boltCarrierMesh) this.boltCarrierMesh.position.z = this.boltCarrierRestPos.z + 0.048;
+        if (this.boltCatchMesh) this.boltCatchMesh.rotation.z = -0.20;
         restHands();
       }
       return;
@@ -6257,10 +6522,10 @@ class WeaponSystem {
       this.fpArms.applyShoulderImpulse('right', hSign * hRec * 0.16 * gKick, 0.008 * gKick, baseZKick * 0.72 * gKick, 0.32);
       this.fpArms.applyShoulderImpulse('left', hSign * hRec * 0.08 * gKick, 0.004 * gKick, baseZKick * 0.36 * gKick, 0.20);
     }
-    if (def.slot === 'secondary' || def.id === 'mp5k' || def.id === 'ak47' || def.id === 'm4a1') {
-      this.boltCycleDuration = def.id === 'ak47' ? 0.085 : (def.id === 'm4a1' ? 0.068 : 0.075);
+    if (def.slot === 'secondary' || def.id === 'mp5k' || def.id === 'mp7' || def.id === 'ak47' || def.id === 'm4a1') {
+      this.boltCycleDuration = def.id === 'ak47' ? 0.085 : (def.id === 'm4a1' ? 0.068 : (def.id === 'mp7' ? 0.056 : 0.075));
       this.boltCycleTimer = this.boltCycleDuration;
-      this.boltKick = def.id === 'ak47' ? 0.078 : (def.id === 'm4a1' ? 0.062 : (def.slot === 'secondary' ? 0.052 : 0.058));
+      this.boltKick = def.id === 'ak47' ? 0.078 : (def.id === 'm4a1' ? 0.062 : (def.id === 'mp7' ? 0.048 : (def.slot === 'secondary' ? 0.052 : 0.058)));
     } else if (def.id === 'm870' && weaponSlotState.mag > 0) {
       this.pumpDelayTimer = 0.16;
     } else if (def.boltAction && weaponSlotState.mag > 0) {
@@ -6317,6 +6582,7 @@ class WeaponSystem {
       m24: 820,
       mosin9130: 780,
       m4a1: 880,
+      mp7: 735,
       ak47: 715,
       mp5k: 390,
       m870: 340,
@@ -6329,7 +6595,7 @@ class WeaponSystem {
     if (mods.optic === 'sniper_8x' || mods.optic === 'lpvo_4x') muzzleVel *= 1.04;
     const gravity = 13.5; // Tuned tactical ballistic drop (m/s^2)
     // Effective flat-drop zero distance (meters before noticeable drop)
-    const zeroDist = def.id === 'awm338' ? 140 : (def.id === 'm24' || def.id === 'mosin9130' ? 115 : (def.id === 'm4a1' ? 85 : (def.id === 'ak47' ? 65 : 40)));
+    const zeroDist = def.id === 'awm338' ? 140 : (def.id === 'm24' || def.id === 'mosin9130' ? 115 : (def.id === 'm4a1' ? 85 : ((def.id === 'ak47' || def.id === 'mp7') ? 65 : 40)));
 
     // MW4 DMZ Sight-Aligned Aiming: align aim convergence ray with live physical sight sway & hit flinch during ADS!
     const camFwd = this._shotCamFwd.set(0, 0, -1);
