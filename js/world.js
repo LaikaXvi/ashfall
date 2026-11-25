@@ -4761,8 +4761,8 @@ class WastelandWorld {
         this._addBox(hx, roofY + 1.2, hz + 1.2, 2.4, 2.4, 0.25, m, true);
         this._addBox(hx, roofY + 2.5, hz, 2.65, 0.25, 2.65, m, false);
       };
-      bulkhead(236.6, -221.4, this.getTerrainHeight(240, -218) + 6 * 3.65);
-      bulkhead(259.5, -237.8, this.getTerrainHeight(262, -234) + 5 * 3.65);
+      bulkhead(235.5, -220.0, this.getTerrainHeight(240, -218) + 6 * 3.65);
+      bulkhead(258.0, -240.5, this.getTerrainHeight(262, -234) + 5 * 3.65);
       // Formwork tables + rebar bundles on the roof terraces (clear of beacons, stairs & bulkheads)
       const formTable = (fx, fz, fy) => {
         this._addBox(fx, fy + 0.38, fz, 1.6, 0.75, 0.9, this._materials.wood, true);
@@ -4784,10 +4784,10 @@ class WastelandWorld {
       };
       gateFrame(240, -218, 9.6);
       gateFrame(262, -234, 8.6);
-      this._addSignBoard(240, this.getTerrainHeight(240, -218) + 1.7, -218 + 1.78, 3.0, 1.1, 0, {
+      this._addSignBoard(240 + 1.78, this.getTerrainHeight(240, -218) + 1.7, -218, 2.0, 1.1, Math.PI / 2, {
         title: 'TOWER A — NORTH', sub: 'AM-CITY LIFT TUBE // 6 FLOORS', bg: '#262116', accent: '#ff9800'
       });
-      this._addSignBoard(262, this.getTerrainHeight(262, -234) + 1.7, -234 + 1.78, 3.0, 1.1, 0, {
+      this._addSignBoard(262 + 1.78, this.getTerrainHeight(262, -234) + 1.7, -234, 2.0, 1.1, Math.PI / 2, {
         title: 'TOWER B — SOUTH', sub: 'AM-CITY LIFT TUBE // 5 FLOORS', bg: '#262116', accent: '#ff9800'
       });
       // Site perimeter fence: rotated concrete barrier segments + exact rotated AABBs (gate gap NW)
