@@ -496,7 +496,7 @@ window.VostokCityBuilder = (() => {
         box(251.875, yT - 0.15, -366, 2.25, 0.3, 18, mats.darkConcrete, true);
         box(265.225, yT - 0.15, -366, 9.05, 0.3, 18, mats.darkConcrete, true);
         box(265.75, yT - 0.15, -373.35, 30, 0.3, 3.3, mats.darkConcrete, true);
-        box(265.75, yT - 0.15, -358.65, 30, 0.3, 12.3, mats.darkConcrete, true);
+        box(265.75, yT - 0.15, -363.15, 30, 0.3, 12.3, mats.darkConcrete, true);
       }
       // ---- curtain walls per office floor (spandrel + glass + header) ----
       for (let fl = 1; fl <= 4; fl++) {
@@ -517,7 +517,7 @@ window.VostokCityBuilder = (() => {
         world._addPartition(274, -375, 274, -357, yB, 3.6, [{ at: -371, w: 1.6, door: 'wood', label: 'Office' }, { at: -361, w: 1.6, door: 'wood', label: 'Office' }]);
         box(255.5, yB + 1.05, -360.5, 5.0, 2.1, 0.2, mats.interiorPlaster, true);
         box(253.0, yB + 1.05, -362.5, 0.2, 2.1, 4.0, mats.interiorPlaster, true);
-        for (const [dx, dz] of [[262, -370], [266, -370], [262, -362], [266, -362], [270, -366], [262, -366]]) {
+        for (const [dx, dz] of [[262, -372], [266, -372], [262, -368], [266, -368], [262, -364], [266, -364]]) {
           box(dx, yB + 0.7, dz, 2.2, 1.4, 0.08, mats.interiorPlaster, true);
           box(dx, yB + 0.38, dz + 0.6, 1.6, 0.75, 0.8, mats.wood, true);
         }
@@ -600,25 +600,27 @@ window.VostokCityBuilder = (() => {
       world._addPartition(276, -381, 276, -371, roofY, 3.4, [{ at: -376, w: 1.5, door: 'wood', label: 'Phonic Reception' }]);
       world._addPartition(260, -376, 270, -376, roofY, 3.4, [{ at: 265, w: 2.0, label: 'Phonic Restroom' }]);
       box(266, roofY + 3.55, -376, 32.5, 0.3, 10.5, mats.darkConcrete, true);
-      box(266, roofY + 4.55, -381, 32, 1.0, 0.25, mats.concrete, true);
-      box(250.5, roofY + 1.6, -382.5, 6, 0.25, 1.2, mats.metal, true);
-      box(250.5, roofY + 3.0, -382.5, 6, 0.25, 1.2, mats.metal, true);
+      box(266, roofY + 4.2, -381, 32, 1.0, 0.25, mats.concrete, true);
+      box(266, roofY + 1.6, -382.5, 6, 0.25, 1.2, mats.metal, false);
+      box(266, roofY + 3.0, -382.5, 6, 0.25, 1.2, mats.metal, false);
       // ---- SOUTH BLOCK: Actibase Office + cubicles + lobby + edge walk ----
       box(266, roofY + 1.7, -350.5, 32, 3.4, 0.3, mats.travertine || mats.concrete, true);
       box(262, roofY + 1.7, -361, 24, 3.4, 0.3, mats.travertine || mats.concrete, true);
       box(286, roofY + 1.7, -361, 8, 3.4, 0.3, mats.travertine || mats.concrete, true);
       box(250, roofY + 1.7, -356, 0.3, 3.4, 10, mats.travertine || mats.concrete, true);
-      box(282, roofY + 1.7, -358.5, 0.3, 3.4, 5, mats.travertine || mats.concrete, true);
-      box(282, roofY + 1.7, -352.25, 0.3, 3.4, 2.5, mats.travertine || mats.concrete, true);
+      box(282, roofY + 1.7, -359.5, 0.3, 3.4, 2.0, mats.travertine || mats.concrete, true);
+      box(282, roofY + 1.7, -353.25, 0.3, 3.4, 5.5, mats.travertine || mats.concrete, true);
       for (const [ox, oz] of [[261, -357.5], [266, -357.5], [271, -357.5], [261, -354.5], [266, -354.5], [271, -354.5]]) {
         box(ox, roofY + 0.7, oz, 2.2, 1.4, 0.08, mats.interiorPlaster, true);
       }
       world._addPartition(256, -361, 256, -351, roofY, 3.4, [{ at: -356, w: 1.5, door: 'wood', label: 'Actibase Side Office' }]);
       world._addPartition(276, -361, 276, -351, roofY, 3.4, [{ at: -356, w: 1.5, door: 'wood', label: 'Actibase Side Office' }]);
       box(266, roofY + 3.55, -356, 32.5, 0.3, 10.5, mats.darkConcrete, true);
-      box(266, roofY + 4.55, -350.5, 32, 1.0, 0.25, mats.concrete, true);
-      box(283.5, roofY + 0.4, -353.5, 0.25, 0.5, 6.0, mats.metal, true);
-      box(283.5, roofY + 3.4, -353.5, 1.2, 0.25, 6.0, mats.metal, true);
+      box(266, roofY + 4.2, -350.5, 32, 1.0, 0.25, mats.concrete, true);
+      box(266, roofY + 1.6, -349, 6, 0.25, 1.2, mats.metal, false);
+      box(266, roofY + 3.0, -349, 6, 0.25, 1.2, mats.metal, false);
+      box(263.5, roofY + 0.8, -349, 0.18, 1.6, 0.18, mats.metal, true);
+      box(268.5, roofY + 0.8, -349, 0.18, 1.6, 0.18, mats.metal, true);
       // ---- tunnel corridors to the Pit terrace ----
       box(286, roofY + 1.3, -376, 8, 2.6, 0.25, mats.darkConcrete, true);
       box(286, roofY + 1.3, -373.5, 8, 2.6, 0.25, mats.darkConcrete, true);
@@ -664,10 +666,10 @@ window.VostokCityBuilder = (() => {
       A.addAscenderRig(world, { id: 'asc_hr_elev_1f', name: 'Highrise Express Shaft A (1F -> Roof)', bx: 272, bz: -366, bottomY: by, topY: roofY, outX: -1, outZ: 0, landBottomX: 270.2, landBottomZ: -366, landTopX: 272, landTopZ: -366 });
       A.addAscenderRig(world, { id: 'asc_hr_elev_2f', name: 'Highrise Express Shaft B (2F -> Roof)', bx: 276, bz: -366, bottomY: fY[1], topY: roofY, outX: -1, outZ: 0, landBottomX: 274.2, landBottomZ: -366, landTopX: 276, landTopZ: -366 });
       // ---- lobby: vault [KEY ROOM], security, reception, porte-cochere + Hummer EV ----
-      world._addPartition(251, -370, 251, -364, by, 5.8, [{ at: -367, w: 1.7, door: 'steel', label: 'Highrise Vault Door' }]);
-      world._addPartition(259, -370, 259, -364, by, 5.8, [{ at: -367, w: 1.7, door: 'steel', label: 'Highrise Vault Door' }]);
-      world._addPartition(251, -364, 259, -364, by, 5.8, []);
-      world._addLootContainer(255.0, 0.16, -367.0, 'boss_key_room', 'Vostok Highrise Vault [KEY ROOM]', 'boss_key');
+      world._addPartition(258, -369, 258, -363, by, 5.8, [{ at: -366, w: 1.7, door: 'steel', label: 'Highrise Vault Door' }]);
+      world._addPartition(251, -363, 258, -363, by, 5.8, []);
+      world._addPartition(251, -369, 258, -369, by, 5.8, []);
+      world._addLootContainer(254.5, 0.16, -366.0, 'boss_key_room', 'Vostok Highrise Vault [KEY ROOM]', 'boss_key');
       world._addGunLocker(269.0, -359.5, 0, 'military', 'Highrise Lobby Security Locker');
       box(259, by + 0.5, -366, 3.0, 1.0, 0.8, mats.bossDark, true);
       box(266, by + 0.5, -357, 14, 0.4, 8, mats.darkConcrete, true);
