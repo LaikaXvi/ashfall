@@ -2795,6 +2795,9 @@ class GameUI {
         try { window.soundEngine.playTabSwitch(); } catch (e) {}
       }
     }
+    if (tabName !== 'home' && typeof window.exitHideoutRoam === 'function') {
+      window.exitHideoutRoam(false);
+    }
     this.activeMenuTab = tabName;
     const isHome = tabName === 'home';
     const topbar = document.getElementById('menu-topbar');

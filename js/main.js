@@ -206,6 +206,7 @@
     }
   }
   window.enterHideoutRoam = enterHideoutRoam;
+  window.exitHideoutRoam = exitHideoutRoam;
   window.onCloseHideoutOverlayTo3D = () => {
     if (!inRaid && hideoutBunker && !hideoutBunker.activeRoam && !(gunsmith && gunsmith.isOpen)) {
       if (ui && ui.activeMenuTab !== 'home') ui.openMenuTab('home');
@@ -328,6 +329,7 @@
 
   function startRaid(zoneId, matchId = null, raidOpts = {}) {
     if (inRaid) return;
+    try {
     if (ui && ui.socialDrawerOpen && ui.toggleSocialDrawer) ui.toggleSocialDrawer(false);
     window.soundEngine.init();
     const baseZone = GAME_DATA.ZONES[zoneId] || GAME_DATA.ZONES.outpost;
@@ -966,6 +968,13 @@
     if (window.ZavodBunker) window.ZavodBunker.onRaidStart(world, getZavodCtx());
     if (ui && ui.syncUpdateBadges) ui.syncUpdateBadges();
     try { canvas.requestPointerLock(); } catch (e) {}
+    } catch (err) {
+      inRaid = false;
+      console.error('[Ashfall] startRaid failed:', err);
+      if (ui && ui.showCenterToast) {
+        ui.showCenterToast('DEPLOY ERROR: ' + (err && err.message ? err.message : String(err)), '#ff5252');
+      }
+    }
   }
 
   // Immediate HUD refresh (correct updateHUD signature)

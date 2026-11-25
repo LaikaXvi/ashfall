@@ -217,7 +217,7 @@ window.ModelSystem = (() => {
       sh.lineTo(-hw, -hh + rr);
       sh.quadraticCurveTo(-hw, -hh, -hw + rr, -hh);
       const b = Math.min(bevel, d * 0.16, rr * 0.65);
-      const geo = new THREE.ExtrudeGeometry(sh, {
+      let geo = new THREE.ExtrudeGeometry(sh, {
         depth: Math.max(0.002, d - b * 2),
         bevelEnabled: b > 0.0002,
         bevelThickness: b,
@@ -226,7 +226,7 @@ window.ModelSystem = (() => {
         curveSegments: 8
       });
       geo.translate(0, 0, -(d - b * 2) * 0.5);
-      _uvWrapExtrude(geo, tile);
+      geo = _uvWrapExtrude(geo, tile);
       geo.computeVertexNormals();
       return geo;
     });
@@ -247,7 +247,7 @@ window.ModelSystem = (() => {
           sh.holes.push(hp);
         }
       }
-      const geo = new THREE.ExtrudeGeometry(sh, {
+      let geo = new THREE.ExtrudeGeometry(sh, {
         depth: width,
         bevelEnabled: bevel,
         bevelThickness: bevel ? 0.0026 : 0,
@@ -256,7 +256,7 @@ window.ModelSystem = (() => {
         curveSegments: 14
       });
       geo.translate(0, 0, -width * 0.5);
-      _uvWrapExtrude(geo, tile);
+      geo = _uvWrapExtrude(geo, tile);
       geo.rotateY(Math.PI / 2);
       geo.computeVertexNormals();
       return geo;
@@ -273,7 +273,7 @@ window.ModelSystem = (() => {
       sh.bezierCurveTo(hw * 0.72, hh * 0.35, hw * 1.05, -hh * 0.25, hw * 0.88, -hh);
       sh.lineTo(-hw * 0.92, -hh);
       sh.bezierCurveTo(-hw * 1.08, -hh * 0.30, -hw * 0.78, hh * 0.32, -hw * 0.90, hh);
-      const geo = new THREE.ExtrudeGeometry(sh, {
+      let geo = new THREE.ExtrudeGeometry(sh, {
         depth: w,
         bevelEnabled: true,
         bevelThickness: 0.0028,
@@ -282,7 +282,7 @@ window.ModelSystem = (() => {
         curveSegments: 12
       });
       geo.translate(0, 0, -w * 0.5);
-      _uvWrapExtrude(geo, 0.16);
+      geo = _uvWrapExtrude(geo, 0.16);
       geo.rotateY(Math.PI / 2);
       geo.computeVertexNormals();
       return geo;
@@ -416,10 +416,10 @@ window.ModelSystem = (() => {
     };
 
     if (weaponDef.slot === 'secondary') {
+      const slideGroup = new THREE.Group();
       if (id === 'g17') {
         // Glock 17 Gen 4/5 (202mm OAL, 114mm barrel, 139mm H, 25.5mm slide, 30mm frame)
         const slideLen = 0.194;
-        const slideGroup = new THREE.Group();
         const frameGeo = geoExtrudeSide('g17_frame_hp', [
           [0.092, -0.007], [0.092, -0.024], [0.044, -0.024], [0.030, -0.020],
           [-0.034, -0.020], [-0.040, -0.036], [-0.056, -0.114], [-0.098, -0.110],
@@ -706,9 +706,9 @@ window.ModelSystem = (() => {
         magShape.bezierCurveTo(0.024, 0.00, 0.040, -0.062 * scaleH, 0.058 * scaleH, -0.125 * scaleH);
         magShape.lineTo(0.022 * scaleH, -0.134 * scaleH);
         magShape.bezierCurveTo(0.004, -0.070 * scaleH, -0.012, -0.008, -0.018, 0.062);
-        const geo = new THREE.ExtrudeGeometry(magShape, { depth: 0.023, bevelEnabled: true, bevelThickness: 0.0018, bevelSize: 0.0016, bevelSegments: 2, curveSegments: 14 });
+        let geo = new THREE.ExtrudeGeometry(magShape, { depth: 0.023, bevelEnabled: true, bevelThickness: 0.0018, bevelSize: 0.0016, bevelSegments: 2, curveSegments: 14 });
         geo.translate(0, 0, -0.0115);
-        _uvWrapExtrude(geo, 0.16);
+        geo = _uvWrapExtrude(geo, 0.16);
         geo.rotateY(Math.PI / 2);
         return geo;
       });
@@ -875,9 +875,9 @@ window.ModelSystem = (() => {
           -magThick * 0.5 + curveFwd * 0.08, 0.048 - magH * 0.32,
           -magThick * 0.5, 0.048
         );
-        const geo = new THREE.ExtrudeGeometry(shape, { depth: magDepth, bevelEnabled: true, bevelThickness: 0.002, bevelSize: 0.0018, bevelSegments: 2, curveSegments: 14 });
+        let geo = new THREE.ExtrudeGeometry(shape, { depth: magDepth, bevelEnabled: true, bevelThickness: 0.002, bevelSize: 0.0018, bevelSegments: 2, curveSegments: 14 });
         geo.translate(0, 0, -magDepth * 0.5);
-        _uvWrapExtrude(geo, 0.18);
+        geo = _uvWrapExtrude(geo, 0.18);
         geo.rotateY(Math.PI / 2);
         return geo;
       });

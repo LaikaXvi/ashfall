@@ -3,15 +3,15 @@
 // Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
 // With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'Alpha RC 0.2.94',
+  VERSION: 'Alpha RC 0.2.95',
   VERSION_INFO: {
     major: 0,
     minor: 2,
-    patch: 94,
+    patch: 95,
     channel: 'Alpha', // Alpha | Beta — never blank while major === 0
     stage: 'RC',     // RC = Release Candidate
     updated: 'Nov 24, 2026',
-    changelog: 'Full 720p Photorealistic PBR & High-Poly Engine Remaster: added js/pbr.js procedural 720p/1024px albedo + Sobel tangent-space normal + roughness synthesis with metric seam-stitched UVs/UV2 and dual outdoor/indoor equirectangular PMREM reflection probes; upgraded WebGL2 renderer post pipeline (HDR HalfFloat bloom, 6-tap depth SSAO, CAS sharpening, ACES Filmic, sRGB, antialiasing & HD pixel default OFF); rebuilt all 8 firearms, extended mags, 3 melees, 4 throwables, and 10 functional attachments to 1:1 millimeter CAD specs with Mixamo skeletal 2-bone IK + finger curls; eliminated all ZAVOD-9 invisible walls & surfaces (a1_round rotunda overlap, enclosed Layer-1 atrium office walls, distance-culled closed doors/barricades, station/pylon/trap hitboxes & stanchions, hinged door bullet blocking, and Layer-1 floor item drops) alongside wet concrete/tile/water PBR; remastered Vostok 256x256 terrain, animated normal-mapped rivers/reservoir/ocean, 5-tier pines, sculpted granite boulders, BTR-80 APC, VAZ sedan, Mi-8/FOB choppers, and The Rhinoceros curved polycarbonate riot shield + Prior Alpha RC 0.2.93 ZAVOD-9 transfer, Social Drawer & FOB workflow fixes.',
+    changelog: 'Hotfix: fixed Deploy / Deploy Now and Matchmaking ReferenceError (slideGroup scope on PM9 secondary weapon rig), reassigned non-indexed UV-unwrapped extrude geometries in js/models.js, and hardened startRaid error boundary and hideout roam cleanup; Full 720p Photorealistic PBR & High-Poly Engine Remaster: added js/pbr.js procedural 720p/1024px albedo + Sobel tangent-space normal + roughness synthesis with metric seam-stitched UVs/UV2 and dual outdoor/indoor equirectangular PMREM reflection probes; upgraded WebGL2 renderer post pipeline (HDR HalfFloat bloom, 6-tap depth SSAO, CAS sharpening, ACES Filmic, sRGB, antialiasing & HD pixel default OFF); rebuilt all 8 firearms, extended mags, 3 melees, 4 throwables, and 10 functional attachments to 1:1 millimeter CAD specs with Mixamo skeletal 2-bone IK + finger curls; eliminated all ZAVOD-9 invisible walls & surfaces (a1_round rotunda overlap, enclosed Layer-1 atrium office walls, distance-culled closed doors/barricades, station/pylon/trap hitboxes & stanchions, hinged door bullet blocking, and Layer-1 floor item drops) alongside wet concrete/tile/water PBR; remastered Vostok 256x256 terrain, animated normal-mapped rivers/reservoir/ocean, 5-tier pines, sculpted granite boulders, BTR-80 APC, VAZ sedan, Mi-8/FOB choppers, and The Rhinoceros curved polycarbonate riot shield + Prior Alpha RC 0.2.93 ZAVOD-9 transfer, Social Drawer & FOB workflow fixes.',
     get semver() { return `${this.major}.${this.minor}.${this.patch}`; },
     get label() { return `${this.channel} ${this.stage} ${this.major}.${this.minor}.${this.patch}`; }
   },
