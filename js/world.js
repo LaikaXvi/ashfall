@@ -4790,20 +4790,24 @@ class WastelandWorld {
       this._addSignBoard(262, this.getTerrainHeight(262, -234) + 1.7, -234 + 1.78, 3.0, 1.1, 0, {
         title: 'TOWER B — SOUTH', sub: 'AM-CITY LIFT TUBE // 5 FLOORS', bg: '#262116', accent: '#ff9800'
       });
-      // Site perimeter fence (concrete barriers, gate gap facing the boulevard approach)
+      // Site perimeter fence: rotated concrete barrier segments + exact rotated AABBs (gate gap NW)
       {
-        const fx = 252, fz = -226, fr = 26, gateAng = Math.atan2(-20, -10);
+        const fx = 252, fz = -226, fr = 26;
+        let gateAng = Math.atan2(-20, -10);
+        if (gateAng < 0) gateAng += Math.PI * 2;
         for (let k = 0; k < 16; k++) {
           const aMid = ((k + 0.5) / 16) * Math.PI * 2;
-          let da = Math.abs(aMid - gateAng) % (Math.PI * 2);
+          let da = Math.abs(aMid - gateAng);
           if (da > Math.PI) da = Math.PI * 2 - da;
           if (da < 0.24) continue;
           const px = fx + Math.cos(aMid) * fr, pz = fz + Math.sin(aMid) * fr;
           const segL = 2 * fr * Math.sin(Math.PI / 16) * 0.94;
           const py = this.getTerrainHeight(px, pz);
-          this._addBox(px, py + 0.55, pz, 0.4, 1.1, segL, this._materials.darkConcrete, true);
-          const bx2 = fx + Math.cos(aMid) * (fr + 0.5), bz2 = fz + Math.sin(aMid) * (fr + 0.5);
-          this._addBox(bx2, py + 0.35, bz2, 0.5, 0.7, segL * 0.96, this._materials.concrete, true);
+          const ry = -aMid + Math.PI * 0.5;
+          if (A && A.addOrientedBox) A.addOrientedBox(this, px, py + 0.55, pz, segL, 1.1, 0.4, this._materials.darkConcrete, 0, ry, 0, false);
+          const cx = Math.abs(Math.cos(ry)), sx = Math.abs(Math.sin(ry));
+          const hx = (cx * segL + sx * 0.4) / 2, hz = (sx * segL + cx * 0.4) / 2;
+          this.colliders.push({ minX: px - hx, maxX: px + hx, minY: py, maxY: py + 1.1, minZ: pz - hz, maxZ: pz + hz });
         }
       }
       // Site containers + material pallets
