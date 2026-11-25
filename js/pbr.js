@@ -440,6 +440,84 @@ window.AshfallPBR = (() => {
           mixT = Math.max(0, Math.min(1, macro * 0.38 + fbm * 0.36 + fiberFleck * 0.50));
           rgh = baseRough + (0.46 - pebble) * roughVar - handSheen;
           ao = 0.89 + 0.11 * (1 - pebble * 0.30);
+        } else if (kind === 'ashlar_stone') {
+          // Cut Middle-Eastern travertine / sandstone ashlar cladding with staggered courses & mineral veining
+          const courses = spec.courses || 8;
+          const cols = spec.cols || 4;
+          const rowI = Math.floor(v * courses);
+          const uOff = (rowI & 1) ? 0.5 : 0.0;
+          const cu = (u * cols + uOff) % 1;
+          const cv = (v * courses) % 1;
+          const isMortar = (cu < 0.022 || cu > 0.978 || cv < 0.038 || cv > 0.962);
+          const vein = _sampleLUT(nFine, u * 0.6, v * 9.0);
+          const bRand = hash2(Math.floor(u * cols + uOff), rowI);
+          if (isMortar) {
+            hVal = 0.20 + micro * 0.10;
+            extraR = 128; extraG = 118; extraB = 102;
+            mixT = -1;
+            ao = 0.68;
+            rgh = 0.94;
+          } else {
+            const bev = (cu < 0.045 || cu > 0.955 || cv < 0.07 || cv > 0.93) ? 0.10 : 0.0;
+            hVal = 0.68 + fbm * 0.16 + vein * 0.12 - bev;
+            mixT = Math.max(0, Math.min(1, bRand * 0.42 + vein * 0.38 + fbm * 0.20));
+            ao = 0.88 + 0.12 * (1 - bev);
+            rgh = baseRough + (0.5 - vein) * roughVar;
+          }
+        } else if (kind === 'curtain_mullion') {
+          // Skyscraper anodized mullion frame & dark reflective spandrel glazing
+          const baysU = spec.baysU || 4;
+          const baysV = spec.baysV || 3;
+          const mu = (u * baysU) % 1;
+          const mv = (v * baysV) % 1;
+          const isMullion = (mu < 0.048 || mu > 0.952 || mv < 0.085 || mv > 0.915);
+          const isSpandrel = !isMullion && mv < 0.30;
+          if (isMullion) {
+            hVal = 0.82 + fine * 0.08;
+            extraR = 46; extraG = 52; extraB = 58;
+            mixT = -1;
+            ao = 0.94;
+            rgh = 0.34;
+          } else if (isSpandrel) {
+            hVal = 0.48 + macro * 0.10;
+            mixT = macro * 0.45 + 0.15;
+            ao = 0.78;
+            rgh = 0.28 + fine * 0.08;
+          } else {
+            hVal = 0.36 + micro * 0.04;
+            mixT = 0.55 + macro * 0.35;
+            ao = 0.74;
+            rgh = 0.16 + macro * 0.08;
+          }
+        } else if (kind === 'ribbed_precast') {
+          // Architectural fluted precast concrete with vertical shadow flutes & panel seams
+          const ribs = spec.ribs || 18;
+          const flute = Math.max(-1, Math.min(1, Math.sin(u * ribs * Math.PI * 2) * 1.35)) * 0.5 + 0.5;
+          const hSeam = ((v * 3) % 1) < 0.024;
+          const streak = _sampleLUT(nMacro, u * 4.0, v * 0.4);
+          hVal = hSeam ? 0.22 : (0.34 + flute * 0.48 + fine * 0.12);
+          mixT = Math.max(0, Math.min(1, fbm * 0.5 + streak * 0.35 + flute * 0.15 - (hSeam ? 0.25 : 0)));
+          ao = (hSeam ? 0.66 : (0.76 + 0.24 * flute));
+          rgh = baseRough + (1 - flute) * 0.10;
+        } else if (kind === 'polished_marble') {
+          // Veined marble / limestone lobby floor tiles with fine beveled joints
+          const tilesU = spec.tilesU || 3;
+          const tu = (u * tilesU) % 1;
+          const tv = (v * tilesU) % 1;
+          const joint = (tu < 0.016 || tu > 0.984 || tv < 0.016 || tv > 0.984);
+          const vein = Math.pow(Math.abs(Math.sin((u * 2.5 + v * 2.0 + fbm * 2.4) * Math.PI)), 6);
+          if (joint) {
+            hVal = 0.24;
+            extraR = 96; extraG = 92; extraB = 84;
+            mixT = -1;
+            ao = 0.72;
+            rgh = 0.68;
+          } else {
+            hVal = 0.74 + fine * 0.05;
+            mixT = Math.max(0, Math.min(1, fbm * 0.45 + (1 - vein) * 0.45 + macro * 0.10));
+            ao = 0.95;
+            rgh = 0.14 + vein * 0.10;
+          }
         }
 
         hf[idx] = hVal;
@@ -561,6 +639,14 @@ window.AshfallPBR = (() => {
     asphalt_cracked:     { seed: 317, pattern: 'asphalt', square: true, c0: [68, 70, 72], c1: [104, 106, 108], rough: 0.82, roughVar: 0.18, metal: 0.02, bump: 3.0 },
     wood_planks_weathered:{ seed: 318, pattern: 'wood_grain', c0: [94, 72, 50], c1: [138, 108, 76], rough: 0.78, roughVar: 0.14, metal: 0.0, bump: 2.8 },
     roof_bitumen_tar:    { seed: 319, pattern: 'asphalt', square: true, c0: [48, 50, 52], c1: [74, 76, 78], rough: 0.84, roughVar: 0.14, metal: 0.04, bump: 2.6 },
+    travertine_limestone:{ seed: 320, pattern: 'ashlar_stone', square: true, courses: 8, cols: 4, c0: [196, 186, 166], c1: [226, 218, 198], rough: 0.68, roughVar: 0.14, metal: 0.02, bump: 2.6 },
+    sandstone_ochre_ashlar:{ seed: 321, pattern: 'ashlar_stone', square: true, courses: 9, cols: 5, c0: [176, 152, 116], c1: [212, 188, 148], rough: 0.76, roughVar: 0.15, metal: 0.02, bump: 2.9 },
+    curtain_spandrel_dark:{ seed: 322, pattern: 'curtain_mullion', square: true, baysU: 4, baysV: 3, c0: [30, 44, 56], c1: [58, 78, 96], rough: 0.24, roughVar: 0.14, metal: 0.78, bump: 2.4 },
+    precast_ribbed_concrete:{ seed: 323, pattern: 'ribbed_precast', square: true, ribs: 18, c0: [132, 134, 128], c1: [170, 172, 164], rough: 0.78, roughVar: 0.14, metal: 0.04, bump: 3.1 },
+    marble_lobby_veined: { seed: 324, pattern: 'polished_marble', square: true, tilesU: 3, c0: [208, 202, 188], c1: [238, 232, 218], rough: 0.18, roughVar: 0.10, metal: 0.06, bump: 1.4 },
+    terracotta_plaza_paver:{ seed: 325, pattern: 'tile_grid', square: true, tilesU: 8, tilesV: 8, c0: [152, 124, 104], c1: [182, 152, 128], rough: 0.72, roughVar: 0.16, metal: 0.02, bump: 2.5 },
+    painted_bridge_white:{ seed: 326, pattern: 'brushed_metal', c0: [214, 220, 224], c1: [240, 244, 246], rough: 0.34, roughVar: 0.14, metal: 0.62, bump: 1.6 },
+    taiga_moss_turf:     { seed: 411, pattern: 'granite', square: true, c0: [76, 92, 62], c1: [116, 132, 92], rough: 0.92, roughVar: 0.10, metal: 0.0, bump: 2.6 },
 
     // --- Nature, Foliage, Vehicles & Water ---
     pine_bark:           { seed: 401, pattern: 'bark', c0: [54, 38, 28], c1: [92, 64, 46], rough: 0.90, roughVar: 0.10, metal: 0.0, bump: 3.8 },

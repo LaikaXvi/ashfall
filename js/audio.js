@@ -2277,6 +2277,30 @@ class SoundEngine {
     exLP.connect(exG);
     exG.connect(this._bus('sfx'));
   }
+
+  playAscenderZip(goingUp = true) {
+    if (this.muted || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    this._playMetallicClick(now, 2100, 3.0, 0.025, 0.22, 900);
+    const dur = 0.55;
+    const osc = this.ctx.createOscillator();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(goingUp ? 190 : 260, now + 0.03);
+    osc.frequency.exponentialRampToValueAtTime(goingUp ? 420 : 150, now + dur);
+    const bp = this.ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.setValueAtTime(750, now + 0.03);
+    bp.Q.setValueAtTime(2.2, now + 0.03);
+    const og = this.ctx.createGain();
+    og.gain.setValueAtTime(0.001, now + 0.03);
+    og.gain.linearRampToValueAtTime(0.14, now + 0.10);
+    og.gain.exponentialRampToValueAtTime(0.001, now + dur);
+    osc.connect(bp);
+    bp.connect(og);
+    og.connect(this._bus('sfx'));
+    osc.start(now + 0.03);
+    osc.stop(now + dur + 0.02);
+  }
 }
 
 window.soundEngine = new SoundEngine();

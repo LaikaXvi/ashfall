@@ -334,9 +334,9 @@
     window.soundEngine.init();
     const baseZone = GAME_DATA.ZONES[zoneId] || GAME_DATA.ZONES.outpost;
     const zone = { ...baseZone };
+    // Deterministic shared match seed across co-op party for terrain & town layout consistency
+    zone.seed = _hashSeed(matchId || (ui.partyId + '_' + zoneId));
     if (zone.mapType === 'zavod') {
-      // Standalone ZAVOD-9 match: shared seed + sector assignment for the whole transferring squad
-      zone.seed = _hashSeed(matchId || (ui.partyId + '_' + zoneId));
       zone.spawnWing = (raidOpts && raidOpts.wingId) || null;
     }
     if (window.ZavodBunker) window.ZavodBunker.reset();
@@ -1728,6 +1728,15 @@
       window._lastInteractCheckMs = 0;
       checkInteractions();
       return true;
+    }
+    if (nearbyInteractable.type === 'ascender' && nearbyInteractable.asc && player && player.startAscenderRide) {
+      const started = player.startAscenderRide(nearbyInteractable.asc, !!nearbyInteractable.goingUp);
+      if (started) {
+        nearbyInteractable = null;
+        window._lastInteractCheckMs = 0;
+        checkInteractions();
+      }
+      return started;
     }
     if (nearbyInteractable.type === 'ground') {
       const gi = nearbyInteractable.groundItem;
@@ -4122,6 +4131,25 @@
             ? 'CLOSE'
             : (player.isADS ? 'PEEK' : 'OPEN');
           nearbyInteractable = { type: 'door', door, label: `${verb} ${door.label.toUpperCase()}` };
+        }
+      }
+    }
+    if (world && world.ascenders && world.ascenders.length > 0 && !player.ascenderState) {
+      const feetY = player.position.y - player.currentEyeHeight;
+      for (let i = 0; i < world.ascenders.length; i++) {
+        const asc = world.ascenders[i];
+        if (!asc) continue;
+        const dBotH = Math.hypot(player.position.x - asc.bottomPos.x, player.position.z - asc.bottomPos.z);
+        const dBotV = Math.abs(feetY - asc.bottomPos.y);
+        if (dBotH < 2.9 && dBotV < 2.5 && dBotH < bestDist) {
+          bestDist = dBotH;
+          nearbyInteractable = { type: 'ascender', asc, goingUp: true, label: `ASCEND ZIPLINE — ${(asc.name || 'ROOFTOP').toUpperCase()}` };
+        }
+        const dTopH = Math.hypot(player.position.x - asc.topPos.x, player.position.z - asc.topPos.z);
+        const dTopV = Math.abs(feetY - asc.topPos.y);
+        if (dTopH < 3.1 && dTopV < 2.5 && dTopH < bestDist) {
+          bestDist = dTopH;
+          nearbyInteractable = { type: 'ascender', asc, goingUp: false, label: `RAPPEL DOWN — ${(asc.name || 'STREET').toUpperCase()}` };
         }
       }
     }

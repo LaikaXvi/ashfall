@@ -162,6 +162,14 @@ window.AshfallRenderer = (() => {
       crateMil: P.getMaterial('crate_military', { color: 0xb8c89a, roughness: 0.76, metalness: 0.08, tile: 1.1 }),
       crateMed: P.getMaterial('tile_lab_ceramic', { color: 0xeaf0ec, roughness: 0.36, metalness: 0.08, tile: 1.6 }),
       crateSup: P.getMaterial('crate_supply', { color: 0xd0b084, roughness: 0.74, metalness: 0.06, tile: 1.1 }),
+      travertine: P.getMaterial('travertine_limestone', { tile: 3.0 }),
+      sandstone: P.getMaterial('sandstone_ochre_ashlar', { tile: 2.8 }),
+      curtainSpandrel: P.getMaterial('curtain_spandrel_dark', { tile: 3.6 }),
+      ribbedConcrete: P.getMaterial('precast_ribbed_concrete', { tile: 3.2 }),
+      marbleLobby: P.getMaterial('marble_lobby_veined', { tile: 2.6 }),
+      plazaPaver: P.getMaterial('terracotta_plaza_paver', { tile: 2.4 }),
+      whiteSteel: P.getMaterial('painted_bridge_white', { tile: 2.2 }),
+      goldBrass: P.getMaterial('brass_casing', { color: 0xf0c456, roughness: 0.20, metalness: 0.95, tile: 1.0 }),
       surfaceBank: tx
     };
     _matCache.set('worldSet', set);

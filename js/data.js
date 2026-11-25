@@ -3,15 +3,15 @@
 // Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
 // With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'Alpha RC 0.3.0',
+  VERSION: 'Alpha RC 0.3.1',
   VERSION_INFO: {
     major: 0,
     minor: 3,
-    patch: 0,
+    patch: 1,
     channel: 'Alpha', // Alpha | Beta — never blank while major === 0
     stage: 'RC',     // RC = Release Candidate
     updated: 'Nov 24, 2026',
-    changelog: 'Vostok City Overhaul (Al-Mazrah City Inspired): rebuilt Vostok City spanning across both banks of RIVER_B (F2-G3) with concrete canal quay seawalls, riverside promenades, 4 canal water-egress stairs, 3 cross-river avenue bridges plus a raised steel pedestrian tactical footbridge, the 5-level walkable Highrise Skyscraper + 3F Skybridge + Rooftop Helipad, Municipal 2-Deck Parking Garage framing Z9 A/1, Fortified Diplomatic Embassy, Police Precinct, Bank of Vostok, Eastern Elevated Highway Viaduct, and a full West Bank District featuring Grand Riverfront Hotel, Channel-7 Broadcast Studio, Pharmacy & Waterfront Apartments.',
+    changelog: 'Geomorphological Terrain Geo Engine, Extruded Architecture & Full DMZ Al-Mazrah City Blockout: rewrote terrain generation into a deterministic seeded 512x512 DEM split across 16 frustum-culled chunks with ridged-multifractal peaks, engineered oriented-box urban terraces, highway roadbed grading, dredged vertical-bank urban canal, and a 4-biome triplanar 720p PBR terrain shader; replaced box buildings with beveled ExtrudeGeometry walls, punched arched/mullioned windows, stone sills, cornices, balconies & rooftop HVAC backed by 8 new 720p architectural PBR presets; expanded Vostok City into a dense river-bisected Al-Mazrah City blockout with the 7-level Golden Whale Highrise + Skybridges + 42m Crane, White Twin-Arch Suspension Bridge, Central Boulevard & Steel Truss Bridges, Covered Bazaar Footbridge, Yum Yum Burger Rotunda, U.S. Embassy, Police & Fire Stations, Bank, Parking Deck P-01, Elevated Box-Girder Ring Viaduct, Twin Circular Construction Towers, Sarwana Grand Hotel, Channel 7 + 48m TV Tower, Downtown Post Office, Gas Mart & 10+ Interactive Motorized Ascenders.',
     get semver() { return `${this.major}.${this.minor}.${this.patch}`; },
     get label() { return `${this.channel} ${this.stage} ${this.major}.${this.minor}.${this.patch}`; }
   },

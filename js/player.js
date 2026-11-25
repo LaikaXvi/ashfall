@@ -256,6 +256,8 @@ class Player {
     this.mantleState = null;
     this.ledgeState = null;
     this.ledgeCooldown = 0;
+    this.ascenderState = null;
+    this.ascenderCooldown = 0;
 
     // Stance & tactical slide state
     this.stance = 'stand'; // 'stand' | 'crouch' | 'prone'
@@ -2219,6 +2221,39 @@ class Player {
     return false;
   }
 
+  startAscenderRide(asc, goingUp = true) {
+    if (!asc || this.ascenderState || this.ascenderCooldown > 0) return false;
+    this.mantleState = null;
+    this.ledgeState = null;
+    this.isSliding = false;
+    this.isSprinting = false;
+    this.isTacSprinting = false;
+    this.isADS = false;
+    this.stance = 'stand';
+    this.currentEyeHeight = this.standEyeHeight;
+    this.velocity.set(0, 0, 0);
+    const startCable = goingUp ? asc.bottomPos : asc.topPos;
+    const endCable = goingUp ? asc.topPos : asc.bottomPos;
+    const finalLand = goingUp ? asc.landTop : asc.landBottom;
+    const eyeH = this.standEyeHeight;
+    const distY = Math.abs(endCable.y - startCable.y);
+    this.ascenderState = {
+      asc,
+      goingUp,
+      outX: asc.outX || 0,
+      outZ: asc.outZ || 0,
+      t: 0,
+      duration: Math.max(0.70, distY / 17.5 + 0.25),
+      startEye: new THREE.Vector3(startCable.x, startCable.y + eyeH, startCable.z),
+      cableEndEye: new THREE.Vector3(endCable.x, endCable.y + eyeH + 0.25, endCable.z),
+      finalEye: new THREE.Vector3(finalLand.x, finalLand.y + eyeH, finalLand.z)
+    };
+    if (window.soundEngine && window.soundEngine.playAscenderZip) {
+      try { window.soundEngine.playAscenderZip(goingUp); } catch (e) {}
+    }
+    return true;
+  }
+
   _getSupportHeightAt(x, z, feetY) {
     const r = this.radius * 0.92;
     let bestY = (this.world && this.world.getTerrainHeight) ? this.world.getTerrainHeight(x, z) : 0;
@@ -2781,6 +2816,47 @@ class Player {
         this.camera.rotation.y = this.yaw;
         this.camera.rotation.x = THREE.MathUtils.clamp(this.pitch + heavePitch, -Math.PI / 2 + 0.08, Math.PI / 2 - 0.08);
         this.camera.rotation.z = heaveRoll;
+      }
+      return;
+    }
+
+    if (this.ascenderCooldown > 0) this.ascenderCooldown = Math.max(0, this.ascenderCooldown - dt);
+    if (this.ascenderState) {
+      const as = this.ascenderState;
+      as.t = Math.min(1, as.t + dt / as.duration);
+      const p = as.t;
+      if (this.keys['Space'] && p > 0.12 && p < 0.85) {
+        this.ascenderState = null;
+        this.ascenderCooldown = 0.45;
+        this.velocity.set((as.outX || 0) * 3.5, 4.2, (as.outZ || 0) * 3.5);
+        this.onGround = false;
+        return;
+      }
+      if (p <= 0.82) {
+        const k = p / 0.82;
+        const sm = k * k * (3 - 2 * k);
+        this.position.x = THREE.MathUtils.lerp(as.startEye.x, as.cableEndEye.x, sm);
+        this.position.z = THREE.MathUtils.lerp(as.startEye.z, as.cableEndEye.z, sm);
+        this.position.y = THREE.MathUtils.lerp(as.startEye.y, as.cableEndEye.y, sm);
+      } else {
+        const k = (p - 0.82) / 0.18;
+        const sm = k * k * (3 - 2 * k);
+        this.position.lerpVectors(as.cableEndEye, as.finalEye, sm);
+      }
+      if (p >= 1) {
+        this.position.copy(as.finalEye);
+        this.ascenderState = null;
+        this.ascenderCooldown = 0.45;
+        this.onGround = true;
+        this.velocity.set(0, 0, 0);
+      }
+      this._updateThirdPersonModel(dt);
+      if (!this.isThirdPerson) {
+        this.camera.position.copy(this.position);
+        this.camera.rotation.order = 'YXZ';
+        this.camera.rotation.y = this.yaw;
+        this.camera.rotation.x = THREE.MathUtils.clamp(this.pitch, -Math.PI / 2 + 0.08, Math.PI / 2 - 0.08);
+        this.camera.rotation.z = 0;
       }
       return;
     }
