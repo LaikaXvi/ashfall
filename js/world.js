@@ -4633,11 +4633,6 @@ class WastelandWorld {
           const jambX = doorW / 2 + jambW / 2;
           const linY = yB + doorH + (fH - doorH) / 2;
           const wall = (x, z, w, d) => this._addBox(x, yC, z, w, fH, d, this._materials.bossDark, true);
-          const doorWall = (along, fixed, horiz) => {
-            if (horiz) {
-              this._addBox(tx - jambX * Math.sign(0 - 0 || 1) * 0 + (along === 0 ? 0 : 0), 0, 0, 0.01, 0.01, 0.01, this._materials.bossDark, false);
-            }
-          };
           // north / south faces (z- / z+)
           for (const sgn of [-1, 1]) {
             const side = sgn < 0 ? 'N' : 'S';
