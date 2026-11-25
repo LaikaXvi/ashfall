@@ -4623,23 +4623,57 @@ class WastelandWorld {
         const nCols = 10;
         const ty0 = this.getTerrainHeight(tx, tz);
         const totalH = floors * fH;
-        // Central poured-concrete elevator core shaft (hollow South doorway for interior builder access)
-        this._addBox(tx, ty0 + totalH * 0.5, tz - 1.55, 3.2, totalH, 0.35, this._materials.bossDark, true);
-        this._addBox(tx - 1.45, ty0 + totalH * 0.5, tz, 0.35, totalH, 3.1, this._materials.bossDark, true);
-        this._addBox(tx + 1.45, ty0 + totalH * 0.5, tz, 0.35, totalH, 3.1, this._materials.bossDark, true);
-
-        // True batched 16-sided cylindrical poured-concrete floor discs + radial safety barriers
+        const isNorth = prefix === 'North Construction';
+        // ---- Central maintenance / lift-tube core: 4-sided poured shaft, alternating door per floor ----
+        const coreHalf = 1.7, coreT = 0.34, doorW = 1.6, doorH = 2.3;
+        for (let fl = 0; fl < floors; fl++) {
+          const yB = ty0 + fl * fH, yC = yB + fH * 0.5;
+          const doorSide = (fl % 2 === 0) ? 'S' : 'N';
+          const jambW = (coreHalf * 2 - doorW) / 2;
+          const jambX = doorW / 2 + jambW / 2;
+          const linY = yB + doorH + (fH - doorH) / 2;
+          const wall = (x, z, w, d) => this._addBox(x, yC, z, w, fH, d, this._materials.bossDark, true);
+          const doorWall = (along, fixed, horiz) => {
+            if (horiz) {
+              this._addBox(tx - jambX * Math.sign(0 - 0 || 1) * 0 + (along === 0 ? 0 : 0), 0, 0, 0.01, 0.01, 0.01, this._materials.bossDark, false);
+            }
+          };
+          // north / south faces (z- / z+)
+          for (const sgn of [-1, 1]) {
+            const side = sgn < 0 ? 'N' : 'S';
+            const zc = tz + sgn * (coreHalf - coreT / 2);
+            if (doorSide === side) {
+              this._addBox(tx - jambX, yC, zc, jambW, fH, coreT, this._materials.bossDark, true);
+              this._addBox(tx + jambX, yC, zc, jambW, fH, coreT, this._materials.bossDark, true);
+              this._addBox(tx, linY, zc, doorW + 0.6, fH - doorH, coreT, this._materials.bossDark, true);
+            } else {
+              wall(tx, zc, coreHalf * 2, coreT);
+            }
+          }
+          // west / east faces (x- / x+) — doors only ever N/S so these run full
+          wall(tx - (coreHalf - coreT / 2), tz, coreT, coreHalf * 2 - coreT * 2);
+          wall(tx + (coreHalf - coreT / 2), tz, coreT, coreHalf * 2 - coreT * 2);
+        }
+        // open shaft rim above the roof + interior rope visual (interaction stays on the exterior ascender rig)
+        this._addBox(tx, ty0 + totalH + 0.15, tz - coreHalf, coreHalf * 2 + 0.4, 0.3, 0.5, this._materials.concrete, true);
+        this._addBox(tx, ty0 + totalH + 0.15, tz + coreHalf, coreHalf * 2 + 0.4, 0.3, 0.5, this._materials.concrete, true);
+        this._addBox(tx - coreHalf, ty0 + totalH + 0.15, tz, 0.5, 0.3, coreHalf * 2 - 0.6, this._materials.concrete, true);
+        this._addBox(tx + coreHalf, ty0 + totalH + 0.15, tz, 0.5, 0.3, coreHalf * 2 - 0.6, this._materials.concrete, true);
+        // ---- True batched 16-sided cylindrical poured-concrete floor discs + radial safety barriers ----
         const discGeo = new THREE.CylinderGeometry(rad, rad, 0.32, 16);
         if (!discGeo.attributes.uv2 && discGeo.attributes.uv) discGeo.setAttribute('uv2', discGeo.attributes.uv);
-        const colGeo = new THREE.CylinderGeometry(0.36, 0.36, totalH, 10);
+        const colGeo = new THREE.CylinderGeometry(0.36, 0.36, totalH + 1.5, 10);
         if (!colGeo.attributes.uv2 && colGeo.attributes.uv) colGeo.setAttribute('uv2', colGeo.attributes.uv);
         const rebarGeo = new THREE.CylinderGeometry(0.045, 0.045, 1.35, 6);
         if (!rebarGeo.attributes.uv2 && rebarGeo.attributes.uv) rebarGeo.setAttribute('uv2', rebarGeo.attributes.uv);
-
+        const ropeGeo = new THREE.CylinderGeometry(0.035, 0.035, totalH + 1.2, 6);
+        if (!ropeGeo.attributes.uv2 && ropeGeo.attributes.uv) ropeGeo.setAttribute('uv2', ropeGeo.attributes.uv);
         const m4 = new THREE.Matrix4();
         const qId = new THREE.Quaternion();
         const sOne = new THREE.Vector3(1, 1, 1);
-
+        m4.compose(new THREE.Vector3(tx, ty0 + (totalH + 1.2) / 2, tz), qId, sOne);
+        if (A && A.pushBatchedGeo) A.pushBatchedGeo(this, ropeGeo, this._materials.metal, m4, false);
+        this._addBox(tx, ty0 + totalH + 1.35, tz, 0.5, 0.25, 0.5, this._materials.metal, false);
         for (let fl = 0; fl <= floors; fl++) {
           const yF = ty0 + fl * fH;
           m4.compose(new THREE.Vector3(tx, fl === 0 ? (yF + 0.08) : (yF - 0.16), tz), qId, sOne);
@@ -4647,7 +4681,6 @@ class WastelandWorld {
             A.pushBatchedGeo(this, discGeo, fl === 0 ? this._materials.darkConcrete : this._materials.concrete, m4, fl > 0);
           }
           if (fl > 0) {
-            // Walkable floor colliders matching the disc with clean North staircase cutout
             this.colliders.push({
               minX: tx - rad * 0.88, maxX: tx + rad * 0.88,
               minY: yF - 0.34, maxY: yF,
@@ -4658,7 +4691,6 @@ class WastelandWorld {
               minY: yF - 0.34, maxY: yF,
               minZ: tz - rad * 0.85, maxZ: tz
             });
-            // Faceted orange perimeter safety barriers around cylinder rim
             for (let si = 0; si < 8; si++) {
               const aMid = ((si + 0.5) / 8) * Math.PI * 2;
               const rx = tx + Math.cos(aMid) * (rad - 0.25);
@@ -4673,18 +4705,18 @@ class WastelandWorld {
             }
           }
         }
-        // 10 cylindrical radial columns + vertical top steel rebar cages protruding from top slab
+        // 10 cylindrical radial columns EXTENDED above the roof as the edge reinforcing pillars
         for (let ci = 0; ci < nCols; ci++) {
           const ang = (ci / nCols) * Math.PI * 2;
           const px = tx + Math.cos(ang) * (rad - 0.72);
           const pz = tz + Math.sin(ang) * (rad - 0.72);
-          m4.compose(new THREE.Vector3(px, ty0 + totalH * 0.5, pz), qId, sOne);
+          m4.compose(new THREE.Vector3(px, ty0 + (totalH + 1.5) / 2, pz), qId, sOne);
           if (A && A.pushBatchedGeo) {
             A.pushBatchedGeo(this, colGeo, this._materials.bossDark, m4, true);
           }
-          this.colliders.push({ minX: px - 0.36, maxX: px + 0.36, minY: ty0, maxY: ty0 + totalH, minZ: pz - 0.36, maxZ: pz + 0.36 });
+          this.colliders.push({ minX: px - 0.36, maxX: px + 0.36, minY: ty0, maxY: ty0 + totalH + 1.5, minZ: pz - 0.36, maxZ: pz + 0.36 });
           for (const rxOff of [-0.14, 0.14]) {
-            m4.compose(new THREE.Vector3(px + rxOff, ty0 + totalH + 0.65, pz), qId, sOne);
+            m4.compose(new THREE.Vector3(px + rxOff, ty0 + totalH + 1.5 + 0.65, pz), qId, sOne);
             if (A && A.pushBatchedGeo) A.pushBatchedGeo(this, rebarGeo, this._materials.metal, m4, false);
           }
         }
@@ -4699,7 +4731,6 @@ class WastelandWorld {
           });
         }
       };
-
       buildCircularTower(240, -218, 9.6, 6, 'North Construction');
       buildCircularTower(262, -234, 8.6, 5, 'South Construction');
 
