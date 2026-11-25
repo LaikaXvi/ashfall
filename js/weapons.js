@@ -653,34 +653,34 @@ class WeaponSystem {
     } else if (weaponId === 'mp7') {
       // Authentic H&K MP7A1: KSK Flip-Up Dual-Mode Iron Sights (upright peep + hooded blade; folds flat under optics!)
       const rearPivot = new THREE.Group();
-      rearPivot.position.set(0, 0.032, 0.218);
+      rearPivot.position.set(0, 0.035, 0.172);
       const rClamp = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.005, 0.022), steelSightMat);
-      const rEarL = new THREE.Mesh(new THREE.BoxGeometry(0.0026, 0.017, 0.012), sightMat);
-      rEarL.position.set(-0.0074, 0.011, 0);
+      const rEarL = new THREE.Mesh(new THREE.BoxGeometry(0.0026, 0.016, 0.012), sightMat);
+      rEarL.position.set(-0.0074, 0.010, 0);
       const rEarR = rEarL.clone();
       rEarR.position.x = 0.0074;
       const rRing = new THREE.Mesh(new THREE.TorusGeometry(0.0044, 0.0014, 12, 22), sightMat);
-      rRing.position.set(0, 0.018, 0.001);
+      rRing.position.set(0, 0.017, 0.001);
       rearPivot.add(rClamp, rEarL, rEarR, rRing);
 
       const frontPivot = new THREE.Group();
-      frontPivot.position.set(0, 0.032, -0.114);
+      frontPivot.position.set(0, 0.035, -0.076);
       const fClamp = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.005, 0.020), steelSightMat);
-      const fEarL = new THREE.Mesh(new THREE.BoxGeometry(0.0024, 0.017, 0.011), sightMat);
-      fEarL.position.set(-0.0072, 0.011, 0);
+      const fEarL = new THREE.Mesh(new THREE.BoxGeometry(0.0024, 0.016, 0.011), sightMat);
+      fEarL.position.set(-0.0072, 0.010, 0);
       const fEarR = fEarL.clone();
       fEarR.position.x = 0.0072;
-      const fPost = new THREE.Mesh(new THREE.BoxGeometry(0.0018, 0.011, 0.0024), sightMat);
-      fPost.position.set(0, 0.013, 0);
+      const fPost = new THREE.Mesh(new THREE.BoxGeometry(0.0018, 0.010, 0.0024), sightMat);
+      fPost.position.set(0, 0.012, 0);
       const fDot = new THREE.Mesh(new THREE.BoxGeometry(0.0020, 0.0022, 0.0028), tritGreen);
-      fDot.position.set(0, 0.018, 0);
+      fDot.position.set(0, 0.017, 0);
       frontPivot.add(fClamp, fEarL, fEarR, fPost, fDot);
 
       if (hasOptic) {
         rearPivot.rotation.x = -Math.PI / 2.08;
-        rearPivot.position.y = 0.030;
+        rearPivot.position.y = 0.033;
         frontPivot.rotation.x = Math.PI / 2.08;
-        frontPivot.position.y = 0.030;
+        frontPivot.position.y = 0.033;
       }
       frontPivot.traverse((ch) => { if (ch.isMesh) ch.renderOrder = -20; });
       ironGroup.add(rearPivot, frontPivot);
@@ -1194,7 +1194,8 @@ class WeaponSystem {
 
     // 1. Optic (pass exact receiver top height so scope stanchions bolt flush to the receiver!)
     const isLongRifle = weaponDef.id === 'm24' || weaponDef.id === 'awm338' || weaponDef.id === 'mosin9130';
-    const recTopY = (weaponDef.id === 'm24' || weaponDef.id === 'awm338') ? 0.038 : (weaponDef.id === 'mosin9130' ? 0.032 : (weaponDef.id === 'ak47' ? 0.034 : ((weaponDef.id === 'm4a1' || weaponDef.id === 'mp7') ? 0.031 : (weaponDef.id === 'm870' ? 0.028 : 0.029))));
+    const recTopY = (weaponDef.id === 'm24' || weaponDef.id === 'awm338') ? 0.038 : (weaponDef.id === 'mosin9130' ? 0.032 : (weaponDef.id === 'ak47' ? 0.034 : (weaponDef.id === 'mp7' ? 0.035 : (weaponDef.id === 'm4a1' ? 0.031 : (weaponDef.id === 'm870' ? 0.028 : 0.029)))));
+    const opticZ = weaponDef.id === 'mp7' ? 0.045 : 0.02;
     if (mods.optic === 'red_dot') {
       if (weaponDef.slot === 'secondary' && this.boltMesh) {
         const y = 0.034;
@@ -1202,12 +1203,12 @@ class WeaponSystem {
         this.sightHeight = y + this.boltMesh.position.y;
       } else {
         const y = isLongRifle ? 0.064 : 0.056;
-        this._addRedDot(g, y, 0.02);
+        this._addRedDot(g, y, opticZ);
         this.sightHeight = y;
       }
     } else if (mods.optic === 'holo' && weaponDef.slot !== 'secondary') {
       const y = isLongRifle ? 0.068 : 0.060;
-      this._addHolo(g, y, 0.02);
+      this._addHolo(g, y, opticZ);
       this.sightHeight = y;
     } else if (mods.optic === 'acog_2x' && weaponDef.slot !== 'secondary') {
       const y = isLongRifle ? 0.072 : 0.064;
@@ -1273,10 +1274,10 @@ class WeaponSystem {
       const isTrenchGun = weaponDef.id === 'm870';
       const gripZ = isTrenchGun
         ? -0.24
-        : (weaponDef.id === 'mp5k' ? -0.175 : (weaponDef.id === 'mp7' ? -0.106 : (weaponDef.id === 'm4a1' ? -0.195 : ((weaponDef.id === 'awm338' || weaponDef.id === 'm24') ? -0.185 : -0.215))));
+        : (weaponDef.id === 'mp5k' ? -0.175 : (weaponDef.id === 'mp7' ? -0.066 : (weaponDef.id === 'm4a1' ? -0.195 : ((weaponDef.id === 'awm338' || weaponDef.id === 'm24') ? -0.185 : -0.215))));
       const collarWorldY = isTrenchGun
         ? -0.039
-        : (weaponDef.id === 'mp5k' ? -0.036 : (weaponDef.id === 'mp7' ? -0.025 : (weaponDef.id === 'm4a1' ? -0.028 : (weaponDef.id === 'ak47' ? -0.024 : -0.031))));
+        : (weaponDef.id === 'mp5k' ? -0.036 : (weaponDef.id === 'mp7' ? -0.027 : (weaponDef.id === 'm4a1' ? -0.028 : (weaponDef.id === 'ak47' ? -0.024 : -0.031))));
 
       const vGripGroup = new THREE.Group();
       const railClamp = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.015, 0.046), matAnod);
@@ -1320,9 +1321,9 @@ class WeaponSystem {
     } else if (mods.underbarrel === 'laser') {
       // L3Harris AN/PEQ-15 ATPIAL (117x71x41mm FDE polymer box + vis/IR bezels + mode turret)
       const hasOpticM4 = !!(mods.optic && mods.optic !== 'none');
-      const lx = weaponDef.slot === 'secondary' ? 0.0 : (weaponDef.id === 'mp7' ? 0.026 : (weaponDef.id === 'm4a1' ? (hasOpticM4 ? 0.0 : 0.028) : 0.030));
-      const ly = weaponDef.slot === 'secondary' ? -0.026 : (weaponDef.id === 'mp7' ? 0.006 : (weaponDef.id === 'm4a1' ? (hasOpticM4 ? 0.041 : 0.004) : 0.006));
-      const lz = weaponDef.slot === 'secondary' ? -0.062 : (weaponDef.id === 'mp7' ? -0.084 : (weaponDef.id === 'm4a1' ? (hasOpticM4 ? -0.225 : -0.215) : -0.235));
+      const lx = weaponDef.slot === 'secondary' ? 0.0 : (weaponDef.id === 'mp7' ? 0.025 : (weaponDef.id === 'm4a1' ? (hasOpticM4 ? 0.0 : 0.028) : 0.030));
+      const ly = weaponDef.slot === 'secondary' ? -0.026 : (weaponDef.id === 'mp7' ? -0.003 : (weaponDef.id === 'm4a1' ? (hasOpticM4 ? 0.041 : 0.004) : 0.006));
+      const lz = weaponDef.slot === 'secondary' ? -0.062 : (weaponDef.id === 'mp7' ? -0.058 : (weaponDef.id === 'm4a1' ? (hasOpticM4 ? -0.225 : -0.215) : -0.235));
       const peqGrp = new THREE.Group();
       const bodyGeo = new THREE.BoxGeometry(0.036, 0.022, 0.078);
       if (P && P.UVUnwrap) P.UVUnwrap.unwrapBox(bodyGeo, 0.16);
@@ -1338,7 +1339,7 @@ class WeaponSystem {
       peqGrp.add(peq, lensIR, lensVis, modeDial);
       peqGrp.position.set(lx, ly, lz);
       if (weaponDef.slot === 'secondary') peqGrp.scale.setScalar(0.68);
-      else if (weaponDef.id === 'mp7') peqGrp.scale.setScalar(0.82);
+      else if (weaponDef.id === 'mp7') peqGrp.scale.setScalar(0.78);
       g.add(peqGrp);
 
       if (withHands) {
@@ -1369,7 +1370,7 @@ class WeaponSystem {
 
     // 5. Stock Attachment (HK A3 Wire / Magpul CTR / Magpul PRS Gen3)
     if (mods.stock && mods.stock !== 'none' && weaponDef.slot !== 'secondary' && weaponDef.id !== 'm870') {
-      const stockZ = weaponDef.id === 'mp5k' ? 0.14 : (weaponDef.id === 'mp7' ? 0.245 : (weaponDef.id === 'm4a1' ? 0.125 : (weaponDef.id === 'm24' ? 0.18 : 0.16)));
+      const stockZ = weaponDef.id === 'mp5k' ? 0.14 : (weaponDef.id === 'mp7' ? 0.196 : (weaponDef.id === 'm4a1' ? 0.125 : (weaponDef.id === 'm24' ? 0.18 : 0.16)));
       const stockGroup = new THREE.Group();
       stockGroup.position.set(0, -0.008, stockZ);
 
@@ -4288,10 +4289,10 @@ class WeaponSystem {
           if (this.spareMagMesh && t > 0.35) {
             const st = smooth((t - 0.35) / 0.65);
             this.spareMagMesh.visible = true;
-            this.spareMagMesh.position.set(this.magRestPos.x - 0.036, THREE.MathUtils.lerp(this.magRestPos.y - 0.16, this.magRestPos.y - 0.075, st), this.magRestPos.z - 0.012);
-            this.spareMagMesh.rotation.set(0.16, 0.16, -0.24);
+            this.spareMagMesh.position.set(this.magRestPos.x - 0.036, THREE.MathUtils.lerp(this.magRestPos.y - 0.16, this.magRestPos.y - 0.075, st), this.magRestPos.z + 0.012);
+            this.spareMagMesh.rotation.set(this.magRestRot.x, 0.16, -0.24);
           }
-          moveLeftHand(this.magRestPos.x - 0.036, THREE.MathUtils.lerp(this.leftHandRestPos.y, this.magRestPos.y - 0.09, t), THREE.MathUtils.lerp(this.leftHandRestPos.z, this.magRestPos.z - 0.01, t), 0.14, 0.16, 0.08, 'magGrip');
+          moveLeftHand(this.magRestPos.x - 0.036, THREE.MathUtils.lerp(this.leftHandRestPos.y, this.magRestPos.y - 0.09, t), THREE.MathUtils.lerp(this.leftHandRestPos.z, this.magRestPos.z + 0.010, t), 0.14, 0.16, 0.08, 'magGrip');
         } else if (p < 0.44) {
           const rawT = (p - 0.20) / 0.24;
           const pullT = smooth(rawT);
@@ -4306,11 +4307,11 @@ class WeaponSystem {
             this.spareMagMesh.position.set(
               THREE.MathUtils.lerp(this.magRestPos.x - 0.036, this.magRestPos.x, pullT),
               THREE.MathUtils.lerp(this.magRestPos.y - 0.075, this.magRestPos.y - 0.115, pullT),
-              THREE.MathUtils.lerp(this.magRestPos.z - 0.012, this.magRestPos.z - 0.016, pullT)
+              THREE.MathUtils.lerp(this.magRestPos.z + 0.012, this.magRestPos.z + 0.016, pullT)
             );
-            this.spareMagMesh.rotation.set(THREE.MathUtils.lerp(0.16, this.magRestRot.x, pullT), 0.16 * (1 - pullT), -0.24 * (1 - pullT));
+            this.spareMagMesh.rotation.set(this.magRestRot.x, 0.16 * (1 - pullT), -0.24 * (1 - pullT));
           }
-          moveLeftHand(this.magRestPos.x - 0.015, this.magRestPos.y - 0.125, this.magRestPos.z - 0.010, 0.12, 0.14, 0.06, 'magGrip');
+          moveLeftHand(this.magRestPos.x - 0.015, this.magRestPos.y - 0.125, this.magRestPos.z + 0.012, 0.12, 0.14, 0.06, 'magGrip');
         } else if (p < 0.78) {
           const rawT = (p - 0.44) / 0.34;
           const insT = smooth(THREE.MathUtils.clamp(rawT / 0.56, 0, 1));
@@ -4331,7 +4332,7 @@ class WeaponSystem {
             if (rawT < 0.60) {
               handOnMag(0.03, 'magGrip');
             } else {
-              moveLeftHand(this.magRestPos.x - 0.006, this.magRestPos.y - 0.120 + tapArc * 0.030, this.magRestPos.z - 0.010, -0.18 + tapArc * 0.12, 0.10, -0.10, 'slapOpen');
+              moveLeftHand(this.magRestPos.x - 0.006, this.magRestPos.y - 0.120 + tapArc * 0.030, this.magRestPos.z + 0.012, -0.18 + tapArc * 0.12, 0.10, -0.10, 'slapOpen');
             }
           }
         } else {
@@ -4379,7 +4380,7 @@ class WeaponSystem {
           setMagAlong(t * 0.24, -t * 0.03);
           this.magMesh.visible = t < 0.72;
         }
-        moveLeftHand(this.magRestPos.x - 0.045, this.magRestPos.y - 0.16, this.magRestPos.z + 0.01, 0.12, 0.10, 0.08, 'magGrip');
+        moveLeftHand(this.magRestPos.x - 0.045, this.magRestPos.y - 0.16, this.magRestPos.z + 0.02, 0.12, 0.10, 0.08, 'magGrip');
       } else if (p < 0.62) {
         const rawT = (p - 0.26) / 0.36;
         const jolt = rawT > 0.76 ? Math.sin(Math.min(1, (rawT - 0.76) / 0.20) * Math.PI) : 0;
@@ -4424,8 +4425,8 @@ class WeaponSystem {
         rot.z = THREE.MathUtils.lerp(-0.38, 0.18, rollT) - slapArc * 0.05;
         moveLeftHand(
           THREE.MathUtils.lerp(-0.048, -0.026, rollT) + slapArc * 0.012,
-          THREE.MathUtils.lerp(-0.080, -0.010, rollT),
-          THREE.MathUtils.lerp(0.110, 0.052, rollT),
+          THREE.MathUtils.lerp(-0.080, -0.012, rollT),
+          THREE.MathUtils.lerp(0.115, 0.056, rollT),
           0.10, 0.12, -0.16,
           rawT >= 0.42 ? 'grabClose' : 'slapOpen'
         );

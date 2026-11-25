@@ -3,15 +3,15 @@
 // Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
 // With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'Alpha RC 0.2.98',
+  VERSION: 'Alpha RC 0.2.99',
   VERSION_INFO: {
     major: 0,
     minor: 2,
-    patch: 98,
+    patch: 99,
     channel: 'Alpha', // Alpha | Beta — never blank while major === 0
     stage: 'RC',     // RC = Release Candidate
     updated: 'Nov 24, 2026',
-    changelog: 'Heckler & Koch MP7A1 PDW (4.6x30mm) Release: engineered 1:1 millimeter CAD HK MP7A1 short-stroke gas-piston rotating-bolt PDW with monolithic polymer chassis, integral folding vertical foregrip (converting to MP7A2 bottom rail under foregrip attachments), ambidextrous paddle bolt catch, non-reciprocating dual-latch rear T-charging handle, 3-position telescoping twin-strut stock, and grip-fed 30/40rd curved steel magazines; wrapped in native 720p glass-filled HK polymer & Tenifer steel AshfallPBR textures; animated with MW2019 grip-fed tactical swap, empty bolt-release press, and press-check / LRBHO inspect; + Prior Alpha RC 0.2.97 Colt M4A1 Carbine, IK Killstreak Hands & 720p PBR Remaster.',
+    changelog: 'HK MP7A1 Compact Proportions & Grip-Mag Alignment Overhaul: shortened monolithic receiver from 380mm to 294mm, increased receiver height for authentic 4.9:1 compact PDW silhouette, tucked factory twin-strut PDW stock (374.5mm compact OAL), pulled optics/sights/foregrip & charging handle proportionally forward, rebuilt straight coaxial 4.6x30mm box magazine & parallel-walled -0.14 rad raked pistol grip with hollow magwell funnel to eliminate grip clipping across the full reload stroke; + Prior Alpha RC 0.2.98 HK MP7A1 PDW, Colt M4A1 Carbine & 720p PBR Remaster.',
     get semver() { return `${this.major}.${this.minor}.${this.patch}`; },
     get label() { return `${this.channel} ${this.stage} ${this.major}.${this.minor}.${this.patch}`; }
   },
