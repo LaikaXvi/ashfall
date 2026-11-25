@@ -2365,6 +2365,7 @@ class WastelandWorld {
     const ubIdxCount = ubIdx ? ubIdx.length : ubVertCount;
 
     const groups = new Map();
+    const P1_STATS = { boxes: 0, instanced: 0, meshes: 0 };
     for (let i = 0; i < this._batchEntries.length; i++) {
       const e = this._batchEntries[i];
       if (!e || !e.material) continue;
@@ -2372,13 +2373,17 @@ class WastelandWorld {
       const ex = e.isAABox ? e.x : e.matrix.elements[12];
       const ez = e.isAABox ? e.z : e.matrix.elements[14];
       const bcs = this._batchCellSize || 96;
-      const key = `${e.material.uuid}|${Math.floor(ex / bcs)}|${Math.floor(ez / bcs)}`;
+      let key = `${e.material.uuid}|${Math.floor(ex / bcs)}|${Math.floor(ez / bcs)}`;
+      if (e.isAABox) {
+        key += `|box:${e.w.toFixed(2)}x${e.h.toFixed(2)}x${e.d.toFixed(2)}`; // Saltline P1: repeat-dimension second merge
+      }
       let bucket = groups.get(key);
       if (!bucket) {
-        bucket = { material: e.material, entries: [] };
+        bucket = { material: e.material, entries: [], isBoxRun: !!e.isAABox, bw: e.w, bh: e.h, bd: e.d, bTile: e.tile };
         groups.set(key, bucket);
       }
       bucket.entries.push(e);
+      if (e.isAABox) P1_STATS.boxes++;
     }
 
     const pVec = new THREE.Vector3();
