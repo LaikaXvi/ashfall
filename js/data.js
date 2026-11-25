@@ -3,15 +3,15 @@
 // Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
 // With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'Alpha RC 0.3.1',
+  VERSION: 'Alpha RC 0.3.2',
   VERSION_INFO: {
     major: 0,
     minor: 3,
-    patch: 1,
+    patch: 2,
     channel: 'Alpha', // Alpha | Beta — never blank while major === 0
     stage: 'RC',     // RC = Release Candidate
-    updated: 'Nov 24, 2026',
-    changelog: 'Geomorphological Terrain Geo Engine, Extruded Architecture & Full DMZ Al-Mazrah City Blockout: rewrote terrain generation into a deterministic seeded 512x512 DEM split across 16 frustum-culled chunks with ridged-multifractal peaks, engineered oriented-box urban terraces, highway roadbed grading, dredged vertical-bank urban canal, and a 4-biome triplanar 720p PBR terrain shader; replaced box buildings with beveled ExtrudeGeometry walls, punched arched/mullioned windows, stone sills, cornices, balconies & rooftop HVAC backed by 8 new 720p architectural PBR presets; expanded Vostok City into a dense river-bisected Al-Mazrah City blockout with the 7-level Golden Whale Highrise + Skybridges + 42m Crane, White Twin-Arch Suspension Bridge, Central Boulevard & Steel Truss Bridges, Covered Bazaar Footbridge, Yum Yum Burger Rotunda, U.S. Embassy, Police & Fire Stations, Bank, Parking Deck P-01, Elevated Box-Girder Ring Viaduct, Twin Circular Construction Towers, Sarwana Grand Hotel, Channel 7 + 48m TV Tower, Downtown Post Office, Gas Mart & 10+ Interactive Motorized Ascenders.',
+    updated: 'Nov 25, 2026',
+    changelog: 'Building Scale & DMZ Al-Mazrah City Architectural Accuracy Pass: replaced interior-blocking full-footprint trim slabs with split hollow perimeter mouldings; calibrated human-relative dimensions (1.44m/2.20m glazed/steel double doors, 3.30m residential vs 4.20m-5.80m commercial/lobby floors, 3.30m parking decks, proportional parapets); scaled Vostok Highrise to 14 stories (52.4m Helipad / 68.6m open-lattice spire) with twin Express Elevator Ascenders, white X-brace exoskeleton girders & a 58m open-lattice Tower Crane; rebuilt Channel 7 (8F Tower + 2F Soundstage + 62m open-lattice TV Mast), 1-story Yum Yum Burger w/ painted red [X] Back Room door & rooftop burger emblem, 6F Sarwana Grand Atrium Hotel w/ porte-cochere, Neoclassical Bank of Vostok + 7F Tower, Post Office loading dock, Fire Station 07 watchtower & rollup apparatus bays, elongated shopfront apartments w/ awnings/AC units/water tanks, and true 16-sided Twin Circular Construction Towers.',
     get semver() { return `${this.major}.${this.minor}.${this.patch}`; },
     get label() { return `${this.channel} ${this.stage} ${this.major}.${this.minor}.${this.patch}`; }
   },

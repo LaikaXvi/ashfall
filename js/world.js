@@ -2944,7 +2944,7 @@ class WastelandWorld {
     }
   }
 
-  _addDoor(cx, baseY, cz, width = 1.65, height = 2.6, rotY = 0, label = 'Door', style = 'wood') {
+  _addDoor(cx, baseY, cz, width = 1.44, height = 2.34, rotY = 0, label = 'Door', style = 'wood') {
     const cosR = Math.cos(rotY);
     const sinR = Math.sin(rotY);
     const hingeX = cx - cosR * (width * 0.5);
@@ -2956,14 +2956,53 @@ class WastelandWorld {
     pivot.userData.noCull = true;
     pivot.userData.isDoor = true;
 
-    const leafMat = style === 'steel' ? this._materials.doorSteel : this._materials.doorWood;
-    const leaf = new THREE.Mesh(new THREE.BoxGeometry(width - 0.06, height, 0.12), leafMat);
-    leaf.position.set(width * 0.5, height * 0.5, 0);
-    const hFront = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.05, 0.24), this._materials.hazardAmber);
-    hFront.position.set(width - 0.22, height * 0.45, 0);
-    const pane = new THREE.Mesh(new THREE.BoxGeometry(width * 0.44, 0.56, 0.14), this._materials.windowGlass);
-    pane.position.set(width * 0.5, height * 0.72, 0);
-    pivot.add(leaf, hFront, pane);
+    const isGlass = style === 'glass';
+    const isDouble = width >= 1.95;
+    const leafMat = isGlass
+      ? this._materials.windowFrame
+      : (style === 'steel' ? this._materials.doorSteel : this._materials.doorWood);
+    let leaf;
+
+    if (isGlass) {
+      const glassMat = this._winGlassDouble || (this._winGlassDouble = (() => {
+        const g = this._materials.windowGlass.clone();
+        g.side = THREE.DoubleSide;
+        return g;
+      })());
+      leaf = new THREE.Mesh(new THREE.BoxGeometry(width - 0.08, height, 0.06), glassMat);
+      leaf.position.set(width * 0.5, height * 0.5, 0);
+      const topRail = new THREE.Mesh(new THREE.BoxGeometry(width - 0.06, 0.14, 0.10), leafMat);
+      topRail.position.set(width * 0.5, height - 0.07, 0);
+      const botRail = new THREE.Mesh(new THREE.BoxGeometry(width - 0.06, 0.22, 0.10), leafMat);
+      botRail.position.set(width * 0.5, 0.11, 0);
+      const stileL = new THREE.Mesh(new THREE.BoxGeometry(0.10, height, 0.10), leafMat);
+      stileL.position.set(0.08, height * 0.5, 0);
+      const stileR = new THREE.Mesh(new THREE.BoxGeometry(0.10, height, 0.10), leafMat);
+      stileR.position.set(width - 0.08, height * 0.5, 0);
+      const pushBar = new THREE.Mesh(new THREE.BoxGeometry(width * 0.72, 0.05, 0.18), this._materials.metal);
+      pushBar.position.set(width * 0.5, 1.02, 0);
+      pivot.add(leaf, topRail, botRail, stileL, stileR, pushBar);
+      if (isDouble) {
+        const astragal = new THREE.Mesh(new THREE.BoxGeometry(0.09, height, 0.11), leafMat);
+        astragal.position.set(width * 0.5, height * 0.5, 0);
+        pivot.add(astragal);
+      }
+    } else {
+      leaf = new THREE.Mesh(new THREE.BoxGeometry(width - 0.06, height, 0.12), leafMat);
+      leaf.position.set(width * 0.5, height * 0.5, 0);
+      const hFront = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.05, 0.24), this._materials.hazardAmber);
+      hFront.position.set(width - 0.22, height * 0.45, 0);
+      const pane = new THREE.Mesh(new THREE.BoxGeometry(width * (isDouble ? 0.26 : 0.44), 0.54, 0.14), this._materials.windowGlass);
+      pane.position.set(width * (isDouble ? 0.26 : 0.5), height * 0.72, 0);
+      pivot.add(leaf, hFront, pane);
+      if (isDouble) {
+        const paneR = pane.clone();
+        paneR.position.set(width * 0.74, height * 0.72, 0);
+        const astragal = new THREE.Mesh(new THREE.BoxGeometry(0.08, height - 0.04, 0.15), this._materials.windowFrame);
+        astragal.position.set(width * 0.5, height * 0.5, 0);
+        pivot.add(paneR, astragal);
+      }
+    }
     this.scene.add(pivot);
     pivot.updateMatrixWorld(true);
 
@@ -4574,74 +4613,114 @@ class WastelandWorld {
       this.pois.push({ name: 'VOSTOK CITY', x: 242, z: -348, color: '#ffc107', threat: 'boss' });
     }
 
-    // 8. SOUTH VOSTOK INDUSTRIAL CONSTRUCTION (G3: 252, -225) — Twin Circular AM-City Construction Towers + Rappel Ascenders + 34m Crane!
+    // 8. SOUTH VOSTOK INDUSTRIAL CONSTRUCTION (G3: 252, -225) — Twin 16-Sided Circular AM-City Construction Towers + Rappel Ascenders + 38m Open-Lattice Crane!
     {
       const cx = 252, cz = -225;
       const iy = this.getTerrainHeight(cx, cz);
       const A = window.AshfallArchitecture;
       const buildCircularTower = (tx, tz, rad, floors, prefix) => {
-        const fH = 4.3;
-        const nCols = 8;
+        const fH = 3.65;
+        const nCols = 10;
         const ty0 = this.getTerrainHeight(tx, tz);
-        // Central concrete elevator core shaft (hollow center with rappel ascender inside!)
-        this._addBox(tx, ty0 + floors * fH * 0.5, tz, 3.4, floors * fH, 0.35, this._materials.bossDark, true);
-        this._addBox(tx - 1.55, ty0 + floors * fH * 0.5, tz - 1.55, 0.35, floors * fH, 3.1, this._materials.bossDark, true);
-        this._addBox(tx + 1.55, ty0 + floors * fH * 0.5, tz - 1.55, 0.35, floors * fH, 3.1, this._materials.bossDark, true);
-        // 12-sided extruded concrete slabs per floor + radial perimeter concrete pillars
-        const discGeo = new THREE.CylinderGeometry(rad, rad, 0.34, 14);
+        const totalH = floors * fH;
+        // Central poured-concrete elevator core shaft (hollow South doorway for interior builder access)
+        this._addBox(tx, ty0 + totalH * 0.5, tz - 1.55, 3.2, totalH, 0.35, this._materials.bossDark, true);
+        this._addBox(tx - 1.45, ty0 + totalH * 0.5, tz, 0.35, totalH, 3.1, this._materials.bossDark, true);
+        this._addBox(tx + 1.45, ty0 + totalH * 0.5, tz, 0.35, totalH, 3.1, this._materials.bossDark, true);
+
+        // True batched 16-sided cylindrical poured-concrete floor discs + radial safety barriers
+        const discGeo = new THREE.CylinderGeometry(rad, rad, 0.32, 16);
         if (!discGeo.attributes.uv2 && discGeo.attributes.uv) discGeo.setAttribute('uv2', discGeo.attributes.uv);
+        const colGeo = new THREE.CylinderGeometry(0.36, 0.36, totalH, 10);
+        if (!colGeo.attributes.uv2 && colGeo.attributes.uv) colGeo.setAttribute('uv2', colGeo.attributes.uv);
+        const rebarGeo = new THREE.CylinderGeometry(0.045, 0.045, 1.35, 6);
+        if (!rebarGeo.attributes.uv2 && rebarGeo.attributes.uv) rebarGeo.setAttribute('uv2', rebarGeo.attributes.uv);
+
+        const m4 = new THREE.Matrix4();
+        const qId = new THREE.Quaternion();
+        const sOne = new THREE.Vector3(1, 1, 1);
+
         for (let fl = 0; fl <= floors; fl++) {
           const yF = ty0 + fl * fH;
+          m4.compose(new THREE.Vector3(tx, fl === 0 ? (yF + 0.08) : (yF - 0.16), tz), qId, sOne);
+          if (A && A.pushBatchedGeo) {
+            A.pushBatchedGeo(this, discGeo, fl === 0 ? this._materials.darkConcrete : this._materials.concrete, m4, fl > 0);
+          }
           if (fl > 0) {
-            // Slabs leave North sector clear for interior builder stairs
-            this._addBox(tx, yF - 0.16, tz + 1.4, rad * 1.85, 0.32, rad * 1.45, this._materials.concrete, true);
-            this._addDecor(tx, yF - 0.18, tz, rad * 1.98, 0.24, rad * 1.98, this._materials.concrete);
-            this._addBox(tx, yF + 0.50, tz + rad * 0.85, rad * 1.4, 0.90, 0.22, this._materials.hazardAmber, false);
-            addStaircase(tx - rad * 0.45, yF - fH + (fl === 1 ? 0.12 : 0), tz - rad * 0.55, 16, 2.2, fH - (fl === 1 ? 0.12 : 0), 7.8, 'east');
-          } else {
-            this._addBox(tx, yF + 0.08, tz, rad * 1.9, 0.16, rad * 1.9, this._materials.darkConcrete, false);
+            // Walkable floor colliders matching the disc with clean North staircase cutout
+            this.colliders.push({
+              minX: tx - rad * 0.88, maxX: tx + rad * 0.88,
+              minY: yF - 0.34, maxY: yF,
+              minZ: tz - 0.2, maxZ: tz + rad * 0.90
+            });
+            this.colliders.push({
+              minX: tx + 1.0, maxX: tx + rad * 0.85,
+              minY: yF - 0.34, maxY: yF,
+              minZ: tz - rad * 0.85, maxZ: tz
+            });
+            // Faceted orange perimeter safety barriers around cylinder rim
+            for (let si = 0; si < 8; si++) {
+              const aMid = ((si + 0.5) / 8) * Math.PI * 2;
+              const rx = tx + Math.cos(aMid) * (rad - 0.25);
+              const rz = tz + Math.sin(aMid) * (rad - 0.25);
+              const segW = 2 * rad * Math.sin(Math.PI / 8) * 0.92;
+              if (A && A.addOrientedBox) {
+                A.addOrientedBox(this, rx, yF + 0.48, rz, segW, 0.88, 0.14, this._materials.hazardAmber, 0, -aMid + Math.PI * 0.5, 0, false);
+              }
+            }
+            if (fl < floors || prefix === 'North Construction' || prefix === 'South Construction') {
+              addStaircase(tx - rad * 0.52, yF - fH + (fl === 1 ? 0.12 : 0), tz - rad * 0.48, 14, 2.0, fH - (fl === 1 ? 0.12 : 0), 7.2, 'east');
+            }
           }
         }
+        // 10 cylindrical radial columns + vertical top steel rebar cages protruding from top slab
         for (let ci = 0; ci < nCols; ci++) {
           const ang = (ci / nCols) * Math.PI * 2;
-          const px = tx + Math.cos(ang) * (rad - 0.55);
-          const pz = tz + Math.sin(ang) * (rad - 0.55);
-          this._addBox(px, ty0 + floors * fH * 0.5, pz, 0.72, floors * fH, 0.72, this._materials.bossDark, true);
+          const px = tx + Math.cos(ang) * (rad - 0.72);
+          const pz = tz + Math.sin(ang) * (rad - 0.72);
+          m4.compose(new THREE.Vector3(px, ty0 + totalH * 0.5, pz), qId, sOne);
+          if (A && A.pushBatchedGeo) {
+            A.pushBatchedGeo(this, colGeo, this._materials.bossDark, m4, true);
+          }
+          this.colliders.push({ minX: px - 0.36, maxX: px + 0.36, minY: ty0, maxY: ty0 + totalH, minZ: pz - 0.36, maxZ: pz + 0.36 });
+          for (const rxOff of [-0.14, 0.14]) {
+            m4.compose(new THREE.Vector3(px + rxOff, ty0 + totalH + 0.65, pz), qId, sOne);
+            if (A && A.pushBatchedGeo) A.pushBatchedGeo(this, rebarGeo, this._materials.metal, m4, false);
+          }
         }
         if (A && A.addAscenderRig) {
           A.addAscenderRig(this, {
             id: `asc_const_${prefix}`,
             name: `${prefix} Tower Rappel`,
             bx: tx + 2.4, bz: tz + 2.6,
-            bottomY: ty0, topY: ty0 + floors * fH,
+            bottomY: ty0, topY: ty0 + totalH,
             outX: 1, outZ: 1,
             landTopX: tx + 1.2, landTopZ: tz + 3.2
           });
         }
       };
 
-      buildCircularTower(240, -218, 9.2, 4, 'North Construction');
-      buildCircularTower(262, -234, 8.2, 3, 'South Construction');
+      buildCircularTower(240, -218, 9.6, 6, 'North Construction');
+      buildCircularTower(262, -234, 8.6, 5, 'South Construction');
 
-      this._addLootContainer(242, 4.4, -215, 'supply', 'North Tower 2F Requisition Crate');
-      this._addLootContainer(242, 17.3, -216, 'military', 'North Tower Roof Beacon Cache');
-      this._addLootContainer(262, 13.0, -232, 'military', 'South Tower Roof Weapons Case');
+      this._addLootContainer(242, 3.7, -215, 'supply', 'North Tower 2F Requisition Crate');
+      this._addLootContainer(242, 21.9, -216, 'military', 'North Tower 6F Roof Beacon Cache');
+      this._addLootContainer(262, 18.25, -232, 'military', 'South Tower 5F Weapons Case');
       this._addWorkbenchTable(262, -231, 0, [
         { id: 'carbon_fibre_sample', qty: 1 }, { id: 'metallic_alloy', qty: 2 }, { id: 'tools', qty: 2 }
-      ], 4.4);
+      ], 3.75);
 
-      // 34m Construction Tower Crane with Aviation Strobe
+      // 38m Open-Lattice Construction Tower Crane overlooking both Circular Towers!
       const crX = 251, crZ = -212;
       const crY = this.getTerrainHeight(crX, crZ);
-      this._addBox(crX, crY + 1.0, crZ, 5.2, 2.0, 5.2, this._materials.darkConcrete, true);
-      this._addBox(crX, crY + 17.5, crZ, 2.2, 33.0, 2.2, this._materials.hazardAmber, true);
-      this._addBox(crX + 8.0, crY + 34.2, crZ, 34.0, 1.4, 1.6, this._materials.hazardAmber, false);
-      this.registerLightSource(new THREE.Vector3(crX + 24.0, crY + 35.0, crZ), { intensity: 0.90, maxDist: 260, flareScale: 0.80 });
+      if (A && A.addLatticeTowerCrane) {
+        A.addLatticeTowerCrane(this, crX, crY, crZ, 31.0, 26.0, 10.0, 1);
+      }
 
-      this._addBuilding(267, -211, 12, 8.5, 3.8, 'west', this._materials.rustBlue, (by) => {
+      this._addBuilding(267, -211, 12, 8.5, 3.6, 'west', this._materials.rustBlue, (by) => {
         addDeskProp(269.5, by + 0.16, -212.8);
       });
-      this._addSignBoard(260.6, iy + 3.4, -211, 7.6, 2.2, -Math.PI / 2, {
+      this._addSignBoard(260.6, iy + 3.1, -211, 6.8, 1.9, -Math.PI / 2, {
         title: 'S. VOSTOK TOWERS',
         sub: 'AM-CITY CONSTRUCTION // SECTOR G3',
         bg: '#262116',
@@ -4649,8 +4728,8 @@ class WastelandWorld {
       });
       this._addLootContainer(269.8, 0.16, -208.8, 'office', 'Foreman Blueprints & Ledger');
       for (const szOff of [-6, 2]) {
-        const silo = new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 12.0, 14), this._materials.concrete);
-        silo.position.set(228, iy + 6.0, -214 + szOff);
+        const silo = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 2.4, 10.5, 14), this._materials.concrete);
+        silo.position.set(228, iy + 5.25, -214 + szOff);
         this.scene.add(silo);
       }
       addFloodlight(234, -230, 0, 10.5, 0xffd89c);
