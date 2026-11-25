@@ -686,6 +686,7 @@ window.VostokCityBuilder = (() => {
       world._addGunLocker(269.0, -359.5, 0, 'military', 'Highrise Lobby Security Locker');
       box(259, by + 0.5, -366, 3.0, 1.0, 0.8, mats.bossDark, true);
       box(266, by + 0.5, -357, 14, 0.4, 8, mats.darkConcrete, true);
+      box(266, by + 3.8, -349, 14, 0.4, 9, mats.darkConcrete, true);
       for (const [ccx, ccz] of [[260, -353], [272, -353], [260, -345], [272, -345]]) {
         box(ccx, by + 1.8, ccz, 0.4, 3.6, 0.4, mats.concrete, true);
       }
