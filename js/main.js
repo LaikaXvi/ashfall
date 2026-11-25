@@ -394,12 +394,13 @@
       : null;
     if (envProbe) scene.environment = envProbe;
 
-    // Dedicated Viewmodel Layer (separate scene & depth pass so gun/hands NEVER clip through walls!)
+    // Dedicated Viewmodel Layer (separate scene & gl.depthRange isolation so gun/hands NEVER clip walls and world SSAO stays intact!)
     viewmodelScene = new THREE.Scene();
     if (envProbe) viewmodelScene.environment = envProbe;
     viewmodelCamera = new THREE.PerspectiveCamera(window.BASE_FOV || 75, window.innerWidth / window.innerHeight, 0.01, 20);
     viewmodelScene.add(viewmodelCamera);
-    viewmodelScene.add(new THREE.HemisphereLight(0xdce6f2, 0x3b352c, 0.92));
+    const vmHemi = new THREE.HemisphereLight(0xdce6f2, 0x3b352c, 0.92);
+    viewmodelScene.add(vmHemi);
     const vmSun = new THREE.DirectionalLight(0xffe8c6, 1.25);
     vmSun.position.set(45, 65, 35);
     viewmodelScene.add(vmSun);
@@ -409,6 +410,7 @@
     const vmFill = new THREE.DirectionalLight(0xd8cbb8, 0.42);
     vmFill.position.set(12, -18, 42);
     viewmodelScene.add(vmFill);
+    viewmodelScene.userData.vmLights = { hemi: vmHemi, sun: vmSun, rim: vmRim, fill: vmFill, indoorBlend: zone.underground ? 1.0 : 0.0, probeKind: zone.underground ? 'indoor' : 'outdoor', tick: 0 };
 
     world = new WastelandWorld(scene, zone);
     if (window.applyGraphicsSettings) window.applyGraphicsSettings(window.GFX_SETTINGS);
@@ -4759,6 +4761,34 @@
         window.RigRegistry.syncAll(dt, camera);
       }
       if (weaponSystem && weaponSystem.fpArms) weaponSystem.fpArms.update(dt);
+
+      // Saltline Dual Probe Viewmodel Exposure: dim sunlight & switch to interior PMREM probe when under roofs/indoors
+      if (viewmodelScene && viewmodelScene.userData && viewmodelScene.userData.vmLights && world && camera) {
+        const vml = viewmodelScene.userData.vmLights;
+        vml.tick = (vml.tick + 1) % 6;
+        if (vml.tick === 0) {
+          let isCovered = !!(world.isBunkerMap);
+          if (!isCovered && world.raycastWorld) {
+            if (!window._slUpVec) window._slUpVec = new THREE.Vector3(0, 1, 0);
+            const roofHit = world.raycastWorld(camera.position, window._slUpVec, 0.25, 18.0, { wallsOnly: false });
+            isCovered = !!roofHit;
+          }
+          vml.targetIndoor = isCovered ? 1.0 : 0.0;
+        }
+        const targetIn = vml.targetIndoor !== undefined ? vml.targetIndoor : (world.isBunkerMap ? 1.0 : 0.0);
+        vml.indoorBlend = THREE.MathUtils.lerp(vml.indoorBlend || 0, targetIn, Math.min(1, dt * 7.5));
+        const ib = vml.indoorBlend;
+        if (vml.sun) vml.sun.intensity = THREE.MathUtils.lerp(1.25, 0.22, ib);
+        if (vml.rim) vml.rim.intensity = THREE.MathUtils.lerp(0.65, 0.28, ib);
+        if (vml.hemi) vml.hemi.intensity = THREE.MathUtils.lerp(0.92, 0.54, ib);
+        if (vml.fill) vml.fill.intensity = THREE.MathUtils.lerp(0.42, 0.52, ib);
+        const wantKind = ib > 0.55 ? 'indoor' : 'outdoor';
+        if (vml.probeKind !== wantKind && window.AshfallRenderer && window.AshfallRenderer.getEnvMap) {
+          const newEnv = window.AshfallRenderer.getEnvMap(renderer, wantKind);
+          if (newEnv) viewmodelScene.environment = newEnv;
+          vml.probeKind = wantKind;
+        }
+      }
 
       renderer.shadowMap.needsUpdate = ((window._shadowFrameCount = ((window._shadowFrameCount || 0) + 1) % 3) === 0);
       if (window.renderPipeline) {

@@ -11,11 +11,12 @@ class WeaponSystem {
     this.muzzleFlash = new THREE.PointLight(0xffaa44, 0, 8);
     this.viewmodelGroup.add(this.muzzleFlash);
 
-    this.muzzleMesh = new THREE.Mesh(
-      new THREE.SphereGeometry(0.04, 6, 6),
-      new THREE.MeshBasicMaterial({ color: 0xffdd77, transparent: true, opacity: 0 })
-    );
+    this.muzzleMesh = this._createSaltlineMuzzleFlash();
     this.viewmodelGroup.add(this.muzzleMesh);
+    this._barrelHeat = 0;
+    this._sinceShotTimer = 10;
+    this._barrelSmokeTimer = 0;
+    this._barrelSmokeTick = 0;
 
     this.currentMesh = null;
     this.fpArms = null;
@@ -67,17 +68,29 @@ class WeaponSystem {
     this.reloadSlotRef = null;
     this._reloadResumeBlend = 1.0;
     this._reloadImpulseFlags = { boltLock: false, magOut: false, magIn: false, rack: false };
-    // AAA 6-DOF Second-Order Damped Spring (mechanical reload jolts, jump/land thud, sprint start/stop inertia, recoil punch)
+    // AAA 9-Channel Second-Order Damped Spring (Saltline sub-stepped <=8ms solver + 6-DOF impulse + reload bumps)
     this._sprPos = new THREE.Vector3();
     this._sprPosVel = new THREE.Vector3();
     this._sprRot = new THREE.Vector3();
     this._sprRotVel = new THREE.Vector3();
+    this._slSpr = {
+      kZ: { x: 0, v: 0, k: 520, c: 30 },
+      kP: { x: 0, v: 0, k: 380, c: 26 },
+      kY: { x: 0, v: 0, k: 300, c: 22 },
+      kR: { x: 0, v: 0, k: 300, c: 22 },
+      swY: { x: 0, v: 0, k: 115, c: 15 },
+      swP: { x: 0, v: 0, k: 115, c: 15 },
+      jY: { x: 0, v: 0, k: 140, c: 16 },
+      jP: { x: 0, v: 0, k: 140, c: 16 },
+      bump: { x: 0, v: 0, k: 580, c: 29 }
+    };
     this._prevOnGround = true;
     this._airTime = 0;
     this._prevLocoSpeed = 0;
     this._fpPhaseWalk = 0;
     this._fpPhaseRun = 0;
     this._fpPhaseTac = 0;
+    this.magTopRoundMesh = null;
 
     this.isInspecting = false;
     this.inspectTimer = 0;
@@ -235,24 +248,153 @@ class WeaponSystem {
     }
   }
 
-  _stepWeaponSpring(dt) {
-    const step = Math.min(0.033, Math.max(0.001, dt || 0.016));
-    const k = 215.0; // crisp MW19 spring stiffness
-    const c = 19.5;  // slightly underdamped for authentic tactile mechanical settle
-    // Semi-implicit Euler integration for 3D position & rotation springs
-    this._sprPosVel.x += (-k * this._sprPos.x - c * this._sprPosVel.x) * step;
-    this._sprPosVel.y += (-k * this._sprPos.y - c * this._sprPosVel.y) * step;
-    this._sprPosVel.z += (-k * this._sprPos.z - c * this._sprPosVel.z) * step;
-    this._sprPos.x = THREE.MathUtils.clamp(this._sprPos.x + this._sprPosVel.x * step, -0.08, 0.08);
-    this._sprPos.y = THREE.MathUtils.clamp(this._sprPos.y + this._sprPosVel.y * step, -0.09, 0.09);
-    this._sprPos.z = THREE.MathUtils.clamp(this._sprPos.z + this._sprPosVel.z * step, -0.08, 0.08);
+  _createSaltlineMuzzleFlash() {
+    const pos = [];
+    const uv = [];
+    const types = [];
+    const idx = [];
+    const pushQuad = (a, b, c, d, t) => {
+      const base = pos.length / 3;
+      pos.push(a[0], a[1], a[2], b[0], b[1], b[2], c[0], c[1], c[2], d[0], d[1], d[2]);
+      uv.push(0, 0, 1, 0, 1, 1, 0, 1);
+      types.push(t, t, t, t);
+      idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    };
+    // 2 star-petal front blast discs
+    pushQuad([-0.10, -0.10, -0.022], [0.10, -0.10, -0.022], [0.10, 0.10, -0.022], [-0.10, 0.10, -0.022], 0);
+    pushQuad([-0.07, -0.07, -0.070], [0.07, -0.07, -0.070], [0.07, 0.07, -0.070], [-0.07, 0.07, -0.070], 0);
+    // 2 crossed axial forward flame plumes
+    pushQuad([-0.048, 0, 0.008], [0.048, 0, 0.008], [0.048, 0, -0.25], [-0.048, 0, -0.25], 1);
+    pushQuad([0, -0.048, 0.008], [0, 0.048, 0.008], [0, 0.048, -0.25], [0, -0.048, -0.25], 1);
+    // 2 crossed side brake jets
+    pushQuad([-0.13, -0.038, 0.024], [0.13, -0.038, 0.024], [0.13, 0.038, 0.024], [-0.13, 0.038, 0.024], 2);
+    pushQuad([-0.13, 0, 0.062], [0.13, 0, 0.062], [0.13, 0, -0.014], [-0.13, 0, -0.014], 2);
+    // Bright white-gold core + persistent barrel thermal glow disc
+    pushQuad([-0.038, -0.038, -0.008], [0.038, -0.038, -0.008], [0.038, 0.038, -0.008], [-0.038, 0.038, -0.008], 3);
+    pushQuad([-0.024, -0.024, 0.014], [0.024, -0.024, 0.014], [0.024, 0.024, 0.014], [-0.024, 0.024, 0.014], 4);
 
-    this._sprRotVel.x += (-k * this._sprRot.x - c * this._sprRotVel.x) * step;
-    this._sprRotVel.y += (-k * this._sprRot.y - c * this._sprRotVel.y) * step;
-    this._sprRotVel.z += (-k * this._sprRot.z - c * this._sprRotVel.z) * step;
-    this._sprRot.x = THREE.MathUtils.clamp(this._sprRot.x + this._sprRotVel.x * step, -0.30, 0.30);
-    this._sprRot.y = THREE.MathUtils.clamp(this._sprRot.y + this._sprRotVel.y * step, -0.26, 0.26);
-    this._sprRot.z = THREE.MathUtils.clamp(this._sprRot.z + this._sprRotVel.z * step, -0.32, 0.32);
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.setAttribute('aType', new THREE.Float32BufferAttribute(types, 1));
+    geo.setIndex(idx);
+
+    const mat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      uniforms: {
+        uSeed: { value: 1.0 },
+        uInt: { value: 0.0 },
+        uHeat: { value: 0.0 },
+        uJet: { value: 1.0 }
+      },
+      vertexShader: `
+        attribute float aType;
+        varying vec2 vUv;
+        varying float vType;
+        void main() {
+          vUv = uv;
+          vType = aType;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform float uSeed;
+        uniform float uInt;
+        uniform float uHeat;
+        uniform float uJet;
+        varying vec2 vUv;
+        varying float vType;
+        float mh1(float n) { return fract(sin(n * 127.1 + uSeed * 311.7) * 43758.5453); }
+        void main() {
+          vec2 p = vUv * 2.0 - 1.0;
+          float r = length(p);
+          float a = atan(p.y, p.x);
+          float I = 0.0;
+          vec3 tintc = vec3(1.0, 0.50, 0.16);
+          if (vType < 0.5) {
+            float n1 = 3.0 + floor(mh1(1.0) * 3.0);
+            float n2 = 5.0 + floor(mh1(2.0) * 4.0);
+            float pet = pow(abs(cos(a * n1 * 0.5 + mh1(3.0) * 6.283)), 5.0) * (0.55 + 0.45 * mh1(4.0));
+            pet += pow(abs(cos(a * n2 * 0.5 + mh1(5.0) * 6.283)), 14.0) * 0.55;
+            float reach = 0.35 + 0.65 * pet;
+            I = (0.25 + pet) * smoothstep(reach, reach * 0.15, r) * (0.75 + 0.25 * sin(r * 26.0 + mh1(6.0) * 20.0));
+          } else if (vType < 1.5) {
+            float y = vUv.y;
+            float x = p.x * (1.0 + 0.5 * sin(y * 17.0 + mh1(7.0) * 30.0) * y);
+            float wdt = mix(0.20, 0.75, smoothstep(0.0, 0.35, y)) * (1.0 - y * 0.75);
+            I = exp(-x * x / (wdt * wdt * 0.35)) * pow(1.0 - y, 1.4) * (0.7 + 0.3 * sin(y * 31.0 + mh1(8.0) * 9.0)) * 0.9;
+          } else if (vType < 2.5) {
+            float u = abs(p.x);
+            float len = 0.55 + 0.45 * mh1(9.0 + step(0.0, p.x));
+            float wv = p.y * (1.0 + u * 3.0) + 0.12 * sin(u * 14.0 + mh1(10.0) * 20.0) * u;
+            I = exp(-wv * wv * 22.0) * smoothstep(len, 0.06, u) * smoothstep(0.02, 0.10, u) * 0.85 * uJet;
+          } else if (vType < 3.5) {
+            I = exp(-r * r * 5.0) * 2.2 * smoothstep(1.0, 0.6, r);
+            tintc = vec3(1.0, 0.84, 0.60);
+          } else {
+            gl_FragColor = vec4(vec3(1.0, 0.28, 0.06) * exp(-r * r * 4.0) * smoothstep(1.0, 0.5, r) * uHeat, 1.0);
+            #include <tonemapping_fragment>
+            #include <encodings_fragment>
+            return;
+          }
+          vec3 col = mix(tintc, vec3(1.0, 0.90, 0.72), clamp(I * I * 0.7, 0.0, 1.0)) * I * uInt;
+          gl_FragColor = vec4(col, 1.0);
+          #include <tonemapping_fragment>
+          #include <encodings_fragment>
+        }
+      `
+    });
+    const m = new THREE.Mesh(geo, mat);
+    m.renderOrder = 10;
+    m.frustumCulled = false;
+    m.visible = false;
+    return m;
+  }
+
+  _stepWeaponSpring(dt) {
+    const step = Math.min(0.05, Math.max(0.001, dt || 0.016));
+    const sub = Math.min(8, Math.max(1, Math.ceil(step / 0.008)));
+    const h = step / sub;
+    const stepAxis = (s, target = 0) => {
+      for (let i = 0; i < sub; i++) {
+        const a = -s.k * (s.x - target) - s.c * s.v;
+        s.v += a * h;
+        s.x += s.v * h;
+      }
+    };
+    const k = 215.0;
+    const c = 19.5;
+    for (let i = 0; i < sub; i++) {
+      this._sprPosVel.x += (-k * this._sprPos.x - c * this._sprPosVel.x) * h;
+      this._sprPosVel.y += (-k * this._sprPos.y - c * this._sprPosVel.y) * h;
+      this._sprPosVel.z += (-k * this._sprPos.z - c * this._sprPosVel.z) * h;
+      this._sprPos.x = THREE.MathUtils.clamp(this._sprPos.x + this._sprPosVel.x * h, -0.08, 0.08);
+      this._sprPos.y = THREE.MathUtils.clamp(this._sprPos.y + this._sprPosVel.y * h, -0.09, 0.09);
+      this._sprPos.z = THREE.MathUtils.clamp(this._sprPos.z + this._sprPosVel.z * h, -0.08, 0.08);
+
+      this._sprRotVel.x += (-k * this._sprRot.x - c * this._sprRotVel.x) * h;
+      this._sprRotVel.y += (-k * this._sprRot.y - c * this._sprRotVel.y) * h;
+      this._sprRotVel.z += (-k * this._sprRot.z - c * this._sprRotVel.z) * h;
+      this._sprRot.x = THREE.MathUtils.clamp(this._sprRot.x + this._sprRotVel.x * h, -0.30, 0.30);
+      this._sprRot.y = THREE.MathUtils.clamp(this._sprRot.y + this._sprRotVel.y * h, -0.26, 0.26);
+      this._sprRot.z = THREE.MathUtils.clamp(this._sprRot.z + this._sprRotVel.z * h, -0.32, 0.32);
+    }
+    if (this._slSpr) {
+      stepAxis(this._slSpr.kZ, 0);
+      stepAxis(this._slSpr.kP, 0);
+      stepAxis(this._slSpr.kY, 0);
+      stepAxis(this._slSpr.kR, 0);
+      stepAxis(this._slSpr.swY, 0);
+      stepAxis(this._slSpr.swP, 0);
+      stepAxis(this._slSpr.jY, this._slSpr.jY.target || 0);
+      stepAxis(this._slSpr.jP, this._slSpr.jP.target || 0);
+      stepAxis(this._slSpr.bump, 0);
+      this._slSpr.swY.x = THREE.MathUtils.clamp(this._slSpr.swY.x, -0.085, 0.085);
+      this._slSpr.swP.x = THREE.MathUtils.clamp(this._slSpr.swP.x, -0.065, 0.065);
+    }
   }
 
   _getReloadStages(weaponId, isEmpty) {
@@ -1125,12 +1267,99 @@ class WeaponSystem {
     }
   }
 
-  _addRedDot(group, opticY, opticZ = 0.02) {
-    // Trijicon SRO / Axion Reflex (72x36x48mm, forged 7075-T6 arched aluminum hood, CR2032 top cap, ruby glass)
+  _createCollimatedLensMaterial(isHolo = false) {
+    return new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      extensions: { derivatives: true },
+      uniforms: {
+        uBright: { value: 4.8 },
+        uMode: { value: isHolo ? 1.0 : 0.0 },
+        uTilt: { value: 0.09 }
+      },
+      vertexShader: `
+        varying vec3 vLensView;
+        varying vec3 vLensFwd;
+        varying vec3 vLensRight;
+        varying vec3 vLensUp;
+        varying vec3 vLensWPos;
+        varying vec3 vLensWN;
+        varying vec2 vLensUv;
+        uniform float uTilt;
+        void main() {
+          vLensUv = uv;
+          vec4 mv = modelViewMatrix * vec4(position, 1.0);
+          vLensView = mv.xyz;
+          vLensFwd = (modelViewMatrix * vec4(0.0, 0.0, -1.0, 0.0)).xyz;
+          vLensRight = (modelViewMatrix * vec4(1.0, 0.0, 0.0, 0.0)).xyz;
+          vLensUp = (modelViewMatrix * vec4(0.0, 1.0, 0.0, 0.0)).xyz;
+          vLensWPos = (modelMatrix * vec4(position, 1.0)).xyz;
+          vLensWN = normalize(mat3(modelMatrix) * normalize(vec3(0.0, -uTilt, 1.0)));
+          gl_Position = projectionMatrix * mv;
+        }
+      `,
+      fragmentShader: `
+        varying vec3 vLensView;
+        varying vec3 vLensFwd;
+        varying vec3 vLensRight;
+        varying vec3 vLensUp;
+        varying vec3 vLensWPos;
+        varying vec3 vLensWN;
+        varying vec2 vLensUv;
+        uniform float uBright;
+        uniform float uMode;
+        void main() {
+          vec3 d = normalize(vLensView);
+          vec3 fw = normalize(vLensFwd);
+          float k = max(dot(d, fw), 1e-3);
+          vec2 a = vec2(dot(d, normalize(vLensRight)), dot(d, normalize(vLensUp))) / k;
+          float r = length(a);
+          float px = max(fwidth(r), 1e-5);
+          float dotR = max(0.0014, px * 0.95);
+          float dotI = 1.0 - smoothstep(dotR - px, dotR + px, r);
+          float ret = dotI;
+          if (uMode > 0.5) {
+            float ringW = max(0.0005, px * 0.7);
+            float ring = 1.0 - smoothstep(ringW - px * 0.4, ringW + px, abs(r - 0.0145));
+            float tick = (1.0 - smoothstep(0.0, px * 1.2 + 0.0004, min(abs(a.x), abs(a.y)))) * step(0.0145, r) * (1.0 - smoothstep(0.0190, 0.0205, r));
+            ret = clamp(dotI + ring * 0.85 + tick * 0.85, 0.0, 1.0);
+          }
+          ret += 0.06 * exp(-r * r / 0.000024);
+          vec3 retCol = vec3(1.0, 0.12, 0.05) * ret * uBright;
+
+          vec3 wv = normalize(vLensWPos - cameraPosition);
+          vec3 n = normalize(vLensWN);
+          if (dot(n, wv) > 0.0) n = -n;
+          vec3 rf = reflect(wv, n);
+          float fres = pow(1.0 - abs(dot(wv, n)), 3.0);
+          vec3 sky = mix(vec3(0.45, 0.52, 0.58), vec3(0.26, 0.40, 0.56), clamp(rf.y * 1.4 + 0.2, 0.0, 1.0));
+          float band = smoothstep(0.25, 0.5, vLensUv.x * 0.6 + vLensUv.y) * (1.0 - smoothstep(0.62, 0.95, vLensUv.x * 0.6 + vLensUv.y));
+          vec3 coat = uMode > 0.5
+            ? mix(vec3(0.28, 0.56, 0.88), vec3(0.75, 0.86, 0.98), clamp(fres * 2.0 + vLensUv.y * 0.6, 0.0, 1.0))
+            : mix(vec3(0.32, 0.50, 0.92), vec3(1.0, 0.56, 0.24), clamp(fres * 2.2 + vLensUv.y * 0.75 - 0.15, 0.0, 1.0));
+          vec2 e = abs(vLensUv - 0.5) * 2.0;
+          float edge = smoothstep(0.88, 1.0, max(e.x, e.y));
+          float refl = 0.12 + 0.55 * fres + 0.07 * band;
+          vec2 eg = (vLensUv - vec2(0.5, 0.16)) * vec2(1.0, 1.6);
+          retCol += vec3(1.0, 0.10, 0.04) * 0.18 * exp(-dot(eg, eg) * 58.0) * (1.0 - smoothstep(0.985, 0.9995, k));
+          vec3 col = (sky * 1.2 + vec3(0.03, 0.035, 0.045)) * coat * refl * (1.0 - edge) + retCol;
+          float alpha = clamp(0.18 + 0.30 * fres + 0.05 * band + 0.55 * edge + ret * 0.65, 0.0, 0.94);
+          gl_FragColor = vec4(col, alpha);
+          #include <tonemapping_fragment>
+          #include <encodings_fragment>
+        }
+      `
+    });
+  }
+
+  _addRedDot(group, opticY, opticZ = 0.02, withHands = true) {
+    // Trijicon SRO / Axion Reflex w/ Saltline Bore-Collimated Infinity-Parallax Dichroic Lens Shader
     const P = window.AshfallPBR;
     const housingMat = (P && P.getMaterial('aluminum_anodized')) || new THREE.MeshStandardMaterial({ color: 0x1a1d20, roughness: 0.36, metalness: 0.86 });
-    const glassMat = (P && P.getGlassMaterial(0xb0323a, 0.16, 0.04, 0.25)) || new THREE.MeshBasicMaterial({ color: 0xff8899, transparent: true, opacity: 0.10, side: THREE.DoubleSide });
-    const dotMat = new THREE.MeshBasicMaterial({ color: 0xff2b2b });
+    const glassMat = withHands
+      ? this._createCollimatedLensMaterial(false)
+      : ((P && P.getGlassMaterial(0xb0323a, 0.16, 0.04, 0.25)) || new THREE.MeshBasicMaterial({ color: 0xff8899, transparent: true, opacity: 0.10, side: THREE.DoubleSide }));
 
     const r = 0.0145;
     const base = new THREE.Mesh(new THREE.BoxGeometry(0.032, 0.0075, 0.052), housingMat);
@@ -1144,19 +1373,19 @@ class WeaponSystem {
     frame.position.set(0, opticY, opticZ);
     const lens = new THREE.Mesh(new THREE.CircleGeometry(r * 0.92, 24), glassMat);
     lens.position.set(0, opticY, opticZ);
-    const redDot = new THREE.Mesh(new THREE.CircleGeometry(0.0014, 12), dotMat);
-    redDot.position.set(0, opticY, opticZ + 0.0006);
+    lens.renderOrder = 5;
 
-    group.add(base, cap, clampScrew, frame, lens, redDot);
+    group.add(base, cap, clampScrew, frame, lens);
   }
 
-  _addHolo(group, opticY, opticZ = 0.02) {
-    // EOTech EXPS3-0 Holographic Sight (96.5x58.4x73.7mm, outer aluminum protective hood, transverse battery cap, QD lever)
+  _addHolo(group, opticY, opticZ = 0.02, withHands = true) {
+    // EOTech EXPS3-0 Holographic Sight w/ Saltline Collimated 68-MOA Ring & Stadia Lens Shader
     const P = window.AshfallPBR;
     const hoodMat = (P && P.getMaterial('aluminum_anodized')) || new THREE.MeshStandardMaterial({ color: 0x1a1d20, roughness: 0.36, metalness: 0.85 });
     const tanMat = (P && P.getMaterial('aluminum_fde')) || new THREE.MeshStandardMaterial({ color: 0x86684a, roughness: 0.38, metalness: 0.82 });
-    const glassMat = (P && P.getGlassMaterial(0x70b8e6, 0.14, 0.04, 0.25)) || new THREE.MeshBasicMaterial({ color: 0x88ccff, transparent: true, opacity: 0.08, side: THREE.DoubleSide });
-    const retMat = new THREE.MeshBasicMaterial({ color: 0xff3322 });
+    const glassMat = withHands
+      ? this._createCollimatedLensMaterial(true)
+      : ((P && P.getGlassMaterial(0x70b8e6, 0.14, 0.04, 0.25)) || new THREE.MeshBasicMaterial({ color: 0x88ccff, transparent: true, opacity: 0.08, side: THREE.DoubleSide }));
 
     const w = 0.0185, h = 0.0155, len = 0.072;
     const base = new THREE.Mesh(new THREE.BoxGeometry(w * 2 + 0.010, 0.012, len), hoodMat);
@@ -1174,14 +1403,149 @@ class WeaponSystem {
     top.position.set(0, opticY + h, opticZ + 0.004);
     const lens = new THREE.Mesh(new THREE.PlaneGeometry(w * 1.85, h * 1.85), glassMat);
     lens.position.set(0, opticY, opticZ + 0.004);
+    lens.renderOrder = 5;
 
-    // EOTech 68-MOA ring + 1-MOA center dot reticle
-    const ring = new THREE.Mesh(new THREE.RingGeometry(0.0055, 0.0065, 28), retMat);
-    ring.position.set(0, opticY, opticZ + 0.0045);
-    const dot = new THREE.Mesh(new THREE.CircleGeometry(0.0011, 12), retMat);
-    dot.position.set(0, opticY, opticZ + 0.0046);
+    group.add(base, batPod, qdLever, left, right, top, lens);
+  }
 
-    group.add(base, batPod, qdLever, left, right, top, lens, ring, dot);
+  _attachReceiverMarkings(g, weaponDef) {
+    if (!g || !weaponDef || typeof document === 'undefined') return;
+    const wId = weaponDef.id || 'm4a1';
+    window._slWpnStencilCache = window._slWpnStencilCache || {};
+    let mat = window._slWpnStencilCache[wId];
+    if (!mat) {
+      const SPECS = {
+        m4a1:      { title: 'COLT M4A1', cal: 'CAL 5.56x45 NATO   SN M4-048219', rack: 'A4-01' },
+        mp7:       { title: 'H&K MP7A1', cal: 'CAL 4.6x30 HK      SN MP-007412', rack: 'PDW-7' },
+        ak47:      { title: 'IZHMASH AKM', cal: 'CAL 7.62x39mm     SN 1968-8410', rack: 'AK-03' },
+        mp5k:      { title: 'H&K MP5K-PDW', cal: 'CAL 9x19 PARA    SN HK-091284', rack: 'CQB-5' },
+        m870:      { title: 'REM 870 POL', cal: 'CAL 12GA 3" MAG   SN RM-870112', rack: 'SG-02' },
+        m24:       { title: 'REM M24 SWS', cal: 'CAL 7.62x51 NATO  SN 24-003918', rack: 'DM-04' },
+        awm338:    { title: 'AI AWM L115', cal: 'CAL .338 LAPUA    SN AI-033890', rack: 'LR-09' },
+        mosin9130: { title: 'TULA M91/30', cal: 'CAL 7.62x54R      SN 1943-3911', rack: 'MN-43' },
+        g17:       { title: 'GLOCK 17 GEN4', cal: 'CAL 9x19 PARA   SN G17-55012', rack: 'SA-17' },
+        pm9:       { title: 'IZH PM-9 MAK', cal: 'CAL 9x18 MAK     SN PM-009142', rack: 'SA-09' }
+      };
+      const sp = SPECS[wId] || SPECS.m4a1;
+      const c = document.createElement('canvas');
+      c.width = 512;
+      c.height = 256;
+      const ctx = c.getContext('2d');
+      ctx.clearRect(0, 0, 512, 256);
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(210,214,210,0.92)';
+      ctx.font = 'bold 34px "Arial Narrow", Impact, sans-serif';
+      ctx.fillText(sp.title, 12, 34);
+      ctx.font = '600 16px "Courier New", monospace';
+      ctx.fillText(sp.cal, 12, 68);
+      ctx.font = '600 15px "Arial Narrow", Arial, sans-serif';
+      ctx.fillText('ASHFALL ARMAMENT // VOSTOK SECTOR', 12, 96);
+
+      // Selector icons S / 1 / A (with red A)
+      ctx.font = 'bold 26px "Arial Narrow", Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(220,224,220,0.94)';
+      ctx.fillText('S', 34, 146);
+      ctx.fillText('1', 82, 146);
+      ctx.fillStyle = 'rgba(220,56,42,0.96)';
+      ctx.fillText('A', 130, 146);
+
+      // Rack stencil badge
+      ctx.fillStyle = 'rgba(228,214,162,0.88)';
+      ctx.font = '900 42px Impact, "Arial Black", sans-serif';
+      ctx.fillText(sp.rack, 370, 150);
+
+      // Top rail T2 .. T12 slot markers
+      ctx.fillStyle = 'rgba(202,206,200,0.88)';
+      ctx.font = 'bold 20px "Courier New", monospace';
+      [2, 4, 6, 8, 10, 12].forEach((n, idx) => {
+        ctx.fillText('T' + n, 36 + idx * 78, 224);
+      });
+
+      // Deterministic wear distress on stencils
+      ctx.globalCompositeOperation = 'destination-out';
+      let s = 9187;
+      const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+      for (let i = 0; i < 650; i++) {
+        ctx.fillStyle = `rgba(0,0,0,${0.22 + rnd() * 0.55})`;
+        ctx.fillRect(rnd() * 512, rnd() * 256, 1 + rnd() * 3, 1 + rnd() * 2);
+      }
+
+      const tex = new THREE.CanvasTexture(c);
+      tex.encoding = THREE.sRGBEncoding;
+      tex.anisotropy = 8;
+      tex.needsUpdate = true;
+      if (window.AshfallPBR && window.AshfallPBR.markShared) window.AshfallPBR.markShared(tex);
+      mat = new THREE.MeshStandardMaterial({
+        map: tex,
+        transparent: true,
+        roughness: 0.58,
+        metalness: 0.1,
+        depthWrite: false,
+        polygonOffset: true,
+        polygonOffsetFactor: -3,
+        polygonOffsetUnits: -3
+      });
+      if (window.AshfallPBR && window.AshfallPBR.markShared) window.AshfallPBR.markShared(mat);
+      window._slWpnStencilCache[wId] = mat;
+    }
+
+    const pos = [];
+    const uvs = [];
+    const norms = [];
+    const idx = [];
+    const addMark = (u0, v0, u1, v1, x, y, z, w, h, side = 'L') => {
+      const b = pos.length / 3;
+      const hw = w * 0.5, hh = h * 0.5;
+      if (side === 'L') {
+        pos.push(x, y - hh, z + hw, x, y - hh, z - hw, x, y + hh, z - hw, x, y + hh, z + hw);
+        for (let i = 0; i < 4; i++) norms.push(-1, 0, 0);
+      } else {
+        pos.push(x - hw, y, z + hh, x + hw, y, z + hh, x + hw, y, z - hh, x - hw, y, z - hh);
+        for (let i = 0; i < 4; i++) norms.push(0, 1, 0);
+      }
+      uvs.push(u0, v0, u1, v0, u1, v1, u0, v1);
+      idx.push(b, b + 1, b + 2, b, b + 2, b + 3);
+    };
+
+    // Receiver serial/caliber plate + S/1/A selector + optional top-rail T-numbers (calibrated per gun chassis)
+    if (wId === 'm4a1') {
+      addMark(0, 0.56, 0.92, 0.98, -0.0146, -0.008, 0.045, 0.048, 0.018, 'L');
+      addMark(0, 0.34, 0.32, 0.50, -0.0145, -0.014, 0.088, 0.022, 0.010, 'L');
+      addMark(0.55, 0.25, 0.92, 0.56, -0.0146, 0.011, 0.010, 0.028, 0.014, 'L');
+      addMark(0.02, 0.04, 0.94, 0.20, 0, 0.0322, -0.055, 0.014, 0.064, 'T');
+    } else if (wId === 'mp7') {
+      addMark(0, 0.56, 0.92, 0.98, -0.0195, 0.010, 0.020, 0.052, 0.019, 'L');
+      addMark(0, 0.34, 0.32, 0.50, -0.0195, -0.008, 0.086, 0.020, 0.009, 'L');
+      addMark(0.02, 0.04, 0.94, 0.20, 0, 0.0358, -0.035, 0.014, 0.068, 'T');
+    } else if (wId === 'mp5k') {
+      addMark(0, 0.56, 0.92, 0.98, -0.0176, 0.008, 0.028, 0.048, 0.018, 'L');
+      addMark(0, 0.34, 0.32, 0.50, -0.0176, -0.016, 0.088, 0.020, 0.009, 'L');
+      addMark(0.02, 0.04, 0.94, 0.20, 0, 0.0375, 0.010, 0.012, 0.058, 'T');
+    } else if (wId === 'ak47') {
+      addMark(0, 0.56, 0.92, 0.98, -0.0185, -0.002, 0.040, 0.052, 0.018, 'L');
+      addMark(0.55, 0.25, 0.92, 0.56, -0.0185, -0.004, 0.118, 0.026, 0.014, 'L');
+    } else if (wId === 'm870') {
+      addMark(0, 0.56, 0.92, 0.98, -0.0225, 0.002, 0.040, 0.054, 0.020, 'L');
+      addMark(0.02, 0.04, 0.94, 0.20, 0, 0.0315, 0.020, 0.012, 0.052, 'T');
+    } else if (wId === 'awm338' || wId === 'm24') {
+      addMark(0, 0.56, 0.92, 0.98, -0.0228, 0.016, 0.038, 0.054, 0.019, 'L');
+      addMark(0.02, 0.04, 0.94, 0.20, 0, 0.0478, -0.030, 0.014, 0.068, 'T');
+    } else if (wId === 'mosin9130') {
+      addMark(0.55, 0.25, 0.92, 0.56, -0.0218, -0.006, 0.035, 0.032, 0.015, 'L');
+    } else {
+      addMark(0, 0.56, 0.92, 0.98, -0.0126, 0.006, 0.00, 0.038, 0.014, 'L');
+    }
+
+    if (pos.length === 0) return;
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(norms, 3));
+    geo.setIndex(idx);
+    const mesh = new THREE.Mesh(geo, mat);
+    mesh.renderOrder = 2;
+    g.add(mesh);
   }
 
   _attachMods(g, weaponDef, mods = {}, withHands = true) {
@@ -1199,16 +1563,16 @@ class WeaponSystem {
     if (mods.optic === 'red_dot') {
       if (weaponDef.slot === 'secondary' && this.boltMesh) {
         const y = 0.034;
-        this._addRedDot(this.boltMesh, y, 0.032);
+        this._addRedDot(this.boltMesh, y, 0.032, withHands);
         this.sightHeight = y + this.boltMesh.position.y;
       } else {
         const y = isLongRifle ? 0.064 : 0.056;
-        this._addRedDot(g, y, opticZ);
+        this._addRedDot(g, y, opticZ, withHands);
         this.sightHeight = y;
       }
     } else if (mods.optic === 'holo' && weaponDef.slot !== 'secondary') {
       const y = isLongRifle ? 0.068 : 0.060;
-      this._addHolo(g, y, opticZ);
+      this._addHolo(g, y, opticZ, withHands);
       this.sightHeight = y;
     } else if (mods.optic === 'acog_2x' && weaponDef.slot !== 'secondary') {
       const y = isLongRifle ? 0.072 : 0.064;
@@ -2096,9 +2460,19 @@ class WeaponSystem {
     this.foregripAnchor = rig.foregripAnchor || null;
     this.hasVertGrip = !!this.foregripAnchor;
     this.magMesh = rig.magMesh;
+    this.magTopRoundMesh = null;
     if (this.magMesh) {
       this.magRestPos.copy(this.magMesh.position);
       this.magRestRot.copy(this.magMesh.rotation);
+      if (this.magMesh.children) {
+        for (let ci = 0; ci < this.magMesh.children.length; ci++) {
+          const ch = this.magMesh.children[ci];
+          if (ch && ch.userData && ch.userData.isCartridge) {
+            this.magTopRoundMesh = ch;
+            break;
+          }
+        }
+      }
     }
     this.spareMagMesh = rig.spareMagMesh || null;
 
@@ -2137,6 +2511,7 @@ class WeaponSystem {
 
     this._attachMods(g, weaponDef, mods, withHands);
     this._attachCosmetics(g, weaponDef, mods);
+    if (withHands) this._attachReceiverMarkings(g, weaponDef);
 
     this.rightArm = this._createForearm();
     this.rightArm.userData.fpSide = 'right';
@@ -2641,16 +3016,47 @@ class WeaponSystem {
   update(dt, player, weaponDef) {
     if (!this._fireTickedThisFrame && this.fireTimer > 0) this.fireTimer -= dt;
     this._fireTickedThisFrame = false;
+    this._sinceShotTimer = (this._sinceShotTimer || 10) + dt;
+    this._barrelHeat = Math.max(0, (this._barrelHeat || 0) - dt * 0.20);
     if (this.muzzleTimer > 0) {
       this.muzzleTimer -= dt;
       if (this.muzzleTimer <= 0) {
         this.muzzleFlash.intensity = 0;
-        this.muzzleMesh.material.opacity = 0;
+      }
+    }
+    if (this.muzzleMesh && this.muzzleMesh.material && this.muzzleMesh.material.uniforms) {
+      const mu = this.muzzleMesh.material.uniforms;
+      const frac = this.muzzleTimer > 0 ? Math.sqrt(Math.max(0, this.muzzleTimer / 0.048)) : 0;
+      mu.uInt.value = frac * 9.0;
+      mu.uHeat.value = THREE.MathUtils.clamp(((this._barrelHeat || 0) - 0.35) * 2.2, 0, 1.8);
+      mu.uJet.value = (weaponDef && weaponDef.suppressed) ? 0.16 : 1.0;
+      this.muzzleMesh.visible = (mu.uInt.value > 0.02 || mu.uHeat.value > 0.02);
+    }
+    if (this._sinceShotTimer > 0.10 && this._sinceShotTimer < 0.10 + dt * 1.5 && (this._barrelHeat || 0) > 0.35) {
+      this._barrelSmokeTimer = Math.min(1.5, this._barrelHeat * 1.3);
+    }
+    if ((this._barrelSmokeTimer || 0) > 0 && this.muzzleMesh) {
+      this._barrelSmokeTimer -= dt;
+      this._barrelSmokeTick = (this._barrelSmokeTick || 0) - dt;
+      if (this._barrelSmokeTick <= 0 && !this.isThirdPerson) {
+        this._barrelSmokeTick = 0.09;
+        const wp = new THREE.Vector3();
+        this.muzzleMesh.getWorldPosition(wp);
+        this._spawnSmoke(wp, 1);
       }
     }
 
-    // Step AAA 6-DOF second-order weapon spring every frame
+    // Step AAA 9-Channel Second-Order Saltline Spring every frame
     this._stepWeaponSpring(dt);
+
+    // Toggle visible top brass round on magazine feed lips cleanly on empty/reload
+    if (this.magTopRoundMesh) {
+      const slotCur = (player && player.getActiveWeaponSlot) ? player.getActiveWeaponSlot() : null;
+      const stagesCur = this.isReloading ? this._getReloadStages(this.reloadWeaponId, this.wasEmptyReload) : null;
+      const pCur = this.isReloading ? THREE.MathUtils.clamp(1 - (this.reloadTimer / Math.max(0.01, this.reloadDuration)), 0, 1) : 0;
+      const showRd = !!(slotCur && (slotCur.mag > 0 || (this.isReloading && stagesCur && pCur >= stagesCur.magOutP + 0.08)));
+      this.magTopRoundMesh.visible = showRd;
+    }
 
     // Reload progress & AAA staged procedural interruptible reload animations
     let reloadPosOffset = { x: 0, y: 0, z: 0 };
@@ -2679,6 +3085,7 @@ class WeaponSystem {
             if (!this._reloadImpulseFlags.magOut) {
               this._reloadImpulseFlags.magOut = true;
               this.addWeaponImpulse(-0.008, -0.020, 0.012, -0.06, 0.02, -0.08);
+              if (this._slSpr) this._slSpr.bump.v -= 0.45;
             }
           }
           // Stage 1 -> 2: Fresh magazine seated & locked! Commit ammo immediately; advance to Stage 2 if bolt/slide rack remains!
@@ -2688,6 +3095,7 @@ class WeaponSystem {
             if (!this._reloadImpulseFlags.magIn) {
               this._reloadImpulseFlags.magIn = true;
               this.addWeaponImpulse(0.006, 0.032, -0.014, 0.11, -0.02, -0.06);
+              if (this._slSpr) this._slSpr.bump.v += 0.95;
             }
             if (stages.needsChamber) {
               slotObj.reloadStage = 2;
@@ -2705,10 +3113,15 @@ class WeaponSystem {
       if (this.reloadSfxFlags.boltLock && !this._reloadImpulseFlags.boltLock) {
         this._reloadImpulseFlags.boltLock = true;
         this.addWeaponImpulse(-0.006, 0.010, 0.014, 0.04, -0.02, 0.07);
+        if (this._slSpr) this._slSpr.bump.v += 0.42;
       }
       if (this.reloadSfxFlags.rack && !this._reloadImpulseFlags.rack) {
         this._reloadImpulseFlags.rack = true;
         this.addWeaponImpulse(0.010, -0.024, -0.020, -0.095, -0.03, 0.09);
+        if (this._slSpr) {
+          this._slSpr.bump.v += 0.85;
+          this._slSpr.kZ.v -= 0.45;
+        }
       }
 
       // Procedural resume entry easing + subtle live breathing/stride momentum coupled into the reload pose!
@@ -3422,7 +3835,18 @@ class WeaponSystem {
     const ampX = isAdsActive ? (moving ? 0.0022 : 0.0008) : (0.011 * this._fpPhaseWalk + 0.023 * this._fpPhaseRun + 0.034 * this._fpPhaseTac + (!moving ? 0.004 : 0));
     const ampY = isAdsActive ? (moving ? 0.0026 : 0.0010) : (0.013 * this._fpPhaseWalk + 0.027 * this._fpPhaseRun + 0.036 * this._fpPhaseTac + (!moving ? 0.006 : 0));
     const bobX = Math.sin(this.bobTimer) * ampX * moveFactor;
-    const bobY = Math.pow(Math.abs(Math.sin(this.bobTimer)), 1.55) * ampY * moveFactor;
+    const thudY = moving ? Math.pow(0.5 + 0.5 * Math.cos(2.0 * this.bobTimer + 0.6), 4.0) * 0.0052 * moveFactor * (1 - (this._adsBlend || 0)) : 0;
+    const bobY = (Math.pow(Math.abs(Math.sin(this.bobTimer)), 1.55) * ampY * moveFactor) + thudY;
+
+    if (this._slSpr) {
+      if (!player.onGround) {
+        this._slSpr.jY.target = THREE.MathUtils.clamp(-player.velocity.y * 0.004, -0.018, 0.020);
+        this._slSpr.jP.target = THREE.MathUtils.clamp(player.velocity.y * 0.010, -0.05, 0.05);
+      } else {
+        this._slSpr.jY.target = 0;
+        this._slSpr.jP.target = 0;
+      }
+    }
 
     const swayRotZ = (moving && !isAdsActive && !this.isReloading && !this.isInspecting && !this.isPlating && !this.isHealing)
       ? Math.cos(this.bobTimer) * (0.024 * this._fpPhaseWalk + 0.068 * this._fpPhaseRun + 0.115 * this._fpPhaseTac) * moveFactor
@@ -3485,6 +3909,11 @@ class WeaponSystem {
     const swayMult = (isAdsActive ? (0.28 * zoomDamp) : 1.0) * wWeight;
     const clampedDY = THREE.MathUtils.clamp(dYaw, -0.16, 0.16);
     const clampedDP = THREE.MathUtils.clamp(dPitch, -0.14, 0.14);
+    if (this._slSpr) {
+      const swDamp = isAdsActive ? 0.35 * zoomDamp : 1.0;
+      this._slSpr.swY.v += clampedDY * 1.45 * swDamp;
+      this._slSpr.swP.v -= clampedDP * 1.25 * swDamp;
+    }
     const swayLerpIn = Math.min(1, dt * 10);
     this.lookSwayX = THREE.MathUtils.lerp(this.lookSwayX, THREE.MathUtils.clamp(clampedDY * 0.38 * swayMult, -0.045, 0.045), swayLerpIn);
     this.lookSwayY = THREE.MathUtils.lerp(this.lookSwayY, THREE.MathUtils.clamp(-clampedDP * 0.28 * swayMult, -0.032, 0.032), swayLerpIn);
@@ -3616,9 +4045,16 @@ class WeaponSystem {
     const leanRotZ = isAdsActive ? (-player.lean * 0.13) : (-player.lean * 0.22);
     const swayPitchVisual = this.idleSwayPitch / Math.max(1.0, Math.sqrt(adsZoom));
     const swayYawVisual = this.idleSwayYaw / Math.max(1.0, Math.sqrt(adsZoom));
-    const targetRotX = (customRot && !this.isFistsMode ? activeRotOff.x : (sprintRotX + swayRotX + this.recoilPitch + this._flinchPitch + swayPitchVisual + this.lookSwayRotX + wallRotX + grabRotX)) + drawRot.x + this._sprRot.x * sprScale;
-    const targetRotY = (customRot && !this.isFistsMode ? activeRotOff.y : (sprintRotY + slideCantY + stfCantY + this.recoilYaw + this._flinchYaw - swayYawVisual + this.lookSwayRotY + wallRotY + leanCantY)) + drawRot.y + this._sprRot.y * sprScale;
-    const targetRotZ = (customRot && !this.isFistsMode ? activeRotOff.z : (sprintRotZ + swayRotZ + slideCantZ + stfCantZ + boltActionRoll + this.recoilRoll + this._flinchRoll + this.lookSwayRotZ + wallRotZ + leanRotZ + adsSnapRotZ + grabRotZ)) + drawRot.z + this._sprRot.z * sprScale;
+    const slSpr = this._slSpr;
+    const slZ = slSpr ? slSpr.kZ.x * 0.45 * sprScale : 0;
+    const slY = slSpr ? (slSpr.jY.x + slSpr.bump.x * 0.45 + slSpr.swP.x * 0.04) * sprScale : 0;
+    const slX = slSpr ? (-slSpr.swY.x * 0.05) * sprScale : 0;
+    const slP = slSpr ? (slSpr.kP.x + slSpr.jP.x + slSpr.bump.x * 1.15 + slSpr.swP.x) * sprScale : 0;
+    const slYaw = slSpr ? (slSpr.kY.x + slSpr.swY.x) * sprScale : 0;
+    const slRoll = slSpr ? (slSpr.kR.x + slSpr.swY.x * 0.55) * sprScale : 0;
+    const targetRotX = (customRot && !this.isFistsMode ? activeRotOff.x : (sprintRotX + swayRotX + this.recoilPitch + this._flinchPitch + swayPitchVisual + this.lookSwayRotX + wallRotX + grabRotX)) + drawRot.x + this._sprRot.x * sprScale + slP;
+    const targetRotY = (customRot && !this.isFistsMode ? activeRotOff.y : (sprintRotY + slideCantY + stfCantY + this.recoilYaw + this._flinchYaw - swayYawVisual + this.lookSwayRotY + wallRotY + leanCantY)) + drawRot.y + this._sprRot.y * sprScale + slYaw;
+    const targetRotZ = (customRot && !this.isFistsMode ? activeRotOff.z : (sprintRotZ + swayRotZ + slideCantZ + stfCantZ + boltActionRoll + this.recoilRoll + this._flinchRoll + this.lookSwayRotZ + wallRotZ + leanRotZ + adsSnapRotZ + grabRotZ)) + drawRot.z + this._sprRot.z * sprScale + slRoll;
 
     // MW4 Weapon Field of View Perspective Preset (Narrow / Default / Wide — scales hipfire framing without distorting scope eye-relief!)
     const wfovScale = window.WEAPON_FOV_SCALE || 'default';
@@ -3644,9 +4080,9 @@ class WeaponSystem {
     const basePosY = this.isFistsMode ? -0.16 : THREE.MathUtils.lerp(hipPosY, adsTargetY, this._adsBlend);
     const basePosZ = this.isFistsMode ? -0.38 : THREE.MathUtils.lerp(hipPosZ, adsTargetZ, this._adsBlend);
 
-    const targetX = basePosX + this.recoilX + this.lookSwayX + activePosOff.x + wallPosX + leanAlignX + drawPos.x + grabPosX + this._sprPos.x * sprScale;
-    const targetY = basePosY + this.lookSwayY + activePosOff.y + wallPosY + drawPos.y + adsSnapY + grabPosY + airDriftY + this._sprPos.y * sprScale;
-    const targetZ = basePosZ + this.recoilZ + activePosOff.z + wallPosZ + drawPos.z + this._sprPos.z * sprScale;
+    const targetX = basePosX + this.recoilX + this.lookSwayX + activePosOff.x + wallPosX + leanAlignX + drawPos.x + grabPosX + this._sprPos.x * sprScale + slX;
+    const targetY = basePosY + this.lookSwayY + activePosOff.y + wallPosY + drawPos.y + adsSnapY + grabPosY + airDriftY + this._sprPos.y * sprScale + slY;
+    const targetZ = basePosZ + this.recoilZ + activePosOff.z + wallPosZ + drawPos.z + this._sprPos.z * sprScale + slZ;
 
     const adsSnapping = isAdsActive || this._adsLinear > 0.01;
     const adsTrackRate = Math.max(18, Math.min(36, 4.2 / adsTimeSec));
@@ -6534,8 +6970,20 @@ class WeaponSystem {
       this.boltActionDelayTimer = 0.16;
     }
     this.muzzleFlash.intensity = 3.5;
-    this.muzzleMesh.material.opacity = 0.92;
-    this.muzzleTimer = 0.045;
+    this.muzzleTimer = 0.048;
+    this._sinceShotTimer = 0;
+    this._barrelHeat = Math.min(1.0, (this._barrelHeat || 0) + 0.09);
+    if (this.muzzleMesh && this.muzzleMesh.material && this.muzzleMesh.material.uniforms) {
+      this.muzzleMesh.material.uniforms.uSeed.value = Math.random() * 100.0;
+      this.muzzleMesh.material.uniforms.uInt.value = 9.0;
+      this.muzzleMesh.visible = true;
+    }
+    if (this._slSpr) {
+      this._slSpr.kZ.v += 0.72 * kickScale;
+      this._slSpr.kP.v += def.recoil * 14.0 * kickScale;
+      this._slSpr.kY.v += hSign * hRec * 10.5 * kickScale;
+      this._slSpr.kR.v += (Math.random() - 0.5) * 1.45 * kickScale;
+    }
 
     window.soundEngine.playGunshot(def.id, 0, !!def.suppressed);
 

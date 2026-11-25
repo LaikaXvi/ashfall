@@ -49,16 +49,24 @@ window.AshfallArchitecture = (() => {
     return m;
   }
 
-  function addOrientedBox(world, x, y, z, w, h, d, mat, rx = 0, ry = 0, rz = 0, castShadow = false) {
-    if (!world || !mat || w <= 0.01 || h <= 0.01 || d <= 0.01) return null;
-    const key = `ob:${w.toFixed(2)}:${h.toFixed(2)}:${d.toFixed(2)}`;
-    const tile = (mat && mat.userData && mat.userData.tile) || 2.0;
-    const geo = _cachedGeo(`${key}:${tile.toFixed(1)}`, () => {
+  function _makeBoxGeo(world, w, h, d, tile = 2.0, bevel = null) {
+    const GP = window.AshfallRenderer && window.AshfallRenderer.GeoPool;
+    if (GP && GP.beveledBox) {
+      return GP.beveledBox(w, h, d, tile, bevel);
+    }
+    const key = `bx:${w.toFixed(2)}:${h.toFixed(2)}:${d.toFixed(2)}:${Number(tile).toFixed(1)}`;
+    return _cachedGeo(key, () => {
       const g = new THREE.BoxGeometry(w, h, d);
-      if (world._applyWorldUVs) world._applyWorldUVs(g, w, h, d, tile);
+      if (world && world._applyWorldUVs) world._applyWorldUVs(g, w, h, d, tile);
       else if (g.attributes.uv && !g.attributes.uv2) g.setAttribute('uv2', g.attributes.uv);
       return g;
     });
+  }
+
+  function addOrientedBox(world, x, y, z, w, h, d, mat, rx = 0, ry = 0, rz = 0, castShadow = false) {
+    if (!world || !mat || w <= 0.01 || h <= 0.01 || d <= 0.01) return null;
+    const tile = (mat && mat.userData && mat.userData.tile) || 2.0;
+    const geo = _makeBoxGeo(world, w, h, d, tile);
     _tmpPos.set(x, y, z);
     _tmpEuler.set(rx, ry, rz);
     _tmpQuat.setFromEuler(_tmpEuler);
@@ -78,13 +86,294 @@ window.AshfallArchitecture = (() => {
     _tmpMat4.compose(_tmpPos, _tmpQuat, _tmpScale);
 
     const tile = (mat && mat.userData && mat.userData.tile) || 2.0;
-    const geo = _cachedGeo(`bm:${thick.toFixed(2)}:${len.toFixed(2)}:${depth.toFixed(2)}:${tile.toFixed(1)}`, () => {
-      const g = new THREE.BoxGeometry(thick, len, depth);
-      if (world._applyWorldUVs) world._applyWorldUVs(g, thick, len, depth, tile);
-      else if (g.attributes.uv && !g.attributes.uv2) g.setAttribute('uv2', g.attributes.uv);
+    const geo = _makeBoxGeo(world, thick, len, depth, tile, Math.min(0.012, Math.min(thick, depth) * 0.14));
+    return pushBatchedGeo(world, geo, mat, _tmpMat4, castShadow);
+  }
+
+  // --------------------------------------------------------------------------
+  // Saltline Single-Draw-Call Weathering & Stencil Decal Placer
+  // --------------------------------------------------------------------------
+  function addDecal(world, x, y, z, w, h, cellName, facing = 'south', roll = 0) {
+    if (!world || w <= 0.02 || h <= 0.02) return null;
+    const mats = world._materials || {};
+    const decalMat = mats.decalAtlas || (window.AshfallPBR && window.AshfallPBR.getDecalMaterial && window.AshfallPBR.getDecalMaterial());
+    const cells = (window.AshfallPBR && window.AshfallPBR.DECAL_CELLS) || null;
+    if (!decalMat || !cells) return null;
+    const cell = cells[cellName] || cells.grime_streak || [1, 0];
+    const col = cell[0], row = cell[1];
+    const geo = _cachedGeo(`dcl:${col}:${row}`, () => {
+      const g = new THREE.PlaneGeometry(1, 1);
+      const uv = g.attributes.uv;
+      const u0 = col * 0.25, u1 = (col + 1) * 0.25;
+      const v1 = 1.0 - row * 0.25, v0 = 1.0 - (row + 1) * 0.25;
+      uv.setXY(0, u0, v1);
+      uv.setXY(1, u1, v1);
+      uv.setXY(2, u0, v0);
+      uv.setXY(3, u1, v0);
+      uv.needsUpdate = true;
+      g.setAttribute('uv2', uv);
       return g;
     });
-    return pushBatchedGeo(world, geo, mat, _tmpMat4, castShadow);
+    _tmpPos.set(x, y, z);
+    if (facing === 'south') _tmpEuler.set(0, 0, roll);
+    else if (facing === 'north') _tmpEuler.set(0, Math.PI, roll);
+    else if (facing === 'east') _tmpEuler.set(0, Math.PI * 0.5, roll);
+    else if (facing === 'west') _tmpEuler.set(0, -Math.PI * 0.5, roll);
+    else if (facing === 'floor') _tmpEuler.set(-Math.PI * 0.5, 0, roll);
+    else if (facing === 'ceiling') _tmpEuler.set(Math.PI * 0.5, 0, roll);
+    else _tmpEuler.set(0, 0, roll);
+    _tmpQuat.setFromEuler(_tmpEuler);
+    _tmpScale.set(w, h, 1);
+    _tmpMat4.compose(_tmpPos, _tmpQuat, _tmpScale);
+    return pushBatchedGeo(world, geo, decalMat, _tmpMat4, false);
+  }
+
+  // --------------------------------------------------------------------------
+  // Saltline Structural Steel Assemblies (3-Plate I-Beams & Wind X-Bracing)
+  // --------------------------------------------------------------------------
+  function addIBeam(world, x1, y1, z1, x2, y2, z2, depth = 0.26, flangeW = 0.16, mat = null, withBaseplate = false) {
+    if (!world) return;
+    const mats = world._materials || {};
+    const m = mat || mats.metal || mats.bossDark;
+    if (!m) return;
+    _dirVec.set(x2 - x1, y2 - y1, z2 - z1);
+    const len = _dirVec.length();
+    if (len < 0.2) return;
+    _dirVec.normalize();
+    _tmpQuat.setFromUnitVectors(_upVec, _dirVec);
+    const rxVec = new THREE.Vector3(1, 0, 0).applyQuaternion(_tmpQuat);
+    const webT = Math.max(0.018, flangeW * 0.14);
+    const flT = Math.max(0.022, flangeW * 0.16);
+    const cx = (x1 + x2) * 0.5, cy = (y1 + y2) * 0.5, cz = (z1 + z2) * 0.5;
+    const tile = (m.userData && m.userData.tile) || 1.8;
+
+    const webGeo = _makeBoxGeo(world, webT, len, Math.max(0.06, depth - flT * 2), tile, 0.006);
+    _tmpScale.set(1, 1, 1);
+    _tmpPos.set(cx, cy, cz);
+    _tmpMat4.compose(_tmpPos, _tmpQuat, _tmpScale);
+    pushBatchedGeo(world, webGeo, m, _tmpMat4, true);
+
+    const flGeo = _makeBoxGeo(world, flangeW, len, flT, tile, 0.006);
+    const rzVec = new THREE.Vector3(0, 0, 1).applyQuaternion(_tmpQuat);
+    const offD = (depth - flT) * 0.5;
+    for (const s of [-1, 1]) {
+      _tmpPos.set(cx + rzVec.x * offD * s, cy + rzVec.y * offD * s, cz + rzVec.z * offD * s);
+      _tmpMat4.compose(_tmpPos, _tmpQuat, _tmpScale);
+      pushBatchedGeo(world, flGeo, m, _tmpMat4, true);
+    }
+
+    if (withBaseplate) {
+      const bpW = Math.max(flangeW + 0.16, 0.34);
+      const bpD = Math.max(depth + 0.18, 0.44);
+      const bpGeo = _makeBoxGeo(world, bpW, 0.04, bpD, tile, 0.008);
+      _tmpPos.set(x1, y1 + 0.02, z1);
+      _tmpQuat.identity();
+      _tmpMat4.compose(_tmpPos, _tmpQuat, _tmpScale);
+      pushBatchedGeo(world, bpGeo, mats.bossDark || m, _tmpMat4, false);
+    }
+    void rxVec;
+  }
+
+  function addTensionRodXBrace(world, x1, y0, z1, x2, y1, z2, mat = null) {
+    if (!world) return;
+    const mats = world._materials || {};
+    const m = mat || mats.galvanized || mats.metal;
+    if (!m) return;
+    pushRotatedBeam(world, x1, y0, z1, x2, y1, z2, 0.028, 0.028, m, false);
+    pushRotatedBeam(world, x2, y0, z2, x1, y1, z1, 0.028, 0.028, m, false);
+    const mx = (x1 + x2) * 0.5, my = (y0 + y1) * 0.5, mz = (z1 + z2) * 0.5;
+    world._addDecor(mx, my, mz, 0.12, 0.12, 0.12, mats.bossDark || m);
+  }
+
+  // --------------------------------------------------------------------------
+  // Saltline Architectural Assemblies: Louvers, Sectional Roll-Up Shutters,
+  // Gutters & Downspouts w/ Brackets, and Industrial Pendant Luminaires
+  // --------------------------------------------------------------------------
+  function addSlopedLouverVent(world, x, y, z, w, h, facing = 'south') {
+    if (!world || w < 0.5 || h < 0.4) return;
+    const mats = world._materials || {};
+    const frameMat = mats.galvanized || mats.metal;
+    const bladeMat = mats.metal || frameMat;
+    if (!frameMat) return;
+    const horiz = (facing === 'south' || facing === 'north');
+    const outSign = (facing === 'south' || facing === 'east') ? 1 : -1;
+    const ft = 0.06, fd = 0.10;
+
+    // Backing dark louver cavity decal
+    addDecal(world, x + (horiz ? 0 : outSign * 0.02), y, z + (horiz ? outSign * 0.02 : 0), w * 0.92, h * 0.88, 'vent_louvre_dark', facing);
+
+    // Flanged outer perimeter frame + center mullion
+    world._addDecor(x, y + h * 0.5 - ft * 0.5, z, horiz ? w : fd, ft, horiz ? fd : w, frameMat);
+    world._addDecor(x, y - h * 0.5 + ft * 0.5, z, horiz ? w : fd, ft, horiz ? fd : w, frameMat);
+    const jambOff = w * 0.5 - ft * 0.5;
+    world._addDecor(x - (horiz ? jambOff : 0), y, z - (horiz ? 0 : jambOff), horiz ? ft : fd, h, horiz ? fd : ft, frameMat);
+    world._addDecor(x + (horiz ? jambOff : 0), y, z + (horiz ? 0 : jambOff), horiz ? ft : fd, h, horiz ? fd : ft, frameMat);
+    if (w >= 1.5) {
+      world._addDecor(x, y, z, horiz ? 0.05 : fd, h - ft * 2, horiz ? fd : 0.05, frameMat);
+    }
+
+    // Angled 45-deg galvanized louver slats every 0.22m
+    const bladeCount = Math.max(2, Math.floor((h - 0.14) / 0.22));
+    const tilt = horiz ? (outSign * 0.55) : 0;
+    const tiltZ = horiz ? 0 : (-outSign * 0.55);
+    for (let i = 0; i < bladeCount; i++) {
+      const by = y - h * 0.5 + 0.12 + ((i + 0.5) * (h - 0.24)) / bladeCount;
+      addOrientedBox(world, x, by, z, horiz ? w - ft * 2 : 0.085, 0.022, horiz ? 0.085 : w - ft * 2, bladeMat, tilt, 0, tiltZ, false);
+    }
+  }
+
+  function addRollupShutterAssembly(world, wx, yBot, wz, ow, oh, thick, horiz, outSign = 1) {
+    if (!world) return;
+    const mats = world._materials || {};
+    const galv = mats.galvanized || mats.metal;
+    const steel = mats.bossDark || mats.windowFrame || mats.metal;
+    const haz = mats.hazardAmber || galv;
+    if (!galv || !steel) return;
+
+    const guideOff = ow * 0.5 - 0.04;
+    const drumY = yBot + oh - 0.28;
+    const hoodH = 0.56;
+    const hoodD = thick + 0.14;
+    const facing = horiz ? (outSign > 0 ? 'south' : 'north') : (outSign > 0 ? 'east' : 'west');
+
+    // Vertical galvanized C-channel shutter guide tracks on both jambs
+    for (const s of [-1, 1]) {
+      const gx = wx + (horiz ? guideOff * s : 0);
+      const gz = wz + (horiz ? 0 : guideOff * s);
+      world._addDecor(gx, yBot + (oh - hoodH) * 0.5, gz, horiz ? 0.08 : thick + 0.06, Math.max(0.5, oh - hoodH), horiz ? thick + 0.06 : 0.08, galv);
+    }
+
+    // Corrugated steel shutter drum cylinder + axle + outer protective hood casing + hazard lintel lip
+    const drumGeo = _cachedGeo(`rdrum:${(ow - 0.08).toFixed(2)}`, () => {
+      const g = new THREE.CylinderGeometry(0.24, 0.24, Math.max(0.6, ow - 0.08), 16);
+      if (horiz) g.rotateZ(Math.PI * 0.5);
+      else g.rotateX(Math.PI * 0.5);
+      if (g.attributes.uv && !g.attributes.uv2) g.setAttribute('uv2', g.attributes.uv);
+      return g;
+    });
+    _tmpPos.set(wx, drumY, wz);
+    _tmpQuat.identity();
+    _tmpScale.set(1, 1, 1);
+    _tmpMat4.compose(_tmpPos, _tmpQuat, _tmpScale);
+    pushBatchedGeo(world, drumGeo, mats.corrugatedClean || galv, _tmpMat4, true);
+
+    // Header hood box + hazard bottom lock bar + caution stripe header decal
+    world._addDecor(wx, drumY + 0.04, wz, horiz ? ow + 0.16 : hoodD, hoodH, horiz ? hoodD : ow + 0.16, galv);
+    world._addDecor(wx, drumY - 0.25, wz, horiz ? ow - 0.04 : thick + 0.08, 0.09, horiz ? thick + 0.08 : ow - 0.04, haz);
+
+    // Side electric drive motor housing + manual pull-chain rod inside right jamb
+    const mOff = ow * 0.5 + 0.22;
+    const mx = wx + (horiz ? mOff : outSign * 0.06);
+    const mz = wz + (horiz ? outSign * 0.06 : mOff);
+    world._addDecor(mx, drumY - 0.04, mz, 0.34, 0.42, 0.34, steel);
+    world._addDecor(wx + (horiz ? guideOff - 0.10 : 0), yBot + (oh - hoodH) * 0.55, wz + (horiz ? 0 : guideOff - 0.10), 0.025, Math.max(0.8, (oh - hoodH) * 0.72), 0.025, galv);
+
+    // Exterior crash bollards flanking wide vehicle/apparatus rollup doors (safely outside doorway clear span!)
+    if (ow >= 2.6) {
+      const bSpan = ow * 0.5 + 0.34;
+      const bOut = thick * 0.5 + 0.42;
+      for (const s of [-1, 1]) {
+        const bx = wx + (horiz ? bSpan * s : outSign * bOut);
+        const bz = wz + (horiz ? outSign * bOut : bSpan * s);
+        world._addBox(bx, yBot + 0.60, bz, 0.22, 1.20, 0.22, haz, true);
+        world._addDecor(bx, yBot + 1.22, bz, 0.24, 0.06, 0.24, steel);
+      }
+      addDecal(world, wx + (horiz ? 0 : outSign * (hoodD * 0.5 + 0.02)), drumY + 0.06, wz + (horiz ? outSign * (hoodD * 0.5 + 0.02) : 0), Math.min(ow * 0.85, 2.8), 0.44, 'caution_stripes', facing);
+    }
+  }
+
+  function addEaveGutterAndDownspouts(world, cx, cz, w, d, yBase, yRoof, opts = {}) {
+    if (!world || w < 4.5 || d < 4.5 || yRoof - yBase < 2.2) return;
+    const mats = world._materials || {};
+    const galv = mats.galvanized || mats.metal;
+    const bracketMat = mats.bossDark || galv;
+    if (!galv) return;
+    const hx = w * 0.5 + 0.26;
+    const hz = d * 0.5 + 0.26;
+    const gy = yRoof - 0.18;
+    // Continuous galvanized eave gutter channels on N/S/E/W perimeter
+    world._addDecor(cx, gy, cz - hz, w + 0.62, 0.13, 0.14, galv);
+    world._addDecor(cx, gy, cz + hz, w + 0.62, 0.13, 0.14, galv);
+    world._addDecor(cx - hx, gy, cz, 0.14, 0.13, d + 0.62, galv);
+    world._addDecor(cx + hx, gy, cz, 0.14, 0.13, d + 0.62, galv);
+
+    const pipeH = Math.max(1.5, gy - (yBase + 0.22));
+    const pipeGeo = _cachedGeo(`dspout:${pipeH.toFixed(2)}`, () => {
+      const g = new THREE.CylinderGeometry(0.055, 0.055, pipeH, 8);
+      if (g.attributes.uv && !g.attributes.uv2) g.setAttribute('uv2', g.attributes.uv);
+      return g;
+    });
+    const corners = opts.corners || [[-1, -1], [1, -1], [-1, 1], [1, 1]];
+    for (let i = 0; i < corners.length; i++) {
+      const sx = corners[i][0], sz = corners[i][1];
+      const px = cx + sx * (w * 0.5 + 0.23);
+      const pz = cz + sz * (d * 0.5 + 0.23);
+      _tmpPos.set(px, yBase + 0.22 + pipeH * 0.5, pz);
+      _tmpQuat.identity();
+      _tmpScale.set(1, 1, 1);
+      _tmpMat4.compose(_tmpPos, _tmpQuat, _tmpScale);
+      pushBatchedGeo(world, pipeGeo, galv, _tmpMat4, false);
+      // Bottom kick-out shoe + wall mounting brackets every 2.4m
+      world._addDecor(px + sx * 0.06, yBase + 0.16, pz + sz * 0.06, 0.14, 0.14, 0.24, galv);
+      for (let by = yBase + 1.4; by < gy - 0.5; by += 2.4) {
+        world._addDecor(px - sx * 0.04, by, pz - sz * 0.04, 0.15, 0.05, 0.15, bracketMat);
+      }
+      if ((i & 1) === 0) {
+        addDecal(world, px + sx * 0.25, yBase + 0.03, pz + sz * 0.25, 1.35, 1.35, 'leak_stain', 'floor', i * 1.1);
+      }
+    }
+  }
+
+  function addInteriorPendantLights(world, cx, cz, w, d, yCeil, opts = {}) {
+    if (!world || w < 5.0 || d < 5.0) return;
+    const mats = world._materials || {};
+    const cordMat = mats.bossDark || mats.metal;
+    const shadeMat = mats.galvanized || mats.metal;
+    if (!cordMat || !shadeMat) return;
+    if (!world._pendantBulbMat) {
+      const bm = new THREE.MeshStandardMaterial({
+        color: 0xffe4b8,
+        emissive: 0xffbf66,
+        emissiveIntensity: 3.2,
+        roughness: 0.25,
+        metalness: 0.0
+      });
+      if (!bm.userData) bm.userData = {};
+      bm.userData._ashShared = true;
+      world._pendantBulbMat = bm;
+    }
+    const shadeGeo = _cachedGeo('pend_shade', () => {
+      const g = new THREE.CylinderGeometry(0.08, 0.28, 0.16, 12, 1, false);
+      if (g.attributes.uv && !g.attributes.uv2) g.setAttribute('uv2', g.attributes.uv);
+      return g;
+    });
+    const bulbGeo = _cachedGeo('pend_bulb', () => {
+      const g = new THREE.CylinderGeometry(0.11, 0.11, 0.04, 10);
+      if (g.attributes.uv && !g.attributes.uv2) g.setAttribute('uv2', g.attributes.uv);
+      return g;
+    });
+    const drop = Math.min(0.75, Math.max(0.28, opts.drop || 0.48));
+    const nx = w >= 14 ? 2 : 1;
+    const nz = d >= 14 ? 2 : 1;
+    for (let ix = 0; ix < nx; ix++) {
+      const lx = nx === 1 ? cx : (cx + (ix === 0 ? -w * 0.24 : w * 0.24));
+      for (let iz = 0; iz < nz; iz++) {
+        const lz = nz === 1 ? cz : (cz + (iz === 0 ? -d * 0.24 : d * 0.24));
+        if (opts.skipRect) {
+          const r = opts.skipRect;
+          if (Math.abs(lx - r.cx) < r.w * 0.55 + 0.8 && Math.abs(lz - r.cz) < r.d * 0.55 + 0.8) continue;
+        }
+        world._addDecor(lx, yCeil - drop * 0.5, lz, 0.035, drop, 0.035, cordMat);
+        _tmpPos.set(lx, yCeil - drop - 0.06, lz);
+        _tmpQuat.identity();
+        _tmpScale.set(1, 1, 1);
+        _tmpMat4.compose(_tmpPos, _tmpQuat, _tmpScale);
+        pushBatchedGeo(world, shadeGeo, shadeMat, _tmpMat4, false);
+        _tmpPos.set(lx, yCeil - drop - 0.13, lz);
+        _tmpMat4.compose(_tmpPos, _tmpQuat, _tmpScale);
+        pushBatchedGeo(world, bulbGeo, world._pendantBulbMat, _tmpMat4, false);
+      }
+    }
   }
 
   function _registerAABB(world, x, y, z, w, h, d, material) {
@@ -201,11 +490,24 @@ window.AshfallArchitecture = (() => {
     _tmpMat4.compose(_tmpPos, _tmpQuat, _tmpScale);
     pushBatchedGeo(world, wallGeo, wallMat, _tmpMat4, true);
 
-    // 2. Exact segmented colliders & bullet AABBs around every window/door opening
     const dirX = dx / len;
     const dirZ = dz / len;
     const outX = -dirZ;
     const outZ = dirX;
+    const outSign = opts.outwardSign || 1;
+    const mats = world._materials || {};
+
+    // Dual-skin interior plaster liner on exterior walls so interiors look finished instead of raw exterior brick/panel
+    const linerMat = opts.interiorMat || mats.interiorLiner || mats.interiorPlaster;
+    if (opts.outwardSign && opts.interiorLiner !== false && linerMat && wallMat !== linerMat && wallMat !== mats.curtainSpandrel && len > 2.4) {
+      const inset = thick * 0.5 + 0.016;
+      const linerGeo = _buildPunchedWallGeo(len, height, 0.032, sorted, 2.4, false);
+      _tmpPos.set(cx - outX * outSign * inset, yBot, cz - outZ * outSign * inset);
+      _tmpMat4.compose(_tmpPos, _tmpQuat, _tmpScale);
+      pushBatchedGeo(world, linerGeo, linerMat, _tmpMat4, false);
+    }
+
+    // 2. Exact segmented colliders & bullet AABBs around every window/door opening
     let curU = 0;
 
     const addSegAABB = (uStart, uEnd, y0, y1) => {
@@ -221,7 +523,6 @@ window.AshfallArchitecture = (() => {
       _registerAABB(world, wx, wy, wz, bw, segH, bd, wallMat);
     };
 
-    const mats = world._materials || {};
     const sillMat = trimMat || mats.darkConcrete || wallMat;
     const frameMat = mats.windowFrame || sillMat;
     const glassMat = world._winGlassDouble || (world._winGlassDouble = (() => {
@@ -248,13 +549,13 @@ window.AshfallArchitecture = (() => {
 
       if (o.kind === 'door') {
         const doorH = Math.min(2.60, oh);
-        const doorSideSign = opts.outwardSign || 1;
+        const doorSideSign = outSign;
         if (o.doorStyle) {
           world._addDoor(wx, yBot + Math.max(0.08, o.v0), wz, ow, doorH, rotWall, o.label || 'Entrance Door', o.doorStyle);
         }
-        // Optional rolled-up sectional bay shutter drum
+        // Detailed Saltline sectional roll-up door drum, tracks, drive motor & crash bollards
         if (o.rollup) {
-          world._addDecor(wx, yBot + o.v1 - 0.30, wz, horiz ? ow : thick + 0.08, 0.56, horiz ? thick + 0.08 : ow, mats.metal || frameMat);
+          addRollupShutterAssembly(world, wx, yBot + o.v0, wz, ow, oh, thick, horiz, outSign);
         }
         // Projected stone surround header
         const hoodW = ow + 0.36;
@@ -275,6 +576,21 @@ window.AshfallArchitecture = (() => {
         world._addDecor(wx, wy + oh * 0.16, wz, horiz ? ow : thick + 0.03, 0.06, horiz ? thick + 0.03 : ow, frameMat);
         if (glassMat && !o.open) {
           world._addDecor(wx, wy, wz, horiz ? ow * 0.94 : 0.05, oh * 0.94, horiz ? 0.05 : ow * 0.94, glassMat);
+        }
+        // Saltline rainwater rust/grime sill run decals on ~50% of exterior windows
+        if (opts.outwardSign && o.v0 >= 0.72 && ((Math.round(wx * 7 + wz * 13) & 1) === 0)) {
+          const faceDir = horiz ? (outSign > 0 ? 'south' : 'north') : (outSign > 0 ? 'east' : 'west');
+          const dOff = thick * 0.5 + 0.018;
+          addDecal(
+            world,
+            wx + outX * outSign * dOff,
+            yBot + o.v0 - 0.42,
+            wz + outZ * outSign * dOff,
+            Math.min(1.6, ow * 0.85),
+            0.72,
+            ((Math.round(wx + wz) & 1) === 0) ? 'rust_run' : 'grime_streak',
+            faceDir
+          );
         }
       }
       curU = Math.max(curU, o.u1);
@@ -366,6 +682,14 @@ window.AshfallArchitecture = (() => {
     if (!skipEast) {
       world._addBox(cx + w * 0.5, yTop + parapetH * 0.5, cz, pT, parapetH, Math.max(0.5, d - 0.2), pMat, true);
       world._addDecor(cx + w * 0.5, yTop + parapetH + 0.04, cz, pT + 0.12, 0.09, d + 0.2, cMat);
+    }
+    if (!opts.skipDecals) {
+      const fOffZ = d * 0.5 + 0.24;
+      const fOffX = w * 0.5 + 0.24;
+      if (!skipNorth) addDecal(world, cx - w * 0.22, yTop - 0.55, cz - fOffZ, 2.2, 0.9, 'grime_streak', 'north');
+      if (!skipSouth) addDecal(world, cx + w * 0.22, yTop - 0.55, cz + fOffZ, 2.2, 0.9, 'grime_streak', 'south');
+      if (!skipWest) addDecal(world, cx - fOffX, yTop - 0.55, cz, 2.0, 0.9, 'grime_streak', 'west');
+      if (!skipEast) addDecal(world, cx + fOffX, yTop - 0.55, cz, 2.0, 0.9, 'grime_streak', 'east');
     }
   }
 
@@ -837,6 +1161,26 @@ window.AshfallArchitecture = (() => {
       layout(baseY, h);
     }
 
+    // Saltline architectural micro-detailing: interior pendant luminaires, perimeter gutters/downspouts, louver vents & steel I-beam bays on large halls
+    const ceilY = stories === 2 ? (baseY + h * 0.5 - 0.18) : (baseY + h - 0.12);
+    addInteriorPendantLights(world, cx, cz, w, d, ceilY, { drop: stories === 2 ? 0.36 : 0.48 });
+    if (h <= 10.5) {
+      addEaveGutterAndDownspouts(world, cx, cz, w, d, baseY, baseY + h);
+      const backFacing = doorSide === 'south' ? 'north' : (doorSide === 'north' ? 'south' : (doorSide === 'west' ? 'east' : 'west'));
+      const lx = backFacing === 'east' ? (cx + hx + 0.04) : (backFacing === 'west' ? (cx - hx - 0.04) : cx);
+      const lz = backFacing === 'south' ? (cz + hz + 0.04) : (backFacing === 'north' ? (cz - hz - 0.04) : cz);
+      addSlopedLouverVent(world, lx, baseY + Math.min(h - 0.9, 2.9), lz, 1.35, 0.85, backFacing);
+    }
+    if (isLargeHall) {
+      const colH = stories === 2 ? h * 0.48 : (h - 0.15);
+      for (const sx of [-1, 1]) {
+        for (const sz of [-1, 1]) {
+          addIBeam(world, cx + sx * (hx - 1.15), baseY + 0.16, cz + sz * (hz - 1.15), cx + sx * (hx - 1.15), baseY + colH, cz + sz * (hz - 1.15), 0.24, 0.16, mats.metal, true);
+        }
+      }
+      addDecal(world, cx, baseY + 0.17, cz, 2.4, 2.4, 'oil_stain', 'floor', (seed % 7) * 0.5);
+    }
+
     // Roof slab, hollow cornice, proportional parapet & mechanical clutter
     world._addBox(cx, baseY + h + 0.14, cz, w + 0.42, 0.28, d + 0.42, mats.roofTar, true);
     const roofTopY = baseY + h + 0.28;
@@ -849,6 +1193,13 @@ window.AshfallArchitecture = (() => {
     pushBatchedGeo,
     addOrientedBox,
     pushRotatedBeam,
+    addDecal,
+    addIBeam,
+    addTensionRodXBrace,
+    addSlopedLouverVent,
+    addRollupShutterAssembly,
+    addEaveGutterAndDownspouts,
+    addInteriorPendantLights,
     addPunchedWall,
     addPerimeterBand,
     addCorniceAndParapet,

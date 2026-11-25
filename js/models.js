@@ -322,6 +322,7 @@ window.ModelSystem = (() => {
   function createCartridgeMesh(caliber = 'rifle', mats = null) {
     const m = mats || getWeaponMaterialSet(null);
     const grp = new THREE.Group();
+    grp.userData.isCartridge = true;
     if (caliber === '12g') {
       const hull = new THREE.Mesh(
         _cachedGeo('round_12g_hull_hp', () => {

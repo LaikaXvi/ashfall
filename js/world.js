@@ -2392,27 +2392,39 @@ class WastelandWorld {
 
     for (const bucket of groups.values()) {
       const list = bucket.entries;
-      // Saltline P1: repeat-dimension runs become ONE InstancedMesh (instance = translate x scale)
+      // Saltline P1: repeat-dimension runs become ONE InstancedMesh with metric beveledBox UVs
       if (bucket.isBoxRun && list.length >= 2) {
-        const unitBox = (window.AshfallRenderer && window.AshfallRenderer.GeoPool)
-          ? window.AshfallRenderer.GeoPool.unitBox()
-          : new THREE.BoxGeometry(1, 1, 1);
-        const inst = new THREE.InstancedMesh(unitBox, bucket.material, list.length);
+        const GP = window.AshfallRenderer && window.AshfallRenderer.GeoPool;
+        const instGeo = (GP && GP.beveledBox)
+          ? GP.beveledBox(bucket.bw, bucket.bh, bucket.bd, bucket.bTile || 2.4)
+          : ((GP && GP.unitBox) ? GP.unitBox() : new THREE.BoxGeometry(1, 1, 1));
+        const usedBeveled = !!(GP && GP.beveledBox);
+        const inst = new THREE.InstancedMesh(instGeo, bucket.material, list.length);
         const m4 = new THREE.Matrix4();
         const q0 = new THREE.Quaternion();
         const p0 = new THREE.Vector3();
         const s0 = new THREE.Vector3();
+        let minX = Infinity, minY = Infinity, minZ = Infinity;
+        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
         for (let k = 0; k < list.length; k++) {
           const e = list[k];
-          p0.set(e.x, e.y, e.z); s0.set(e.w, e.h, e.d);
+          p0.set(e.x, e.y, e.z);
+          if (usedBeveled) s0.set(1, 1, 1);
+          else s0.set(e.w, e.h, e.d);
           m4.compose(p0, q0, s0);
           inst.setMatrixAt(k, m4);
+          if (e.x < minX) minX = e.x; if (e.x > maxX) maxX = e.x;
+          if (e.y < minY) minY = e.y; if (e.y > maxY) maxY = e.y;
+          if (e.z < minZ) minZ = e.z; if (e.z > maxZ) maxZ = e.z;
         }
         inst.instanceMatrix.needsUpdate = true;
         inst.castShadow = list.some(e => e.castShadow);
         inst.receiveShadow = true;
         inst.frustumCulled = true;
-        if (!unitBox.boundingSphere) unitBox.computeBoundingSphere();
+        if (!instGeo.boundingSphere) instGeo.computeBoundingSphere();
+        const cx = (minX + maxX) * 0.5, cy = (minY + maxY) * 0.5, cz = (minZ + maxZ) * 0.5;
+        const pad = Math.hypot(bucket.bw || 1, bucket.bh || 1, bucket.bd || 1) * 0.5 + 1.0;
+        inst.boundingSphere = new THREE.Sphere(new THREE.Vector3(cx, cy, cz), Math.hypot(maxX - cx, maxY - cy, maxZ - cz) + pad);
         this.scene.add(inst);
         this._batchedMeshes.push(inst);
         P1_STATS.instanced += list.length;

@@ -352,6 +352,25 @@ window.AshfallPBR = (() => {
             rgh = baseRough + rustPatch * 0.28;
           }
           ao = 0.76 + 0.24 * wave;
+        } else if (kind === 'galvanized_spangle') {
+          const cx = Math.floor(u * 26 + macro * 1.6);
+          const cy = Math.floor(v * 26 + fbm * 1.6);
+          const cellShade = hash2(cx, cy);
+          const grain = _sampleLUT(nFine, u * 0.6 + cellShade, v * 14.0 + cellShade);
+          hVal = 0.44 + cellShade * 0.34 + grain * 0.14 + micro * 0.08;
+          mixT = Math.max(0, Math.min(1, cellShade * 0.62 + macro * 0.24 + grain * 0.14));
+          rgh = baseRough + (0.5 - cellShade) * roughVar + (0.5 - grain) * 0.08;
+          ao = 0.88 + 0.12 * cellShade;
+        } else if (kind === 'corrugated_industrial') {
+          const wave = Math.max(0, Math.min(1, Math.sin(u * 16 * Math.PI * 2) * 0.95 + 0.5));
+          const lapSeam = ((u * 2) % 1) < 0.016 ? 1.0 : 0.0;
+          const fastRow = Math.abs(((v * 4) % 1) - 0.5) < 0.035;
+          const fastCol = Math.abs(((u * 16) % 1) - 0.25) < 0.075;
+          const bolt = (fastRow && fastCol) ? 1.0 : 0.0;
+          hVal = bolt ? 0.92 : (0.28 + wave * 0.56 - lapSeam * 0.24 + fine * 0.08);
+          mixT = bolt ? 0.95 : Math.max(0, Math.min(1, macro * 0.48 + fbm * 0.32 + wave * 0.20));
+          rgh = bolt ? 0.24 : (baseRough + (1.0 - wave) * roughVar - lapSeam * 0.06);
+          ao = bolt ? 0.98 : ((1.0 - lapSeam * 0.34) * (0.76 + 0.24 * wave));
         } else if (kind === 'hazard_chevron') {
           const stripe = ((u * 6 + v * 4) % 1) < 0.5;
           hVal = 0.46 + fine * 0.30 + (stripe ? 0.06 : 0.0);
@@ -646,6 +665,9 @@ window.AshfallPBR = (() => {
     marble_lobby_veined: { seed: 324, pattern: 'polished_marble', square: true, tilesU: 3, c0: [208, 202, 188], c1: [238, 232, 218], rough: 0.18, roughVar: 0.10, metal: 0.06, bump: 1.4 },
     terracotta_plaza_paver:{ seed: 325, pattern: 'tile_grid', square: true, tilesU: 8, tilesV: 8, c0: [152, 124, 104], c1: [182, 152, 128], rough: 0.72, roughVar: 0.16, metal: 0.02, bump: 2.5 },
     painted_bridge_white:{ seed: 326, pattern: 'brushed_metal', c0: [214, 220, 224], c1: [240, 244, 246], rough: 0.34, roughVar: 0.14, metal: 0.62, bump: 1.6 },
+    galvanized_spangle:  { seed: 327, pattern: 'galvanized_spangle', square: true, c0: [132, 138, 142], c1: [172, 178, 182], rough: 0.36, roughVar: 0.22, metal: 0.86, bump: 2.2 },
+    corrugated_industrial:{ seed: 328, pattern: 'corrugated_industrial', square: true, c0: [108, 118, 124], c1: [148, 158, 164], rough: 0.44, roughVar: 0.20, metal: 0.78, bump: 3.2 },
+    interior_painted_plaster:{ seed: 329, pattern: 'concrete_formwork', square: true, c0: [192, 190, 182], c1: [222, 220, 212], rough: 0.82, roughVar: 0.14, metal: 0.0, bump: 1.5 },
     taiga_moss_turf:     { seed: 411, pattern: 'granite', square: true, c0: [76, 92, 62], c1: [116, 132, 92], rough: 0.92, roughVar: 0.10, metal: 0.0, bump: 2.6 },
 
     // --- Nature, Foliage, Vehicles & Water ---
@@ -713,8 +735,423 @@ window.AshfallPBR = (() => {
 
     const mat = new THREE.MeshStandardMaterial(matOpts);
     mat.userData.tile = (overrides && overrides.tile) || (spec.square ? 2.6 : 0.45);
+    if (spec.seed >= 101 && spec.seed <= 120 && !(overrides && overrides.noWeaponPatch)) {
+      patchWeaponMaterial(mat, { isMetal: matOpts.metalness >= 0.45 });
+    } else if (spec.square && !(overrides && overrides.noWorldPatch)) {
+      patchWorldMaterial(mat, { wet: spec.metal > 0.5 ? 0.28 : 0.38 });
+    }
     _markShared(mat);
     _matCache.set(key, mat);
+    return mat;
+  }
+
+  // --------------------------------------------------------------------------
+  // Saltline World Shader Patch: World-Space Macro Weathering, Ground Splash,
+  // Vertical Rain/Grime Streaks & Screen-Space Normal-Curvature Specular AA
+  // --------------------------------------------------------------------------
+  function patchWorldMaterial(mat, opts = {}) {
+    if (!mat || mat.userData._slWorldPatched) return mat;
+    mat.userData._slWorldPatched = true;
+    const wetVal = opts.wet !== undefined ? opts.wet : 0.36;
+    const macroFreq = opts.macroFreq !== undefined ? opts.macroFreq : 0.085;
+    const macroRough = opts.macroRough !== undefined ? opts.macroRough : 0.14;
+    const groundY = opts.groundY !== undefined ? opts.groundY : 0.0;
+
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uSlMacro = { value: new THREE.Vector2(macroFreq, macroRough) };
+      shader.uniforms.uSlWet = { value: wetVal };
+      shader.uniforms.uSlGroundY = { value: groundY };
+
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+varying vec3 vSlWorldPos;
+varying vec3 vSlWorldNorm;`
+        )
+        .replace(
+          '#include <project_vertex>',
+          `vec4 slWp = vec4(transformed, 1.0);
+#ifdef USE_INSTANCING
+  slWp = instanceMatrix * slWp;
+#endif
+vSlWorldPos = (modelMatrix * slWp).xyz;
+vSlWorldNorm = normalize(mat3(modelMatrix) * objectNormal);
+#include <project_vertex>`
+        );
+
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+uniform vec2 uSlMacro;
+uniform float uSlWet;
+uniform float uSlGroundY;
+varying vec3 vSlWorldPos;
+varying vec3 vSlWorldNorm;
+float slHash(vec3 p) {
+  p = fract(p * 0.3183099 + vec3(0.71, 0.113, 0.419));
+  p *= 17.0;
+  return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+float slN3(vec3 x) {
+  vec3 i = floor(x), f = fract(x);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(mix(slHash(i), slHash(i + vec3(1.0,0.0,0.0)), f.x), mix(slHash(i + vec3(0.0,1.0,0.0)), slHash(i + vec3(1.0,1.0,0.0)), f.x), f.y),
+    mix(mix(slHash(i + vec3(0.0,0.0,1.0)), slHash(i + vec3(1.0,0.0,1.0)), f.x), mix(slHash(i + vec3(0.0,1.0,1.0)), slHash(i + vec3(1.0,1.0,1.0)), f.x), f.y),
+    f.z
+  );
+}
+float slMac = 0.5;
+float slMac2 = 0.5;
+float slWetK = 0.0;`
+        )
+        .replace(
+          '#include <map_fragment>',
+          `#include <map_fragment>
+{
+  vec3 slMp = vSlWorldPos * uSlMacro.x;
+  slMac = slN3(slMp);
+  slMac2 = slN3(slMp * 3.7 + 11.3);
+  float slM = slMac * 0.65 + slMac2 * 0.35 - 0.5;
+  diffuseColor.rgb *= (1.0 + slM * 0.24);
+  float slAbsY = abs(vSlWorldNorm.y);
+  float slVert = 1.0 - smoothstep(0.35, 0.72, slAbsY);
+  float slSc = vSlWorldPos.x + vSlWorldPos.z;
+  float slStreak = slN3(vec3(slSc * 1.9, vSlWorldPos.y * 0.26, 5.7)) * slN3(vec3(slSc * 5.2, vSlWorldPos.y * 0.55, 2.3));
+  slStreak = smoothstep(0.14, 0.44, slStreak) * slVert;
+  float slLow = smoothstep(0.80, 0.0, abs(vSlWorldPos.y - uSlGroundY)) * slVert;
+  float slGrime = clamp(slStreak * 0.30 + slLow * 0.22 + smoothstep(0.55, 0.88, slMac * 0.6 + slMac2 * 0.4) * 0.14, 0.0, 0.42);
+  diffuseColor.rgb *= (1.0 - slGrime);
+  slWetK = clamp(uSlWet * (slLow * 0.65 + slStreak * 0.45), 0.0, 0.75);
+  diffuseColor.rgb *= (1.0 - 0.16 * slWetK);
+}`
+        )
+        .replace(
+          '#include <roughnessmap_fragment>',
+          `#include <roughnessmap_fragment>
+{
+  roughnessFactor += uSlMacro.y * ((slMac2 - 0.5) * 1.3 + (slMac - 0.5) * 0.7);
+  roughnessFactor = mix(roughnessFactor, roughnessFactor * 0.62, slWetK);
+  vec3 slDnX = dFdx(vSlWorldNorm);
+  vec3 slDnY = dFdy(vSlWorldNorm);
+  float slCurv = clamp(dot(slDnX, slDnX) + dot(slDnY, slDnY), 0.0, 0.45);
+  roughnessFactor = clamp(sqrt(roughnessFactor * roughnessFactor + slCurv * 0.35), 0.05, 1.0);
+}`
+        );
+    };
+    mat.customProgramCacheKey = () => 'ash_sl_world_v1';
+    return mat;
+  }
+
+  // --------------------------------------------------------------------------
+  // Saltline Weapon Micro-Surface Shader: 3D CNC Rings / Polymer Stipple,
+  // Handling Scuffs, Screen-Space Micro-Bump & Anodized Edge-Wear Highlights
+  // --------------------------------------------------------------------------
+  function patchWeaponMaterial(mat, opts = {}) {
+    if (!mat || mat.userData._slWpnPatched) return mat;
+    mat.userData._slWpnPatched = true;
+    const kindVal = opts.isMetal !== false ? 0.0 : 1.0;
+
+    mat.onBeforeCompile = (shader) => {
+      shader.uniforms.uWpnKind = { value: kindVal };
+      shader.uniforms.uWpnWear = { value: opts.wear !== undefined ? opts.wear : 0.32 };
+
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+varying vec3 vWpnObjP;
+varying vec3 vWpnObjN;`
+        )
+        .replace(
+          '#include <begin_vertex>',
+          `#include <begin_vertex>
+vWpnObjP = position;
+vWpnObjN = normalize(normal);`
+        );
+
+      shader.fragmentShader = shader.fragmentShader
+        .replace(
+          '#include <common>',
+          `#include <common>
+uniform float uWpnKind;
+uniform float uWpnWear;
+varying vec3 vWpnObjP;
+varying vec3 vWpnObjN;
+float wpnHash(vec3 p) {
+  p = fract(p * 0.3183099 + vec3(0.41, 0.73, 0.19));
+  p *= 17.0;
+  return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+}
+float wpnN3(vec3 x) {
+  vec3 i = floor(x), f = fract(x);
+  f = f * f * (3.0 - 2.0 * f);
+  return mix(
+    mix(mix(wpnHash(i), wpnHash(i + vec3(1.0,0.0,0.0)), f.x), mix(wpnHash(i + vec3(0.0,1.0,0.0)), wpnHash(i + vec3(1.0,1.0,0.0)), f.x), f.y),
+    mix(mix(wpnHash(i + vec3(0.0,0.0,1.0)), wpnHash(i + vec3(1.0,0.0,1.0)), f.x), mix(wpnHash(i + vec3(0.0,1.0,1.0)), wpnHash(i + vec3(1.0,1.0,1.0)), f.x), f.y),
+    f.z
+  );
+}
+vec3 wpnBump(vec3 N, float h) {
+  vec3 dpdx = dFdx(-vViewPosition);
+  vec3 dpdy = dFdy(-vViewPosition);
+  float dhx = dFdx(h);
+  float dhy = dFdy(h);
+  vec3 r1 = cross(dpdy, N);
+  vec3 r2 = cross(N, dpdx);
+  float det = dot(dpdx, r1);
+  if (abs(det) < 1e-8) return N;
+  vec3 g = sign(det) * (dhx * r1 + dhy * r2);
+  return normalize(abs(det) * N - g);
+}
+float wpnHt = 0.0;
+float wpnEdge = 0.0;`
+        )
+        .replace(
+          '#include <roughnessmap_fragment>',
+          `#include <roughnessmap_fragment>
+{
+  vec3 dP = vWpnObjP;
+  float dSm = wpnN3(dP * 38.0);
+  float dSm2 = wpnN3(dP * 165.0 + 7.0);
+  float dFine = wpnN3(dP * 1600.0);
+  float dR = 0.0;
+  if (uWpnKind < 0.5) {
+    float scuff = smoothstep(0.68, 0.90, wpnN3(dP * vec3(280.0, 280.0, 28.0) + 3.0));
+    float ring = sin(dP.z * 3400.0) * 0.5 + 0.5;
+    dR = (dSm - 0.5) * 0.16 + (dSm2 - 0.5) * 0.09 + scuff * 0.14;
+    wpnHt = (ring * 0.35 + dFine * 0.65 - scuff * 0.5) * 0.000018;
+    float curv = clamp((length(dFdx(vWpnObjN)) + length(dFdy(vWpnObjN))) * 1.4, 0.0, 1.0);
+    wpnEdge = smoothstep(0.18, 0.72, curv) * (0.45 + 0.55 * dSm2) * uWpnWear;
+    diffuseColor.rgb = mix(diffuseColor.rgb, max(diffuseColor.rgb * 1.9, vec3(0.42, 0.44, 0.48)), wpnEdge * 0.55);
+    roughnessFactor = mix(roughnessFactor, 0.22, wpnEdge * 0.7);
+  } else {
+    float stip = wpnN3(dP * 1150.0) * 0.6 + wpnN3(dP * 2400.0 + 5.0) * 0.4;
+    dR = (dSm - 0.5) * 0.14 + (stip - 0.5) * 0.12 - smoothstep(0.62, 0.88, dSm2) * 0.08;
+    wpnHt = stip * 0.000045;
+  }
+  roughnessFactor = clamp(roughnessFactor + dR, 0.10, 1.0);
+}`
+        )
+        .replace(
+          '#include <normal_fragment_maps>',
+          `#include <normal_fragment_maps>
+normal = wpnBump(normal, wpnHt);`
+        );
+    };
+    mat.customProgramCacheKey = () => 'ash_sl_wpn_v1';
+    return mat;
+  }
+
+  // --------------------------------------------------------------------------
+  // Saltline Single-Draw-Call 4x4 Procedural Weathering & Stencil Decal Atlas
+  // --------------------------------------------------------------------------
+  const DECAL_CELLS = {
+    rust_run:        [0, 0],
+    grime_streak:    [1, 0],
+    leak_stain:      [2, 0],
+    oil_stain:       [3, 0],
+    caution_stripes: [0, 1],
+    hazard_voltage:  [1, 1],
+    hazard_flammable:[2, 1],
+    no_entry:        [3, 1],
+    bay_01:          [0, 2],
+    bay_02:          [1, 2],
+    bay_03:          [2, 2],
+    sec_a4:          [3, 2],
+    fire_07:         [0, 3],
+    exit_arrow:      [1, 3],
+    roof_access:     [2, 3],
+    vent_louvre_dark:[3, 3]
+  };
+
+  function getDecalMaterial() {
+    if (_matCache.has('sl_decal_atlas')) return _matCache.get('sl_decal_atlas');
+    const S = 1024;
+    const C = 256;
+    const cv = document.createElement('canvas');
+    cv.width = S;
+    cv.height = S;
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0, 0, S, S);
+
+    let rngS = 41923;
+    const rnd = () => {
+      rngS = (Math.imul(rngS, 1664525) + 1013904223) >>> 0;
+      return rngS / 4294967296;
+    };
+
+    const cellOrigin = (name) => {
+      const [col, row] = DECAL_CELLS[name] || [0, 0];
+      return [col * C, row * C];
+    };
+
+    // Row 0: Weathering drips, grime, water leak, oil puddle
+    {
+      const [ox, oy] = cellOrigin('rust_run');
+      for (let i = 0; i < 24; i++) {
+        const rx = ox + 36 + rnd() * (C - 72);
+        const rw = 4 + rnd() * 14;
+        const rh = C * (0.45 + rnd() * 0.50);
+        const g = ctx.createLinearGradient(0, oy + 6, 0, oy + rh);
+        g.addColorStop(0.0, 'rgba(92,38,14,0.68)');
+        g.addColorStop(0.3, 'rgba(116,52,18,0.42)');
+        g.addColorStop(1.0, 'rgba(92,38,14,0.0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(rx - rw * 0.5, oy + 6, rw, rh);
+      }
+    }
+    {
+      const [ox, oy] = cellOrigin('grime_streak');
+      for (let i = 0; i < 32; i++) {
+        const gx = ox + 16 + rnd() * (C - 32);
+        const gw = 8 + rnd() * 24;
+        const gh = C * (0.40 + rnd() * 0.56);
+        const g = ctx.createLinearGradient(0, oy + 2, 0, oy + gh);
+        g.addColorStop(0.0, 'rgba(22,24,22,0.52)');
+        g.addColorStop(0.45, 'rgba(34,36,32,0.24)');
+        g.addColorStop(1.0, 'rgba(22,24,22,0.0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(gx - gw * 0.5, oy + 2, gw, gh);
+      }
+    }
+    {
+      const [ox, oy] = cellOrigin('leak_stain');
+      const rg = ctx.createRadialGradient(ox + C * 0.5, oy + C * 0.5, 10, ox + C * 0.5, oy + C * 0.5, C * 0.46);
+      rg.addColorStop(0.0, 'rgba(24,28,22,0.62)');
+      rg.addColorStop(0.55, 'rgba(42,46,36,0.34)');
+      rg.addColorStop(1.0, 'rgba(24,28,22,0.0)');
+      ctx.fillStyle = rg;
+      ctx.fillRect(ox, oy, C, C);
+      for (let i = 0; i < 18; i++) {
+        const a = rnd() * Math.PI * 2;
+        const r = 20 + rnd() * 74;
+        ctx.fillStyle = 'rgba(20,24,18,0.22)';
+        ctx.beginPath();
+        ctx.arc(ox + C * 0.5 + Math.cos(a) * r, oy + C * 0.5 + Math.sin(a) * r, 8 + rnd() * 18, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    {
+      const [ox, oy] = cellOrigin('oil_stain');
+      for (let i = 0; i < 6; i++) {
+        const cx = ox + C * (0.35 + rnd() * 0.30);
+        const cy = oy + C * (0.35 + rnd() * 0.30);
+        const rr = C * (0.18 + rnd() * 0.22);
+        const rg = ctx.createRadialGradient(cx, cy, 4, cx, cy, rr);
+        rg.addColorStop(0.0, 'rgba(10,11,13,0.78)');
+        rg.addColorStop(0.65, 'rgba(16,18,22,0.48)');
+        rg.addColorStop(1.0, 'rgba(10,11,13,0.0)');
+        ctx.fillStyle = rg;
+        ctx.fillRect(ox, oy, C, C);
+      }
+    }
+
+    // Row 1: Industrial Hazard Signage
+    {
+      const [ox, oy] = cellOrigin('caution_stripes');
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(ox + 8, oy + 52, C - 16, C - 104);
+      ctx.clip();
+      ctx.fillStyle = '#d49a1a';
+      ctx.fillRect(ox + 8, oy + 52, C - 16, C - 104);
+      ctx.fillStyle = '#181a1c';
+      for (let i = -C; i < C * 2; i += 38) {
+        ctx.beginPath();
+        ctx.moveTo(ox + i, oy + 52);
+        ctx.lineTo(ox + i + 20, oy + 52);
+        ctx.lineTo(ox + i - 44, oy + C - 52);
+        ctx.lineTo(ox + i - 64, oy + C - 52);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    const drawPlacard = (name, bg, border, line1, line2, accent = '#111') => {
+      const [ox, oy] = cellOrigin(name);
+      ctx.fillStyle = bg;
+      ctx.fillRect(ox + 18, oy + 28, C - 36, C - 56);
+      ctx.lineWidth = 8;
+      ctx.strokeStyle = border;
+      ctx.strokeRect(ox + 22, oy + 32, C - 44, C - 64);
+      ctx.fillStyle = border;
+      ctx.fillRect(ox + 26, oy + 36, C - 52, 48);
+      ctx.fillStyle = bg === '#f2c12e' ? '#141414' : '#ffffff';
+      ctx.font = 'bold 26px "Arial Narrow", Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(line1, ox + C * 0.5, oy + 61);
+      ctx.fillStyle = accent;
+      ctx.font = 'bold 34px "Arial Narrow", Arial, sans-serif';
+      ctx.fillText(line2, ox + C * 0.5, oy + 148);
+    };
+    drawPlacard('hazard_voltage', '#f2c12e', '#1a1a1a', 'HIGH VOLTAGE', '400V // ⚡', '#161616');
+    drawPlacard('hazard_flammable', '#e8ece8', '#c62828', 'FLAMMABLE', 'FUEL / JP-8', '#1c1c1c');
+    drawPlacard('no_entry', '#ecece6', '#b71c1c', 'AUTHORIZED ONLY', 'NO ENTRY', '#b71c1c');
+
+    // Row 2 & 3: Stencils & Facility Markers
+    const drawStencil = (name, txt, col = 'rgba(218,214,200,0.88)', sz = 88) => {
+      const [ox, oy] = cellOrigin(name);
+      ctx.fillStyle = col;
+      ctx.font = `900 ${sz}px Impact, "Arial Black", sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(txt, ox + C * 0.5, oy + C * 0.5);
+    };
+    drawStencil('bay_01', 'BAY 01');
+    drawStencil('bay_02', 'BAY 02');
+    drawStencil('bay_03', 'BAY 03');
+    drawStencil('sec_a4', 'SEC-A4', 'rgba(222,172,54,0.92)', 72);
+    drawStencil('fire_07', 'FD-07', 'rgba(220,218,212,0.90)', 88);
+    drawStencil('exit_arrow', 'EXIT ➔', 'rgba(130,224,148,0.90)', 64);
+    drawStencil('roof_access', 'ROOF', 'rgba(226,184,64,0.90)', 78);
+    {
+      const [ox, oy] = cellOrigin('vent_louvre_dark');
+      ctx.fillStyle = 'rgba(18,20,22,0.84)';
+      ctx.fillRect(ox + 10, oy + 10, C - 20, C - 20);
+      for (let y = 18; y < C - 22; y += 22) {
+        ctx.fillStyle = 'rgba(110,116,120,0.55)';
+        ctx.fillRect(ox + 16, oy + y, C - 32, 6);
+      }
+    }
+
+    // Add deterministic Saltline distress chips over paint & stencil decals
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    for (let i = 0; i < 1600; i++) {
+      const dx = rnd() * S;
+      const dy = rnd() * S;
+      const col = Math.floor(dx / C);
+      const row = Math.floor(dy / C);
+      if (row === 0 && col < 4) continue; // keep soft gradient drips intact
+      ctx.fillStyle = `rgba(0,0,0,${0.18 + rnd() * 0.45})`;
+      const s = 1 + rnd() * 4;
+      ctx.fillRect(dx, dy, s, s * (0.5 + rnd()));
+    }
+    ctx.restore();
+
+    const tex = new THREE.CanvasTexture(cv);
+    tex.encoding = THREE.sRGBEncoding;
+    tex.anisotropy = _getMaxAniso();
+    tex.needsUpdate = true;
+    _markShared(tex);
+
+    const mat = new THREE.MeshStandardMaterial({
+      map: tex,
+      transparent: true,
+      depthWrite: false,
+      roughness: 0.72,
+      metalness: 0.08,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2
+    });
+    _markShared(mat);
+    _matCache.set('sl_decal_atlas', mat);
     return mat;
   }
 
@@ -973,9 +1410,13 @@ window.AshfallPBR = (() => {
   return {
     PRESETS,
     UVUnwrap,
+    DECAL_CELLS,
     getMaps,
     getMaterial,
     getGlassMaterial,
+    getDecalMaterial,
+    patchWorldMaterial,
+    patchWeaponMaterial,
     getEnvMap,
     clearCachesForQualityChange,
     markShared: _markShared

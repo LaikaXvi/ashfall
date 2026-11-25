@@ -266,6 +266,19 @@ window.VostokCityBuilder = (() => {
     if (!spec.skipHVAC) {
       A.addRooftopMechanical(world, cx, roofY, cz, w, d, seed);
     }
+    // Saltline structural/architectural layer: interior pendant luminaires, eave gutters/downspouts & louver vents
+    if (!spec.skipPendants && A.addInteriorPendantLights) {
+      const skipR = !spec.noStairs ? { cx: swX, cz: swZ, w: swW + 1.2, d: swD + 1.2 } : (elCore ? { cx: elCore.cx, cz: elCore.cz, w: elCore.w + 1.0, d: elCore.d + 1.0 } : null);
+      A.addInteriorPendantLights(world, cx, cz, w, d, floorY[1] - 0.16, { drop: Math.min(0.62, gH * 0.14), skipRect: skipR });
+    }
+    if (floors <= 5 && !spec.curtainWall && A.addEaveGutterAndDownspouts) {
+      A.addEaveGutterAndDownspouts(world, cx, cz, w, d, baseY, roofY);
+    }
+    if (A.addSlopedLouverVent && w >= 12) {
+      const ventSide = (spec.doors && spec.doors.south) ? 'north' : 'south';
+      const vz = ventSide === 'north' ? (cz - hz - 0.04) : (cz + hz + 0.04);
+      A.addSlopedLouverVent(world, cx, Math.min(roofY - 1.2, baseY + gH - 0.95), vz, 1.45, 0.88, ventSide);
+    }
 
     if (spec.footprintTag !== false) {
       world.cityFootprints.push({
@@ -774,9 +787,13 @@ window.VostokCityBuilder = (() => {
       }
       for (const px of [pgX - 11.2, pgX - 2.0, pgX + 6.8]) {
         for (const pz of [pgZ - 8.6, pgZ + 8.6]) {
-          world._addBox(px, py + deckH * 1.5, pz, 0.72, deckH * 3.0, 0.72, mats.bossDark, true);
+          A.addIBeam(world, px, py + 0.16, pz, px, py + deckH * 3.0, pz, 0.36, 0.24, mats.bossDark, true);
         }
       }
+      A.addTensionRodXBrace(world, pgX - 11.2, py + 0.4, pgZ - 8.6, pgX - 2.0, py + deckH * 2.9, pgZ - 8.6);
+      A.addDecal(world, pgX - 5.0, py + 0.17, pgZ - 1.0, 2.8, 2.8, 'oil_stain', 'floor', 0.4);
+      A.addDecal(world, pgX - 6.0, py + deckH + 0.17, pgZ + 2.0, 2.4, 2.4, 'bay_01', 'floor', 0.0);
+      A.addDecal(world, pgX - 6.0, py + deckH * 2 + 0.17, pgZ + 2.0, 2.4, 2.4, 'bay_02', 'floor', 0.0);
       world._addSignBoard(pgX, py + deckH * 3 + 1.2, pgZ + 10.2, 7.6, 2.0, 0, {
         title: 'DOWNTOWN PARKING',
         sub: 'DECK P-01 // ZAVOD-9 A/1 ACCESS',
@@ -818,6 +835,8 @@ window.VostokCityBuilder = (() => {
       world._addBox(292.6, fs.roofY + 5.4, -424.6, 4.6, 0.4, 4.6, mats.travertine, true);
       world._addSignBoard(287.5, eastY + 4.8, -410.1, 5.2, 1.7, 0, 'fire');
       world._addGunLocker(282.0, -416.0, Math.PI / 2, 'police_fire', 'Firehouse Rescue Gear Locker');
+      A.addDecal(world, 287.5, fs.baseY + 0.17, -419.0, 2.6, 2.6, 'oil_stain', 'floor', 0.2);
+      A.addDecal(world, 290.2, fs.baseY + 3.2, -410.22, 1.6, 1.1, 'fire_07', 'south');
     }
 
     // =========================================================================
@@ -990,6 +1009,14 @@ window.VostokCityBuilder = (() => {
       extraDoors: { west: [{ u: 13.0, w: 1.44, style: 'steel', label: 'Warehouse Office Door' }] },
       mapColor: '#4e5f6e'
     });
+    for (const bx of [360.0, 368.5, 377.0]) {
+      A.addIBeam(world, bx, eastY + 0.16, -425.2, bx, eastY + 5.9, -425.2, 0.30, 0.20, mats.metal, true);
+      A.addIBeam(world, bx, eastY + 0.16, -412.8, bx, eastY + 5.9, -412.8, 0.30, 0.20, mats.metal, true);
+    }
+    A.addTensionRodXBrace(world, 360.0, eastY + 0.4, -425.2, 368.5, eastY + 5.6, -425.2);
+    A.addDecal(world, 365.0, eastY + 0.17, -419.0, 3.2, 3.2, 'oil_stain', 'floor', 0.8);
+    A.addDecal(world, 355.2, eastY + 3.4, -412.5, 1.8, 1.1, 'bay_01', 'west');
+    A.addDecal(world, 355.2, eastY + 1.6, -414.5, 0.9, 0.9, 'hazard_voltage', 'west');
     _buildMultiStoryBlock(world, helpers, {
       name: 'East Ring Slab A', cx: 368.5, cz: -373, w: 16, d: 26, floors: 5, groundFloorH: 4.2, floorH: 3.3, shopfront: true,
       wallMat: mats.sandstone, doors: { west: { w: 1.54, style: 'wood' } },
@@ -1008,6 +1035,12 @@ window.VostokCityBuilder = (() => {
       extraDoors: { west: [{ u: 13.2, w: 1.48, style: 'steel', label: 'Garage Office Door' }] },
       mapColor: '#6e6c63'
     });
+    for (const bx of [362.0, 375.0]) {
+      A.addIBeam(world, bx, eastY + 0.16, -275.8, bx, eastY + 5.1, -275.8, 0.28, 0.18, mats.metal, true);
+      A.addIBeam(world, bx, eastY + 0.16, -261.2, bx, eastY + 5.1, -261.2, 0.28, 0.18, mats.metal, true);
+    }
+    A.addDecal(world, 366.5, eastY + 0.17, -269.0, 2.8, 2.8, 'oil_stain', 'floor', 1.4);
+    A.addDecal(world, 357.2, eastY + 3.2, -262.0, 1.6, 1.0, 'bay_02', 'west');
 
     // =========================================================================
     // 7. ELEVATED BOX-GIRDER RING EXPRESSWAY VIADUCT (x = 344, z = -422..-252, y = 13.6m)

@@ -42,8 +42,149 @@ window.AshfallRenderer = (() => {
     ring(innerRatio = 0.72, segs = 28) {
       const k = `ring_${Number(innerRatio).toFixed(3)}_${segs}`;
       return this.get(k, () => new THREE.RingGeometry(innerRatio, 1.0, segs));
+    },
+    beveledBox(w, h, d, tile = 2.0, bevel = null) {
+      const b = bevel !== null ? bevel : Math.min(0.022, Math.min(w, h, d) * 0.11);
+      const t = Math.max(0.25, tile || 2.0);
+      const key = `bbox_${w.toFixed(3)}_${h.toFixed(3)}_${d.toFixed(3)}_${t.toFixed(2)}_${b.toFixed(3)}`;
+      return this.get(key, () => {
+        const segs = b >= 0.003 ? 3 : 1;
+        const geo = new THREE.BoxGeometry(w, h, d, segs, segs, segs);
+        const pos = geo.attributes.position;
+        const norm = geo.attributes.normal;
+        const uv = geo.attributes.uv;
+        const hx = w * 0.5;
+        const hy = h * 0.5;
+        const hz = d * 0.5;
+        const invT = 1.0 / t;
+        if (b >= 0.003 && hx > b + 1e-4 && hy > b + 1e-4 && hz > b + 1e-4) {
+          const clampIn = (v, lim) => (Math.abs(v) > lim - 1e-5 ? Math.sign(v) * lim : Math.sign(v) * (lim - b));
+          const off = new THREE.Vector3();
+          for (let i = 0; i < pos.count; i++) {
+            let x = clampIn(pos.getX(i), hx);
+            let y = clampIn(pos.getY(i), hy);
+            let z = clampIn(pos.getZ(i), hz);
+            const cx = Math.max(-(hx - b), Math.min(hx - b, x));
+            const cy = Math.max(-(hy - b), Math.min(hy - b, y));
+            const cz = Math.max(-(hz - b), Math.min(hz - b, z));
+            off.set(x - cx, y - cy, z - cz);
+            if (off.lengthSq() > 1e-10) {
+              off.normalize();
+              const edges = (Math.abs(x) > hx - 1e-5 ? 1 : 0) + (Math.abs(y) > hy - 1e-5 ? 1 : 0) + (Math.abs(z) > hz - 1e-5 ? 1 : 0);
+              if (edges >= 2) {
+                x = cx + off.x * b;
+                y = cy + off.y * b;
+                z = cz + off.z * b;
+                norm.setXYZ(i, off.x, off.y, off.z);
+              }
+            }
+            pos.setXYZ(i, x, y, z);
+            const ax = Math.abs(norm.getX(i));
+            const ay = Math.abs(norm.getY(i));
+            const az = Math.abs(norm.getZ(i));
+            if (ax >= ay && ax >= az) uv.setXY(i, (z + hz) * invT, (y + hy) * invT);
+            else if (ay >= ax && ay >= az) uv.setXY(i, (x + hx) * invT, (z + hz) * invT);
+            else uv.setXY(i, (x + hx) * invT, (y + hy) * invT);
+          }
+        } else {
+          for (let i = 0; i < pos.count; i++) {
+            const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+            const ax = Math.abs(norm.getX(i));
+            const ay = Math.abs(norm.getY(i));
+            const az = Math.abs(norm.getZ(i));
+            if (ax >= ay && ax >= az) uv.setXY(i, (z + hz) * invT, (y + hy) * invT);
+            else if (ay >= ax && ay >= az) uv.setXY(i, (x + hx) * invT, (z + hz) * invT);
+            else uv.setXY(i, (x + hx) * invT, (y + hy) * invT);
+          }
+        }
+        pos.needsUpdate = true;
+        norm.needsUpdate = true;
+        uv.needsUpdate = true;
+        geo.setAttribute('uv2', uv);
+        return geo;
+      });
     }
   };
+
+  let _softShadowsInstalled = false;
+  function installSoftShadows(frustumSpan = 170.0, depthSpan = 345.0) {
+    if (_softShadowsInstalled) return true;
+    if (!THREE.ShaderChunk || !THREE.ShaderChunk.shadowmap_pars_fragment) return false;
+    const chunk = THREE.ShaderChunk.shadowmap_pars_fragment;
+    const startIdx = chunk.indexOf('float getShadow(');
+    const endIdx = chunk.indexOf('vec2 cubeToUV(');
+    if (startIdx < 0 || endIdx < 0 || endIdx < startIdx) return false;
+
+    const pcssGetShadow = `
+float slShadowIGN( vec2 p ) { return fract( 52.9829189 * fract( dot( p, vec2( 0.06711056, 0.00583715 ) ) ) ); }
+vec2 slShadowVogel( int i, int n, float phi ) {
+  float r = sqrt( ( float( i ) + 0.5 ) / float( n ) );
+  float th = float( i ) * 2.39996323 + phi;
+  return r * vec2( cos( th ), sin( th ) );
+}
+float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, float shadowRadius, vec4 shadowCoord ) {
+  float shadow = 1.0;
+  shadowCoord.xyz /= shadowCoord.w;
+  vec3 sc = shadowCoord.xyz;
+  bool inFrustum = sc.x >= 0.0 && sc.x <= 1.0 && sc.y >= 0.0 && sc.y <= 1.0;
+  if ( ! ( inFrustum && sc.z <= 1.0 ) ) return 1.0;
+  #if defined( SHADOWMAP_TYPE_PCF_SOFT )
+    vec2 texel = 1.0 / shadowMapSize;
+    vec2 dz = vec2( 0.0 );
+    #if defined( GL_OES_standard_derivatives ) || __VERSION__ >= 300
+      vec3 dx = dFdx( sc );
+      vec3 dy = dFdy( sc );
+      float det = dx.x * dy.y - dx.y * dy.x;
+      if ( abs( det ) > 1e-12 ) dz = vec2( dy.y * dx.z - dx.y * dy.z, dx.x * dy.z - dx.x * dx.z ) / det;
+      float maxSlope = 0.0025 / max( texel.x, texel.y );
+      dz = clamp( dz, vec2( -maxSlope ), vec2( maxSlope ) );
+    #endif
+    float zr = sc.z + shadowBias - ( abs( dz.x ) * texel.x + abs( dz.y ) * texel.y ) * 0.35;
+    float phi = slShadowIGN( gl_FragCoord.xy ) * 6.2831853;
+    vec2 searchR = ( 0.45 * shadowRadius ) / vec2( ${frustumSpan.toFixed(1)}, ${frustumSpan.toFixed(1)} );
+    float blk = 0.0, nb = 0.0;
+    for ( int i = 0; i < 6; i ++ ) {
+      vec2 o = slShadowVogel( i, 6, phi ) * searchR;
+      float d = unpackRGBAToDepth( texture2D( shadowMap, sc.xy + o ) );
+      float z = zr + dot( o, dz );
+      if ( d < z ) { blk += d; nb += 1.0; }
+    }
+    if ( nb < 0.5 ) return 1.0;
+    float avg = blk / nb;
+    float distM = max( zr - avg, 0.0 ) * ${depthSpan.toFixed(1)};
+    float penM = clamp( distM * 0.022 * shadowRadius, 0.012 * shadowRadius, 0.55 * shadowRadius );
+    vec2 filtR = max( vec2( penM ) / vec2( ${frustumSpan.toFixed(1)}, ${frustumSpan.toFixed(1)} ), texel * 1.15 );
+    float lit = 0.0;
+    for ( int i = 0; i < 12; i ++ ) {
+      vec2 o = slShadowVogel( i, 12, phi + 1.7 ) * filtR;
+      float d = unpackRGBAToDepth( texture2D( shadowMap, sc.xy + o ) );
+      lit += step( zr + dot( o, dz ), d );
+    }
+    lit /= 12.0;
+    vec2 edge = min( sc.xy, 1.0 - sc.xy );
+    shadow = mix( 1.0, lit, smoothstep( 0.0, 0.02, min( edge.x, edge.y ) ) );
+  #elif defined( SHADOWMAP_TYPE_PCF )
+    vec2 texel = 1.0 / shadowMapSize;
+    float zr = sc.z + shadowBias;
+    float phi = slShadowIGN( gl_FragCoord.xy ) * 6.2831853;
+    float lit = 0.0;
+    for ( int i = 0; i < 8; i ++ ) {
+      vec2 o = slShadowVogel( i, 8, phi ) * texel * shadowRadius * 1.35;
+      lit += step( zr, unpackRGBAToDepth( texture2D( shadowMap, sc.xy + o ) ) );
+    }
+    shadow = lit / 8.0;
+  #elif defined( SHADOWMAP_TYPE_VSM )
+    shadow = VSMShadow( shadowMap, shadowCoord.xy, sc.z + shadowBias );
+  #else
+    shadow = texture2DCompare( shadowMap, sc.xy, sc.z + shadowBias );
+  #endif
+  return shadow;
+}
+`;
+    THREE.ShaderChunk.shadowmap_pars_fragment = chunk.slice(0, startIdx) + pcssGetShadow + chunk.slice(endIdx);
+    _softShadowsInstalled = true;
+    return true;
+  }
 
   function configureRenderer(renderer) {
     if (!renderer) return;
@@ -56,6 +197,7 @@ window.AshfallRenderer = (() => {
     renderer.shadowMap.type = THREE.PCFSoftShadowMap !== undefined ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     renderer.shadowMap.autoUpdate = false;
     renderer.physicallyCorrectLights = false;
+    installSoftShadows();
   }
 
   // --------------------------------------------------------------------------
@@ -169,6 +311,10 @@ window.AshfallRenderer = (() => {
       marbleLobby: P.getMaterial('marble_lobby_veined', { tile: 2.6 }),
       plazaPaver: P.getMaterial('terracotta_plaza_paver', { tile: 2.4 }),
       whiteSteel: P.getMaterial('painted_bridge_white', { tile: 2.2 }),
+      galvanized: P.getMaterial('galvanized_spangle', { tile: 2.2 }),
+      corrugatedClean: P.getMaterial('corrugated_industrial', { tile: 2.4 }),
+      interiorLiner: P.getMaterial('interior_painted_plaster', { tile: 2.4, wet: 0.0 }),
+      decalAtlas: P.getDecalMaterial ? P.getDecalMaterial() : null,
       goldBrass: P.getMaterial('brass_casing', { color: 0xf0c456, roughness: 0.20, metalness: 0.95, tile: 1.0 }),
       surfaceBank: tx
     };
@@ -371,7 +517,7 @@ window.AshfallRenderer = (() => {
     const postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     const quadGeo = new THREE.PlaneGeometry(2, 2);
 
-    // Bloom Extract
+    // Bloom Extract with Karis firefly suppression
     const bloomExtractMat = new THREE.ShaderMaterial({
       uniforms: {
         tDiffuse: { value: rtScene.texture },
@@ -383,10 +529,11 @@ window.AshfallRenderer = (() => {
         uniform float uThresh;
         varying vec2 vUv;
         void main() {
-          vec3 c = texture2D(tDiffuse, vUv).rgb;
+          vec3 c = min(max(texture2D(tDiffuse, vUv).rgb, vec3(0.0)), vec3(36.0));
           float b = max(c.r, max(c.g, c.b));
           float soft = clamp((b - (uThresh - 0.18)) / 0.36, 0.0, 1.0);
-          float w = max(smoothstep(uThresh, uThresh + 0.45, b), soft * soft * 0.55);
+          float karis = 1.0 / (1.0 + b * 0.14);
+          float w = max(smoothstep(uThresh, uThresh + 0.45, b), soft * soft * 0.55) * karis;
           gl_FragColor = vec4(c * w, 1.0);
         }
       `,
@@ -420,7 +567,7 @@ window.AshfallRenderer = (() => {
     const bloomBlurScene = new THREE.Scene();
     bloomBlurScene.add(new THREE.Mesh(quadGeo, bloomBlurMat));
 
-    // Final Photorealistic Composite: Depth SSAO + HDR Bloom + CAS Sharpening + Tarkov/DMZ ACES Filmic Grade + NVG/Rad/UW
+    // Final Photorealistic Composite: Linear View-Space Normal SSAO + Sunlit Luma Mask + HDR Bloom + CAS + ACES
     const postMat = new THREE.ShaderMaterial({
       uniforms: {
         tDiffuse: { value: rtScene.texture },
@@ -430,6 +577,11 @@ window.AshfallRenderer = (() => {
         uEnableAO: { value: 1.0 },
         uEnableBloom: { value: 1.0 },
         uRes: { value: new THREE.Vector2(rtW, rtH) },
+        uTexel: { value: new THREE.Vector2(1 / rtW, 1 / rtH) },
+        uTanHalf: { value: new THREE.Vector2(1.0, 0.76) },
+        uNear: { value: 0.05 },
+        uFar: { value: 1420.0 },
+        uAspect: { value: rtW / Math.max(1, rtH) },
         uScale: { value: curScale },
         uExposure: { value: 1.08 },
         uLevels: { value: 48.0 },
@@ -454,6 +606,11 @@ window.AshfallRenderer = (() => {
         uniform float uEnableAO;
         uniform float uEnableBloom;
         uniform vec2 uRes;
+        uniform vec2 uTexel;
+        uniform vec2 uTanHalf;
+        uniform float uNear;
+        uniform float uFar;
+        uniform float uAspect;
         uniform float uScale;
         uniform float uExposure;
         uniform float uLevels;
@@ -467,6 +624,7 @@ window.AshfallRenderer = (() => {
         float b2(vec2 a) { a = floor(a); return fract(dot(a, vec2(0.5, a.y * 0.75))); }
         float b4(vec2 a) { return b2(0.5 * a) * 0.25 + b2(a); }
         float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
+        float ign(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
 
         vec3 acesFilmic(vec3 x) {
           float a = 2.51;
@@ -477,23 +635,64 @@ window.AshfallRenderer = (() => {
           return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
         }
 
+        float linearZ(float dRaw) {
+          float d01 = clamp((dRaw - 0.05) / 0.95, 0.0, 0.99999);
+          return (uNear * uFar) / max(1e-4, uFar - d01 * (uFar - uNear));
+        }
+
+        vec3 viewPos(vec2 uv, float z) {
+          return vec3((uv * 2.0 - 1.0) * uTanHalf * z, -z);
+        }
+
         float computeSSAO(vec2 uv) {
-          float d0 = texture2D(tDepth, uv).r;
-          if (d0 >= 0.9994 || d0 <= 0.0001) return 1.0;
-          float radPx = mix(4.5, 11.0, 1.0 - smoothstep(0.92, 0.999, d0));
-          vec2 px = radPx / uRes;
-          float rot = hash(gl_FragCoord.xy) * 6.28318;
-          float occ = 0.0;
-          float maxRange = max(0.00035, (1.0 - d0) * 0.16);
-          for (int i = 0; i < 6; i++) {
-            float ang = rot + float(i) * 1.0471975;
-            vec2 off = vec2(cos(ang), sin(ang)) * px * (0.45 + 0.55 * fract(float(i) * 0.618));
-            float ds = texture2D(tDepth, clamp(uv + off, 0.002, 0.998)).r;
-            float diff = d0 - ds;
-            float rangeW = smoothstep(maxRange, 0.0, abs(diff));
-            occ += step(0.00008, diff) * rangeW;
+          float d0Raw = texture2D(tDepth, uv).r;
+          if (d0Raw < 0.0503 || d0Raw >= 0.9994) return 1.0;
+          float z0 = linearZ(d0Raw);
+          if (z0 > 130.0) return 1.0;
+          vec3 P = viewPos(uv, z0);
+
+          vec2 ox = vec2(uTexel.x * 1.5, 0.0);
+          vec2 oy = vec2(0.0, uTexel.y * 1.5);
+          float dl = texture2D(tDepth, clamp(uv - ox, 0.001, 0.999)).r;
+          float dr = texture2D(tDepth, clamp(uv + ox, 0.001, 0.999)).r;
+          float dd = texture2D(tDepth, clamp(uv - oy, 0.001, 0.999)).r;
+          float du = texture2D(tDepth, clamp(uv + oy, 0.001, 0.999)).r;
+          float zl = dl < 0.0503 ? z0 : linearZ(dl);
+          float zr = dr < 0.0503 ? z0 : linearZ(dr);
+          float zd = dd < 0.0503 ? z0 : linearZ(dd);
+          float zu = du < 0.0503 ? z0 : linearZ(du);
+
+          vec3 dx = abs(zl - z0) < abs(zr - z0) ? (P - viewPos(uv - ox, zl)) : (viewPos(uv + ox, zr) - P);
+          vec3 dy = abs(zd - z0) < abs(zu - z0) ? (P - viewPos(uv - oy, zd)) : (viewPos(uv + oy, zu) - P);
+          vec3 n = cross(dx, dy);
+          float nLen = length(n);
+          if (nLen < 1e-6) return 1.0;
+          n /= nLen;
+
+          float R = 0.56 * (0.65 + 0.35 * clamp(z0 / 12.0, 0.0, 1.0));
+          float rUv = clamp(R / max(0.25, 2.0 * z0 * uTanHalf.y), 3.0 * uTexel.y, 0.09);
+          float R2 = R * R;
+          float rot = ign(gl_FragCoord.xy) * 6.2831853;
+          float sum = 0.0;
+          float valid = 0.0;
+          for (int i = 0; i < 10; i++) {
+            float a = (float(i) + 0.5) / 10.0;
+            float th = a * 6.2831853 * 3.0 + rot;
+            vec2 off = vec2(cos(th) / max(0.5, uAspect), sin(th)) * a * rUv;
+            vec2 uv2 = clamp(uv + off, 0.002, 0.998);
+            float dsRaw = texture2D(tDepth, uv2).r;
+            if (dsRaw < 0.0503) continue;
+            float z2 = linearZ(dsRaw);
+            vec3 v = viewPos(uv2, z2) - P;
+            float vv = dot(v, v);
+            float vn = dot(v, n);
+            float f = max(R2 - vv, 0.0);
+            sum += f * f * f * max((vn - (0.015 + 0.004 * z0)) / (vv + 0.004), 0.0);
+            valid += 1.0;
           }
-          return clamp(1.0 - (occ / 6.0) * 0.42, 0.52, 1.0);
+          if (valid < 1.0) return 1.0;
+          float ao = max(0.32, 1.0 - 1.35 * sum * 5.0 / (R2 * R2 * R2 * valid));
+          return mix(ao, 1.0, smoothstep(65.0, 130.0, z0));
         }
 
         void main() {
@@ -518,7 +717,10 @@ window.AshfallRenderer = (() => {
 
           if (uHasDepth > 0.5 && uEnableAO > 0.5 && uScale <= 1.01) {
             float ao = computeSSAO(uv);
-            hdr *= mix(1.0, ao, 0.85);
+            float hdrLum = dot(hdr, vec3(0.2126, 0.7152, 0.0722));
+            float ambMask = 1.0 - 0.72 * smoothstep(0.20, 0.95, hdrLum * uExposure);
+            float a = mix(1.0, ao, 0.90 * ambMask);
+            hdr *= mix(vec3(a), vec3(1.0), vec3(0.0, 0.03, 0.07));
           }
 
           if (uEnableBloom > 0.5) {
@@ -581,6 +783,8 @@ window.AshfallRenderer = (() => {
         rtBloomB.setSize(nbW, nbH);
       }
       postMat.uniforms.uRes.value.set(rtW, rtH);
+      postMat.uniforms.uTexel.value.set(1 / rtW, 1 / rtH);
+      postMat.uniforms.uAspect.value = rtW / Math.max(1, rtH);
       postMat.uniforms.uScale.value = curScale;
       if (renderer && renderer.toneMappingExposure !== undefined) {
         postMat.uniforms.uExposure.value = renderer.toneMappingExposure;
@@ -616,14 +820,32 @@ window.AshfallRenderer = (() => {
         }
         renderer.setRenderTarget(rtScene);
         renderer.autoClear = false;
+        if (gl) gl.depthRange(0.0, 1.0);
         renderer.clear();
       },
-      render(sc, cam, clearDepthFirst = false) {
+      render(sc, cam, isViewmodelPass = false) {
         if (!sc || !cam) return;
-        if (clearDepthFirst) renderer.clearDepth();
+        if (!isViewmodelPass) {
+          if (cam.fov !== undefined) {
+            const tanY = Math.tan(THREE.MathUtils.degToRad(cam.fov * 0.5));
+            const asp = cam.aspect || (rtW / Math.max(1, rtH));
+            postMat.uniforms.uTanHalf.value.set(tanY * asp, tanY);
+            postMat.uniforms.uAspect.value = asp;
+          }
+          if (cam.near !== undefined) postMat.uniforms.uNear.value = cam.near;
+          if (cam.far !== undefined) postMat.uniforms.uFar.value = cam.far;
+          if (gl && depthTex) gl.depthRange(0.05, 1.0);
+        } else {
+          if (gl && depthTex) {
+            gl.depthRange(0.0, 0.05);
+          } else {
+            renderer.clearDepth();
+          }
+        }
         renderer.render(sc, cam);
       },
       end() {
+        if (gl) gl.depthRange(0.0, 1.0);
         const lightingQ = (window.GFX_SETTINGS && typeof window.GFX_SETTINGS.lighting === 'number')
           ? window.GFX_SETTINGS.lighting : 3;
         if (lightingQ >= 2) {
@@ -657,6 +879,7 @@ window.AshfallRenderer = (() => {
     GeoPool,
     InstancedPropBatcher,
     configureRenderer,
+    installSoftShadows,
     getEnvMap,
     getSurfaceBank,
     getWorldMaterialSet,
