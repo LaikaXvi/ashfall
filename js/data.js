@@ -3,15 +3,15 @@
 // Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
 // With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'Alpha RC 0.2.91',
+  VERSION: 'Alpha RC 0.2.92',
   VERSION_INFO: {
     major: 0,
     minor: 2,
-    patch: 91,
+    patch: 92,
     channel: 'Alpha', // Alpha | Beta — never blank while major === 0
     stage: 'RC',     // RC = Release Candidate
     updated: 'Nov 24, 2026',
-    changelog: 'Fixed Social Drawer positioning (right-anchored slide-out overlay on <body> so it hides cleanly offscreen right and no longer blocks Hideout UI panels), clean chat undocking, ESC/controller B close support + Direct 3D FOB boot (removed FOB/Tac-Menu entry modal), ESC Tac-Menu toggle, and TAB / D-Pad Down shortcut to the Deploy Stash, Backpack & Operator Loadout screen + Persisted whispers/notifications + prototype account system (ID, level, settings, export/import) + unified [user]/[Match]/[Party] chat channels (Tab/L3, hold-Start chatbox) + Drawer-canonical social: live P2P whispers over multiplayer mesh + Notifications tab (CHAT|NOTIFICATIONS|PARTY) with unread badges, widget bell + dismiss context menu (click/A) + Unified frosted-glass HUD/UI + top menu tab bar (Q/E, LB/RB) + Party & Social slide-out (FOB/Party chat, Open/Invite/Closed) + Koschei Complex ZAVOD-9 expansion + Engine Remaster: 4 sector bunker entrances across Vostok, Factory Admin & Shopkeeper dead-drop barter, Dual Bosses (The Rhinoceros & The Sniper) with C4 laser tripwires and Weapons Case Vault, R4D UV Detector cipher boards, single-WebGL-context consolidation, GeoPool/PBR shader pipeline, and O(1) AABB slab raycaster.',
+    changelog: 'Replaced Social Drawer header text tabs with compact SVG glyph icons + dynamic active title so all 4 tabs and unread badges fit cleanly without clipping, plus LB/RB controller drawer tab cycling + Fixed Social Drawer positioning (right-anchored slide-out overlay on <body> so it hides cleanly offscreen right and no longer blocks Hideout UI panels), clean chat undocking, ESC/controller B close support + Direct 3D FOB boot (removed FOB/Tac-Menu entry modal), ESC Tac-Menu toggle, and TAB / D-Pad Down shortcut to the Deploy Stash, Backpack & Operator Loadout screen + Persisted whispers/notifications + prototype account system (ID, level, settings, export/import) + unified [user]/[Match]/[Party] chat channels (Tab/L3, hold-Start chatbox) + Drawer-canonical social: live P2P whispers over multiplayer mesh + Notifications tab (CHAT|NOTIFICATIONS|PARTY) with unread badges, widget bell + dismiss context menu (click/A) + Unified frosted-glass HUD/UI + top menu tab bar (Q/E, LB/RB) + Party & Social slide-out (FOB/Party chat, Open/Invite/Closed) + Koschei Complex ZAVOD-9 expansion + Engine Remaster: 4 sector bunker entrances across Vostok, Factory Admin & Shopkeeper dead-drop barter, Dual Bosses (The Rhinoceros & The Sniper) with C4 laser tripwires and Weapons Case Vault, R4D UV Detector cipher boards, single-WebGL-context consolidation, GeoPool/PBR shader pipeline, and O(1) AABB slab raycaster.',
     get semver() { return `${this.major}.${this.minor}.${this.patch}`; },
     get label() { return `${this.channel} ${this.stage} ${this.major}.${this.minor}.${this.patch}`; }
   },

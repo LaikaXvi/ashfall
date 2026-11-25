@@ -2867,12 +2867,24 @@ class GameUI {
   setDrawerTab(name) {
     this.drawerTab = name;
     document.querySelectorAll('.drawer-tab-btn').forEach((b) => b.classList.toggle('active', b.dataset.drawer === name));
+    const titleEl = document.getElementById('drawer-head-title');
+    if (titleEl) {
+      const titles = { chat: 'CHAT', notifs: 'ALERTS', party: 'PARTY', friends: 'FRIENDS' };
+      titleEl.textContent = titles[name] || 'SOCIAL';
+    }
     for (const p of ['chat', 'notifs', 'party', 'friends']) {
       const el = document.getElementById(`drawer-pane-${p}`);
       if (el) el.classList.toggle('hidden', p !== name);
     }
     if (name === 'chat' && this.socialDrawerOpen) { this._dockLobbyChat(); this.clearWhisperNotifs(); }
     else { this._undockLobbyChat(); }
+  }
+  cycleDrawerTab(dir = 1) {
+    const order = ['chat', 'notifs', 'party', 'friends'];
+    const cur = order.indexOf(this.drawerTab);
+    const next = order[((cur < 0 ? 2 : cur) + dir + order.length) % order.length];
+    if (window.soundEngine && window.soundEngine.playTabSwitch) { try { window.soundEngine.playTabSwitch(); } catch (e) {} }
+    this.setDrawerTab(next);
   }
   _normalizePartyVisibility() {
     const v = this.profile && this.profile.social && this.profile.social.partyVisibility;

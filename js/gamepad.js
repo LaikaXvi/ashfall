@@ -926,10 +926,13 @@ class GamepadController {
       }
     }
 
-    // LB (4) / RB (5): Quick-switch tabs in Hideout or Gunsmith!
+    // LB (4) / RB (5): Quick-switch tabs in Social Drawer, Hideout or Gunsmith!
     if (this._justPressed(pad, 4) || this._justPressed(pad, 5)) {
       const dir = this._justPressed(pad, 5) ? 1 : -1;
-      if (gunsmith && gunsmith.isOpen) {
+      if (ui && ui.socialDrawerOpen && ui.cycleDrawerTab) {
+        ui.cycleDrawerTab(dir);
+        this._setMenuFocus(null);
+      } else if (gunsmith && gunsmith.isOpen) {
         gunsmith.setMode(gunsmith.mode === 'attachments' ? 'customize' : 'attachments');
       } else if (ui && ui.cycleMenuTab) {
         ui.cycleMenuTab(dir);

@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ASHFALL // 3D Extraction Looter-Shooter</title>
-  <link rel="stylesheet" href="css/style.css?v=0291" />
+  <link rel="stylesheet" href="css/style.css?v=0292" />
   <!-- Three.js r128 UMD for zero-build compatibility (works on both http:// and file://) -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
   <script src="js/vendor/GLTFLoader.js?v=240"></script>
@@ -61,14 +61,27 @@
   <!-- Party & Social slide-out (right side, top-level overlay outside scaled menu container) -->
   <aside id="social-drawer" class="social-drawer" aria-label="Party and Social">
     <div class="drawer-head glass-panel">
-      <div class="drawer-title">COMMS // SQUAD</div>
+      <div id="drawer-head-title" class="drawer-title">PARTY</div>
       <div class="drawer-tabs">
-        <button class="drawer-tab-btn" data-drawer="chat">CHAT<span id="badge-chat" class="tab-badge hidden">0</span></button>
-        <button class="drawer-tab-btn" data-drawer="notifs">NOTIFICATIONS<span id="badge-notifs" class="tab-badge hidden">0</span></button>
-        <button class="drawer-tab-btn active" data-drawer="party">PARTY</button>
-        <button class="drawer-tab-btn" data-drawer="friends">FRIENDS<span id="badge-friends" class="tab-badge hidden">0</span></button>
+        <button class="drawer-tab-btn" data-drawer="chat" title="Chat &amp; Whispers" aria-label="Chat">
+          <svg class="drawer-tab-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 14a2 2 0 0 1-2 2H8l-5 4V6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M8 9h8M8 12.5h5"/></svg>
+          <span id="badge-chat" class="tab-badge hidden">0</span>
+        </button>
+        <button class="drawer-tab-btn" data-drawer="notifs" title="Notifications" aria-label="Notifications">
+          <svg class="drawer-tab-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 8.5-3 8.5h18S18 15 18 8"/><path d="M13.73 20a2 2 0 0 1-3.46 0"/></svg>
+          <span id="badge-notifs" class="tab-badge hidden">0</span>
+        </button>
+        <button class="drawer-tab-btn active" data-drawer="party" title="Party &amp; Squad" aria-label="Party">
+          <svg class="drawer-tab-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5L4.5 6v5.8c0 4.8 3.2 8.9 7.5 10.2 4.3-1.3 7.5-5.4 7.5-10.2V6L12 2.5z"/><path d="M8.8 12.8L12 9.5l3.2 3.3M9.8 15.8L12 13.6l2.2 2.2"/></svg>
+        </button>
+        <button class="drawer-tab-btn" data-drawer="friends" title="Friends &amp; Online" aria-label="Friends">
+          <svg class="drawer-tab-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.2 19.5c0-3.1 2.6-5.5 5.8-5.5s5.8 2.4 5.8 5.5"/><circle cx="17.2" cy="8.8" r="2.5"/><path d="M15.8 14.3c2.7.4 4.7 2.4 4.7 5.2"/></svg>
+          <span id="badge-friends" class="tab-badge hidden">0</span>
+        </button>
       </div>
-      <button id="btn-close-drawer" class="btn-small" title="Close [R3 / Esc]">X</button>
+      <button id="btn-close-drawer" class="btn-small" title="Close [R3 / Esc]" aria-label="Close Social Drawer">
+        <svg class="drawer-tab-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
     </div>
     <div id="drawer-pane-party" class="drawer-pane">
       <div class="party-box">
@@ -123,7 +136,7 @@
     <!-- IMPORTANT: Update version in GAME_DATA.VERSION_INFO (js/data.js) and here with EVERY new commit — 0.X.XX pre-release only! -->
     <div class="menu-version-stack">
       <button id="menu-update-badge" class="menu-update-badge hidden" title="Click to reload into the latest version">NEW VERSION AVAILABLE</button>
-      <div id="menu-version-badge" class="menu-version-badge">Alpha RC 0.2.91</div>
+      <div id="menu-version-badge" class="menu-version-badge">Alpha RC 0.2.92</div>
     </div>
     <!-- Minimal Sub-Menu Top Bar (Top-Left Back Button only — no redundant nav band) -->
     <header id="menu-topbar" class="hideout-header glass-panel">
@@ -1427,7 +1440,7 @@
   </div>
 
   <!-- Scripts (IMPORTANT: Bump ?v= cache-busters alongside GAME_DATA.VERSION_INFO with every new commit — 0.X.XX only!) -->
-  <script src="js/data.js?v=0291"></script>
+  <script src="js/data.js?v=0292"></script>
   <script src="js/renderer.js?v=0289"></script>
   <script src="js/rig.js?v=0289"></script>
   <script src="js/animation.js?v=0277"></script>
@@ -1446,11 +1459,11 @@
   <script src="js/squad.js?v=0281"></script>
   <script src="js/multiplayer.js?v=264"></script>
   <script src="js/player.js?v=0277"></script>
-  <script src="js/gamepad.js?v=0291"></script>
+  <script src="js/gamepad.js?v=0292"></script>
   <script src="js/gunsmith.js?v=0289"></script>
   <script src="js/matchmaking.js?v=0289"></script>
   <script src="js/hideout.js?v=0277"></script>
-  <script src="js/ui.js?v=0291"></script>
+  <script src="js/ui.js?v=0292"></script>
   <script src="js/console.js?v=0281"></script>
   <script src="js/main.js?v=0291"></script>
 </body>
