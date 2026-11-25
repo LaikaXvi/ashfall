@@ -4735,6 +4735,85 @@ class WastelandWorld {
       this._addWorkbenchTable(262, -231, 0, [
         { id: 'carbon_fibre_sample', qty: 1 }, { id: 'metallic_alloy', qty: 2 }, { id: 'tools', qty: 2 }
       ], 3.75);
+      // ---- AM-City style site works: scaffold rings, stair bulkheads, formwork tables, gate frames ----
+      const scaffoldRing = (tx, tz, rad) => {
+        const R = rad + 1.4, ty = this.getTerrainHeight(tx, tz);
+        for (let k = 0; k < 8; k++) {
+          const a = (k / 8) * Math.PI * 2;
+          const px = tx + Math.cos(a) * R, pz = tz + Math.sin(a) * R;
+          this._addBox(px, ty + 3.65, pz, 0.14, 7.3, 0.14, this._materials.metal, true);
+          const aMid = ((k + 0.5) / 8) * Math.PI * 2;
+          const chord = 2 * R * Math.sin(Math.PI / 8) * 0.96;
+          const mx = tx + Math.cos(aMid) * R, mz = tz + Math.sin(aMid) * R;
+          if (A && A.addOrientedBox) {
+            A.addOrientedBox(this, mx, ty + 3.5, mz, chord, 0.09, 0.55, this._materials.wood, 0, -aMid + Math.PI * 0.5, 0, false);
+            A.addOrientedBox(this, mx, ty + 6.9, mz, chord, 0.09, 0.12, this._materials.metal, 0, -aMid + Math.PI * 0.5, 0, false);
+          }
+        }
+      };
+      scaffoldRing(240, -218, 9.6);
+      scaffoldRing(262, -234, 8.6);
+      // Rooftop stair bulkhead huts (open side faces the tower core)
+      const bulkhead = (hx, hz, roofY) => {
+        const m = this._materials.concrete;
+        this._addBox(hx - 1.2, roofY + 1.2, hz, 0.25, 2.4, 2.4, m, true);
+        this._addBox(hx, roofY + 1.2, hz - 1.2, 2.4, 2.4, 0.25, m, true);
+        this._addBox(hx, roofY + 1.2, hz + 1.2, 2.4, 2.4, 0.25, m, true);
+        this._addBox(hx, roofY + 2.5, hz, 2.65, 0.25, 2.65, m, false);
+      };
+      bulkhead(236.6, -221.4, this.getTerrainHeight(240, -218) + 6 * 3.65);
+      bulkhead(259.5, -237.8, this.getTerrainHeight(262, -234) + 5 * 3.65);
+      // Formwork tables + rebar bundles on the roof terraces (clear of beacons, stairs & bulkheads)
+      const formTable = (fx, fz, fy) => {
+        this._addBox(fx, fy + 0.38, fz, 1.6, 0.75, 0.9, this._materials.wood, true);
+        const rb = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 1.5, 8), this._materials.metal);
+        rb.rotation.z = Math.PI / 2;
+        rb.position.set(fx, fy + 0.85, fz);
+        this.scene.add(rb);
+      };
+      formTable(236, -215, this.getTerrainHeight(240, -218) + 6 * 3.65);
+      formTable(245, -220.5, this.getTerrainHeight(240, -218) + 6 * 3.65);
+      formTable(259, -231, this.getTerrainHeight(262, -234) + 5 * 3.65);
+      formTable(264, -234.5, this.getTerrainHeight(262, -234) + 5 * 3.65);
+      // Tower gate frames on the south rim + ID boards on the lift-tube core
+      const gateFrame = (tx, tz, rad) => {
+        const gy = this.getTerrainHeight(tx, tz);
+        this._addBox(tx - 1.5, gy + 1.3, tz + rad - 0.2, 0.3, 2.6, 0.3, this._materials.bossDark, true);
+        this._addBox(tx + 1.5, gy + 1.3, tz + rad - 0.2, 0.3, 2.6, 0.3, this._materials.bossDark, true);
+        this._addBox(tx, gy + 2.75, tz + rad - 0.2, 3.3, 0.3, 0.3, this._materials.hazardAmber, false);
+      };
+      gateFrame(240, -218, 9.6);
+      gateFrame(262, -234, 8.6);
+      this._addSignBoard(240, this.getTerrainHeight(240, -218) + 1.7, -218 + 1.78, 3.0, 1.1, 0, {
+        title: 'TOWER A — NORTH', sub: 'AM-CITY LIFT TUBE // 6 FLOORS', bg: '#262116', accent: '#ff9800'
+      });
+      this._addSignBoard(262, this.getTerrainHeight(262, -234) + 1.7, -234 + 1.78, 3.0, 1.1, 0, {
+        title: 'TOWER B — SOUTH', sub: 'AM-CITY LIFT TUBE // 5 FLOORS', bg: '#262116', accent: '#ff9800'
+      });
+      // Site perimeter fence (concrete barriers, gate gap facing the boulevard approach)
+      {
+        const fx = 252, fz = -226, fr = 26, gateAng = Math.atan2(-20, -10);
+        for (let k = 0; k < 16; k++) {
+          const aMid = ((k + 0.5) / 16) * Math.PI * 2;
+          let da = Math.abs(aMid - gateAng) % (Math.PI * 2);
+          if (da > Math.PI) da = Math.PI * 2 - da;
+          if (da < 0.24) continue;
+          const px = fx + Math.cos(aMid) * fr, pz = fz + Math.sin(aMid) * fr;
+          const segL = 2 * fr * Math.sin(Math.PI / 16) * 0.94;
+          const py = this.getTerrainHeight(px, pz);
+          this._addBox(px, py + 0.55, pz, 0.4, 1.1, segL, this._materials.darkConcrete, true);
+          const bx2 = fx + Math.cos(aMid) * (fr + 0.5), bz2 = fz + Math.sin(aMid) * (fr + 0.5);
+          this._addBox(bx2, py + 0.35, bz2, 0.5, 0.7, segL * 0.96, this._materials.concrete, true);
+        }
+      }
+      // Site containers + material pallets
+      this._addBox(278, this.getTerrainHeight(278, -215.5) + 1.3, -215.5, 6.1, 2.6, 2.45, this._materials.rustBlue, true);
+      this._addBox(278, this.getTerrainHeight(278, -219) + 1.3, -219, 6.1, 2.6, 2.45, this._materials.rustRed, true);
+      this._addBox(233, this.getTerrainHeight(233, -213) + 0.55, -213, 1.2, 1.1, 1.2, this._materials.wood, true);
+      this._addBox(247, this.getTerrainHeight(247, -212) + 0.55, -212, 1.2, 1.1, 1.2, this._materials.wood, true);
+      this._addBox(256, this.getTerrainHeight(256, -229) + 0.55, -229, 1.2, 1.1, 1.2, this._materials.wood, true);
+      this._addBox(268, this.getTerrainHeight(268, -238) + 0.55, -238, 1.2, 1.1, 1.2, this._materials.wood, true);
+
 
       // 38m Open-Lattice Construction Tower Crane overlooking both Circular Towers!
       const crX = 251, crZ = -212;
