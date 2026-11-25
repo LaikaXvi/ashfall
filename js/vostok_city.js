@@ -500,7 +500,7 @@ window.VostokCityBuilder = (() => {
       }
       // ---- curtain walls per office floor (spandrel + glass + header) ----
       for (let fl = 1; fl <= 4; fl++) {
-        const yB = fY[fl - 1];
+        const yB = fY[fl];
         for (const sgn of [-1, 1]) {
           const z = CZ + sgn * 18 / 2;
           box(266, yB + 0.5, z, 30, 1.0, 0.3, mats.concrete, true);
@@ -522,6 +522,11 @@ window.VostokCityBuilder = (() => {
           box(dx, yB + 0.38, dz + 0.6, 1.6, 0.75, 0.8, mats.wood, true);
         }
       }
+      // ---- mechanical floor shell (vents level) ----
+      box(266, fY[5] + 1.3, -375, 30, 2.6, 0.3, mats.concrete, true);
+      box(266, fY[5] + 1.3, -357, 30, 2.6, 0.3, mats.concrete, true);
+      box(251, fY[5] + 1.3, -366, 0.3, 2.6, 18, mats.concrete, true);
+      box(281, fY[5] + 1.3, -366, 0.3, 2.6, 18, mats.concrete, true);
       // ---- corner piers + white X-brace exoskeleton (Al-Mazrah signature) ----
       for (const [px, pz] of [[252, -374], [280, -374], [252, -358], [280, -358]]) {
         box(px, by + totalH / 2, pz, 1.0, totalH, 1.0, mats.concrete, true);
