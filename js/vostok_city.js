@@ -600,7 +600,8 @@ window.VostokCityBuilder = (() => {
       world._addPartition(276, -381, 276, -371, roofY, 3.4, [{ at: -376, w: 1.5, door: 'wood', label: 'Phonic Reception' }]);
       world._addPartition(260, -376, 270, -376, roofY, 3.4, [{ at: 265, w: 2.0, label: 'Phonic Restroom' }]);
       box(266, roofY + 3.55, -376, 32.5, 0.3, 10.5, mats.darkConcrete, true);
-      box(266, roofY + 4.2, -381, 32, 1.0, 0.25, mats.concrete, true);
+      box(256, roofY + 4.2, -381, 12, 1.0, 0.25, mats.concrete, true);
+      box(276, roofY + 4.2, -381, 12, 1.0, 0.25, mats.concrete, true);
       box(266, roofY + 1.6, -382.5, 6, 0.25, 1.2, mats.metal, false);
       box(266, roofY + 3.0, -382.5, 6, 0.25, 1.2, mats.metal, false);
       // ---- SOUTH BLOCK: Actibase Office + cubicles + lobby + edge walk ----
@@ -648,11 +649,18 @@ window.VostokCityBuilder = (() => {
       box(298.5, roofY + 1.5, -366, 0.3, 3.0, 0.3, mats.metal, true);
       box(301.5, roofY + 1.5, -366, 0.3, 3.0, 0.3, mats.metal, true);
       box(301.2, roofY + 2.2, -366, 0.9, 0.2, 5.0, mats.metal, true);
+      box(298, roofY + 0.6, -363.5, 1.2, 1.2, 1.2, mats.wood, true);
+      box(298, roofY + 1.8, -363.5, 1.2, 1.2, 1.2, mats.wood, true);
       // ---- tilted south scaffolding + west crane platforms on a wire ----
       for (const sx of [258, 266, 274]) {
         if (A && A.pushRotatedBeam) A.pushRotatedBeam(world, sx, roofY - 1.2, -373.8, sx, roofY + 0.4, -375.6, 0.22, 0.22, mats.hazardAmber, false);
+        if (A && A.pushRotatedBeam) A.pushRotatedBeam(world, sx, roofY - 1.2, -353.5, sx, roofY + 0.4, -351.8, 0.22, 0.22, mats.hazardAmber, false);
       }
       box(242.5, roofY + 3.5, -366, 0.25, 7.0, 0.25, mats.metal, true);
+      box(236.5, roofY + 5.9, -366, 0.08, 1.2, 0.08, mats.metal, false);
+      box(238.1, roofY + 5.77, -366, 0.08, 0.95, 0.08, mats.metal, false);
+      box(239.3, roofY + 5.37, -366, 0.08, 1.33, 0.08, mats.metal, false);
+      box(240.9, roofY + 5.23, -366, 0.08, 1.07, 0.08, mats.metal, false);
       if (A && A.pushRotatedBeam) A.pushRotatedBeam(world, 236.5, roofY + 8.5, -366, 242.5, roofY + 7.0, -366, 0.06, 0.06, mats.metal, false);
       box(237.3, roofY + 5.2, -366, 2.2, 0.2, 1.1, mats.wood, true);
       box(240.1, roofY + 4.6, -366, 2.2, 0.2, 1.1, mats.wood, true);
