@@ -444,175 +444,287 @@ window.VostokCityBuilder = (() => {
     addBlockCurb(81.0, -320.5, 25, 38); // Channel 7 Broadcast Block
 
     // =========================================================================
-    // 4. THE HIGHRISE 3-STRUCTURE SKYSCRAPER COMPLEX (Col E2: Tower to 52.4m / 68.6m Spire!)
+    // 4. VOSTOK HIGHRISE — MWIII Highrise MP map blockout atop an Al-Mazrah tower
+    //    (Phonic Office N + Actibase Office S + Helipad Center + Pit East + Crane West,
+    //     full tower below: lobby, elevator shafts, stairs, offices, mech, porte-cochere + Hummer EV)
     // =========================================================================
     {
-      // 1) Main South Skyscraper: 14 Stories -> 5.8m Lobby + 3.8m 2F + 9-story Curtain-Wall Shaft + 3.8m 13F Boss Suite -> 52.4m MW2 Helipad Roof!
-      const ms = _buildMultiStoryBlock(world, helpers, {
-        name: 'Vostok Highrise Main',
-        shortLabel: 'HIGHRISE 14F',
-        cx: 266.0, cz: -366.0, w: 28, d: 16,
-        floors: 12, // floors 0..11 => floorY[12] = 52.42m (14-story urban monument scale!)
-        groundFloorH: 5.8,
-        floorH: 3.60,
-        curtainWall: true,
-        windowPitch: 3.9,
-        pilasterPitch: 5.6,
-        shaftStartFloor: 2,
-        shaftEndFloor: 10,
-        noRoofStairs: false,
-        stairWest: true,
-        elevatorCutout: { cx: 275.5, cz: -366.0, w: 6.2, d: 9.0 },
-        wallMat: mats.curtainSpandrel || mats.bossDark,
-        upperMat: mats.curtainSpandrel || mats.concrete,
-        trimMat: mats.ribbedConcrete || mats.darkConcrete,
-        floorMat: mats.marbleLobby || mats.floorTile,
-        doors: {
-          west: { w: 2.25, style: 'glass', label: 'Highrise West Lobby' },
-          south: { w: 2.30, style: 'glass', label: 'Highrise Main Entrance' },
-          north: { w: 2.30, style: 'glass', label: 'Highrise Atrium Foyer' }
-        },
-        skybridgeNorthFloor: 1,
-        parapetH: 1.02,
-        solidRoof: true,
-        landmark: true,
-        mapColor: '#788490',
-        mapStroke: '#ffca28'
-      });
-
-      const y2F = ms.floorY[1];
-      const yPen = ms.floorY[11];
-      const yHeli = ms.roofY; // ~52.42m world Y (45.6m above street!)
-
-      // Signature Al-Mazrah White Structural X-Brace Exoskeleton Girders across all Highrise mid-shaft bays!
+      const CX = 266, CZ = -366;
+      const by = world.getTerrainHeight(CX, CZ);
+      const fY = [by, by + 5.8, by + 9.4, by + 13.0, by + 16.6, by + 20.2];
+      const roofY = by + 22.8;
+      const totalH = roofY - by;
+      const glassMat = mats.windowGlass || mats.darkConcrete;
+      const box = (x, y, z, w, h, d, mat, collide) => world._addBox(x, y, z, w, h, d, mat, collide);
+      // ---- foundation + lobby slab ----
+      box(CX, by - 0.48, CZ, 30.7, 0.96, 18.7, mats.darkConcrete, false);
+      box(CX, by + 0.08, CZ, 30, 0.16, 18, mats.floorTile || mats.concrete, false);
+      // ---- lobby shell (5.8m) with 3 glass entrances ----
+      const yL = by + 2.9;
+      box(257.75, yL, -357, 13.5, 5.8, 0.34, mats.travertine || mats.concrete, true);
+      box(274.25, yL, -357, 13.5, 5.8, 0.34, mats.travertine || mats.concrete, true);
+      box(266, by + 4.2, -357, 3.6, 3.2, 0.34, mats.travertine || mats.concrete, true);
+      box(257.75, yL, -375, 13.5, 5.8, 0.34, mats.travertine || mats.concrete, true);
+      box(274.25, yL, -375, 13.5, 5.8, 0.34, mats.travertine || mats.concrete, true);
+      box(266, by + 4.2, -375, 3.6, 3.2, 0.34, mats.travertine || mats.concrete, true);
+      box(251, yL, -373.35, 0.34, 5.8, 3.3, mats.travertine || mats.concrete, true);
+      box(251, yL, -363.15, 0.34, 5.8, 12.3, mats.travertine || mats.concrete, true);
+      box(251, by + 4.2, -370.5, 0.34, 3.2, 3.6, mats.travertine || mats.concrete, true);
+      box(281, yL, -366, 0.34, 5.8, 18, mats.travertine || mats.concrete, true);
+      world._addDoor(266, by + 0.16, -357, 2.3, 2.6, 0, 'Highrise Main Entrance', 'glass');
+      world._addDoor(251, by + 0.16, -370.5, 2.3, 2.6, Math.PI / 2, 'Highrise West Lobby', 'glass');
+      world._addDoor(266, by + 0.16, -375, 2.3, 2.6, 0, 'Highrise Atrium Foyer', 'glass');
+      // ---- elevator core: twin open shafts, doors every floor on west face ----
+      const yC = by + totalH * 0.5;
+      box(274, yC, -370, 8, totalH, 0.3, mats.darkConcrete, true);
+      box(274, yC, -362, 8, totalH, 0.3, mats.darkConcrete, true);
+      box(270.15, yC, -366, 0.3, totalH, 7.4, mats.darkConcrete, true);
+      box(277.85, yC, -366, 0.3, totalH, 7.4, mats.darkConcrete, true);
+      box(274, yC, -366, 0.3, totalH, 7.4, mats.darkConcrete, true);
+      const shaftLevels = [[by, 5.8], [by + 5.8, 3.6], [by + 9.4, 3.6], [by + 13.0, 3.6], [by + 16.6, 3.6], [by + 20.2, 2.6]];
+      for (const [sy, sh] of shaftLevels) {
+        box(270, sy + 1.1, -367.3, 0.5, 2.2, 0.5, mats.darkConcrete, true);
+        box(270, sy + 1.1, -364.7, 0.5, 2.2, 0.5, mats.darkConcrete, true);
+        const lh = Math.max(0.4, sh - 2.2);
+        box(270, sy + 2.2 + lh / 2, -366, 0.5, lh, 3.0, mats.darkConcrete, true);
+        box(269.9, sy + 1.1, -366, 0.15, 2.2, 3.6, mats.bossDark, false);
+      }
+      box(274, roofY - 0.075, -366, 8.4, 0.15, 8.4, mats.metal, true);
+      // ---- office floor slabs (stairwell hole x253..260.7, z-371.7..-369.3) ----
+      for (let fl = 1; fl <= 5; fl++) {
+        const yT = fY[fl];
+        box(251.875, yT - 0.15, -366, 2.25, 0.3, 18, mats.darkConcrete, true);
+        box(265.225, yT - 0.15, -366, 9.05, 0.3, 18, mats.darkConcrete, true);
+        box(265.75, yT - 0.15, -373.35, 30, 0.3, 3.3, mats.darkConcrete, true);
+        box(265.75, yT - 0.15, -358.65, 30, 0.3, 12.3, mats.darkConcrete, true);
+      }
+      // ---- curtain walls per office floor (spandrel + glass + header) ----
+      for (let fl = 1; fl <= 4; fl++) {
+        const yB = fY[fl - 1];
+        for (const sgn of [-1, 1]) {
+          const z = CZ + sgn * 18 / 2;
+          box(266, yB + 0.5, z, 30, 1.0, 0.3, mats.concrete, true);
+          box(266, yB + 1.8, z, 30, 1.6, 0.15, glassMat, true);
+          box(266, yB + 3.1, z, 30, 1.0, 0.3, mats.concrete, true);
+        }
+        box(251, yB + 0.5, CZ, 0.3, 1.0, 18, mats.concrete, true);
+        box(251, yB + 1.8, CZ, 0.15, 1.6, 18, glassMat, true);
+        box(251, yB + 3.1, CZ, 0.3, 1.0, 18, mats.concrete, true);
+        box(281, yB + 0.5, CZ, 0.3, 1.0, 18, mats.concrete, true);
+        box(281, yB + 1.8, CZ, 0.15, 1.6, 18, glassMat, true);
+        box(281, yB + 3.1, CZ, 0.3, 1.0, 18, mats.concrete, true);
+        // side offices east + restroom core west + cubicle field
+        world._addPartition(274, -375, 274, -357, yB, 3.6, [{ at: -371, w: 1.6, door: 'wood', label: 'Office' }, { at: -361, w: 1.6, door: 'wood', label: 'Office' }]);
+        box(255.5, yB + 1.05, -360.5, 5.0, 2.1, 0.2, mats.interiorPlaster, true);
+        box(253.0, yB + 1.05, -362.5, 0.2, 2.1, 4.0, mats.interiorPlaster, true);
+        for (const [dx, dz] of [[262, -370], [266, -370], [262, -362], [266, -362], [270, -366], [262, -366]]) {
+          box(dx, yB + 0.7, dz, 2.2, 1.4, 0.08, mats.interiorPlaster, true);
+          box(dx, yB + 0.38, dz + 0.6, 1.6, 0.75, 0.8, mats.wood, true);
+        }
+      }
+      // ---- corner piers + white X-brace exoskeleton (Al-Mazrah signature) ----
+      for (const [px, pz] of [[252, -374], [280, -374], [252, -358], [280, -358]]) {
+        box(px, by + totalH / 2, pz, 1.0, totalH, 1.0, mats.concrete, true);
+      }
       const wSteel = mats.whiteSteel || mats.whiteWall;
-      for (const fz of [-366.0 - 8.28, -366.0 + 8.28]) {
-        for (const baseX of [256.5, 266.0, 275.5]) {
-          for (let ti = 2; ti <= 8; ti += 3) {
-            const ya = ms.floorY[ti];
-            const yb = ms.floorY[ti + 3];
-            A.pushRotatedBeam(world, baseX - 4.4, ya, fz, baseX + 4.4, yb, fz, 0.34, 0.28, wSteel, false);
-            A.pushRotatedBeam(world, baseX + 4.4, ya, fz, baseX - 4.4, yb, fz, 0.34, 0.28, wSteel, false);
-          }
+      for (const fz of [-375, -357]) {
+        for (const baseX of [256.5, 266, 275.5]) {
+          A.pushRotatedBeam(world, baseX - 4.4, fY[1], fz, baseX + 4.4, fY[4], fz, 0.34, 0.28, wSteel, false);
+          A.pushRotatedBeam(world, baseX + 4.4, fY[1], fz, baseX - 4.4, fY[4], fz, 0.34, 0.28, wSteel, false);
         }
       }
-      for (const fx of [266.0 - 14.28, 266.0 + 14.28]) {
-        for (const baseZ of [-370.0, -362.0]) {
-          for (let ti = 2; ti <= 8; ti += 3) {
-            const ya = ms.floorY[ti];
-            const yb = ms.floorY[ti + 3];
-            A.pushRotatedBeam(world, fx, ya, baseZ - 3.6, fx, yb, baseZ + 3.6, 0.30, 0.26, wSteel, false);
-            A.pushRotatedBeam(world, fx, ya, baseZ + 3.6, fx, yb, baseZ - 3.6, 0.30, 0.26, wSteel, false);
-          }
-        }
+      // ---- west switchback stairs: ground to 5F (roof via express elevators) ----
+      const rises = [5.8, 3.6, 3.6, 3.6, 3.6];
+      for (let k = 0; k < 5; k++) {
+        const steps = Math.round(rises[k] / 0.27);
+        helpers.addStaircase(253.2, fY[k], -370.5, steps, 2.0, rises[k], 7.2, 'east');
       }
-
-      // Twin Interior Express Elevator Shafts (1F/2F -> 13F Penthouse Suite!) framed cleanly with open shafts
-      world._addBox(272.2, (ms.baseY + yHeli) * 0.5, -366.0, 0.24, yHeli - ms.baseY, 8.8, mats.windowFrame, false);
-      world._addDecor(275.5, ms.baseY + 26.0, -366.0, 5.2, 0.16, 0.22, mats.windowFrame);
-      A.addAscenderRig(world, {
-        id: 'asc_hr_elev_1f', name: 'Highrise Express Shaft A (1F -> 13F)',
-        bx: 275.5, bz: -363.2, bottomY: ms.baseY, topY: yPen, outX: -1, outZ: 0,
-        landBottomX: 273.6, landBottomZ: -363.2, landTopX: 273.6, landTopZ: -363.2
-      });
-      A.addAscenderRig(world, {
-        id: 'asc_hr_elev_2f', name: 'Highrise Express Shaft B (2F -> 13F)',
-        bx: 275.5, bz: -368.8, bottomY: y2F, topY: yPen, outX: -1, outZ: 0,
-        landBottomX: 273.6, landBottomZ: -368.8, landTopX: 273.6, landTopZ: -368.8
-      });
-
-      // MW2 Highrise Rooftop (y = 52.4m): Central Helipad ("H"), Twin Roof Offices, Tilted Edge Scaffolding & 16.2m Open-Lattice Spire!
-      world._addBox(263.0, yHeli + 0.05, -366.0, 12.2, 0.10, 12.2, mats.darkConcrete, false);
-      world._addBox(260.8, yHeli + 0.09, -366.0, 0.85, 0.04, 6.4, mats.hazardAmber, false);
-      world._addBox(265.2, yHeli + 0.09, -366.0, 0.85, 0.04, 6.4, mats.hazardAmber, false);
-      world._addBox(263.0, yHeli + 0.09, -366.0, 4.4, 0.04, 0.88, mats.hazardAmber, false);
-      // Twin MW2 Roof Houses + Tilted Sniper Scaffolding Catwalk on South Edge
-      world._addBox(274.2, yHeli + 1.8, -363.5, 6.6, 3.6, 5.8, mats.bossDark, true);
-      world._addBox(254.6, yHeli + 1.5, -362.5, 4.2, 3.0, 4.4, mats.concrete, true);
-      world._addBox(262.0, yHeli + 0.4, -374.6, 9.6, 0.26, 2.2, mats.grate || mats.metal, true);
-      A.pushRotatedBeam(world, 258.0, yHeli - 1.2, -373.8, 258.0, yHeli + 0.4, -375.4, 0.22, 0.22, mats.hazardAmber, false);
-      A.pushRotatedBeam(world, 266.0, yHeli - 1.2, -373.8, 266.0, yHeli + 0.4, -375.4, 0.22, 0.22, mats.hazardAmber, false);
-      // 16.2m Open-Lattice Spire rising from East Roofhouse (Total Altitude: ~68.6m!)
-      A.addLatticeTower(world, 274.2, yHeli + 3.6, -363.5, 2.6, 0.9, 12.4, 4, mats.whiteSteel, mats.fireRed, {
-        spireH: 3.8, platforms: true, dishes: true
-      });
-
-      // 3D Sculpted Golden Whale Statue over Marble Plaza Basin (266, -376.5)
-      const wy = world.getTerrainHeight(266, -376.5);
-      const gBrass = mats.goldBrass || mats.hazardAmber;
-      world._addBox(266, wy + 0.40, -376.5, 4.8, 0.80, 3.0, mats.marbleLobby || mats.travertine, true);
-      A.addOrientedBox(world, 265.7, wy + 1.32, -376.5, 3.4, 0.84, 1.05, gBrass, 0, 0, 0.14, true);
-      A.addOrientedBox(world, 267.7, wy + 1.78, -376.5, 0.44, 0.96, 1.70, gBrass, 0, 0, -0.45, true);
-
-      // Highrise 1F Armory Vault [KEY ROOM], Lobby Locker, 2F Skybridge Files, 13F Boss Penthouse Safe & Roof Sniper Case
-      world._addPartition(260, -374, 260, -366, ms.baseY, ms.groundFloorH, [
-        { at: -370, w: 1.48, door: 'steel', label: 'Highrise Vault Door' }
-      ]);
-      world._addPartition(252.2, -366, 260, -366, ms.baseY, ms.groundFloorH, []);
-      world._addLootContainer(256.0, 0.16, -370.0, 'boss_key_room', 'Vostok Highrise Vault [KEY ROOM]', 'boss_key');
+      // ---- mechanical floor ducts + vents ----
+      for (const dz of [-372, -366, -360]) {
+        box(266, fY[5] + 1.8, dz, 20, 0.8, 1.2, mats.metal, true);
+      }
+      box(258, fY[5] + 1.3, -366, 1.5, 2.6, 1.5, mats.bossDark, true);
+      box(274, fY[5] + 1.2, -366, 1.2, 2.4, 1.2, mats.bossDark, true);
+      box(258, fY[5] + 0.38, -366, 1.2, 0.75, 0.9, mats.wood, true);
+      // ================= ROOF ARENA (MWIII Highrise MP map) =================
+      // ---- roof deck pieces (shaft stays open w/ grate, stairwell hole kept) ----
+      box(247.5, roofY - 0.15, -366, 11, 0.3, 30, mats.darkConcrete, true);
+      box(265.35, roofY - 0.15, -366, 9.3, 0.3, 30, mats.darkConcrete, true);
+      box(257, roofY - 0.15, -376.35, 7.7, 0.3, 9.3, mats.darkConcrete, true);
+      box(257, roofY - 0.15, -360.15, 7.7, 0.3, 18.3, mats.darkConcrete, true);
+      box(284, roofY - 0.15, -366, 12, 0.3, 30, mats.darkConcrete, true);
+      box(274, roofY - 0.15, -375.5, 8, 0.3, 11, mats.darkConcrete, true);
+      box(274, roofY - 0.15, -356.5, 8, 0.3, 11, mats.darkConcrete, true);
+      box(296, roofY - 0.15, -366, 12, 0.3, 20, mats.concrete, true);
+      // ---- parapet ring (gap at pit terrace link) ----
+      box(266, roofY + 0.5, -381, 48, 1.0, 0.3, mats.concrete, true);
+      box(266, roofY + 0.5, -351, 48, 1.0, 0.3, mats.concrete, true);
+      box(242, roofY + 0.5, -366, 0.3, 1.0, 30, mats.concrete, true);
+      box(290, roofY + 0.5, -378.5, 0.3, 1.0, 5, mats.concrete, true);
+      box(290, roofY + 0.5, -353.5, 0.3, 1.0, 5, mats.concrete, true);
+      // ---- HELIPAD 'H' ----
+      const padGeo = new THREE.CylinderGeometry(4, 4, 0.12, 24);
+      if (!padGeo.attributes.uv2 && padGeo.attributes.uv) padGeo.setAttribute('uv2', padGeo.attributes.uv);
+      if (A && A.pushBatchedGeo) {
+        const m4 = new THREE.Matrix4(); const qI = new THREE.Quaternion(); const s1 = new THREE.Vector3(1, 1, 1);
+        m4.compose(new THREE.Vector3(266, roofY + 0.06, -366), qI, s1);
+        A.pushBatchedGeo(this, padGeo, mats.darkConcrete, m4, false);
+      }
+      box(263.8, roofY + 0.10, -366, 0.85, 0.04, 6.4, mats.hazardAmber, false);
+      box(268.2, roofY + 0.10, -366, 0.85, 0.04, 6.4, mats.hazardAmber, false);
+      box(266, roofY + 0.10, -366, 4.4, 0.04, 0.88, mats.hazardAmber, false);
+      // ---- propane tank + shack (west) / green tarp + shack (east) ----
+      const tankGeo = new THREE.CylinderGeometry(0.8, 0.8, 3.0, 14);
+      if (!tankGeo.attributes.uv2 && tankGeo.attributes.uv) tankGeo.setAttribute('uv2', tankGeo.attributes.uv);
+      if (A && A.pushBatchedGeo) {
+        const m4b = new THREE.Matrix4(); const qB = new THREE.Quaternion(); const sB = new THREE.Vector3(1, 1, 1);
+        qB.setFromEuler(new THREE.Euler(0, 0, Math.PI / 2));
+        m4b.compose(new THREE.Vector3(258.5, roofY + 0.9, -366), qB, sB);
+        A.pushBatchedGeo(this, tankGeo, mats.rustRed, m4b, true);
+      }
+      box(257.2, roofY + 0.35, -366, 0.3, 0.7, 1.2, mats.bossDark, true);
+      box(259.8, roofY + 0.35, -366, 0.3, 0.7, 1.2, mats.bossDark, true);
+      box(255.5, roofY + 1.0, -362.5, 2.0, 2.0, 2.0, mats.rustBlue, true);
+      box(274, roofY + 0.05, -364, 3.0, 0.1, 2.5, mats.rustOlive, false);
+      box(274.5, roofY + 1.0, -360.5, 2.0, 2.0, 2.0, mats.rustOlive, true);
+      // ---- NORTH BLOCK: Phonic Office + Storage + Reception + rear platforms ----
+      box(266, roofY + 1.7, -381, 32, 3.4, 0.3, mats.travertine || mats.concrete, true);
+      box(262, roofY + 1.7, -371, 24, 3.4, 0.3, mats.travertine || mats.concrete, true);
+      box(286, roofY + 1.7, -371, 8, 3.4, 0.3, mats.travertine || mats.concrete, true);
+      box(250, roofY + 1.7, -376, 0.3, 3.4, 10, mats.travertine || mats.concrete, true);
+      box(282, roofY + 1.7, -378.5, 0.3, 3.4, 5, mats.travertine || mats.concrete, true);
+      box(282, roofY + 1.7, -372.25, 0.3, 3.4, 2.5, mats.travertine || mats.concrete, true);
+      box(266, roofY + 1.7, -376, 0.25, 3.4, 10, mats.interiorPlaster, true);
+      box(256, roofY + 1.7, -376, 0.25, 3.4, 10, mats.interiorPlaster, true);
+      world._addPartition(256, -381, 256, -371, roofY, 3.4, [{ at: -376, w: 1.5, door: 'wood', label: 'Phonic Storage' }]);
+      world._addPartition(276, -381, 276, -371, roofY, 3.4, [{ at: -376, w: 1.5, door: 'wood', label: 'Phonic Reception' }]);
+      world._addPartition(260, -376, 270, -376, roofY, 3.4, [{ at: 265, w: 2.0, label: 'Phonic Restroom' }]);
+      box(266, roofY + 3.55, -376, 32.5, 0.3, 10.5, mats.darkConcrete, true);
+      box(266, roofY + 4.55, -381, 32, 1.0, 0.25, mats.concrete, true);
+      box(250.5, roofY + 1.6, -382.5, 6, 0.25, 1.2, mats.metal, true);
+      box(250.5, roofY + 3.0, -382.5, 6, 0.25, 1.2, mats.metal, true);
+      // ---- SOUTH BLOCK: Actibase Office + cubicles + lobby + edge walk ----
+      box(266, roofY + 1.7, -350.5, 32, 3.4, 0.3, mats.travertine || mats.concrete, true);
+      box(262, roofY + 1.7, -361, 24, 3.4, 0.3, mats.travertine || mats.concrete, true);
+      box(286, roofY + 1.7, -361, 8, 3.4, 0.3, mats.travertine || mats.concrete, true);
+      box(250, roofY + 1.7, -356, 0.3, 3.4, 10, mats.travertine || mats.concrete, true);
+      box(282, roofY + 1.7, -358.5, 0.3, 3.4, 5, mats.travertine || mats.concrete, true);
+      box(282, roofY + 1.7, -352.25, 0.3, 3.4, 2.5, mats.travertine || mats.concrete, true);
+      for (const [ox, oz] of [[261, -357.5], [266, -357.5], [271, -357.5], [261, -354.5], [266, -354.5], [271, -354.5]]) {
+        box(ox, roofY + 0.7, oz, 2.2, 1.4, 0.08, mats.interiorPlaster, true);
+      }
+      world._addPartition(256, -361, 256, -351, roofY, 3.4, [{ at: -356, w: 1.5, door: 'wood', label: 'Actibase Side Office' }]);
+      world._addPartition(276, -361, 276, -351, roofY, 3.4, [{ at: -356, w: 1.5, door: 'wood', label: 'Actibase Side Office' }]);
+      box(266, roofY + 3.55, -356, 32.5, 0.3, 10.5, mats.darkConcrete, true);
+      box(266, roofY + 4.55, -350.5, 32, 1.0, 0.25, mats.concrete, true);
+      box(283.5, roofY + 0.4, -353.5, 0.25, 0.5, 6.0, mats.metal, true);
+      box(283.5, roofY + 3.4, -353.5, 1.2, 0.25, 6.0, mats.metal, true);
+      // ---- tunnel corridors to the Pit terrace ----
+      box(286, roofY + 1.3, -376, 8, 2.6, 0.25, mats.darkConcrete, true);
+      box(286, roofY + 1.3, -373.5, 8, 2.6, 0.25, mats.darkConcrete, true);
+      box(286, roofY + 2.7, -374.75, 8, 0.25, 2.75, mats.darkConcrete, false);
+      box(286, roofY + 1.3, -358.5, 8, 2.6, 0.25, mats.darkConcrete, true);
+      box(286, roofY + 1.3, -356, 8, 2.6, 0.25, mats.darkConcrete, true);
+      box(286, roofY + 2.7, -357.25, 8, 0.25, 2.75, mats.darkConcrete, false);
+      // ---- the Pit: worksite terrace east + mechanical + substation + sign ----
+      box(292, roofY + 0.25, -376, 20, 0.5, 0.4, mats.concrete, true);
+      box(292, roofY + 0.25, -356, 20, 0.5, 0.4, mats.concrete, true);
+      box(290, roofY + 0.25, -366, 0.4, 0.5, 20, mats.concrete, true);
+      box(302, roofY + 0.25, -366, 0.4, 0.5, 20, mats.concrete, true);
+      for (const [px, pz] of [[292, -374], [300, -374], [292, -358], [300, -358]]) {
+        box(px, by + (roofY - by) / 2, pz, 0.6, roofY - by, 0.6, mats.concrete, true);
+      }
+      box(293, roofY + 1.3, -371, 4.0, 2.6, 3.0, mats.bossDark, true);
+      box(293, roofY + 2.2, -371, 4.4, 0.25, 3.4, mats.metal, false);
+      box(293, roofY + 1.0, -361, 1.2, 2.0, 1.0, mats.hazardAmber, true);
+      box(296, roofY + 1.0, -361, 1.2, 2.0, 1.0, mats.hazardAmber, true);
+      box(266, roofY + 3.0, -376, 1.6, 0.75, 0.9, mats.wood, true);
+      box(292, roofY + 0.38, -368, 1.6, 0.75, 0.9, mats.wood, true);
+      const signPanel = new THREE.Mesh(new THREE.BoxGeometry(0.3, 2.0, 6.0), mats.bossDark);
+      signPanel.position.set(300.5, roofY + 3.0, -366);
+      world.scene.add(signPanel);
+      box(298.5, roofY + 1.5, -366, 0.3, 3.0, 0.3, mats.metal, true);
+      box(301.5, roofY + 1.5, -366, 0.3, 3.0, 0.3, mats.metal, true);
+      box(301.2, roofY + 2.2, -366, 0.9, 0.2, 5.0, mats.metal, true);
+      // ---- tilted south scaffolding + west crane platforms on a wire ----
+      for (const sx of [258, 266, 274]) {
+        if (A && A.pushRotatedBeam) A.pushRotatedBeam(world, sx, roofY - 1.2, -373.8, sx, roofY + 0.4, -375.6, 0.22, 0.22, mats.hazardAmber, false);
+      }
+      box(242.5, roofY + 3.5, -366, 0.25, 7.0, 0.25, mats.metal, true);
+      if (A && A.pushRotatedBeam) A.pushRotatedBeam(world, 236.5, roofY + 8.5, -366, 242.5, roofY + 7.0, -366, 0.06, 0.06, mats.metal, false);
+      box(237.3, roofY + 5.2, -366, 2.2, 0.2, 1.1, mats.wood, true);
+      box(240.1, roofY + 4.6, -366, 2.2, 0.2, 1.1, mats.wood, true);
+      // ---- tower crane WEST + rig + helipad approach ascenders ----
+      const crY = world.getTerrainHeight(236, -366);
+      const craneDeckY = A.addLatticeTowerCrane(world, 236, crY, -366, 40.0, 30.0, 11.0, 1);
+      A.addAscenderRig(world, { id: 'asc_hr_crane', name: 'Tower Crane Ascender', bx: 233.1, bz: -366, bottomY: crY, topY: craneDeckY, outX: -1, outZ: 0, landTopX: 236, landTopZ: -366 });
+      A.addAscenderRig(world, { id: 'asc_hr_west', name: 'Highrise West Zipline', bx: 238, bz: -366, bottomY: world.getTerrainHeight(238, -366), topY: roofY, outX: 1, outZ: 0, landTopX: 242.5, landTopZ: -366 });
+      A.addAscenderRig(world, { id: 'asc_hr_east', name: 'Highrise East Zipline', bx: 303.5, bz: -366, bottomY: world.getTerrainHeight(303.5, -366), topY: roofY, outX: -1, outZ: 0, landTopX: 300.5, landTopZ: -366 });
+      A.addAscenderRig(world, { id: 'asc_hr_north', name: 'Highrise North Ascender', bx: 266, bz: -383.5, bottomY: world.getTerrainHeight(266, -383.5), topY: roofY + 3.7, outX: 0, outZ: 1, landTopX: 266, landTopZ: -376 });
+      A.addAscenderRig(world, { id: 'asc_hr_elev_1f', name: 'Highrise Express Shaft A (1F -> Roof)', bx: 272, bz: -366, bottomY: by, topY: roofY, outX: -1, outZ: 0, landBottomX: 270.2, landBottomZ: -366, landTopX: 272, landTopZ: -366 });
+      A.addAscenderRig(world, { id: 'asc_hr_elev_2f', name: 'Highrise Express Shaft B (2F -> Roof)', bx: 276, bz: -366, bottomY: fY[1], topY: roofY, outX: -1, outZ: 0, landBottomX: 274.2, landBottomZ: -366, landTopX: 276, landTopZ: -366 });
+      // ---- lobby: vault [KEY ROOM], security, reception, porte-cochere + Hummer EV ----
+      world._addPartition(251, -370, 251, -364, by, 5.8, [{ at: -367, w: 1.7, door: 'steel', label: 'Highrise Vault Door' }]);
+      world._addPartition(259, -370, 259, -364, by, 5.8, [{ at: -367, w: 1.7, door: 'steel', label: 'Highrise Vault Door' }]);
+      world._addPartition(251, -364, 259, -364, by, 5.8, []);
+      world._addLootContainer(255.0, 0.16, -367.0, 'boss_key_room', 'Vostok Highrise Vault [KEY ROOM]', 'boss_key');
       world._addGunLocker(269.0, -359.5, 0, 'military', 'Highrise Lobby Security Locker');
-      world._addLootContainer(260.0, (y2F - ms.baseY) + 0.04, -362.5, 'office', '2F Skybridge Corporate Files');
-      world._addLootContainer(264.0, (yPen - ms.baseY) + 0.04, -364.0, 'valuables', '13F Executive Penthouse Safe');
-      world._addLootContainer(262.0, (yHeli - ms.baseY) + 0.04, -363.0, 'military', '14F Helipad Sniper Case');
-
-      // 2) Highrise North Wing: 9 Stories -> 37.7m world Y (30.9m above street) + Billboard + Exterior Ascender!
-      const nw = _buildMultiStoryBlock(world, helpers, {
-        name: 'Highrise North Wing',
-        shortLabel: 'HR NORTH 9F',
-        cx: 266.0, cz: -384.5, w: 24, d: 11,
-        floors: 8, // floors 0..7 => floorY[8] = 37.75m
-        groundFloorH: 5.8,
-        floorH: 3.55,
-        curtainWall: true,
-        windowPitch: 4.0,
-        shaftStartFloor: 2,
-        shaftEndFloor: 6,
-        wallMat: mats.ribbedConcrete || mats.concrete,
-        upperMat: mats.curtainSpandrel || mats.concrete,
-        trimMat: mats.darkConcrete,
-        doors: { south: { w: 2.25, style: 'glass', label: 'North Wing Atrium' } },
-        skybridgeSouthFloor: 1,
-        mapColor: '#6d7984'
-      });
-      // Glazed 2F Skybridge connecting Main Highrise & North Wing across the Atrium (y = 12.6m, z = -379..-374)
-      world._addBox(266.0, y2F - 0.14, -376.5, 4.4, 0.28, 5.4, mats.darkConcrete, true);
-      world._addBox(263.95, y2F + 0.55, -376.5, 0.28, 1.1, 5.2, mats.bossDark, true);
-      world._addBox(268.05, y2F + 0.55, -376.5, 0.28, 1.1, 5.2, mats.bossDark, true);
-      world._addDecor(266.0, y2F + 2.95, -376.5, 4.6, 0.24, 5.4, mats.metal);
-      world._addSignBoard(266.0, nw.baseY + 18.0, -390.4, 12.6, 3.8, Math.PI, {
-        title: 'VOSTOK HIGHRISE',
-        sub: 'AL-MAZRAH FINANCIAL CENTER // HELIPAD 01',
-        bg: '#141a22',
-        accent: '#ffc107'
-      });
-
-      // Two Exterior Highrise Main Ascenders (-> 52.4m Helipad) + North Wing Ascender (-> 37.75m)!
-      A.addAscenderRig(world, { id: 'asc_hr_west', name: 'Highrise West Zipline', bx: 251.5, bz: -366.0, bottomY: ms.baseY, topY: yHeli, outX: -1, outZ: 0 });
-      A.addAscenderRig(world, { id: 'asc_hr_east', name: 'Highrise East Zipline', bx: 280.5, bz: -368.0, bottomY: ms.baseY, topY: yHeli, outX: 1, outZ: 0 });
-      A.addAscenderRig(world, { id: 'asc_hr_north', name: 'Highrise North Ascender', bx: 253.5, bz: -384.5, bottomY: nw.baseY, topY: nw.roofY, outX: -1, outZ: 0 });
-
-      // 3) 58m Open-Lattice Highrise Construction Tower Crane (290.5, -378) overlooking 52.4m Helipad!
-      const crX = 290.5, crZ = -378.0;
-      const crY = world.getTerrainHeight(crX, crZ);
-      const craneDeckY = A.addLatticeTowerCrane(world, crX, crY, crZ, 50.5, 30.0, 11.0, -1);
-      A.addAscenderRig(world, {
-        id: 'asc_hr_crane', name: 'Tower Crane Ascender (57m)',
-        bx: crX - 2.9, bz: crZ, bottomY: crY, topY: craneDeckY, outX: -1, outZ: 0,
-        landTopX: crX, landTopZ: crZ
-      });
-
-      // Boss & Guards in the 13F Penthouse Suite + Street Guards
-      world.bossSpawnPos = new THREE.Vector3(264.0, yPen + 0.25, -365.0);
+      box(259, by + 0.5, -366, 3.0, 1.0, 0.8, mats.bossDark, true);
+      box(266, by + 0.5, -357, 14, 0.4, 8, mats.darkConcrete, true);
+      for (const [ccx, ccz] of [[260, -353], [272, -353], [260, -345], [272, -345]]) {
+        box(ccx, by + 1.8, ccz, 0.4, 3.6, 0.4, mats.concrete, true);
+      }
+      {
+        const ev = new THREE.Group();
+        const evBody = new THREE.Mesh(new THREE.BoxGeometry(5.3, 0.7, 2.1), mats.bossDark);
+        evBody.position.set(0, 0.75, 0); ev.add(evBody);
+        const evCab = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.65, 1.9), mats.bossDark);
+        evCab.position.set(-0.3, 1.4, 0); ev.add(evCab);
+        const evGlass = new THREE.Mesh(new THREE.BoxGeometry(1.8, 0.4, 1.7), mats.windowGlass);
+        evGlass.position.set(-0.3, 1.5, 0); ev.add(evGlass);
+        const evBedL = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.45, 0.12), mats.bossDark);
+        evBedL.position.set(1.7, 1.15, 0.95); ev.add(evBedL);
+        const evBedR = evBedL.clone(); evBedR.position.z = -0.95; ev.add(evBedR);
+        const evTail = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.45, 1.9), mats.bossDark);
+        evTail.position.set(2.55, 1.15, 0); ev.add(evTail);
+        const barMat = new THREE.MeshBasicMaterial({ color: 0xf2f5ff });
+        const evBar = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.12, 1.9), barMat);
+        evBar.position.set(2.68, 1.0, 0); ev.add(evBar);
+        const evBarR = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, 1.9), new THREE.MeshBasicMaterial({ color: 0xb02020 }));
+        evBarR.position.set(-2.68, 1.0, 0); ev.add(evBarR);
+        const wheelGeo = new THREE.CylinderGeometry(0.45, 0.45, 0.35, 12);
+        if (!wheelGeo.attributes.uv2 && wheelGeo.attributes.uv) wheelGeo.setAttribute('uv2', wheelGeo.attributes.uv);
+        const wheelMat = new THREE.MeshLambertMaterial({ color: 0x141414 });
+        for (const [wx, wz] of [[1.7, 0.95], [1.7, -0.95], [-1.7, 0.95], [-1.7, -0.95]]) {
+          const wh = new THREE.Mesh(wheelGeo, wheelMat);
+          wh.rotation.x = Math.PI / 2;
+          wh.position.set(wx, 0.45, wz);
+          ev.add(wh);
+        }
+        ev.position.set(266, by, -349.5);
+        world.scene.add(ev);
+        world.colliders.push({ minX: 266 - 2.65, maxX: 266 + 2.65, minY: by, maxY: by + 1.9, minZ: -349.5 - 1.05, maxZ: -349.5 + 1.05 });
+      }
+      world._addSignBoard(266, by + 3.0, -345.2, 5.0, 1.0, 0, { title: 'HUMMER EV', sub: 'HOUSE CHARGER // VALET', bg: '#1c2428', accent: '#69f0ae' });
+      world._addSignBoard(266, by + 18.0, -390.4, 12.6, 3.8, Math.PI, { title: 'VOSTOK HIGHRISE', sub: 'AL-MAZRAH FINANCIAL CENTER // HELIPAD 01', bg: '#141a22', accent: '#ffc107' });
+      // ---- loot: offices, pit, helipad ----
+      world._addLootContainer(253.0, roofY + 0.04, -376.0, 'office', 'Phonic Storage Cache');
+      world._addLootContainer(270.0, roofY + 0.04, -356.0, 'valuables', 'Actibase Cubicle Cache');
+      world._addLootContainer(296.0, roofY + 0.04, -366.0, 'supply', 'Pit Mechanic Cache');
+      world._addLootContainer(262.0, roofY + 0.04, -363.0, 'military', 'Helipad Sniper Case');
+      // ---- boss on the helipad + guards ----
+      world.bossSpawnPos = new THREE.Vector3(272.0, roofY + 0.25, -366.0);
+      const streetY = world.getTerrainHeight(270, -340);
       world.bossGuardSpawns = [
-        new THREE.Vector3(268.0, yPen + 0.25, -362.0),
-        new THREE.Vector3(262.0, ms.baseY + 0.25, -361.0),
+        new THREE.Vector3(258.0, roofY + 0.25, -366.0),
+        new THREE.Vector3(269.0, by + 0.25, -359.5),
+        new THREE.Vector3(270.0, streetY + 0.25, -340.0),
+        new THREE.Vector3(296.0, roofY + 0.25, -366.0),
         new THREE.Vector3(280.0, eastY + 0.25, -320.0),
-        new THREE.Vector3(314.0, eastY + 0.25, -320.0),
-        new THREE.Vector3(128.0, 6.6 + 0.25, -320.0),
-        new THREE.Vector3(82.0, 6.6 + 0.25, -335.0)
+        new THREE.Vector3(314.0, eastY + 0.25, -320.0)
       ];
+      world.cityFootprints.push({ name: 'Vostok Highrise', shortLabel: 'HIGHRISE', x: 266, z: -366, w: 64, d: 40, color: '#788490', stroke: '#ffca28' });
     }
-
     // =========================================================================
     // 5. NORTH CIVIC CORRIDOR (Parking Deck P-01, Police, Fire Station 07 + Watchtower)
     // =========================================================================
