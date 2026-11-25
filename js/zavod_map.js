@@ -214,6 +214,7 @@
   // ---------------------------------------------------------------------------------
   P._zavodMaterials = function () {
     const M = this._materials;
+    const Pbr = window.AshfallPBR;
     const tint = (base, color, tile = null) => {
       const m = base.clone();
       if (m.userData) delete m.userData._ashShared;
@@ -221,48 +222,80 @@
       if (tile) m.userData.tile = tile;
       return m;
     };
-    const basic = (color, opts = {}) => new THREE.MeshBasicMaterial({ color, ...opts });
+    const pbrMat = (preset, overrides, fallbackColor) => (
+      Pbr ? Pbr.getMaterial(preset, overrides) : tint(M.concrete, fallbackColor, (overrides && overrides.tile) || 2.5)
+    );
+    const basic = (color, intensity = 1.15) => new THREE.MeshStandardMaterial({
+      color,
+      emissive: color,
+      emissiveIntensity: intensity,
+      roughness: 0.28,
+      metalness: 0.05
+    });
+    const waterNormal = Pbr ? Pbr.getMaps('water_normal').normalMap : null;
+    if (waterNormal) waterNormal.repeat.set(6, 6);
     return {
-      concrete: M.concrete,
+      concrete: pbrMat('concrete_weathered', { tile: 3.0 }, 0x8e8d85),
       dark: M.darkConcrete,
-      brut: tint(M.concrete, 0x84837b, 4.0),
+      brut: pbrMat('bunker_concrete_formwork', { color: 0x9c9a92, tile: 3.4 }, 0x84837b),
       plaster: M.interiorPlaster,
-      tile: tint(M.whiteWall, 0xd7ddd6, 1.2),
-      lab: tint(M.whiteWall, 0xc7d8cf, 1.2),
-      paintGreen: tint(M.interiorPlaster, 0x6d8a72),
-      paintBlue: tint(M.interiorPlaster, 0x6c8296),
-      paintOchre: tint(M.interiorPlaster, 0xa68f5f),
-      paintRed: tint(M.interiorPlaster, 0x8f5d52),
+      tile: pbrMat('tile_subway_dirty', { color: 0xd7ddd6, tile: 1.4 }, 0xd7ddd6),
+      lab: pbrMat('tile_lab_ceramic', { color: 0xd2e4da, tile: 1.3 }, 0xc7d8cf),
+      paintGreen: pbrMat('plaster_soviet_green', { tile: 2.2 }, 0x6d8a72),
+      paintBlue: pbrMat('plaster_soviet_blue', { tile: 2.2 }, 0x6c8296),
+      paintOchre: pbrMat('plaster_soviet_ochre', { tile: 2.2 }, 0xa68f5f),
+      paintRed: pbrMat('plaster_soviet_red', { tile: 2.2 }, 0x8f5d52),
       steel: M.metal,
-      darkSteel: tint(M.metal, 0x3c4146),
-      floorConcrete: tint(M.concrete, 0x7a7972, 4.0),
-      floorEpoxy: tint(M.darkConcrete, 0x4f5a52, 5.0),
+      darkSteel: pbrMat('steel_dark_structural', { color: 0x52585e, tile: 1.6 }, 0x3c4146),
+      floorConcrete: pbrMat('bunker_concrete_formwork', { color: 0x888780, tile: 3.8 }, 0x7a7972),
+      floorEpoxy: pbrMat('concrete_wet_epoxy', { color: 0x6c7c70, tile: 4.2 }, 0x4f5a52),
       floorTile: M.floorTile,
-      floorLino: tint(M.interiorPlaster, 0x7f6a52, 3.0),
-      floorGrate: M.grate || tint(M.metal, 0x55595d, 0.8),
-      ceiling: tint(M.concrete, 0x5e5f5b, 5.0),
-      ceilingTile: tint(M.whiteWall, 0xb9bbb2, 1.6),
-      lightWarm: basic(0xfff1cf),
-      lightCool: basic(0xdff4ff),
-      lightRed: basic(0xff3326),
-      lightGreen: basic(0x5dff9a),
-      lightAmber: basic(0xffb53a),
-      hazard: M.hazardAmber,
-      tankGreen: tint(M.metal, 0x55705a),
-      tankRust: tint(M.metal, 0x7d5440),
-      pipe: tint(M.metal, 0x8a8f84),
+      floorLino: pbrMat('linoleum_industrial', { color: 0x8c775c, tile: 2.6 }, 0x7f6a52),
+      floorGrate: M.grate || pbrMat('steel_diamond_grate', { tile: 1.1 }, 0x55595d),
+      ceiling: tint(M.concrete, 0x5e5f5b, 4.8),
+      ceilingTile: pbrMat('plaster_aged_white', { color: 0xb9bbb2, tile: 1.6 }, 0xb9bbb2),
+      lightWarm: basic(0xfff1cf, 1.45),
+      lightCool: basic(0xdff4ff, 1.45),
+      lightRed: basic(0xff3326, 1.45),
+      lightGreen: basic(0x5dff9a, 1.45),
+      lightAmber: basic(0xffb53a, 1.45),
+      hazard: M.hazardAmber || pbrMat('hazard_chevron_pbr', { tile: 1.5 }, 0xd99b26),
+      tankGreen: pbrMat('steel_dark_structural', { color: 0x55705a, tile: 1.6 }, 0x55705a),
+      tankRust: pbrMat('steel_rusted_corrugated', { color: 0x98664e, tile: 1.4 }, 0x7d5440),
+      pipe: pbrMat('steel_brushed', { color: 0x8a8f84, tile: 1.4 }, 0x8a8f84),
       wood: M.wood,
       crate: M.crateSup,
-      rubber: new THREE.MeshLambertMaterial({ color: 0x1d1f21 }),
-      bunk: tint(M.metal, 0x58665a),
-      mattress: new THREE.MeshLambertMaterial({ color: 0x6e705c }),
-      screen: basic(0x2aa36a),
-      screenBlue: basic(0x3a86c8),
-      toxic: new THREE.MeshPhongMaterial({ color: 0x4fbf3a, emissive: 0x1f5512, shininess: 80, transparent: true, opacity: 0.86 }),
-      water: new THREE.MeshPhongMaterial({ color: 0x23414a, specular: 0x8fb8c8, shininess: 90, transparent: true, opacity: 0.78, depthWrite: false, side: THREE.DoubleSide }),
+      rubber: Pbr ? Pbr.getMaterial('rubber_buttpad') : new THREE.MeshStandardMaterial({ color: 0x1d1f21, roughness: 0.92 }),
+      bunk: pbrMat('steel_dark_structural', { color: 0x58665a, tile: 1.4 }, 0x58665a),
+      mattress: pbrMat('cordura_olive', { color: 0x7c7e68, tile: 0.9 }, 0x6e705c),
+      screen: basic(0x2aa36a, 1.15),
+      screenBlue: basic(0x3a86c8, 1.15),
+      toxic: new THREE.MeshStandardMaterial({
+        color: 0x4fbf3a,
+        emissive: 0x246616,
+        emissiveIntensity: 0.78,
+        normalMap: waterNormal,
+        normalScale: new THREE.Vector2(0.55, 0.55),
+        roughness: 0.14,
+        metalness: 0.15,
+        transparent: true,
+        opacity: 0.88
+      }),
+      water: new THREE.MeshStandardMaterial({
+        color: 0x1f3d46,
+        normalMap: waterNormal,
+        normalScale: new THREE.Vector2(0.75, 0.75),
+        roughness: 0.08,
+        metalness: 0.35,
+        envMapIntensity: 1.5,
+        transparent: true,
+        opacity: 0.80,
+        depthWrite: false,
+        side: THREE.DoubleSide
+      }),
       stripe: {
-        PLANT: basic(0x7cff9c), A1: basic(0xffa726), A2: basic(0xe6e14a),
-        B1: basic(0x4fc3f7), B2: basic(0xff5252), FACTORY: basic(0xb0bec5), ALPHA: basic(0xb388ff)
+        PLANT: basic(0x7cff9c, 0.9), A1: basic(0xffa726, 0.9), A2: basic(0xe6e14a, 0.9),
+        B1: basic(0x4fc3f7, 0.9), B2: basic(0xff5252, 0.9), FACTORY: basic(0xb0bec5, 0.9), ALPHA: basic(0xb388ff, 0.9)
       }
     };
   };
@@ -271,6 +304,9 @@
   // Low-level geometry helpers (batched static decor + optional AABB collider & ray mesh)
   // ---------------------------------------------------------------------------------
   P._zvGeo = function (geo, mat, x, y, z, rotY = 0, opts = {}) {
+    if (window.AshfallPBR && window.AshfallPBR.UVUnwrap && geo) {
+      window.AshfallPBR.UVUnwrap.ensureUV2(geo);
+    }
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set(x, y, z);
     if (rotY) mesh.rotation.y = rotY;
@@ -307,8 +343,11 @@
     return this._addBox(x, y, z, w, h, d, mat, collider);
   };
 
-  P._zvCyl = function (x, y, z, r, h, mat, seg = 14, collider = true) {
-    const geo = new THREE.CylinderGeometry(r, r, h, seg);
+  P._zvCyl = function (x, y, z, r, h, mat, seg = 20, collider = true) {
+    const geo = new THREE.CylinderGeometry(r, r, h, Math.max(seg, 16));
+    if (window.AshfallPBR && window.AshfallPBR.UVUnwrap) {
+      window.AshfallPBR.UVUnwrap.unwrapCylinder(geo, 1.0);
+    }
     return this._zvGeo(geo, mat, x, y, z, 0, {
       shoot: true,
       collider: collider ? [x - r * 0.92, x + r * 0.92, y - h / 2, y + h / 2, z - r * 0.92, z + r * 0.92] : null
@@ -318,7 +357,10 @@
   P._zvPipe = function (x1, y1, z1, x2, y2, z2, r, mat) {
     const dx = x2 - x1, dy = y2 - y1, dz = z2 - z1;
     const len = Math.hypot(dx, dy, dz) || 0.01;
-    const geo = new THREE.CylinderGeometry(r, r, len, 8);
+    const geo = new THREE.CylinderGeometry(r, r, len, 12);
+    if (window.AshfallPBR && window.AshfallPBR.UVUnwrap) {
+      window.AshfallPBR.UVUnwrap.unwrapCylinder(geo, 1.0);
+    }
     const mesh = new THREE.Mesh(geo, mat);
     mesh.position.set((x1 + x2) / 2, (y1 + y2) / 2, (z1 + z2) / 2);
     const up = new THREE.Vector3(0, 1, 0);
@@ -455,7 +497,8 @@
               const rj = o === 'h' ? (ra ? j : j + 1) : j;
               const below0Void = R(G.at(0, ci, cj));
               const below0Self = R(G.at(0, ri, rj));
-              const railOk = !cov || cov[0] >= base + RAIL_H || cov[1] <= base + 0.05;
+              const railKind = rr.kind === 'corridor' || rr.kind === 'mezzanine' || rr.kind === 'landing';
+              const railOk = railKind && (!cov || cov[0] >= base + RAIL_H || cov[1] <= base + 0.05);
               const isRailing = below0Void && below0Void.ceil > base + 0.5 &&
                 (below0Void.openAbove || below0Void === below0Self) && railOk;
               if (isRailing) {
@@ -911,8 +954,8 @@
     G.rect('a1_y2', -200, 140, -164, 170, a1('mess', 'MESS HALL', { floor: 'tile' }));
     G.link('a1_hall', 'a1_y1', 2, { door: 'hinge', label: 'Barracks', at: [-218, 140] });
     G.link('a1_hall', 'a1_y2', 4, { h: 2.8, at: [-182, 140] });
-    G.rect('a1_c2', -164, 34, -156, 42, cor('A1'));
-    G.rect('a1_c3', -122, 34, -100, 42, cor('A1'));
+    G.rect('a1_c2', -164, 34, -160, 42, cor('A1'));
+    G.rect('a1_c3', -120, 34, -100, 42, cor('A1'));
     G.circle('a1_round', -140, 38, 20, { sector: 'A1', kind: 'round', name: 'EXTRACTION ROTUNDA', ceil: 7, wall: 'brut', floor: 'concrete', wallPrio: 2 });
     G.link('a1_hall', 'a1_c2', 8, { h: 3.6 });
     G.link('a1_c2', 'a1_round', 4, { h: 3.6 });

@@ -70,24 +70,34 @@ class HideoutBunker {
   }
 
   _buildArchitecture() {
-    const floorMat = new THREE.MeshLambertMaterial({ color: 0x202529 });
-    const concreteMat = new THREE.MeshLambertMaterial({ color: 0x2d3338 });
-    const trimMat = new THREE.MeshLambertMaterial({ color: 0x171b1f });
-    const steelMat = new THREE.MeshLambertMaterial({ color: 0x3b444c });
-    const ceilMat = new THREE.MeshLambertMaterial({ color: 0x161a1d });
-    const lampMat = new THREE.MeshBasicMaterial({ color: 0xffe4b8 });
-    const stripeMat = new THREE.MeshBasicMaterial({ color: 0xd9822b, transparent: true, opacity: 0.62 });
+    const P = window.AshfallPBR;
+    const UV = P && P.UVUnwrap;
+    const floorMat = (P && P.getMaterial('concrete_wet_epoxy', { color: 0x5c666e, tile: 3.5 })) || new THREE.MeshStandardMaterial({ color: 0x202529, roughness: 0.42 });
+    const concreteMat = (P && P.getMaterial('bunker_concrete_formwork', { color: 0x767c80, tile: 3.2 })) || new THREE.MeshStandardMaterial({ color: 0x2d3338, roughness: 0.85 });
+    const trimMat = (P && P.getMaterial('steel_dark_structural', { color: 0x3c434a, tile: 1.5 })) || new THREE.MeshStandardMaterial({ color: 0x171b1f, roughness: 0.48, metalness: 0.8 });
+    const steelMat = (P && P.getMaterial('steel_brushed', { color: 0x5c6670, tile: 1.8 })) || new THREE.MeshStandardMaterial({ color: 0x3b444c, roughness: 0.35, metalness: 0.88 });
+    const ceilMat = (P && P.getMaterial('bunker_concrete_formwork', { color: 0x454a4f, tile: 4.0 })) || new THREE.MeshStandardMaterial({ color: 0x161a1d, roughness: 0.9 });
+    const lampMat = new THREE.MeshStandardMaterial({ color: 0xffe4b8, emissive: 0xffd28a, emissiveIntensity: 1.4, roughness: 0.2 });
+    const stripeMat = new THREE.MeshStandardMaterial({ color: 0xd9822b, emissive: 0x994a0e, emissiveIntensity: 0.45, roughness: 0.45, transparent: true, opacity: 0.72 });
 
     const W = 34;
     const D = 28;
     const H = 6.8;
 
-    // Hangar concrete slab floor & roof
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(W, D), floorMat);
+    // Hangar concrete slab floor & roof (metric UVs + UV2)
+    const floorGeo = new THREE.PlaneGeometry(W, D, 4, 4);
+    const fUv = floorGeo.attributes.uv;
+    if (fUv) {
+      for (let i = 0; i < fUv.count; i++) fUv.setXY(i, fUv.getX(i) * (W / 3.5), fUv.getY(i) * (D / 3.5));
+      fUv.needsUpdate = true;
+      floorGeo.setAttribute('uv2', fUv);
+    }
+    const floor = new THREE.Mesh(floorGeo, floorMat);
     floor.rotation.x = -Math.PI / 2;
     this.scene.add(floor);
 
-    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(W, D), ceilMat);
+    const ceilGeo = floorGeo.clone();
+    const ceil = new THREE.Mesh(ceilGeo, ceilMat);
     ceil.rotation.x = Math.PI / 2;
     ceil.position.y = H;
     this.scene.add(ceil);
@@ -116,7 +126,7 @@ class HideoutBunker {
     this._addBox(11.0, H, 0.7, 11.5, H / 2, -D / 2, concreteMat, true);
     this._addBox(12.2, 1.8, 0.7, 0, H - 0.9, -D / 2, steelMat, false);
     // Hazard header bar above hangar bay opening
-    this._addBox(12.2, 0.16, 0.82, 0, H - 1.82, -D / 2, stripeMat, false);
+    this._addBox(12.2, 0.16, 0.82, 0, H - 1.82, -D / 2, (P && P.getMaterial('hazard_chevron_pbr')) || stripeMat, false);
 
     // Dado wall trim
     this._addBox(W - 0.8, 0.18, 0.14, 0, 1.2, D / 2 - 0.42, trimMat, false);
@@ -139,23 +149,34 @@ class HideoutBunker {
   }
 
   _buildHelipadAndChopper() {
-    const tarmacMat = new THREE.MeshLambertMaterial({ color: 0x1a1e22 });
-    const yellowMat = new THREE.MeshBasicMaterial({ color: 0xe8b236 });
-    const greenLamp = new THREE.MeshBasicMaterial({ color: 0x69f0ae });
-    const redLamp = new THREE.MeshBasicMaterial({ color: 0xff5252 });
-    const fenceMat = new THREE.MeshLambertMaterial({ color: 0x2c3238 });
-    const heloOlive = new THREE.MeshLambertMaterial({ color: 0x384534 });
-    const heloDark = new THREE.MeshLambertMaterial({ color: 0x1b1f22 });
-    const glassMat = new THREE.MeshLambertMaterial({ color: 0x263f4d });
+    const P = window.AshfallPBR;
+    const UV = P && P.UVUnwrap;
+    const tarmacMat = (P && P.getMaterial('asphalt_cracked', { color: 0x5c646a, tile: 4.5 })) || new THREE.MeshStandardMaterial({ color: 0x1a1e22, roughness: 0.92 });
+    const yellowMat = new THREE.MeshStandardMaterial({ color: 0xe8b236, emissive: 0x523b08, emissiveIntensity: 0.35, roughness: 0.52 });
+    const greenLamp = new THREE.MeshStandardMaterial({ color: 0x69f0ae, emissive: 0x3ae088, emissiveIntensity: 1.5, roughness: 0.2 });
+    const redLamp = new THREE.MeshStandardMaterial({ color: 0xff5252, emissive: 0xff2222, emissiveIntensity: 1.5, roughness: 0.2 });
+    const fenceMat = (P && P.getMaterial('bunker_concrete_formwork', { color: 0x666e74, tile: 2.8 })) || new THREE.MeshStandardMaterial({ color: 0x2c3238, roughness: 0.85 });
+    const heloOlive = (P && P.getMaterial('vehicle_armor_apc', { color: 0x768c6e, tile: 1.2 })) || new THREE.MeshStandardMaterial({ color: 0x384534, roughness: 0.56, metalness: 0.42 });
+    const heloDark = (P && P.getMaterial('gunmetal_nitride')) || new THREE.MeshStandardMaterial({ color: 0x1b1f22, roughness: 0.38, metalness: 0.88 });
+    const glassMat = (P && P.getGlassMaterial)
+      ? P.getGlassMaterial(0x1f3644, 0.46, 0.08, 0.35)
+      : new THREE.MeshStandardMaterial({ color: 0x263f4d, roughness: 0.12, metalness: 0.72, transparent: true, opacity: 0.65 });
 
     // Outdoor concrete tarmac apron north of hangar (z = -14 to -28)
-    const apron = new THREE.Mesh(new THREE.PlaneGeometry(34, 15), tarmacMat);
+    const apronGeo = new THREE.PlaneGeometry(34, 15, 4, 4);
+    const aUv = apronGeo.attributes.uv;
+    if (aUv) {
+      for (let i = 0; i < aUv.count; i++) aUv.setXY(i, aUv.getX(i) * 8, aUv.getY(i) * 3.5);
+      aUv.needsUpdate = true;
+      apronGeo.setAttribute('uv2', aUv);
+    }
+    const apron = new THREE.Mesh(apronGeo, tarmacMat);
     apron.rotation.x = -Math.PI / 2;
     apron.position.set(0, -0.01, -21.5);
     this.scene.add(apron);
 
     // Painted Helipad Ring + Yellow 'H' at (0, -19.5)
-    const padRing = new THREE.Mesh(new THREE.RingGeometry(4.4, 4.75, 24), yellowMat);
+    const padRing = new THREE.Mesh(new THREE.RingGeometry(4.4, 4.75, 40), yellowMat);
     padRing.rotation.x = -Math.PI / 2;
     padRing.position.set(0, 0.02, -19.5);
     this.scene.add(padRing);
@@ -170,49 +191,96 @@ class HideoutBunker {
     }
     this._addBox(34, 1.3, 0.5, 0, 0.65, -26.5, fenceMat, true);
 
-    // Low-poly PS2 Exfil Transport Helicopter parked on pad at (0, 0, -20.2)
+    // High-Poly Exfil Tactical Transport Helicopter parked on pad at (0, 0, -20.2)
     const helo = new THREE.Group();
     helo.position.set(0, 0, -20.2);
     helo.rotation.y = 0.28;
 
-    const fuselage = new THREE.Mesh(new THREE.BoxGeometry(2.3, 1.85, 5.4), heloOlive);
-    fuselage.position.set(0, 1.65, 0);
-    const nose = new THREE.Mesh(new THREE.BoxGeometry(1.9, 1.35, 1.5), heloOlive);
-    nose.position.set(0, 1.4, 3.2);
-    const canopy = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.85, 1.3), glassMat);
-    canopy.position.set(0, 2.0, 2.65);
-    const tailBoom = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.68, 4.8), heloOlive);
-    tailBoom.position.set(0, 2.15, -4.8);
-    const tailFin = new THREE.Mesh(new THREE.BoxGeometry(0.22, 1.65, 0.9), heloOlive);
-    tailFin.position.set(0, 2.75, -7.0);
-    const rotorMast = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.22, 0.75, 8), heloDark);
-    rotorMast.position.set(0, 2.85, 0.2);
-    const skidL = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.14, 4.8), heloDark);
-    skidL.position.set(-1.35, 0.12, 0.2);
+    const fuseGeo = new THREE.CylinderGeometry(1.12, 1.18, 5.2, 16);
+    fuseGeo.rotateX(Math.PI / 2);
+    fuseGeo.scale(1.06, 0.86, 1.0);
+    if (UV) UV.unwrapCylinder(fuseGeo, 1.5);
+    const fuselage = new THREE.Mesh(fuseGeo, heloOlive);
+    fuselage.position.set(0, 1.62, 0);
+
+    const noseCone = new THREE.Mesh(new THREE.SphereGeometry(1.12, 16, 12), heloOlive);
+    noseCone.scale.set(1.0, 0.72, 1.45);
+    noseCone.position.set(0, 1.38, 2.55);
+
+    const canopyGeo = new THREE.SphereGeometry(1.04, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.55);
+    canopyGeo.scale(0.95, 0.68, 1.25);
+    const canopy = new THREE.Mesh(canopyGeo, glassMat);
+    canopy.position.set(0, 1.82, 2.15);
+    canopy.rotation.x = 0.28;
+
+    for (const sx of [-0.52, 0.52]) {
+      const engGeo = new THREE.CylinderGeometry(0.34, 0.30, 2.2, 14);
+      engGeo.rotateX(Math.PI / 2);
+      const eng = new THREE.Mesh(engGeo, heloOlive);
+      eng.position.set(sx, 2.58, 0.1);
+      const exhaust = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 0.45, 14), heloDark);
+      exhaust.rotation.x = Math.PI / 2;
+      exhaust.position.set(sx, 2.56, -1.12);
+      const sponson = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.42, 2.1), heloOlive);
+      sponson.position.set(sx * 2.25, 1.05, 0.0);
+      helo.add(eng, exhaust, sponson);
+    }
+
+    const tailGeo = new THREE.CylinderGeometry(0.24, 0.48, 5.1, 12);
+    tailGeo.rotateX(Math.PI / 2);
+    const tailBoom = new THREE.Mesh(tailGeo, heloOlive);
+    tailBoom.position.set(0, 2.12, -4.85);
+
+    const finShape = new THREE.Shape();
+    finShape.moveTo(0, 0);
+    finShape.lineTo(1.05, 0);
+    finShape.lineTo(0.42, 1.72);
+    finShape.lineTo(-0.18, 1.72);
+    finShape.closePath();
+    const finGeo = new THREE.ExtrudeGeometry(finShape, { depth: 0.16, bevelEnabled: true, bevelThickness: 0.03, bevelSize: 0.03, bevelSegments: 1 });
+    finGeo.translate(0, 0, -0.08);
+    if (UV) UV.unwrapExtrude(finGeo, 1.0);
+    const tailFin = new THREE.Mesh(finGeo, heloOlive);
+    tailFin.rotation.y = -Math.PI / 2;
+    tailFin.position.set(0, 2.08, -6.9);
+
+    const hStab = new THREE.Mesh(new THREE.BoxGeometry(2.35, 0.08, 0.48), heloOlive);
+    hStab.position.set(0, 2.24, -6.95);
+
+    const rotorMast = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.24, 0.78, 16), heloDark);
+    rotorMast.position.set(0, 2.95, 0.2);
+    const skidL = new THREE.Mesh(new THREE.CylinderGeometry(0.075, 0.075, 4.8, 12), heloDark);
+    skidL.rotation.x = Math.PI / 2;
+    skidL.position.set(-1.35, 0.10, 0.2);
     const skidR = skidL.clone();
     skidR.position.x = 1.35;
     for (const sx of [-1.2, 1.2]) {
       for (const sz of [-1.1, 1.4]) {
-        const strut = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.85, 0.12), heloDark);
-        strut.position.set(sx, 0.52, sz);
+        const strut = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.06, 0.96, 10), heloDark);
+        strut.position.set(sx * 0.94, 0.54, sz);
+        strut.rotation.z = sx > 0 ? -0.32 : 0.32;
         helo.add(strut);
       }
     }
 
     const mainRotor = new THREE.Group();
-    mainRotor.position.set(0, 3.22, 0.2);
-    const bladeA = new THREE.Mesh(new THREE.BoxGeometry(9.2, 0.05, 0.34), heloDark);
-    const bladeB = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.05, 9.2), heloDark);
-    mainRotor.add(bladeA, bladeB);
+    mainRotor.position.set(0, 3.35, 0.2);
+    const swash = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.32, 0.18, 16), heloDark);
+    const bladeA = new THREE.Mesh(new THREE.BoxGeometry(9.6, 0.045, 0.32), heloDark);
+    const bladeB = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.045, 9.6), heloDark);
+    mainRotor.add(swash, bladeA, bladeB);
     this.heloMainRotor = mainRotor;
 
     const tailRotor = new THREE.Group();
-    tailRotor.position.set(0.22, 3.1, -7.1);
-    const tBlade = new THREE.Mesh(new THREE.BoxGeometry(0.05, 1.5, 0.16), heloDark);
-    tailRotor.add(tBlade);
+    tailRotor.position.set(0.22, 3.25, -7.25);
+    const tHub = new THREE.Mesh(new THREE.CylinderGeometry(0.10, 0.10, 0.14, 12), heloDark);
+    tHub.rotation.z = Math.PI / 2;
+    const tBlade1 = new THREE.Mesh(new THREE.BoxGeometry(0.04, 1.55, 0.14), heloDark);
+    const tBlade2 = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.14, 1.55), heloDark);
+    tailRotor.add(tHub, tBlade1, tBlade2);
     this.heloTailRotor = tailRotor;
 
-    helo.add(fuselage, nose, canopy, tailBoom, tailFin, rotorMast, skidL, skidR, mainRotor, tailRotor);
+    helo.add(fuselage, noseCone, canopy, tailBoom, tailFin, hStab, rotorMast, skidL, skidR, mainRotor, tailRotor);
     this.scene.add(helo);
 
     // Collider around chopper so player walks up to the boarding ramp without clipping through
@@ -248,14 +316,15 @@ class HideoutBunker {
   }
 
   _buildStations() {
-    const darkSteel = new THREE.MeshLambertMaterial({ color: 0x22282e });
-    const gunmetal = new THREE.MeshLambertMaterial({ color: 0x353f48 });
-    const woodMat = new THREE.MeshLambertMaterial({ color: 0x5c422c });
-    const oliveMat = new THREE.MeshLambertMaterial({ color: 0x3d4b37 });
-    const amberGlow = new THREE.MeshBasicMaterial({ color: 0xf5a623 });
-    const cyanGlow = new THREE.MeshBasicMaterial({ color: 0x4fc3f7 });
-    const greenGlow = new THREE.MeshBasicMaterial({ color: 0x69f0ae });
-    const redGlow = new THREE.MeshBasicMaterial({ color: 0xff6b6b });
+    const P = window.AshfallPBR;
+    const darkSteel = (P && P.getMaterial('steel_dark_structural', { color: 0x3c444c })) || new THREE.MeshStandardMaterial({ color: 0x22282e, roughness: 0.45, metalness: 0.85 });
+    const gunmetal = (P && P.getMaterial('gunmetal_nitride')) || new THREE.MeshStandardMaterial({ color: 0x353f48, roughness: 0.38, metalness: 0.88 });
+    const woodMat = (P && P.getMaterial('wood_laminated_birch', { color: 0x8a6446 })) || new THREE.MeshStandardMaterial({ color: 0x5c422c, roughness: 0.65 });
+    const oliveMat = (P && P.getMaterial('polymer_od')) || new THREE.MeshStandardMaterial({ color: 0x3d4b37, roughness: 0.62 });
+    const amberGlow = new THREE.MeshStandardMaterial({ color: 0xf5a623, emissive: 0xf5a623, emissiveIntensity: 1.3, roughness: 0.25 });
+    const cyanGlow = new THREE.MeshStandardMaterial({ color: 0x4fc3f7, emissive: 0x4fc3f7, emissiveIntensity: 1.3, roughness: 0.25 });
+    const greenGlow = new THREE.MeshStandardMaterial({ color: 0x69f0ae, emissive: 0x69f0ae, emissiveIntensity: 1.3, roughness: 0.25 });
+    const redGlow = new THREE.MeshStandardMaterial({ color: 0xff6b6b, emissive: 0xff6b6b, emissiveIntensity: 1.3, roughness: 0.25 });
 
     // 1. ARMORY // LOADOUT (Center North: 0, -5.2)
     {
@@ -358,13 +427,14 @@ class HideoutBunker {
       this._addBox(1.5, 0.85, 0.12, sx, 1.52, sz, gunmetal, false);
       this._addBox(1.3, 0.65, 0.06, sx, 1.52, sz - 0.08, new THREE.MeshBasicMaterial({ color: 0x122230 }), false);
       this._addBox(1.2, 0.07, 0.08, sx, 1.82, sz - 0.10, cyanGlow, false);
-      this._registerStation('settings', 'settings', 'SYSTEM CONSOLE', 'PS2 graphics, audio & controls', sx, 1.0, sz - 1.5, 0x90caf9, 3.8);
+      this._registerStation('settings', 'settings', 'SYSTEM CONSOLE', '720p PBR graphics, audio & controls', sx, 1.0, sz - 1.5, 0x90caf9, 3.8);
     }
   }
 
   _buildAmbientProps() {
-    const crateMat = new THREE.MeshLambertMaterial({ color: 0x3b4435 });
-    const darkCrate = new THREE.MeshLambertMaterial({ color: 0x252b30 });
+    const P = window.AshfallPBR;
+    const crateMat = (P && P.getMaterial('crate_military')) || new THREE.MeshStandardMaterial({ color: 0x3b4435, roughness: 0.72 });
+    const darkCrate = (P && P.getMaterial('crate_supply', { color: 0x4c545a })) || new THREE.MeshStandardMaterial({ color: 0x252b30, roughness: 0.72 });
     this._addBox(1.2, 0.78, 1.2, -13.2, 0.39, -11.5, crateMat, true);
     this._addBox(0.88, 0.58, 0.88, -13.2, 1.06, -11.5, darkCrate, false);
     this._addBox(1.3, 0.82, 1.1, 13.2, 0.41, -11.4, crateMat, true);
@@ -511,11 +581,23 @@ class HideoutBunker {
       if (window.MW2Rig && window.MW2Rig.buildCharacterRig) {
         rig = window.MW2Rig.buildCharacterRig({ archetype: 'operator', faceForwardZ: false, bagId: 'bag_medium' });
         if (rig && rig.weaponMount) {
-          const rifle = new THREE.Mesh(
-            new THREE.BoxGeometry(0.07, 0.09, 0.62),
-            new THREE.MeshLambertMaterial({ color: 0x1a1c1e })
-          );
-          rifle.position.set(0, 0.01, -0.16);
+          let rifle = null;
+          if (window.ModelSystem && window.ModelSystem.buildWeaponRig && window.GAME_DATA && GAME_DATA.ITEMS) {
+            const rDef = GAME_DATA.ITEMS.ak47 || GAME_DATA.ITEMS.pm9;
+            if (rDef) {
+              const built = window.ModelSystem.buildWeaponRig(rDef, { optic: 'red_dot' });
+              if (built && built.group) {
+                rifle = built.group;
+                rifle.scale.setScalar(1.36);
+                rifle.position.set(0, 0.01, -0.10);
+              }
+            }
+          }
+          if (!rifle) {
+            const rifleMat = (window.AshfallPBR && window.AshfallPBR.getMaterial('gunmetal_nitride')) || new THREE.MeshStandardMaterial({ color: 0x1a1c1e, roughness: 0.4, metalness: 0.88 });
+            rifle = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.09, 0.62), rifleMat);
+            rifle.position.set(0, 0.01, -0.16);
+          }
           rig.weaponMount.add(rifle);
         }
         grp.add(rig.root);
@@ -524,14 +606,15 @@ class HideoutBunker {
           anim.update(0.016, { speed: 0, stance: 'stand', aimPitch: 0 });
         }
       } else {
-        const bodyMat = new THREE.MeshLambertMaterial({ color: 0x3b4836 });
-        const vestMat = new THREE.MeshLambertMaterial({ color: 0x222624 });
-        const pantsMat = new THREE.MeshLambertMaterial({ color: 0x2a2f2b });
-        const skinMat = new THREE.MeshLambertMaterial({ color: 0xc99c7a });
-        const helmMat = new THREE.MeshLambertMaterial({ color: 0x2d332c });
-        const visorMat = new THREE.MeshLambertMaterial({ color: 0x162229 });
-        const patchMat = new THREE.MeshBasicMaterial({ color: squadColor });
-        const gunMat = new THREE.MeshLambertMaterial({ color: 0x1b1e22 });
+        const P = window.AshfallPBR;
+        const bodyMat = (P && P.getMaterial('cordura_olive')) || new THREE.MeshStandardMaterial({ color: 0x3b4836, roughness: 0.85 });
+        const vestMat = (P && P.getMaterial('cordura_black')) || new THREE.MeshStandardMaterial({ color: 0x222624, roughness: 0.82 });
+        const pantsMat = (P && P.getMaterial('cordura_olive', { color: 0x484f49 })) || new THREE.MeshStandardMaterial({ color: 0x2a2f2b, roughness: 0.88 });
+        const skinMat = (P && P.getMaterial('skin_tactical')) || new THREE.MeshStandardMaterial({ color: 0xc99c7a, roughness: 0.62 });
+        const helmMat = (P && P.getMaterial('kevlar_helmet')) || new THREE.MeshStandardMaterial({ color: 0x2d332c, roughness: 0.56 });
+        const visorMat = new THREE.MeshStandardMaterial({ color: 0x162229, roughness: 0.14, metalness: 0.85 });
+        const patchMat = new THREE.MeshStandardMaterial({ color: squadColor, emissive: squadColor, emissiveIntensity: 0.35, roughness: 0.4 });
+        const gunMat = (P && P.getMaterial('gunmetal_nitride')) || new THREE.MeshStandardMaterial({ color: 0x1b1e22, roughness: 0.38, metalness: 0.9 });
 
         const legL = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.82, 0.22), pantsMat);
         legL.position.set(-0.12, 0.41, 0);
@@ -676,6 +759,9 @@ class HideoutBunker {
 
   update(dt, renderer) {
     if (!renderer) return;
+    if (!this.scene.environment && window.AshfallPBR) {
+      this.scene.environment = window.AshfallPBR.getEnvMap(renderer, 'indoor');
+    }
     this.idleOrbitTime += dt;
 
     // Spin Exfil Helicopter idle rotors

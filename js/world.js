@@ -1598,9 +1598,9 @@ class WastelandWorld {
   }
 
   _buildEnvironment() {
-    // Subdivided Varying Wasteland Terrain Mesh (84x84 = 14k tris for crisp rolling hills at 60+ FPS!)
+    // High-Density Remastered Terrain Mesh (256x256 = 131k tris for natural ridge & trench contours)
     const terrainSize = 2100;
-    const segs = 192;
+    const segs = 256;
     const groundGeo = new THREE.PlaneGeometry(terrainSize, terrainSize, segs, segs);
     groundGeo.rotateX(-Math.PI / 2);
 
@@ -1672,6 +1672,14 @@ class WastelandWorld {
       colors[i * 3 + 2] = tmpCol.b;
     }
     groundGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    const gUv = groundGeo.attributes.uv;
+    if (gUv) {
+      for (let ui = 0; ui < gUv.count; ui++) {
+        gUv.setXY(ui, gUv.getX(ui) * 180, gUv.getY(ui) * 180);
+      }
+      gUv.needsUpdate = true;
+      groundGeo.setAttribute('uv2', gUv);
+    }
     groundGeo.computeVertexNormals();
     this._terrainSize = terrainSize;
     this._terrainSegs = segs;
@@ -1808,8 +1816,21 @@ class WastelandWorld {
   }
 
   _buildWater() {
-    const mkWater = (color, opacity) => new THREE.MeshBasicMaterial({
+    const P = window.AshfallPBR;
+    const waterNormal = P ? P.getMaps('water_normal').normalMap : null;
+    if (waterNormal) {
+      waterNormal.wrapS = THREE.RepeatWrapping;
+      waterNormal.wrapT = THREE.RepeatWrapping;
+      waterNormal.repeat.set(4, 4);
+      this._waterNormalMap = waterNormal;
+    }
+    const mkWater = (color, opacity) => new THREE.MeshStandardMaterial({
       color,
+      normalMap: waterNormal,
+      normalScale: new THREE.Vector2(0.75, 0.75),
+      roughness: 0.08,
+      metalness: 0.32,
+      envMapIntensity: 1.55,
       transparent: true,
       opacity,
       depthWrite: false,
@@ -1820,6 +1841,18 @@ class WastelandWorld {
     });
     const riverMat = mkWater(0x2a6178, 0.85);
     const oceanMat = mkWater(0x1f4b63, 0.88);
+    const foamMat = new THREE.MeshStandardMaterial({
+      color: 0xdbeaf0,
+      roughness: 0.65,
+      metalness: 0.04,
+      transparent: true,
+      opacity: 0.42,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -2
+    });
     this.RIVER_POLYGONS = [];
 
     // Smooth variable-width sloped river & confluence basin ribbon mesh!
@@ -1828,6 +1861,7 @@ class WastelandWorld {
       const cum = riverData.cumLen;
       const total = riverData.totalLen;
       const verts = [];
+      const uvs = [];
       const idx = [];
       const leftBank2D = [];
       const rightBank2D = [];
@@ -1849,6 +1883,7 @@ class WastelandWorld {
         const rx = p[0] + nx * hw, rz = p[1] + nz * hw;
         verts.push(lx, wy, lz);
         verts.push(rx, wy, rz);
+        uvs.push(lx / 14, lz / 14, rx / 14, rz / 14);
         leftBank2D.push([lx, lz]);
         rightBank2D.push([rx, rz]);
         if (i > 0) {
@@ -1859,6 +1894,9 @@ class WastelandWorld {
       this.RIVER_POLYGONS.push(leftBank2D.concat(rightBank2D.reverse()));
       const g = new THREE.BufferGeometry();
       g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(verts), 3));
+      const uvAttr = new THREE.BufferAttribute(new Float32Array(uvs), 2);
+      g.setAttribute('uv', uvAttr);
+      g.setAttribute('uv2', uvAttr);
       g.setIndex(idx);
       g.computeVertexNormals();
       const m = new THREE.Mesh(g, mat);
@@ -1874,9 +1912,17 @@ class WastelandWorld {
     // Upper Reservoir Lake north of the Northern Dam (E1.5, y = 13.6m)
     const res = this.UPPER_RESERVOIR;
     if (res) {
-      const resGeo = new THREE.CircleGeometry(1, 32);
+      const resGeo = new THREE.CircleGeometry(1, 48);
       resGeo.rotateX(-Math.PI / 2);
       resGeo.scale(res.rx, 1, res.rz);
+      const rUv = resGeo.attributes.uv;
+      if (rUv) {
+        for (let ui = 0; ui < rUv.count; ui++) {
+          rUv.setXY(ui, rUv.getX(ui) * (res.rx / 7), rUv.getY(ui) * (res.rz / 7));
+        }
+        rUv.needsUpdate = true;
+        resGeo.setAttribute('uv2', rUv);
+      }
       const resMesh = new THREE.Mesh(resGeo, riverMat);
       resMesh.position.set(res.cx, res.waterY, res.cz);
       resMesh.renderOrder = 2;
@@ -1892,19 +1938,23 @@ class WastelandWorld {
 
     // Southern Ocean Expanse & White Beach Surf Foam (south of _shorelineZ(x))
     const oceanVerts = [];
+    const oceanUvs = [];
     const oceanIdx = [];
     const foamVerts = [];
+    const foamUvs = [];
     const foamIdx = [];
     const shoreline2D = [];
-    const stepsX = 48;
+    const stepsX = 64;
     for (let i = 0; i <= stepsX; i++) {
       const ox = -880 + (1760 * i) / stepsX;
       const sz = this._shorelineZ(ox) - 3.0;
       shoreline2D.push([ox, sz]);
       oceanVerts.push(ox, this.OCEAN_WATER_Y, sz);
       oceanVerts.push(ox, this.OCEAN_WATER_Y, 960);
+      oceanUvs.push(ox / 14, sz / 14, ox / 14, 960 / 14);
       foamVerts.push(ox, this.OCEAN_WATER_Y + 0.04, sz - 0.5);
       foamVerts.push(ox, this.OCEAN_WATER_Y + 0.04, sz + 6.5);
+      foamUvs.push(ox / 8, 0, ox / 8, 1);
       if (i > 0) {
         const b = i * 2;
         oceanIdx.push(b - 2, b - 1, b, b - 1, b + 1, b);
@@ -1913,6 +1963,9 @@ class WastelandWorld {
     }
     const oGeo = new THREE.BufferGeometry();
     oGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(oceanVerts), 3));
+    const oUvAttr = new THREE.BufferAttribute(new Float32Array(oceanUvs), 2);
+    oGeo.setAttribute('uv', oUvAttr);
+    oGeo.setAttribute('uv2', oUvAttr);
     oGeo.setIndex(oceanIdx);
     oGeo.computeVertexNormals();
     const oMesh = new THREE.Mesh(oGeo, oceanMat);
@@ -1922,8 +1975,10 @@ class WastelandWorld {
 
     const fGeo = new THREE.BufferGeometry();
     fGeo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(foamVerts), 3));
+    fGeo.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(foamUvs), 2));
     fGeo.setIndex(foamIdx);
-    const fMesh = new THREE.Mesh(fGeo, mkWater(0xdbeaf0, 0.42));
+    fGeo.computeVertexNormals();
+    const fMesh = new THREE.Mesh(fGeo, foamMat);
     fMesh.renderOrder = 3;
     this.scene.add(fMesh);
     this.OCEAN_POLY = shoreline2D.concat([[880, 920], [-880, 920]]);
@@ -2012,7 +2067,7 @@ class WastelandWorld {
       return g;
     };
 
-    // Helper: Merge vertex-colored PS2 geometries (supports flatShading + vertexColors)
+    // Helper: Merge vertex-colored high-poly geometries with UV & UV2 support for PBR normal relief
     const mergeColoredParts = (parts) => {
       let totalVerts = 0;
       const nonIdxList = parts.map((p) => {
@@ -2025,12 +2080,15 @@ class WastelandWorld {
       const posArr = new Float32Array(totalVerts * 3);
       const normArr = new Float32Array(totalVerts * 3);
       const colArr = new Float32Array(totalVerts * 3);
+      const uvArr = new Float32Array(totalVerts * 2);
       let vOff = 0;
       for (const item of nonIdxList) {
         const pa = item.g.attributes.position;
         const na = item.g.attributes.normal;
+        const ua = item.g.attributes.uv;
         for (let i = 0; i < pa.count; i++) {
           const idx3 = (vOff + i) * 3;
+          const idx2 = (vOff + i) * 2;
           posArr[idx3] = pa.getX(i);
           posArr[idx3 + 1] = pa.getY(i);
           posArr[idx3 + 2] = pa.getZ(i);
@@ -2040,6 +2098,10 @@ class WastelandWorld {
             normArr[idx3 + 2] = na.getZ(i);
           } else {
             normArr[idx3 + 1] = 1;
+          }
+          if (ua) {
+            uvArr[idx2] = ua.getX(i) * 2.0;
+            uvArr[idx2 + 1] = ua.getY(i) * 2.0;
           }
           colArr[idx3] = item.color.r;
           colArr[idx3 + 1] = item.color.g;
@@ -2052,25 +2114,41 @@ class WastelandWorld {
       out.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
       out.setAttribute('normal', new THREE.BufferAttribute(normArr, 3));
       out.setAttribute('color', new THREE.BufferAttribute(colArr, 3));
+      const uvBuf = new THREE.BufferAttribute(uvArr, 2);
+      out.setAttribute('uv', uvBuf);
+      out.setAttribute('uv2', uvBuf);
       return out;
     };
 
-    // 1. Low-Poly PS2 Pine Trees & Bare/Dead Trees (760 total -> 2 draw calls!)
+    // 1. High-Poly 5-Tier Russian Taiga Pine Trees & Sculpted Deadwood Snags (760 total -> 2 draw calls!)
     const pineCount = 760;
     const livePineGeo = mergeColoredParts([
-      { geo: new THREE.CylinderGeometry(0.16, 0.30, 2.2, 5), pos: [0, 1.1, 0], color: 0x4a3826 },
-      { geo: new THREE.ConeGeometry(2.2, 2.6, 7), pos: [0, 2.9, 0], color: 0x2f4a2a },
-      { geo: new THREE.ConeGeometry(1.7, 2.2, 7), pos: [0, 4.1, 0], color: 0x36522e },
-      { geo: new THREE.ConeGeometry(1.1, 1.8, 7), pos: [0, 5.2, 0], color: 0x3e5b33 }
+      { geo: new THREE.CylinderGeometry(0.16, 0.36, 2.3, 10), pos: [0, 1.15, 0], color: 0x4a3826 },
+      { geo: new THREE.CylinderGeometry(0.32, 0.46, 0.55, 10), pos: [0, 0.25, 0], color: 0x3b2d1f },
+      { geo: new THREE.ConeGeometry(2.35, 2.1, 12), pos: [0, 2.55, 0], color: 0x2a4426 },
+      { geo: new THREE.ConeGeometry(2.00, 1.9, 12), pos: [0, 3.45, 0], color: 0x2f4b2a },
+      { geo: new THREE.ConeGeometry(1.65, 1.75, 12), pos: [0, 4.30, 0], color: 0x36532f },
+      { geo: new THREE.ConeGeometry(1.25, 1.55, 12), pos: [0, 5.10, 0], color: 0x3d5c34 },
+      { geo: new THREE.ConeGeometry(0.82, 1.35, 12), pos: [0, 5.85, 0], color: 0x45663a }
     ]);
     const deadTreeGeo = mergeColoredParts([
-      { geo: new THREE.CylinderGeometry(0.14, 0.28, 4.4, 5), pos: [0, 2.2, 0], color: 0x5a4a38 },
-      { geo: new THREE.BoxGeometry(0.13, 1.5, 0.13), pos: [0.42, 2.6, 0.12], rot: [0.2, 0, -0.68], color: 0x524231 },
-      { geo: new THREE.BoxGeometry(0.12, 1.4, 0.12), pos: [-0.38, 3.2, -0.18], rot: [-0.25, 0, 0.62], color: 0x5a4a38 },
-      { geo: new THREE.BoxGeometry(0.11, 1.1, 0.11), pos: [0.10, 3.8, 0.36], rot: [0.58, 0, 0.18], color: 0x4f4030 }
+      { geo: new THREE.CylinderGeometry(0.12, 0.32, 4.6, 10), pos: [0, 2.3, 0], color: 0x5a4a38 },
+      { geo: new THREE.CylinderGeometry(0.05, 0.13, 1.55, 8), pos: [0.46, 2.6, 0.12], rot: [0.2, 0, -0.72], color: 0x524231 },
+      { geo: new THREE.CylinderGeometry(0.04, 0.12, 1.45, 8), pos: [-0.42, 3.2, -0.18], rot: [-0.25, 0, 0.66], color: 0x5a4a38 },
+      { geo: new THREE.CylinderGeometry(0.04, 0.10, 1.15, 8), pos: [0.12, 3.8, 0.36], rot: [0.60, 0, 0.18], color: 0x4f4030 },
+      { geo: new THREE.CylinderGeometry(0.03, 0.08, 0.90, 8), pos: [-0.24, 4.1, 0.18], rot: [0.35, 0, 0.55], color: 0x4b3c2d }
     ]);
 
-    const treeMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+    const P = window.AshfallPBR;
+    const barkMaps = P ? P.getMaps('pine_bark') : null;
+    const treeMat = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      normalMap: barkMaps ? barkMaps.normalMap : null,
+      normalScale: new THREE.Vector2(0.55, 0.55),
+      roughnessMap: barkMaps ? barkMaps.roughnessMap : null,
+      roughness: 0.86,
+      metalness: 0.02
+    });
     const livePineInst = new THREE.InstancedMesh(livePineGeo, treeMat, pineCount);
     const deadTreeInst = new THREE.InstancedMesh(deadTreeGeo, treeMat, Math.ceil(pineCount * 0.35));
     livePineInst.castShadow = false;
@@ -2125,9 +2203,11 @@ class WastelandWorld {
     // 2. Crisp Grass Tufts (3,200 instances of 2-plane crossed cards -> 1 draw call!)
     const grassCount = 3200;
     const grassGeo = buildCrossedPlanesGeo(0.9, 0.55, -0.04, 2);
-    const grassMat = new THREE.MeshLambertMaterial({
+    const grassMat = new THREE.MeshStandardMaterial({
       map: this._createGrassTuftTexture(),
       alphaTest: 0.5,
+      roughness: 0.82,
+      metalness: 0.02,
       side: THREE.DoubleSide
     });
     const grassInst = new THREE.InstancedMesh(grassGeo, grassMat, grassCount);
@@ -2154,12 +2234,14 @@ class WastelandWorld {
     this._maxBushes = placedGrass;
     this.scene.add(grassInst);
 
-    // 3. Sharp PS2 Fern / Sapling Cards (700 instances of 3-plane cards -> 1 draw call!)
+    // 3. Sharp PBR Fern / Sapling Cards (700 instances of 3-plane cards -> 1 draw call!)
     const fernCount = 700;
     const fernGeo = buildCrossedPlanesGeo(1.6, 1.3, -0.05, 3);
-    const fernMat = new THREE.MeshLambertMaterial({
+    const fernMat = new THREE.MeshStandardMaterial({
       map: this._createFernCardTexture(),
       alphaTest: 0.5,
+      roughness: 0.78,
+      metalness: 0.02,
       side: THREE.DoubleSide
     });
     const fernInst = new THREE.InstancedMesh(fernGeo, fernMat, fernCount);
@@ -2186,11 +2268,20 @@ class WastelandWorld {
     this._maxFerns = placedFerns;
     this.scene.add(fernInst);
 
-    // 3. Natural Rock Outcrops & Tactical Cover Boulders (110 formations with colliders -> 1 draw call!)
+    // 4. Sculpted Granite Rock Outcrops & Tactical Cover Boulders (110 formations with colliders -> 1 draw call!)
     const rockCount = 110;
-    const rockGeo = new THREE.DodecahedronGeometry(2.1, 0);
-    rockGeo.scale(1.25, 0.78, 1.05);
-    const rockMat = new THREE.MeshLambertMaterial({ color: 0x67645e });
+    const rockGeo = new THREE.IcosahedronGeometry(2.1, 2);
+    const rPos = rockGeo.attributes.position;
+    for (let i = 0; i < rPos.count; i++) {
+      const vx = rPos.getX(i), vy = rPos.getY(i), vz = rPos.getZ(i);
+      const n = 1.0 + 0.16 * Math.sin(vx * 2.1 + vz * 1.4) * Math.cos(vy * 2.6 - vx * 0.9) + 0.08 * Math.sin(vz * 4.3 + vy * 3.1);
+      rPos.setXYZ(i, vx * n * 1.25, vy * n * 0.78, vz * n * 1.05);
+    }
+    rPos.needsUpdate = true;
+    rockGeo.computeVertexNormals();
+    if (P && P.UVUnwrap) P.UVUnwrap.unwrapBox(rockGeo, 2.2);
+    const rockMat = (P && P.getMaterial('rock_alpine_granite', { tile: 1.4 }))
+      || new THREE.MeshStandardMaterial({ color: 0x67645e, roughness: 0.88, metalness: 0.04 });
     const rockInst = new THREE.InstancedMesh(rockGeo, rockMat, rockCount);
     rockInst.castShadow = false;
     rockInst.receiveShadow = true;
@@ -2432,6 +2523,7 @@ class WastelandWorld {
       merged.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       merged.setAttribute('normal', new THREE.BufferAttribute(normals, 3));
       merged.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+      merged.setAttribute('uv2', merged.getAttribute('uv'));
       merged.setIndex(new THREE.BufferAttribute(indices, 1));
       merged.computeBoundingBox();
       merged.computeBoundingSphere();
@@ -2889,6 +2981,8 @@ class WastelandWorld {
     const pivot = new THREE.Group();
     pivot.position.set(hingeX, baseY, hingeZ);
     pivot.rotation.y = rotY;
+    pivot.userData.noCull = true;
+    pivot.userData.isDoor = true;
 
     const leafMat = style === 'steel' ? this._materials.doorSteel : this._materials.doorWood;
     const leaf = new THREE.Mesh(new THREE.BoxGeometry(width - 0.06, height, 0.12), leafMat);
@@ -2899,18 +2993,27 @@ class WastelandWorld {
     pane.position.set(width * 0.5, height * 0.72, 0);
     pivot.add(leaf, hFront, pane);
     this.scene.add(pivot);
+    pivot.updateMatrixWorld(true);
 
     const jambL = new THREE.Mesh(new THREE.BoxGeometry(0.12, height + 0.1, 0.24), this._materials.windowFrame);
     jambL.position.set(hingeX, baseY + height * 0.5, hingeZ);
     jambL.rotation.y = rotY;
+    jambL.userData.noCull = true;
+    jambL.userData.isDoor = true;
     jambL.updateMatrix();
+    jambL.updateMatrixWorld(true);
     jambL.matrixAutoUpdate = false;
     const jambR = new THREE.Mesh(new THREE.BoxGeometry(0.12, height + 0.1, 0.24), this._materials.windowFrame);
     jambR.position.set(cx + cosR * (width * 0.5), baseY + height * 0.5, cz - sinR * (width * 0.5));
     jambR.rotation.y = rotY;
+    jambR.userData.noCull = true;
+    jambR.userData.isDoor = true;
     jambR.updateMatrix();
+    jambR.updateMatrixWorld(true);
     jambR.matrixAutoUpdate = false;
     this.scene.add(jambL, jambR);
+    this.shootableMeshes.push(leaf, jambL, jambR);
+    this.wallMeshes.push(leaf, jambL, jambR);
 
     const halfSpanX = Math.abs(cosR) * (width * 0.5) + Math.abs(sinR) * 0.28;
     const halfSpanZ = Math.abs(sinR) * (width * 0.5) + Math.abs(cosR) * 0.28;
@@ -3536,7 +3639,9 @@ class WastelandWorld {
     }
 
     const baseY = this.getTerrainHeight(x, z) + y;
-    const recessMat = this._materials.darkTrim || (this._materials.darkTrim = new THREE.MeshLambertMaterial({ color: 0x131614 }));
+    const P = window.AshfallPBR;
+    const recessMat = this._materials.darkTrim || (this._materials.darkTrim = (P ? P.getMaterial('gunmetal_nitride') : new THREE.MeshStandardMaterial({ color: 0x1a1e22, roughness: 0.42, metalness: 0.85 })));
+    const steelTrimMat = this._materials.windowFrame || recessMat;
     let mesh;
     let lid = null;
 
@@ -3557,7 +3662,7 @@ class WastelandWorld {
       this.scene.add(lidPivot);
       lid = { pivot: lidPivot, axis: 'y', angle: 0, target: 0, openAngle: -1.35, opened: false };
     } else {
-      // Top-opening crate / case / vault with statically batched lower body & hinged lid
+      // High-detail PBR crate / tactical case / vault matching 1:1 collider bounds
       const bodyH = h * 0.86;
       const lidH = h * 0.14;
       mesh = this._addBox(x, baseY + bodyH / 2, z, w, bodyH, d, mat, true);
@@ -3565,34 +3670,24 @@ class WastelandWorld {
       recess.position.set(x, baseY + bodyH + 0.005, z);
       this.scene.add(recess);
 
+      // Corner structural ribs / brackets matching exact crate envelope
+      for (const sx of [-1, 1]) {
+        const rib = new THREE.Mesh(new THREE.BoxGeometry(0.06, bodyH * 0.96, d + 0.015), steelTrimMat);
+        rib.position.set(x + sx * (w * 0.46), baseY + bodyH * 0.5, z);
+        this.scene.add(rib);
+      }
+
       const lidPivot = new THREE.Group();
       lidPivot.position.set(x, baseY + bodyH, z - d / 2);
       const lidMesh = new THREE.Mesh(new THREE.BoxGeometry(w + 0.02, lidH, d + 0.02), mat);
       lidMesh.position.set(0, lidH * 0.5, d / 2);
-      const latch = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.06, 0.03), recessMat);
-      latch.position.set(0, lidH * 0.25, d + 0.015);
-      lidPivot.add(lidMesh, latch);
+      const latchL = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.065, 0.035), recessMat);
+      latchL.position.set(-w * 0.28, lidH * 0.25, d + 0.016);
+      const latchR = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.065, 0.035), recessMat);
+      latchR.position.set(w * 0.28, lidH * 0.25, d + 0.016);
+      lidPivot.add(lidMesh, latchL, latchR);
       this.scene.add(lidPivot);
       lid = { pivot: lidPivot, axis: 'x', angle: 0, target: 0, openAngle: -1.25, opened: false };
-
-      if (window.ModelSystem && window.ModelSystem.loadGLTFProp && (kind === 'supply' || kind === 'military')) {
-        const refMesh = mesh;
-        const refRecess = recess;
-        const refLid = lidPivot;
-        window.ModelSystem.loadGLTFProp('wooden_military_crate').then((proto) => {
-          if (!proto || !this.scene) return;
-          const clone = proto.clone(true);
-          clone.userData.staticProp = true;
-          const rawH = Math.max(0.05, (proto.userData._rawSize && proto.userData._rawSize.y) || 0.6);
-          const sc = (h * 1.05) / rawH;
-          clone.scale.setScalar(sc);
-          clone.position.set(x, baseY, z);
-          this.scene.add(clone);
-          if (refMesh) refMesh.visible = false;
-          if (refRecess) refRecess.visible = false;
-          if (refLid) refLid.visible = false;
-        });
-      }
     }
 
     if (window.ModelSystem && window.ModelSystem.attachRealProp && kind === 'boss_key_room') {
@@ -4810,7 +4905,7 @@ class WastelandWorld {
       if (x >= c.minX && x <= c.maxX && z >= c.minZ && z <= c.maxZ) {
         if (c.maxY > bestY) {
           if (referenceY !== null) {
-            if (c.maxY <= referenceY + 0.55) bestY = c.maxY;
+            if (c.maxY <= referenceY + 0.65) bestY = c.maxY;
           } else if (c.maxY - terrainY <= 1.2) {
             bestY = c.maxY;
           }
@@ -5386,6 +5481,11 @@ class WastelandWorld {
           lid.pivot.rotation[lid.axis] = lid.angle;
         }
       }
+    }
+    // Animate scrolling PBR water surface normals across rivers, reservoir & sea
+    if (this._waterNormalMap) {
+      this._waterNormalMap.offset.x = (this._waterNormalMap.offset.x + dt * 0.035) % 1;
+      this._waterNormalMap.offset.y = (this._waterNormalMap.offset.y + dt * 0.022) % 1;
     }
     // Keep procedural skybox dome centered on player & animate drifting clouds
     if (this.skyDome) {

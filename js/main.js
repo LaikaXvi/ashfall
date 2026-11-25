@@ -1,15 +1,24 @@
 // Main Game Loop, Three.js Scene Setup & Raid Lifecycle
 (function () {
   const canvas = document.getElementById('game-canvas');
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(1);
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+  const _targetDpr = () => {
+    const px = (window.GFX_SETTINGS && typeof window.GFX_SETTINGS.pixel === 'number') ? window.GFX_SETTINGS.pixel : 1;
+    return px > 1 ? 1 : Math.min(window.devicePixelRatio || 1, 1.5);
+  };
+  renderer.setPixelRatio(_targetDpr());
   renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFShadowMap;
-  renderer.shadowMap.autoUpdate = false;
-  if (THREE.ACESFilmicToneMapping !== undefined) {
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.08;
+  if (window.AshfallRenderer && window.AshfallRenderer.configureRenderer) {
+    window.AshfallRenderer.configureRenderer(renderer);
+  } else {
+    if (THREE.sRGBEncoding !== undefined) renderer.outputEncoding = THREE.sRGBEncoding;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap || THREE.PCFShadowMap;
+    renderer.shadowMap.autoUpdate = false;
+    if (THREE.ACESFilmicToneMapping !== undefined) {
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.08;
+    }
   }
   window.mainWebGLRenderer = renderer;
 
@@ -38,7 +47,7 @@
     const lighting = gfx.lighting ?? 3;
     const shadows = gfx.shadows ?? 3;
 
-    renderer.setPixelRatio(1);
+    renderer.setPixelRatio(_targetDpr());
     renderer.setSize(window.innerWidth, window.innerHeight);
     if (window.renderPipeline && window.renderPipeline.resize) {
       window.renderPipeline.resize();
@@ -64,8 +73,8 @@
     if (renderer.toneMappingExposure !== undefined) {
       renderer.toneMappingExposure = lighting === 1 ? 0.96 : (lighting === 2 ? 1.02 : (lighting === 3 ? 1.08 : 1.14));
     }
-    if (hemiLight) hemiLight.intensity = lighting === 1 ? 0.76 : (lighting === 2 ? 0.88 : (lighting === 3 ? 0.96 : 1.04));
-    if (rimFillLight) rimFillLight.intensity = lighting === 1 ? 0.12 : (lighting === 2 ? 0.30 : (lighting === 3 ? 0.48 : 0.62));
+    if (hemiLight) hemiLight.intensity = lighting === 1 ? 0.76 : (lighting === 2 ? 0.88 : (lighting === 3 ? 0.98 : 1.06));
+    if (rimFillLight) rimFillLight.intensity = lighting === 1 ? 0.14 : (lighting === 2 ? 0.34 : (lighting === 3 ? 0.52 : 0.68));
 
     // 4. LOD / View Distance
     if (camera) {
@@ -73,16 +82,16 @@
       camera.updateProjectionMatrix();
     }
     if (scene && scene.fog) {
-      scene.fog.density = lod === 1 ? 0.0038 : (lod === 2 ? 0.0028 : (lod === 3 ? 0.0021 : 0.0016));
+      scene.fog.density = lod === 1 ? 0.0034 : (lod === 2 ? 0.0024 : (lod === 3 ? 0.0018 : 0.0014));
     }
     if (world && world.setGraphicsOptions) {
       world.setGraphicsOptions(gfx);
     }
     if (world && world.isBunkerMap) {
       if (sunLight) { sunLight.castShadow = false; sunLight.intensity = 0; }
-      if (rimFillLight) rimFillLight.intensity = 0.1;
-      if (scene && scene.fog) scene.fog.density = 0.011;
-      if (camera) { camera.far = Math.min(camera.far, 215); camera.updateProjectionMatrix(); }
+      if (rimFillLight) rimFillLight.intensity = 0.16;
+      if (scene && scene.fog) scene.fog.density = 0.0075;
+      if (camera) { camera.far = Math.min(camera.far, 280); camera.updateProjectionMatrix(); }
     }
   };
   let viewmodelScene = null;
@@ -365,31 +374,39 @@
     // Underground ZAVOD-9: no sun, cold sodium/concrete bounce, dense dark fog & a camera-mounted weapon light
     flashlight = null;
     if (zone.underground) {
-      scene.background = new THREE.Color(0x050607);
-      scene.fog = new THREE.FogExp2(0x0b0d0f, 0.011);
-      hemiLight.color.setHex(0xe2e6e4);
-      hemiLight.groundColor.setHex(0x7a7266);
-      hemiLight.intensity = 1.0;
+      scene.background = new THREE.Color(0x060809);
+      scene.fog = new THREE.FogExp2(0x0b0e11, 0.0075);
+      hemiLight.color.setHex(0xdce6e8);
+      hemiLight.groundColor.setHex(0x6c665e);
+      hemiLight.intensity = 0.96;
       sunLight.intensity = 0;
       sunLight.castShadow = false;
-      rimFillLight.intensity = 0.1;
-      flashlight = new THREE.SpotLight(0xfff1d6, 1.4, 55, 0.55, 0.45, 1.0);
+      rimFillLight.intensity = 0.16;
+      flashlight = new THREE.SpotLight(0xfff1d6, 1.55, 68, 0.55, 0.45, 1.0);
       flashlight.castShadow = false;
       scene.add(flashlight);
       scene.add(flashlight.target);
     }
+    const envProbe = (window.AshfallRenderer && window.AshfallRenderer.getEnvMap)
+      ? window.AshfallRenderer.getEnvMap(renderer, zone.underground ? 'indoor' : 'outdoor')
+      : null;
+    if (envProbe) scene.environment = envProbe;
 
     // Dedicated Viewmodel Layer (separate scene & depth pass so gun/hands NEVER clip through walls!)
     viewmodelScene = new THREE.Scene();
+    if (envProbe) viewmodelScene.environment = envProbe;
     viewmodelCamera = new THREE.PerspectiveCamera(window.BASE_FOV || 75, window.innerWidth / window.innerHeight, 0.01, 20);
     viewmodelScene.add(viewmodelCamera);
-    viewmodelScene.add(new THREE.HemisphereLight(0xdce6f2, 0x3b352c, 0.88));
-    const vmSun = new THREE.DirectionalLight(0xffe8c6, 1.12);
+    viewmodelScene.add(new THREE.HemisphereLight(0xdce6f2, 0x3b352c, 0.92));
+    const vmSun = new THREE.DirectionalLight(0xffe8c6, 1.25);
     vmSun.position.set(45, 65, 35);
     viewmodelScene.add(vmSun);
-    const vmRim = new THREE.DirectionalLight(0x8fbce6, 0.52);
+    const vmRim = new THREE.DirectionalLight(0x8fbce6, 0.65);
     vmRim.position.set(-40, 30, -35);
     viewmodelScene.add(vmRim);
+    const vmFill = new THREE.DirectionalLight(0xd8cbb8, 0.42);
+    vmFill.position.set(12, -18, 42);
+    viewmodelScene.add(vmFill);
 
     world = new WastelandWorld(scene, zone);
     if (window.applyGraphicsSettings) window.applyGraphicsSettings(window.GFX_SETTINGS);

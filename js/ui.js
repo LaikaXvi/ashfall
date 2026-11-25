@@ -24,16 +24,17 @@ window.GFX_SETTINGS = (() => {
   try {
     const parsed = _savedUserSettings.gfx || JSON.parse(localStorage.getItem('ashfall_gfx_settings') || 'null');
     if (parsed) {
+      const migratedPixel = (_savedUserSettings.gfxVer && _savedUserSettings.gfxVer >= 2) ? (parsed.pixel ?? 1) : 1;
       return {
         lod: parsed.lod ?? 3,
         lighting: parsed.lighting ?? 3,
         shadows: parsed.shadows ?? 3,
         textures: parsed.textures ?? 3,
-        pixel: parsed.pixel ?? 2
+        pixel: migratedPixel
       };
     }
   } catch (e) {}
-  return { lod: 3, lighting: 3, shadows: 3, textures: 3, pixel: 2 };
+  return { lod: 3, lighting: 3, shadows: 3, textures: 3, pixel: 1 };
 })();
 window.BASE_FOV = (typeof _savedUserSettings.baseFov === 'number' && Number.isFinite(_savedUserSettings.baseFov)) ? _savedUserSettings.baseFov : 75;
 window.ADS_FOV_MODE = (_savedUserSettings.adsFovMode === 'independent') ? 'independent' : 'affected';
@@ -61,7 +62,8 @@ window.saveAllUserSettings = function saveAllUserSettings() {
       ctrlLsDz: window.CONTROLLER_LS_DEADZONE ?? 0.12,
       ctrlRsDz: window.CONTROLLER_RS_DEADZONE ?? 0.10,
       ctrlAa: window.CONTROLLER_AA_STRENGTH ?? 0.85,
-      gfx: window.GFX_SETTINGS || { lod: 3, lighting: 3, shadows: 3, textures: 3, pixel: 2 },
+      gfx: window.GFX_SETTINGS || { lod: 3, lighting: 3, shadows: 3, textures: 3, pixel: 1 },
+      gfxVer: 2,
       devMode: !!window.DEV_MODE,
       squadPvp: !!window.SQUAD_PVP,
       audio
@@ -3513,7 +3515,7 @@ class GameUI {
       if (aaEl) aaEl.value = aaStr;
       if (aaVal) aaVal.textContent = `${Math.round(aaStr * 100)}%`;
 
-      const gfx = window.GFX_SETTINGS || { lod: 3, lighting: 3, shadows: 3, textures: 3, pixel: 2 };
+      const gfx = window.GFX_SETTINGS || { lod: 3, lighting: 3, shadows: 3, textures: 3, pixel: 1 };
       const lvl4 = ['', 'LOW', 'MEDIUM', 'HIGH', 'ULTRA'];
       const lvlShadow = ['OFF', 'LOW', 'MEDIUM', 'HIGH'];
       const lvlTex = ['', 'LOW', 'MEDIUM', 'HIGH'];
@@ -3528,7 +3530,7 @@ class GameUI {
       bindVal('setting-gfx-lighting', 'setting-gfx-lighting-val', gfx.lighting, lvl4);
       bindVal('setting-gfx-shadows', 'setting-gfx-shadows-val', gfx.shadows, lvlShadow);
       bindVal('setting-gfx-textures', 'setting-gfx-textures-val', gfx.textures, lvlTex);
-      bindVal('setting-gfx-pixel', 'setting-gfx-pixel-val', gfx.pixel ?? 2, lvlPixel);
+      bindVal('setting-gfx-pixel', 'setting-gfx-pixel-val', gfx.pixel ?? 1, lvlPixel);
 
       ['btn-pvp-mode', 'btn-pause-pvp'].forEach((id) => {
         const el = document.getElementById(id);
@@ -3675,7 +3677,7 @@ class GameUI {
       const el = document.getElementById(id);
       if (el) {
         el.addEventListener('input', () => {
-          if (!window.GFX_SETTINGS) window.GFX_SETTINGS = { lod: 3, lighting: 3, shadows: 3, textures: 3, pixel: 2 };
+          if (!window.GFX_SETTINGS) window.GFX_SETTINGS = { lod: 3, lighting: 3, shadows: 3, textures: 3, pixel: 1 };
           window.GFX_SETTINGS[key] = parseInt(el.value, 10);
           if (window.saveAllUserSettings) window.saveAllUserSettings();
           if (typeof window.applyGraphicsSettings === 'function') {

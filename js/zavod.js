@@ -634,6 +634,8 @@
           if (box.isEmpty()) continue;
           const sph = box.getBoundingSphere(new THREE.Sphere());
           if (sph.radius > 30) continue; // large planes (water, floors) stay
+          const keepAlways = !!(o.userData && (o.userData.noCull || o.userData.isDoor || o.userData.isStation || o.userData.isBarricade));
+          if (keepAlways) continue; // never hide collidable doors, barricades or stations
           C.props.push({ o, meshes, c: sph.center, r: sph.radius, on: true });
         }
       }
@@ -643,7 +645,7 @@
       const px = cam.position.x, py = cam.position.y, pz = cam.position.z;
       for (const it of C.props) {
         const d = Math.hypot(it.c.x - px, it.c.z - pz, (it.c.y - py) * 0.6) - it.r;
-        const want = d < 72;
+        const want = d < 245;
         if (want !== it.on) { it.on = want; this._cullSetLayer(it.meshes, want); }
       }
       // AI LOS culling

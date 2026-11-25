@@ -35,6 +35,9 @@ class ItemIconRenderer {
       });
       this.renderer.setClearColor(0x000000, 0);
       this.renderer.setPixelRatio(1);
+      this.renderer.outputEncoding = THREE.sRGBEncoding;
+      this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      this.renderer.toneMappingExposure = 1.08;
     } catch (e) {
       this.renderer = null;
     }
@@ -129,6 +132,9 @@ class ItemIconRenderer {
     this.camera.position.set(0, camYOff, Math.max(0.32, dist));
     this.camera.lookAt(0, camYOff * 0.6, 0);
 
+    if (!this.scene.environment && window.AshfallPBR) {
+      this.scene.environment = window.AshfallPBR.getEnvMap(this.renderer, 'indoor');
+    }
     this.renderer.render(this.scene, this.camera);
     const dataUrl = this.canvas.toDataURL('image/png');
     this.cache[cacheKey] = dataUrl;
@@ -143,7 +149,12 @@ class ItemIconRenderer {
     if (!this._matPool) this._matPool = new Map();
     const k = `${color}|${emissive}|${shininess}|${specular}`;
     if (this._matPool.has(k)) return this._matPool.get(k);
-    const m = new THREE.MeshPhongMaterial({ color, emissive, shininess, specular });
+    const m = new THREE.MeshStandardMaterial({
+      color,
+      emissive,
+      roughness: Math.max(0.16, 1.0 - shininess / 100),
+      metalness: shininess >= 50 ? 0.82 : 0.16
+    });
     m.userData._ashShared = true;
     this._matPool.set(k, m);
     return m;
@@ -1450,25 +1461,30 @@ class ItemIconRenderer {
 
     const loader = new THREE.GLTFLoader();
     const convertMat = (orig) => {
-      if (!orig) return new THREE.MeshLambertMaterial({ color: 0xffffff });
+      if (!orig) return new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.65, metalness: 0.15 });
       if (orig.map) {
-        orig.map.encoding = THREE.LinearEncoding;
+        orig.map.encoding = THREE.sRGBEncoding;
         orig.map.needsUpdate = true;
       }
       const col = orig.color ? orig.color.clone() : new THREE.Color(0xffffff);
-      const lambert = new THREE.MeshLambertMaterial({
+      const stdMat = new THREE.MeshStandardMaterial({
         map: orig.map || null,
+        normalMap: orig.normalMap || null,
+        roughnessMap: orig.roughnessMap || null,
+        metalnessMap: orig.metalnessMap || null,
+        roughness: orig.roughness != null ? orig.roughness : 0.65,
+        metalness: orig.metalness != null ? orig.metalness : 0.15,
         color: col
       });
       if (orig.transparent) {
-        lambert.transparent = true;
-        lambert.opacity = orig.opacity;
+        stdMat.transparent = true;
+        stdMat.opacity = orig.opacity;
       }
-      if (orig.side !== undefined) lambert.side = orig.side;
+      if (orig.side !== undefined) stdMat.side = orig.side;
       if (typeof orig.dispose === 'function') {
         try { orig.dispose(); } catch (e) {}
       }
-      return lambert;
+      return stdMat;
     };
 
     const promises = Object.keys(byModel).map((modelName) => new Promise((resolve) => {
@@ -1589,6 +1605,9 @@ class ItemIconRenderer {
       const spanY = Math.max(0.55, headY - hipsY + 0.18);
 
       const pScene = new THREE.Scene();
+      if (window.AshfallPBR) {
+        pScene.environment = window.AshfallPBR.getEnvMap(this.renderer, 'indoor');
+      }
       pScene.add(new THREE.HemisphereLight(0xf0f4f8, 0x1e2226, 0.95));
       const pKey = new THREE.DirectionalLight(0xffffff, 1.35);
       pKey.position.set(1.8, 2.8, 3.2);

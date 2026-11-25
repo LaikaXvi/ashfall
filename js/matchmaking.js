@@ -359,6 +359,9 @@ class MatchmakingStage {
     }
 
     if (sharedRenderer && this.scene && this.camera && this.canvas) {
+      if (!this.scene.environment && window.AshfallPBR && window.AshfallPBR.getEnvMap) {
+        this.scene.environment = window.AshfallPBR.getEnvMap(sharedRenderer, 'indoor');
+      }
       const rect = this.canvas.getBoundingClientRect();
       if (rect.width > 1 && rect.height > 1) {
         if (Math.abs(this.camera.aspect - rect.width / rect.height) > 0.005) {

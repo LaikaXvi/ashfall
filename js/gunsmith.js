@@ -509,6 +509,9 @@ class GunsmithController {
 
     const r = sharedRenderer;
     if (r && this.canvas) {
+      if (!this.scene.environment && window.AshfallPBR) {
+        this.scene.environment = window.AshfallPBR.getEnvMap(r, 'indoor');
+      }
       const rect = this.canvas.getBoundingClientRect();
       if (rect.width > 1 && rect.height > 1) {
         if (Math.abs(this.camera.aspect - rect.width / rect.height) > 0.005) {

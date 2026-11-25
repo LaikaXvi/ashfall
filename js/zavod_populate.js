@@ -39,6 +39,8 @@
       lamps.push(lamp);
     }
     g.position.set(op.x, by, op.z);
+    g.userData.noCull = true;
+    g.userData.isDoor = true;
     this.scene.add(g);
     const half = alongZ ? { x: 0.3, z: w / 2 } : { x: w / 2, z: 0.3 };
     const collider = { minX: op.x - half.x, maxX: op.x + half.x, minY: by, maxY: by + h, minZ: op.z - half.z, maxZ: op.z + half.z };
@@ -85,6 +87,8 @@
       }
     }
     g.position.set(op.x, by, op.z);
+    g.userData.noCull = true;
+    g.userData.isDoor = true;
     this.scene.add(g);
     const half = alongZ ? { x: 0.25, z: w / 2 } : { x: w / 2, z: 0.25 };
     const collider = { minX: op.x - half.x, maxX: op.x + half.x, minY: by, maxY: by + h, minZ: op.z - half.z, maxZ: op.z + half.z };
@@ -163,7 +167,7 @@
     const center = (id) => { const r = R(id); const [x0, z0, x1, z1] = r.rects[0]; return { x: (x0 + x1) / 2, z: (z0 + z1) / 2, r }; };
     const pick = (arr) => arr[Math.floor(rnd() * arr.length) % arr.length];
     const opsOf = (id) => G.openings.filter(o => o.a === id || o.b === id);
-    const nearOpening = (x, z, by = 0, rad = 2.6) => G.openings.some(o => Math.abs((o.baseY || 0) - by) < 1 && Math.abs(o.x - x) < rad + o.width / 2 && Math.abs(o.z - z) < rad + (o.o === 'v' ? o.width / 2 : 0.5) && Math.hypot(o.x - x, o.z - z) < rad + o.width / 2);
+    const nearOpening = (x, z, by = 0, rad = 2.6) => G.openings.some(o => Math.abs((o.baseY || 0) - by) < 1 && Math.abs(o.x - x) < rad + (o.o === 'h' ? o.width / 2 : 0.5) && Math.abs(o.z - z) < rad + (o.o === 'v' ? o.width / 2 : 0.5) && Math.hypot(o.x - x, o.z - z) < rad + o.width / 2);
     const reserved = [];
     const isReserved = (x, z, rad = 2.2) => reserved.some(p => Math.hypot(p.x - x, p.z - z) < rad + p.r);
     const reserve = (x, z, r = 2.0) => reserved.push({ x, z, r });
@@ -172,7 +176,11 @@
     for (const op of G.openings) {
       if (op.door === 'hinge') {
         const rotY = op.o === 'v' ? Math.PI / 2 : 0;
-        this._addDoor(op.x, op.baseY || 0, op.z, Math.min(op.width - 0.25, 1.75), 2.6, rotY, op.label || 'Door', 'steel');
+        const doorObj = this._addDoor(op.x, op.baseY || 0, op.z, Math.min(op.width - 0.12, 1.88), 2.6, rotY, op.label || 'Door', 'steel');
+        if (doorObj && doorObj.group) {
+          doorObj.group.userData.noCull = true;
+          doorObj.group.userData.isDoor = true;
+        }
       } else if (op.door === 'blast') {
         this._zvBlastDoor(op, MZ);
       } else if (op.door === 'planks') {
@@ -182,56 +190,92 @@
     const doorById = (id) => Z.doors.find(d => d.id === id);
 
     // --- Stations (puzzles, panels, buttons) ---
-    const stationMat = { panel: MZ.darkSteel, glow: MZ.lightRed };
+    const Pbr = window.AshfallPBR;
+    const stationMat = {
+      panel: MZ.darkSteel,
+      glow: MZ.lightRed,
+      valveRed: Pbr ? Pbr.getMaterial('polymer_stippled', { color: 0xb33a2a }) : new THREE.MeshStandardMaterial({ color: 0xb33a2a, roughness: 0.45 }),
+      boardGreen: Pbr ? Pbr.getMaterial('concrete_weathered', { color: 0x2c3a2e }) : new THREE.MeshStandardMaterial({ color: 0x2c3a2e, roughness: 0.85 }),
+      boardDark: Pbr ? Pbr.getMaterial('concrete_weathered', { color: 0x1c2620 }) : new THREE.MeshStandardMaterial({ color: 0x1c2620, roughness: 0.88 })
+    };
     const addStation = (def) => {
       const by = def.y || 0;
       const g = new THREE.Group();
       const kind = def.kind;
+      let solidMesh = null;
+      let colR = null;
+      let colH = 2.1;
       if (kind === 'valve') {
-        const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 3.4, 10), MZ.pipe);
+        const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.28, 3.4, 18), MZ.pipe);
         pipe.position.set(0, 1.7, 0);
-        const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.09, 8, 20), new THREE.MeshLambertMaterial({ color: 0xb33a2a }));
+        const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.55, 0.09, 12, 28), stationMat.valveRed);
         wheel.position.set(0, 1.35, 0.42);
         g.add(pipe, wheel);
         def.spinMesh = wheel;
+        solidMesh = pipe;
+        colR = [0.32, 0.32];
+        colH = 3.4;
       } else if (kind === 'clue') {
-        const board = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.2, 0.08), new THREE.MeshLambertMaterial({ color: 0x2c3a2e }));
+        const board = new THREE.Mesh(new THREE.BoxGeometry(1.8, 1.2, 0.08), stationMat.boardGreen);
         board.position.set(0, 1.6, 0);
         g.add(board);
+        solidMesh = board;
       } else if (kind === 'shop_note') {
-        const board = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.05, 0.08), new THREE.MeshLambertMaterial({ color: 0x1c2620 }));
+        const board = new THREE.Mesh(new THREE.BoxGeometry(1.5, 1.05, 0.08), stationMat.boardDark);
         board.position.set(0, 1.6, 0);
         const rail = new THREE.Mesh(new THREE.BoxGeometry(1.56, 0.07, 0.11), MZ.wood);
         rail.position.set(0, 1.06, 0);
         g.add(board, rail);
+        solidMesh = board;
       } else if (kind === 'pad') {
-        const plat = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.4, 0.3, 20), MZ.darkSteel);
+        const plat = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.4, 0.3, 24), MZ.darkSteel);
         plat.position.set(0, 0.15, 0);
-        const ring = new THREE.Mesh(new THREE.TorusGeometry(1.15, 0.05, 6, 24), MZ.lightAmber);
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(1.15, 0.05, 10, 28), MZ.lightAmber);
         ring.rotation.x = Math.PI / 2;
         ring.position.set(0, 0.32, 0);
         const post = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.9, 0.5), MZ.steel);
         post.position.set(0, 0.75, 0);
         g.add(plat, ring, post);
         def.ringMesh = ring;
+        solidMesh = post;
+        colR = [0.28, 0.28];
+        colH = 1.2;
       } else {
         const box = new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.5, 0.35), stationMat.panel);
         box.position.set(0, 1.35, 0);
         const scr = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.4, 0.05), kind === 'socket' ? MZ.screenBlue : MZ.screen);
         scr.position.set(0, 1.6, 0.2);
-        const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.08, 12), new THREE.MeshBasicMaterial({ color: 0xff3326 }));
+        const btn = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.08, 16), MZ.lightRed);
         btn.rotation.x = Math.PI / 2;
         btn.position.set(0, 1.12, 0.2);
         g.add(box, scr, btn);
         def.btnMesh = btn;
+        solidMesh = box;
+        const rotY = def.rotY || 0;
+        const c = Math.abs(Math.cos(rotY)), s = Math.abs(Math.sin(rotY));
+        colR = [Math.max(0.18, c * 0.52 + s * 0.16), Math.max(0.18, s * 0.52 + c * 0.16)];
       }
-      const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.22), new THREE.MeshBasicMaterial({ color: 0xff3326 }));
+      const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.22, 0.22), MZ.lightRed.clone());
       lamp.position.set(0, kind === 'pad' ? 1.35 : 2.25, 0);
       g.add(lamp);
       def.lampMesh = lamp;
       g.position.set(def.x, by, def.z);
       g.rotation.y = def.rotY || 0;
+      g.userData.noCull = true;
+      g.userData.isStation = true;
       this.scene.add(g);
+      g.updateMatrixWorld(true);
+      if (solidMesh) {
+        this.shootableMeshes.push(solidMesh);
+        this.wallMeshes.push(solidMesh);
+      }
+      if (colR) {
+        this.colliders.push({
+          minX: def.x - colR[0], maxX: def.x + colR[0],
+          minY: by, maxY: by + colH,
+          minZ: def.z - colR[1], maxZ: def.z + colR[1]
+        });
+      }
       def.group = g;
       def.position = new THREE.Vector3(def.x, by + 1.2, def.z);
       def.solved = false;
@@ -302,8 +346,8 @@
     addStation({ id: 'd2_panel', kind: 'socket', sector: 'PLANT', x: 32, z: -73, rotY: 0, label: 'D/2 FACTORY KEY LOCK',
       needs: [{ id: 'zavod_factory_key', qty: 1 }], hold: 1.2, hint: 'Needs a Factory Key (plant ventilation shafts)',
       actions: [{ open: ['D2'] }, { alarm: 'D2' }] });
-    addStation({ id: 'd1_fbtn', kind: 'button', sector: 'FACTORY', x: -26.6, z: -100, rotY: Math.PI / 2, label: 'D/1 EXIT CONTROL', hold: 0.8, actions: [{ open: ['D1'] }] });
-    addStation({ id: 'd2_fbtn', kind: 'button', sector: 'FACTORY', x: 26.6, z: -100, rotY: -Math.PI / 2, label: 'D/2 EXIT CONTROL', hold: 0.8, actions: [{ open: ['D2'] }] });
+    addStation({ id: 'd1_fbtn', kind: 'button', sector: 'FACTORY', x: -27.2, z: -96.0, rotY: Math.PI / 2, label: 'D/1 EXIT CONTROL', hold: 0.8, actions: [{ open: ['D1'] }] });
+    addStation({ id: 'd2_fbtn', kind: 'button', sector: 'FACTORY', x: 27.2, z: -96.0, rotY: -Math.PI / 2, label: 'D/2 EXIT CONTROL', hold: 0.8, actions: [{ open: ['D2'] }] });
     // ===== Factory Admin: Shopkeeper Barter (dead-drop recipe + shutter) =====
     Z.shopBarter = pick([
       { needs: [{ id: 'server_tape_red', qty: 1 }, { id: 'aseptic_blocker', qty: 1 }], label: '1x Red Server Tape + 1x Aseptic Blocker' },
@@ -364,7 +408,17 @@
       if (!Z.floods[fKey]) Z.floods[fKey] = { level: fLvl, target: fLvl, meshes: [] };
       for (const rc of G.mergedRects(0, (i, j) => { const v = G.at(0, i, j); return (v >= 0 && G.regions[v].flood === fKey) ? v : null; })) {
         const x0 = G.wx(rc.i0), x1 = G.wx(rc.i1), z0 = G.wz(rc.j0), z1 = G.wz(rc.j1);
-        const m = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, z1 - z0), MZ.water);
+        const pw = x1 - x0, pd = z1 - z0;
+        const fGeo = new THREE.PlaneGeometry(pw, pd, Math.max(2, Math.round(pw / 4)), Math.max(2, Math.round(pd / 4)));
+        const fUv = fGeo.attributes.uv;
+        if (fUv) {
+          for (let ui = 0; ui < fUv.count; ui++) {
+            fUv.setXY(ui, fUv.getX(ui) * (pw / 8), fUv.getY(ui) * (pd / 8));
+          }
+          fUv.needsUpdate = true;
+          fGeo.setAttribute('uv2', fUv);
+        }
+        const m = new THREE.Mesh(fGeo, MZ.water);
         m.rotation.x = -Math.PI / 2;
         m.position.set((x0 + x1) / 2, fLvl, (z0 + z1) / 2);
         this.scene.add(m);
@@ -381,7 +435,11 @@
         this.scene.add(beam);
         Z.lasers.push({ group: 'b2', x: gx, y: hy, z0: 30.2, z1: 41.8, mesh: beam, period: 3.6 + gi * 0.4, phase: gi * 0.9, duty: 0.62, on: true, enabled: true });
       }
-      for (const zz of [30.4, 41.6]) this._zvGeo(new THREE.BoxGeometry(0.3, 2.2, 0.3), MZ.darkSteel, gx, 1.1, zz);
+      for (const zz of [30.4, 41.6]) {
+        this._zvGeo(new THREE.BoxGeometry(0.32, 2.2, 0.32), MZ.darkSteel, gx, 1.1, zz, 0, {
+          shoot: true, wall: true, collider: [gx - 0.16, gx + 0.16, 0, 2.2, zz - 0.16, zz + 0.16]
+        });
+      }
     });
     // --- Sniper Mezzanine C4 Laser Tripwires (shoot C4 charge or disarm box at stair head) ---
     Z.traps = [];
@@ -390,6 +448,13 @@
       { id: 'sniper_trap_w', x0: -59.8, x1: -56.2, z: -188.5, y: 6.15, baseY: 5.6, c4X: -59.5, stationId: 'disarm_trap_w' },
       { id: 'sniper_trap_e', x0: 56.2, x1: 59.8, z: -188.5, y: 6.15, baseY: 5.6, c4X: 59.5, stationId: 'disarm_trap_e' }
     ]) {
+      const postH = (td.y - td.baseY) + 0.35;
+      const postY = td.baseY + postH * 0.5;
+      for (const px of [td.x0, td.x1]) {
+        this._zvGeo(new THREE.BoxGeometry(0.18, postH, 0.18), MZ.darkSteel, px, postY, td.z, 0, {
+          shoot: true, wall: true, collider: [px - 0.1, px + 0.1, td.baseY, td.baseY + postH, td.z - 0.1, td.z + 0.1]
+        });
+      }
       const beam = new THREE.Mesh(new THREE.BoxGeometry(3.6, 0.035, 0.035), trapMat);
       beam.position.set((td.x0 + td.x1) / 2, td.y, td.z);
       this.scene.add(beam);

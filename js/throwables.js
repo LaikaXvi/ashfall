@@ -34,19 +34,34 @@ class ThrowableSystem {
 
   _createThrowableMesh(id) {
     const g = new THREE.Group();
-    const oliveMat = new THREE.MeshPhongMaterial({ color: 0x45503b, specular: 0x3a4236, shininess: 22 });
-    const darkMat = new THREE.MeshPhongMaterial({ color: 0x1b1f23, specular: 0x4a525c, shininess: 38 });
-    const steelMat = new THREE.MeshPhongMaterial({ color: 0x8f98a2, specular: 0xc2ccd6, shininess: 62 });
-    const brassMat = new THREE.MeshPhongMaterial({ color: 0xd9a842, specular: 0xffe49c, shininess: 70 });
+    const P = window.AshfallPBR;
+    const UV = P && P.UVUnwrap;
+    const mkTint = (preset, hex, opts = {}) => {
+      if (P) {
+        const m = P.getMaterial(preset).clone();
+        if (m.userData) delete m.userData._ashShared;
+        if (hex != null) m.color.setHex(hex);
+        Object.assign(m, opts);
+        return m;
+      }
+      return new THREE.MeshStandardMaterial({ color: hex != null ? hex : 0x45503b, ...opts });
+    };
+    const oliveMat = (P && P.getMaterial('polymer_od')) || new THREE.MeshStandardMaterial({ color: 0x45503b, roughness: 0.62 });
+    const darkMat = (P && P.getMaterial('gunmetal_nitride')) || new THREE.MeshStandardMaterial({ color: 0x1b1f23, roughness: 0.38, metalness: 0.9 });
+    const steelMat = (P && P.getMaterial('steel_brushed')) || new THREE.MeshStandardMaterial({ color: 0x8f98a2, roughness: 0.28, metalness: 0.94 });
+    const brassMat = (P && P.getMaterial('brass_casing')) || new THREE.MeshStandardMaterial({ color: 0xd9a842, roughness: 0.24, metalness: 0.95 });
+    const cordMat = (P && P.getMaterial('cordura_olive')) || new THREE.MeshStandardMaterial({ color: 0x3b4432, roughness: 0.88 });
 
     if (id === 'frag_grenade') {
-      // M67 Fragmentation Grenade — sculpted olive sphere, equatorial weld seam, steel fuze, curved lever & brass pull-ring
-      const body = new THREE.Mesh(new THREE.SphereGeometry(0.036, 16, 12), oliveMat);
-      const weldBand = new THREE.Mesh(new THREE.TorusGeometry(0.0358, 0.0018, 6, 18), darkMat);
+      // M67 Fragmentation Grenade — high-poly OD sphere (63.5mm dia), equatorial weld, M213 fuze, curved lever & brass pull-ring
+      const bodyGeo = new THREE.SphereGeometry(0.036, 24, 18);
+      if (UV) UV.ensureUV2(bodyGeo);
+      const body = new THREE.Mesh(bodyGeo, oliveMat);
+      const weldBand = new THREE.Mesh(new THREE.TorusGeometry(0.0358, 0.0018, 10, 28), darkMat);
       weldBand.rotation.x = Math.PI / 2;
-      const stencil = new THREE.Mesh(new THREE.CylinderGeometry(0.0345, 0.0355, 0.007, 16), new THREE.MeshBasicMaterial({ color: 0xd4b946 }));
+      const stencil = new THREE.Mesh(new THREE.CylinderGeometry(0.0345, 0.0355, 0.007, 24), mkTint('polymer_od', 0xd4b946, { roughness: 0.55 }));
       stencil.position.set(0, 0.011, 0);
-      const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.0115, 0.0155, 0.019, 10), steelMat);
+      const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.0115, 0.0155, 0.019, 16), steelMat);
       collar.position.set(0, 0.039, 0);
       const fuzeTop = new THREE.Mesh(new THREE.BoxGeometry(0.022, 0.010, 0.014), steelMat);
       fuzeTop.position.set(0.004, 0.050, 0);
@@ -56,66 +71,90 @@ class ThrowableSystem {
       const spoon = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.050, 0.012), darkMat);
       spoon.position.set(0.028, 0.020, 0);
       spoon.rotation.z = -0.26;
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.0115, 0.0022, 6, 14), brassMat);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.0115, 0.0022, 10, 24), brassMat);
       ring.position.set(-0.019, 0.046, 0);
       g.add(body, weldBand, stencil, collar, fuzeTop, spoonTop, spoon, ring);
       g.userData.pinRing = ring;
     } else if (id === 'throwing_knife') {
-      // DMZ Tactical Tanto Throwing Knife — beveled carbon steel blade, honed edge, fuller groove, cord-wrapped handle & pommel ring
-      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.005, 0.132, 0.024), darkMat);
-      blade.position.set(0, 0.066, 0);
-      const fuller = new THREE.Mesh(new THREE.BoxGeometry(0.0056, 0.085, 0.005), steelMat);
-      fuller.position.set(0, 0.068, 0.002);
-      const edge = new THREE.Mesh(new THREE.BoxGeometry(0.003, 0.128, 0.005), steelMat);
-      edge.position.set(0, 0.066, -0.012);
-      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.014, 0.038, 4), darkMat);
-      tip.position.set(0, 0.150, 0);
-      tip.rotation.y = Math.PI / 4;
-      const guard = new THREE.Mesh(new THREE.BoxGeometry(0.010, 0.009, 0.032), steelMat);
+      // Tactical Spear-Point Throwing Knife (230mm OAL) — extruded beveled spear blade, fuller groove, paracord grip & pommel ring
+      const bladeShape = new THREE.Shape();
+      bladeShape.moveTo(-0.013, 0.004);
+      bladeShape.lineTo(-0.012, 0.118);
+      bladeShape.lineTo(0.0, 0.168);
+      bladeShape.lineTo(0.012, 0.118);
+      bladeShape.lineTo(0.013, 0.004);
+      bladeShape.closePath();
+      const bladeGeo = new THREE.ExtrudeGeometry(bladeShape, { depth: 0.004, bevelEnabled: true, bevelThickness: 0.0014, bevelSize: 0.0014, bevelSegments: 2 });
+      bladeGeo.translate(0, 0, -0.002);
+      if (UV) UV.unwrapExtrude(bladeGeo, 0.16);
+      const blade = new THREE.Mesh(bladeGeo, darkMat);
+      blade.rotation.y = Math.PI / 2;
+
+      const fuller = new THREE.Mesh(new THREE.BoxGeometry(0.0072, 0.088, 0.005), steelMat);
+      fuller.position.set(0, 0.068, 0);
+      const edgeL = new THREE.Mesh(new THREE.BoxGeometry(0.0028, 0.114, 0.0036), steelMat);
+      edgeL.position.set(0, 0.061, -0.013);
+      const edgeR = new THREE.Mesh(new THREE.BoxGeometry(0.0028, 0.114, 0.0036), steelMat);
+      edgeR.position.set(0, 0.061, 0.013);
+      const guard = new THREE.Mesh(new THREE.BoxGeometry(0.010, 0.009, 0.034), steelMat);
       guard.position.set(0, 0.002, 0);
-      const handle = new THREE.Mesh(new THREE.BoxGeometry(0.0095, 0.086, 0.018), oliveMat);
+      const hGeo = new THREE.BoxGeometry(0.0095, 0.086, 0.018);
+      if (UV) UV.unwrapBox(hGeo, 0.1);
+      const handle = new THREE.Mesh(hGeo, cordMat);
       handle.position.set(0, -0.044, 0);
       // Ribbed paracord wrap ridges
-      for (let i = 0; i < 4; i++) {
-        const cord = new THREE.Mesh(new THREE.BoxGeometry(0.011, 0.007, 0.020), darkMat);
-        cord.position.set(0, -0.018 - i * 0.018, 0);
+      for (let i = 0; i < 5; i++) {
+        const cord = new THREE.Mesh(new THREE.BoxGeometry(0.0112, 0.0065, 0.0205), darkMat);
+        cord.position.set(0, -0.014 - i * 0.015, 0);
         g.add(cord);
       }
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.012, 0.0032, 6, 12), darkMat);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.012, 0.0032, 10, 20), darkMat);
       ring.position.set(0, -0.095, 0);
-      g.add(blade, fuller, edge, tip, guard, handle, ring);
+      g.add(blade, fuller, edgeL, edgeR, guard, handle, ring);
     } else if (id === 'smoke_grenade') {
-      // M18 Colored Smoke Canister
-      const canMat = new THREE.MeshPhongMaterial({ color: 0x5c665a, specular: 0x454d44, shininess: 24 });
-      const can = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.026, 0.116, 16), canMat);
-      const topRim = new THREE.Mesh(new THREE.CylinderGeometry(0.0272, 0.0272, 0.007, 16), darkMat);
+      // M18 Colored Smoke Canister (63.5mm x 146mm)
+      const canMat = mkTint('polymer_od', 0x5c665a, { roughness: 0.58 });
+      const canGeo = new THREE.CylinderGeometry(0.026, 0.026, 0.116, 24);
+      if (UV) UV.unwrapCylinder(canGeo, 0.14);
+      const can = new THREE.Mesh(canGeo, canMat);
+      const topRim = new THREE.Mesh(new THREE.CylinderGeometry(0.0274, 0.0274, 0.007, 24), darkMat);
       topRim.position.set(0, 0.056, 0);
-      const botRim = new THREE.Mesh(new THREE.CylinderGeometry(0.0272, 0.0272, 0.007, 16), darkMat);
+      const botRim = new THREE.Mesh(new THREE.CylinderGeometry(0.0274, 0.0274, 0.007, 24), darkMat);
       botRim.position.set(0, -0.056, 0);
-      const stripe = new THREE.Mesh(new THREE.CylinderGeometry(0.0268, 0.0268, 0.018, 16), new THREE.MeshBasicMaterial({ color: 0xe6c235 }));
+      const midBead = new THREE.Mesh(new THREE.TorusGeometry(0.0262, 0.0012, 8, 24), darkMat);
+      midBead.rotation.x = Math.PI / 2;
+      const stripe = new THREE.Mesh(new THREE.CylinderGeometry(0.0268, 0.0268, 0.018, 24), mkTint('polymer_od', 0xe6c235, { roughness: 0.45 }));
       stripe.position.set(0, 0.024, 0);
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.016, 0.019, 10), steelMat);
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.016, 0.019, 16), steelMat);
       cap.position.set(0, 0.066, 0);
       const spoon = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.068, 0.010), darkMat);
       spoon.position.set(0.028, 0.026, 0);
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.011, 0.0022, 6, 14), brassMat);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.011, 0.0022, 10, 22), brassMat);
       ring.position.set(-0.019, 0.065, 0);
-      g.add(can, topRim, botRim, stripe, cap, spoon, ring);
+      g.add(can, topRim, botRim, midBead, stripe, cap, spoon, ring);
       g.userData.pinRing = ring;
     } else {
-      // M84 Concussion / Stun Grenade with hexagonal percussion collars & flash ports
-      const can = new THREE.Mesh(new THREE.CylinderGeometry(0.024, 0.024, 0.106, 14), darkMat);
+      // M84 Concussion / Stun Grenade (44mm x 133mm) — hexagonal collars, perforated port bands, steel lever & brass ring
+      const canGeo = new THREE.CylinderGeometry(0.024, 0.024, 0.106, 24);
+      if (UV) UV.unwrapCylinder(canGeo, 0.14);
+      const can = new THREE.Mesh(canGeo, darkMat);
       const hexTop = new THREE.Mesh(new THREE.CylinderGeometry(0.027, 0.027, 0.014, 6), steelMat);
       hexTop.position.set(0, 0.044, 0);
       const hexBot = new THREE.Mesh(new THREE.CylinderGeometry(0.027, 0.027, 0.014, 6), steelMat);
       hexBot.position.set(0, -0.044, 0);
-      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.0248, 0.0248, 0.016, 14), new THREE.MeshBasicMaterial({ color: 0x3b82d6 }));
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.0248, 0.0248, 0.016, 24), mkTint('polymer_od', 0x3b82d6, { roughness: 0.42 }));
       band.position.set(0, 0.018, 0);
-      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.015, 0.019, 10), steelMat);
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2;
+        const vent = new THREE.Mesh(new THREE.CylinderGeometry(0.0032, 0.0032, 0.048, 8), steelMat);
+        vent.position.set(Math.cos(a) * 0.0235, -0.005, Math.sin(a) * 0.0235);
+        g.add(vent);
+      }
+      const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.015, 0.019, 16), steelMat);
       cap.position.set(0, 0.061, 0);
       const spoon = new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.060, 0.010), steelMat);
       spoon.position.set(0.026, 0.022, 0);
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.011, 0.0022, 6, 14), brassMat);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.011, 0.0022, 10, 22), brassMat);
       ring.position.set(-0.019, 0.060, 0);
       g.add(can, hexTop, hexBot, band, cap, spoon, ring);
       g.userData.pinRing = ring;
@@ -127,7 +166,8 @@ class ThrowableSystem {
     const rig = new THREE.Group();
     rig.visible = false;
 
-    const brassMat = new THREE.MeshPhongMaterial({ color: 0xd9a842, specular: 0xffe49c, shininess: 70 });
+    const brassMat = (window.AshfallPBR && window.AshfallPBR.getMaterial('brass_casing'))
+      || new THREE.MeshStandardMaterial({ color: 0xd9a842, roughness: 0.24, metalness: 0.95 });
 
     // Rigged anatomical first-person arms & hands driven via WeaponSystem.fpArms!
     const hand = this.weaponSystem ? this.weaponSystem._createHand(true, 'grenadeHold') : new THREE.Group();

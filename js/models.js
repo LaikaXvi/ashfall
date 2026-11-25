@@ -1,4 +1,4 @@
-// Declarative Prototype-Cached 3D Model System, Real 1K GLTF Prop Instancer & Optical Lens Flare System
+// Declarative Prototype-Cached High-Poly CAD Weapon System, Real 1K GLTF Prop Instancer & Optical Lens Flare System
 // Shared across Viewmodel Weapons, 3P Weapons, World Vehicles, Loot Props & Atmospheric Lighting
 
 window.ModelSystem = (() => {
@@ -21,232 +21,127 @@ window.ModelSystem = (() => {
     oil_tin: 'assets/models/items/oil_tin/oil_tin_1k.gltf'
   };
 
-  function _mkCanvasTex(key, size, drawFn) {
-    if (_texCache[key]) return _texCache[key];
-    const c = document.createElement('canvas');
-    c.width = size;
-    c.height = size;
-    const ctx = c.getContext('2d');
-    drawFn(ctx, size, size);
-    const tex = new THREE.CanvasTexture(c);
-    tex.wrapS = THREE.RepeatWrapping;
-    tex.wrapT = THREE.RepeatWrapping;
-    tex.magFilter = THREE.LinearFilter;
-    tex.minFilter = THREE.LinearMipmapLinearFilter;
-    tex.anisotropy = 4;
-    tex.userData = { _ashShared: true };
-    _texCache[key] = tex;
-    return tex;
+  function _markShared(obj) {
+    if (!obj) return obj;
+    if (!obj.userData) obj.userData = {};
+    obj.userData._ashShared = true;
+    return obj;
   }
 
-  function _fineGrain(ctx, SZ, baseR, baseG, baseB, variance, streakH = false, count = 2400) {
-    const grad = ctx.createLinearGradient(0, 0, 0, SZ);
-    grad.addColorStop(0, `rgb(${Math.min(255, baseR + 12)},${Math.min(255, baseG + 12)},${Math.min(255, baseB + 14)})`);
-    grad.addColorStop(0.5, `rgb(${baseR},${baseG},${baseB})`);
-    grad.addColorStop(1, `rgb(${Math.max(0, baseR - 12)},${Math.max(0, baseG - 12)},${Math.max(0, baseB - 10)})`);
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, SZ, SZ);
-    // Deterministic seeded PRNG for reproducible surface micro-grain
-    let s = (baseR * 73 + baseG * 137 + baseB * 251) | 1;
-    const rnd = () => {
-      s = (s * 1664525 + 1013904223) >>> 0;
-      return s / 4294967296;
-    };
-    for (let i = 0; i < count; i++) {
-      const x = (rnd() * SZ) | 0;
-      const y = (rnd() * SZ) | 0;
-      const d = ((rnd() - 0.5) * variance) | 0;
-      const r = Math.max(0, Math.min(255, baseR + d));
-      const g = Math.max(0, Math.min(255, baseG + d));
-      const b = Math.max(0, Math.min(255, baseB + d));
-      ctx.fillStyle = `rgba(${r},${g},${b},0.65)`;
-      ctx.fillRect(x, y, streakH ? (6 + ((rnd() * 20) | 0)) : 2, streakH ? 1 : 2);
+  function _uvWrapBox(geo, tile = 0.25) {
+    if (window.AshfallPBR && window.AshfallPBR.UVUnwrap) {
+      return window.AshfallPBR.UVUnwrap.unwrapBox(geo, tile);
     }
+    if (geo && geo.attributes && geo.attributes.uv && !geo.attributes.uv2) {
+      geo.setAttribute('uv2', geo.attributes.uv);
+    }
+    return geo;
+  }
+
+  function _uvWrapCyl(geo, radius = null, axis = 'z', tile = 0.22) {
+    if (window.AshfallPBR && window.AshfallPBR.UVUnwrap) {
+      return window.AshfallPBR.UVUnwrap.unwrapCylinder(geo, radius, axis, tile);
+    }
+    if (geo && geo.attributes && geo.attributes.uv && !geo.attributes.uv2) {
+      geo.setAttribute('uv2', geo.attributes.uv);
+    }
+    return geo;
+  }
+
+  function _uvWrapExtrude(geo, tile = 0.24) {
+    if (window.AshfallPBR && window.AshfallPBR.UVUnwrap) {
+      return window.AshfallPBR.UVUnwrap.unwrapExtrude(geo, tile);
+    }
+    if (geo && geo.attributes && geo.attributes.uv && !geo.attributes.uv2) {
+      geo.setAttribute('uv2', geo.attributes.uv);
+    }
+    return geo;
   }
 
   function getWeaponTextures() {
-    if (window._wpnTex && window._wpnTex._v === 2) return window._wpnTex;
-    const SZ = 256;
-    const bumpNoise = _mkCanvasTex('bump_micro', SZ, (ctx) => {
-      _fineGrain(ctx, SZ, 128, 128, 128, 48, false, 3600);
-    });
-    const bumpStipple = _mkCanvasTex('bump_stipple', SZ, (ctx) => {
-      ctx.fillStyle = '#808080';
-      ctx.fillRect(0, 0, SZ, SZ);
-      for (let y = 0; y < SZ; y += 4) {
-        for (let x = ((y % 8) === 0 ? 0 : 2); x < SZ; x += 4) {
-          ctx.fillStyle = '#383838';
-          ctx.fillRect(x, y, 2, 2);
-          ctx.fillStyle = '#c8c8c8';
-          ctx.fillRect(x + 1, y + 1, 1, 1);
-        }
-      }
-    });
-    const bumpBrush = _mkCanvasTex('bump_brush', SZ, (ctx) => {
-      _fineGrain(ctx, SZ, 128, 128, 128, 52, true, 4200);
-    });
-
-    window._wpnTex = {
-      _v: 2,
-      bumpNoise,
-      bumpStipple,
-      bumpBrush,
-      parkerized: _mkCanvasTex('wpn_parkerized', SZ, (ctx) => {
-        _fineGrain(ctx, SZ, 52, 57, 63, 20, true, 3200);
-        ctx.fillStyle = 'rgba(175, 192, 208, 0.18)';
-        ctx.fillRect(0, 0, SZ, 3);
-        ctx.fillRect(0, 125, SZ, 2);
-        ctx.fillStyle = 'rgba(12, 15, 18, 0.34)';
-        ctx.fillRect(0, 127, SZ, 2);
-        for (let rx = 24; rx < SZ; rx += 64) {
-          ctx.fillStyle = 'rgba(18, 22, 26, 0.5)';
-          ctx.beginPath(); ctx.arc(rx, 18, 3.2, 0, Math.PI * 2); ctx.fill();
-          ctx.fillStyle = 'rgba(160, 175, 190, 0.28)';
-          ctx.beginPath(); ctx.arc(rx - 0.8, 17.2, 1.5, 0, Math.PI * 2); ctx.fill();
-        }
-      }),
-      blued: _mkCanvasTex('wpn_blued', SZ, (ctx) => {
-        _fineGrain(ctx, SZ, 30, 37, 47, 16, true, 3000);
-        ctx.fillStyle = 'rgba(105, 136, 178, 0.14)';
-        for (let y = 14; y < SZ; y += 42) ctx.fillRect(0, y, SZ, 4);
-        ctx.fillStyle = 'rgba(195, 212, 232, 0.12)';
-        ctx.fillRect(0, 2, SZ, 2);
-      }),
-      brushedSteel: _mkCanvasTex('wpn_brushed', SZ, (ctx) => {
-        _fineGrain(ctx, SZ, 118, 125, 134, 28, true, 3600);
-        ctx.fillStyle = 'rgba(235, 244, 255, 0.22)';
-        for (let y = 8; y < SZ; y += 24) ctx.fillRect(0, y, SZ, 2);
-      }),
-      polymer: _mkCanvasTex('wpn_polymer', SZ, (ctx) => {
-        _fineGrain(ctx, SZ, 26, 29, 34, 10, false, 2000);
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.34)';
-        for (let y = 0; y < SZ; y += 4) {
-          for (let x = ((y % 8) === 0 ? 0 : 2); x < SZ; x += 4) {
-            ctx.fillRect(x, y, 2, 2);
-          }
-        }
-        ctx.fillStyle = 'rgba(92, 100, 112, 0.09)';
-        for (let y = 2; y < SZ; y += 8) ctx.fillRect(0, y, SZ, 1);
-      }),
-      bakelite: _mkCanvasTex('wpn_bakelite', SZ, (ctx) => {
-        _fineGrain(ctx, SZ, 126, 56, 32, 20, false, 2200);
-        for (let i = 0; i < 68; i++) {
-          ctx.strokeStyle = (i % 2 === 0) ? 'rgba(78, 28, 12, 0.36)' : 'rgba(176, 88, 48, 0.28)';
-          ctx.lineWidth = 2.2;
-          ctx.beginPath();
-          const y0 = (i * 37) % SZ;
-          for (let x = 0; x <= SZ; x += 8) {
-            const dy = Math.sin(x * 0.045 + i * 0.7) * 9;
-            if (x === 0) ctx.moveTo(x, (y0 + dy + SZ) % SZ);
-            else ctx.lineTo(x, (y0 + dy + SZ) % SZ);
-          }
-          ctx.stroke();
-        }
-      }),
-      wood: _mkCanvasTex('wpn_wood', SZ, (ctx) => {
-        _fineGrain(ctx, SZ, 112, 68, 36, 18, true, 2600);
-        for (let y = 0; y < SZ; y += 7) {
-          ctx.strokeStyle = (y % 14 === 0) ? 'rgba(62, 32, 12, 0.42)' : 'rgba(154, 98, 54, 0.26)';
-          ctx.lineWidth = 2.3;
-          ctx.beginPath();
-          for (let x = 0; x <= SZ; x += 8) {
-            const oy = Math.sin(x * 0.036 + y * 0.09) * 5;
-            if (x === 0) ctx.moveTo(x, y + oy);
-            else ctx.lineTo(x, y + oy);
-          }
-          ctx.stroke();
-        }
-      }),
-      composite: _mkCanvasTex('wpn_composite', SZ, (ctx) => {
-        _fineGrain(ctx, SZ, 60, 72, 54, 16, false, 2400);
-        ctx.fillStyle = 'rgba(26, 32, 22, 0.24)';
-        for (let i = 0; i < 420; i++) {
-          ctx.fillRect((i * 53) % SZ, (i * 97) % SZ, 3, 2);
-        }
-      }),
-      brass: _mkCanvasTex('wpn_brass', SZ, (ctx) => {
-        const g = ctx.createLinearGradient(0, 0, SZ, 0);
-        g.addColorStop(0, '#be9236');
-        g.addColorStop(0.35, '#f0cc6e');
-        g.addColorStop(0.65, '#cfa040');
-        g.addColorStop(1, '#ae8028');
-        ctx.fillStyle = g;
-        ctx.fillRect(0, 0, SZ, SZ);
-        ctx.fillStyle = 'rgba(255, 250, 214, 0.28)';
-        ctx.fillRect(50, 0, 22, SZ);
-      }),
-      copper: _mkCanvasTex('wpn_copper', SZ, (ctx) => {
-        const g = ctx.createLinearGradient(0, 0, SZ, 0);
-        g.addColorStop(0, '#96502c');
-        g.addColorStop(0.4, '#cf7a4c');
-        g.addColorStop(1, '#844222');
-        ctx.fillStyle = g;
-        ctx.fillRect(0, 0, SZ, SZ);
-      }),
-      shellRed: _mkCanvasTex('wpn_shellred', SZ, (ctx) => {
-        _fineGrain(ctx, SZ, 176, 36, 36, 12, false, 1400);
-        for (let x = 0; x < SZ; x += 12) {
-          ctx.fillStyle = 'rgba(84, 12, 12, 0.38)';
-          ctx.fillRect(x, 0, 3, SZ);
-          ctx.fillStyle = 'rgba(232, 102, 102, 0.18)';
-          ctx.fillRect(x + 3, 0, 2, SZ);
-        }
-      })
-    };
-    return window._wpnTex;
+    if (window._wpnTex && window._wpnTex._v === 3) return window._wpnTex;
+    if (window.AshfallPBR && window.AshfallPBR.getMaps) {
+      const P = window.AshfallPBR;
+      const pk = P.getMaps('gunmetal_parkerized');
+      const bl = P.getMaps('gunmetal_blued');
+      const br = P.getMaps('steel_brushed');
+      const pl = P.getMaps('polymer_stippled');
+      const bk = P.getMaps('bakelite_russian');
+      const wd = P.getMaps('wood_laminated_birch');
+      const cm = P.getMaps('polymer_od');
+      const bs = P.getMaps('brass_casing');
+      window._wpnTex = {
+        _v: 3,
+        bumpNoise: pl.normalMap,
+        bumpStipple: pl.normalMap,
+        bumpBrush: pk.normalMap,
+        parkerized: pk.map,
+        blued: bl.map,
+        brushedSteel: br.map,
+        polymer: pl.map,
+        bakelite: bk.map,
+        wood: wd.map,
+        composite: cm.map,
+        brass: bs.map,
+        copper: bs.map,
+        shellRed: pl.map
+      };
+      return window._wpnTex;
+    }
+    return {};
   }
 
   function getWeaponMaterialSet(gunMat = null) {
-    const tex = getWeaponTextures();
-    const envMap = (window.AshfallRenderer && window.AshfallRenderer.getEnvMap) ? window.AshfallRenderer.getEnvMap() : null;
-    const key = gunMat ? `camo_${gunMat.uuid}` : `stock_${envMap ? envMap.uuid : '0'}`;
+    const P = window.AshfallPBR;
+    const key = gunMat ? `pbr_camo_${gunMat.uuid}` : 'pbr_stock_v3';
     if (_matCache[key]) return _matCache[key];
     const hasCamo = !!gunMat;
-    const set = {
-      steelMat: hasCamo ? gunMat : new THREE.MeshPhongMaterial({
-        color: 0xffffff, map: tex.parkerized, bumpMap: tex.bumpBrush, bumpScale: 0.0014,
-        specular: 0x5c6876, shininess: 48, envMap, reflectivity: 0.22
-      }),
-      bluedMat: hasCamo ? gunMat : new THREE.MeshPhongMaterial({
-        color: 0xffffff, map: tex.blued, bumpMap: tex.bumpBrush, bumpScale: 0.0011,
-        specular: 0x50627a, shininess: 58, envMap, reflectivity: 0.26
-      }),
-      darkMat: new THREE.MeshPhongMaterial({
-        color: 0xffffff, map: tex.polymer, bumpMap: tex.bumpStipple, bumpScale: 0.0022,
-        specular: 0x22262c, shininess: 22
-      }),
-      magMat: new THREE.MeshPhongMaterial({
-        color: 0xffffff, map: tex.brushedSteel, bumpMap: tex.bumpBrush, bumpScale: 0.0012,
-        specular: 0x8694a4, shininess: 68, envMap, reflectivity: 0.30
-      }),
-      bakeliteMat: new THREE.MeshPhongMaterial({
-        color: 0xffffff, map: tex.bakelite, bumpMap: tex.bumpNoise, bumpScale: 0.0010,
-        specular: 0x3b261b, shininess: 28
-      }),
-      brassMat: new THREE.MeshPhongMaterial({
-        color: 0xffffff, map: tex.brass, specular: 0xfff0b0, shininess: 92, envMap, reflectivity: 0.38
-      }),
-      copperMat: new THREE.MeshPhongMaterial({
-        color: 0xffffff, map: tex.copper, specular: 0xffb88c, shininess: 82, envMap, reflectivity: 0.34
-      }),
-      woodMat: new THREE.MeshPhongMaterial({
-        color: 0xffffff, map: tex.wood, bumpMap: tex.bumpNoise, bumpScale: 0.0015,
-        specular: 0x281a10, shininess: 18
-      }),
-      chassisMat: hasCamo ? gunMat : new THREE.MeshPhongMaterial({
-        color: 0xffffff, map: tex.composite, bumpMap: tex.bumpStipple, bumpScale: 0.0016,
-        specular: 0x262c22, shininess: 24
-      }),
-      shellRedMat: new THREE.MeshPhongMaterial({
-        color: 0xffffff, map: tex.shellRed, bumpMap: tex.bumpStipple, bumpScale: 0.0016,
-        specular: 0x482222, shininess: 28
-      }),
-      boreMat: new THREE.MeshBasicMaterial({ color: 0x050607 }),
-      chromeMat: new THREE.MeshPhongMaterial({
-        color: 0xcfd6de, specular: 0xffffff, shininess: 110, envMap, reflectivity: 0.45
-      })
-    };
-    Object.values(set).forEach((m) => { if (m) { if (!m.userData) m.userData = {}; m.userData._ashShared = true; } });
+    let set;
+    if (P && P.getMaterial) {
+      set = {
+        steelMat: hasCamo ? gunMat : P.getMaterial('gunmetal_parkerized'),
+        bluedMat: hasCamo ? gunMat : P.getMaterial('gunmetal_blued'),
+        nitrideMat: hasCamo ? gunMat : P.getMaterial('gunmetal_nitride'),
+        darkMat: P.getMaterial('polymer_stippled'),
+        magMat: P.getMaterial('steel_brushed'),
+        bakeliteMat: P.getMaterial('bakelite_russian'),
+        brassMat: P.getMaterial('brass_casing'),
+        copperMat: P.getMaterial('brass_casing', { color: 0xc87448, roughness: 0.28 }),
+        woodMat: P.getMaterial('wood_laminated_birch'),
+        walnutMat: P.getMaterial('wood_walnut'),
+        chassisMat: hasCamo ? gunMat : P.getMaterial('polymer_od'),
+        fdeMat: P.getMaterial('polymer_fde'),
+        rubberMat: P.getMaterial('rubber_buttpad'),
+        anodizedMat: P.getMaterial('aluminum_anodized'),
+        bronzeMat: P.getMaterial('aluminum_fde'),
+        shellRedMat: P.getMaterial('polymer_stippled', { color: 0xb82424, roughness: 0.44 }),
+        boreMat: _markShared(new THREE.MeshBasicMaterial({ color: 0x050607 })),
+        chromeMat: P.getMaterial('steel_chrome')
+      };
+    } else {
+      const mFallback = (hex) => _markShared(new THREE.MeshStandardMaterial({ color: hex, roughness: 0.5, metalness: 0.4 }));
+      set = {
+        steelMat: hasCamo ? gunMat : mFallback(0x4a5058),
+        bluedMat: hasCamo ? gunMat : mFallback(0x28323e),
+        nitrideMat: hasCamo ? gunMat : mFallback(0x222529),
+        darkMat: mFallback(0x1e2024),
+        magMat: mFallback(0x88929b),
+        bakeliteMat: mFallback(0x9b3e1f),
+        brassMat: mFallback(0xd4a442),
+        copperMat: mFallback(0xc87448),
+        woodMat: mFallback(0x8c5024),
+        walnutMat: mFallback(0x5c361a),
+        chassisMat: hasCamo ? gunMat : mFallback(0x45543c),
+        fdeMat: mFallback(0x9a8464),
+        rubberMat: mFallback(0x16181a),
+        anodizedMat: mFallback(0x2a2d32),
+        bronzeMat: mFallback(0x88603c),
+        shellRedMat: mFallback(0xb02828),
+        boreMat: _markShared(new THREE.MeshBasicMaterial({ color: 0x050607 })),
+        chromeMat: mFallback(0xd6dee6)
+      };
+    }
+    Object.values(set).forEach((m) => _markShared(m));
     _matCache[key] = set;
     return set;
   }
@@ -254,15 +149,15 @@ window.ModelSystem = (() => {
   function _cachedGeo(key, fn) {
     if (!_geoCache[key]) {
       const g = fn();
-      if (g) { if (!g.userData) g.userData = {}; g.userData._ashShared = true; }
+      if (g) _markShared(g);
       _geoCache[key] = g;
     }
     return _geoCache[key];
   }
 
-  // Merge array of BufferGeometries safely in Three r128 without external BufferGeometryUtils
+  // Merge array of BufferGeometries safely in Three r128 (preserves uv + uv2 for PBR aoMap)
   function _mergeGeos(geos) {
-    if (!geos || geos.length === 0) return new THREE.BoxGeometry(0.01, 0.01, 0.01);
+    if (!geos || geos.length === 0) return _uvWrapBox(new THREE.BoxGeometry(0.01, 0.01, 0.01));
     const nonIdx = geos.map((g) => (g.index ? g.toNonIndexed() : g));
     let totalVerts = 0;
     for (let i = 0; i < nonIdx.length; i++) {
@@ -288,23 +183,25 @@ window.ModelSystem = (() => {
     const merged = new THREE.BufferGeometry();
     merged.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     merged.setAttribute('normal', new THREE.BufferAttribute(norm, 3));
-    merged.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+    const uvAttr = new THREE.BufferAttribute(uv, 2);
+    merged.setAttribute('uv', uvAttr);
+    merged.setAttribute('uv2', uvAttr);
     return merged;
   }
 
-  // Contoured Lathe profile oriented along -Z (zFwd = +distance toward muzzle)
-  function geoLatheZ(cacheKey, profileZR, segs = 16) {
-    return _cachedGeo(`lathe:${cacheKey}:${segs}`, () => {
+  // High-poly Contoured Lathe profile oriented along -Z (zFwd = +distance toward muzzle)
+  function geoLatheZ(cacheKey, profileZR, segs = 28) {
+    return _cachedGeo(`lathe_hp:${cacheKey}:${segs}`, () => {
       const pts = profileZR.map(([zFwd, r]) => new THREE.Vector2(Math.max(0.0001, r), zFwd));
       const geo = new THREE.LatheGeometry(pts, segs);
       geo.rotateX(-Math.PI / 2); // +Y_lathe -> -Z_weapon
       geo.computeVertexNormals();
-      return geo;
+      return _uvWrapCyl(geo, null, 'z', 0.18);
     });
   }
 
-  function geoRoundedBox(w, h, d, r = 0.004, bevel = 0.0018) {
-    const key = `rb:${w.toFixed(4)}:${h.toFixed(4)}:${d.toFixed(4)}:${r.toFixed(4)}:${bevel.toFixed(4)}`;
+  function geoRoundedBox(w, h, d, r = 0.004, bevel = 0.0018, tile = 0.25) {
+    const key = `rb_hp:${w.toFixed(4)}:${h.toFixed(4)}:${d.toFixed(4)}:${r.toFixed(4)}:${bevel.toFixed(4)}:${tile}`;
     return _cachedGeo(key, () => {
       const rr = Math.min(r, w * 0.42, h * 0.42);
       const hw = w * 0.5;
@@ -319,23 +216,24 @@ window.ModelSystem = (() => {
       sh.quadraticCurveTo(-hw, hh, -hw, hh - rr);
       sh.lineTo(-hw, -hh + rr);
       sh.quadraticCurveTo(-hw, -hh, -hw + rr, -hh);
-      const b = Math.min(bevel, d * 0.15, rr * 0.6);
+      const b = Math.min(bevel, d * 0.16, rr * 0.65);
       const geo = new THREE.ExtrudeGeometry(sh, {
         depth: Math.max(0.002, d - b * 2),
         bevelEnabled: b > 0.0002,
         bevelThickness: b,
         bevelSize: b * 0.85,
-        bevelSegments: 2,
-        curveSegments: 5
+        bevelSegments: 3,
+        curveSegments: 8
       });
       geo.translate(0, 0, -(d - b * 2) * 0.5);
+      _uvWrapExtrude(geo, tile);
       geo.computeVertexNormals();
       return geo;
     });
   }
 
-  function geoExtrudeSide(cacheKey, pts, width, holes = null, bevel = false) {
-    return _cachedGeo(`ext:${cacheKey}`, () => {
+  function geoExtrudeSide(cacheKey, pts, width, holes = null, bevel = true, tile = 0.28) {
+    return _cachedGeo(`ext_hp:${cacheKey}`, () => {
       const sh = new THREE.Shape();
       sh.moveTo(pts[0][0], pts[0][1]);
       for (let i = 1; i < pts.length; i++) sh.lineTo(pts[i][0], pts[i][1]);
@@ -352,12 +250,13 @@ window.ModelSystem = (() => {
       const geo = new THREE.ExtrudeGeometry(sh, {
         depth: width,
         bevelEnabled: bevel,
-        bevelThickness: bevel ? 0.0024 : 0,
-        bevelSize: bevel ? 0.0020 : 0,
-        bevelSegments: 2,
-        curveSegments: 10
+        bevelThickness: bevel ? 0.0026 : 0,
+        bevelSize: bevel ? 0.0022 : 0,
+        bevelSegments: 3,
+        curveSegments: 14
       });
       geo.translate(0, 0, -width * 0.5);
+      _uvWrapExtrude(geo, tile);
       geo.rotateY(Math.PI / 2);
       geo.computeVertexNormals();
       return geo;
@@ -365,7 +264,7 @@ window.ModelSystem = (() => {
   }
 
   function geoCurvedGrip(w, h, d) {
-    return _cachedGeo(`grip:${w.toFixed(4)}:${h.toFixed(4)}:${d.toFixed(4)}`, () => {
+    return _cachedGeo(`grip_hp:${w.toFixed(4)}:${h.toFixed(4)}:${d.toFixed(4)}`, () => {
       const sh = new THREE.Shape();
       const hw = d * 0.5;
       const hh = h * 0.5;
@@ -377,27 +276,33 @@ window.ModelSystem = (() => {
       const geo = new THREE.ExtrudeGeometry(sh, {
         depth: w,
         bevelEnabled: true,
-        bevelThickness: 0.0025,
-        bevelSize: 0.0022,
-        bevelSegments: 2,
-        curveSegments: 8
+        bevelThickness: 0.0028,
+        bevelSize: 0.0024,
+        bevelSegments: 3,
+        curveSegments: 12
       });
       geo.translate(0, 0, -w * 0.5);
+      _uvWrapExtrude(geo, 0.16);
       geo.rotateY(Math.PI / 2);
       geo.computeVertexNormals();
       return geo;
     });
   }
 
-  function geoPicatinnyRail(yPos, zStart, zEnd, width = 0.021, step = 0.013) {
-    const key = `pic:${yPos.toFixed(4)}:${zStart.toFixed(4)}:${zEnd.toFixed(4)}:${width.toFixed(4)}:${step.toFixed(4)}`;
+  function geoPicatinnyRail(yPos, zStart, zEnd, width = 0.0212, step = 0.010) {
+    const key = `pic_hp:${yPos.toFixed(4)}:${zStart.toFixed(4)}:${zEnd.toFixed(4)}:${width.toFixed(4)}:${step.toFixed(4)}`;
     return _cachedGeo(key, () => {
       const zMin = Math.min(zStart, zEnd);
       const zMax = Math.max(zStart, zEnd);
       const parts = [];
-      for (let z = zMin + step * 0.4; z <= zMax - step * 0.4; z += step) {
-        const g = new THREE.BoxGeometry(width, 0.0036, step * 0.56);
+      const spine = new THREE.BoxGeometry(width * 0.68, 0.0024, zMax - zMin);
+      spine.translate(0, yPos - 0.0018, (zMin + zMax) * 0.5);
+      _uvWrapBox(spine, 0.18);
+      parts.push(spine);
+      for (let z = zMin + step * 0.45; z <= zMax - step * 0.45; z += step) {
+        const g = new THREE.BoxGeometry(width, 0.0036, step * 0.54);
         g.translate(0, yPos, z);
+        _uvWrapBox(g, 0.16);
         parts.push(g);
       }
       return _mergeGeos(parts);
@@ -407,34 +312,39 @@ window.ModelSystem = (() => {
   function createCartridgeMesh(caliber = 'rifle', mats = null) {
     const m = mats || getWeaponMaterialSet(null);
     const grp = new THREE.Group();
-    const isPistol = caliber === 'pistol';
-    const isShotgun = caliber === '12g';
-    if (isShotgun) {
+    if (caliber === '12g') {
       const hull = new THREE.Mesh(
-        _cachedGeo('round_12g_hull', () => new THREE.CylinderGeometry(0.0085, 0.0085, 0.048, 12)),
+        _cachedGeo('round_12g_hull_hp', () => {
+          const g = new THREE.CylinderGeometry(0.0092, 0.0092, 0.052, 20);
+          return _uvWrapCyl(g, 0.0092, 'y', 0.08);
+        }),
         m.shellRedMat
       );
       hull.rotation.x = Math.PI / 2;
       const brass = new THREE.Mesh(
-        _cachedGeo('round_12g_brass', () => new THREE.CylinderGeometry(0.0090, 0.0090, 0.014, 12)),
+        _cachedGeo('round_12g_brass_hp', () => {
+          const g = new THREE.CylinderGeometry(0.0096, 0.0098, 0.016, 20);
+          return _uvWrapCyl(g, 0.0096, 'y', 0.08);
+        }),
         m.brassMat
       );
       brass.rotation.x = Math.PI / 2;
-      brass.position.z = 0.025;
+      brass.position.z = 0.026;
       grp.add(hull, brass);
       return grp;
     }
-    const r = isPistol ? 0.0046 : (caliber === 'x39' ? 0.0057 : 0.0056);
-    const len = isPistol ? 0.019 : (caliber === 'x39' ? 0.0386 : 0.042);
-    const caseGeo = _cachedGeo(`round_case_${caliber}`, () => {
-      const g = new THREE.CylinderGeometry(r * 0.88, r, len, 10);
+    const isPistol = caliber === 'pistol';
+    const r = isPistol ? 0.0049 : (caliber === 'x39' ? 0.0058 : 0.0060);
+    const len = isPistol ? 0.0195 : (caliber === 'x39' ? 0.0387 : 0.045);
+    const caseGeo = _cachedGeo(`round_case_hp_${caliber}`, () => {
+      const g = new THREE.CylinderGeometry(r * 0.86, r, len, 18);
       g.rotateX(Math.PI / 2);
-      return g;
+      return _uvWrapCyl(g, r, 'z', 0.08);
     });
-    const tipGeo = _cachedGeo(`round_tip_${caliber}`, () => {
-      const g = new THREE.ConeGeometry(r * 0.84, len * 0.52, 10);
+    const tipGeo = _cachedGeo(`round_tip_hp_${caliber}`, () => {
+      const g = new THREE.ConeGeometry(r * 0.82, len * 0.56, 18);
       g.rotateX(-Math.PI / 2);
-      return g;
+      return _uvWrapCyl(g, r * 0.82, 'z', 0.08);
     });
     const cMesh = new THREE.Mesh(caseGeo, m.brassMat);
     const tMesh = new THREE.Mesh(tipGeo, m.copperMat);
@@ -444,27 +354,27 @@ window.ModelSystem = (() => {
   }
 
   function _addTriggerAndPins(g, m, zTrigger, yTrigger, pinXHalf, pinCoords) {
-    const guardGeo = geoExtrudeSide(`tguard_${zTrigger.toFixed(2)}`, [
-      [0.022, 0.004], [0.024, -0.020], [0.014, -0.025], [-0.018, -0.025],
-      [-0.024, -0.018], [-0.024, 0.002], [-0.018, 0.002], [-0.018, -0.018],
-      [0.014, -0.019], [0.018, -0.014], [0.017, 0.004]
-    ], 0.011, null, true);
-    const guard = new THREE.Mesh(guardGeo, m.darkMat);
+    const guardGeo = geoExtrudeSide(`tguard_hp_${zTrigger.toFixed(2)}`, [
+      [0.023, 0.004], [0.025, -0.020], [0.014, -0.026], [-0.019, -0.026],
+      [-0.025, -0.018], [-0.025, 0.002], [-0.018, 0.002], [-0.018, -0.019],
+      [0.014, -0.020], [0.019, -0.014], [0.018, 0.004]
+    ], 0.0115, null, true, 0.14);
+    const guard = new THREE.Mesh(guardGeo, m.nitrideMat || m.darkMat);
     guard.position.set(0, yTrigger, zTrigger);
 
-    const trigGeo = geoExtrudeSide('trig_shoe', [
-      [-0.002, 0.002], [0.003, 0.002], [-0.001, -0.010], [-0.006, -0.017],
-      [-0.010, -0.015], [-0.006, -0.008]
-    ], 0.005, null, false);
+    const trigGeo = geoExtrudeSide('trig_shoe_hp', [
+      [-0.002, 0.003], [0.0035, 0.003], [-0.001, -0.011], [-0.0065, -0.019],
+      [-0.011, -0.016], [-0.0065, -0.009]
+    ], 0.0055, null, true, 0.12);
     const trig = new THREE.Mesh(trigGeo, m.magMat);
     trig.position.set(0, yTrigger - 0.001, zTrigger + 0.002);
     g.add(guard, trig);
 
     if (pinCoords && pinCoords.length > 0) {
-      const pinGeo = _cachedGeo(`pin_${pinXHalf.toFixed(4)}`, () => {
-        const p = new THREE.CylinderGeometry(0.0030, 0.0030, pinXHalf * 2 + 0.004, 8);
+      const pinGeo = _cachedGeo(`pin_hp_${pinXHalf.toFixed(4)}`, () => {
+        const p = new THREE.CylinderGeometry(0.0032, 0.0032, pinXHalf * 2 + 0.004, 14);
         p.rotateZ(Math.PI / 2);
-        return p;
+        return _uvWrapCyl(p, 0.0032, 'x', 0.08);
       });
       for (const [py, pz] of pinCoords) {
         const pin = new THREE.Mesh(pinGeo, m.magMat);
@@ -475,7 +385,10 @@ window.ModelSystem = (() => {
     return trig;
   }
 
-  // Declarative Articulated Weapon Rig Builder for all 8 Firearms
+  // ============================================================================
+  // CAD-Accurate High-Poly Firearm Rig Builder (1.0 unit = 1.000 meter)
+  // Exact real-world millimeter dimensions for all 8 firearms
+  // ============================================================================
   function buildWeaponRig(weaponDef, mods = {}, gunMat = null) {
     const id = weaponDef.id;
     const m = getWeaponMaterialSet(gunMat);
@@ -503,73 +416,86 @@ window.ModelSystem = (() => {
     };
 
     if (weaponDef.slot === 'secondary') {
-      const isG17 = id === 'g17';
-      const slideLen = isG17 ? 0.24 : 0.21;
-      const slideGroup = new THREE.Group();
-
-      if (isG17) {
-        const frameGeo = geoExtrudeSide('g17_frame', [
-          [0.095, -0.008], [0.095, -0.024], [0.045, -0.024], [0.030, -0.020],
-          [-0.038, -0.020], [-0.042, -0.036], [-0.056, -0.116], [-0.100, -0.112],
-          [-0.082, -0.024], [-0.102, -0.010], [-0.075, -0.008]
-        ], 0.030, null, true);
+      if (id === 'g17') {
+        // Glock 17 Gen 4/5 (202mm OAL, 114mm barrel, 139mm H, 25.5mm slide, 30mm frame)
+        const slideLen = 0.194;
+        const slideGroup = new THREE.Group();
+        const frameGeo = geoExtrudeSide('g17_frame_hp', [
+          [0.092, -0.007], [0.092, -0.024], [0.044, -0.024], [0.030, -0.020],
+          [-0.034, -0.020], [-0.040, -0.036], [-0.056, -0.114], [-0.098, -0.110],
+          [-0.078, -0.024], [-0.098, -0.010], [-0.074, -0.007]
+        ], 0.030, null, true, 0.18);
         const frame = new THREE.Mesh(frameGeo, m.darkMat);
 
-        const slideMain = new THREE.Mesh(geoRoundedBox(0.034, 0.025, slideLen, 0.0045, 0.0018), m.steelMat);
-        const slideTop = new THREE.Mesh(geoRoundedBox(0.028, 0.009, slideLen - 0.004, 0.0038, 0.0012), m.steelMat);
-        slideTop.position.set(0, 0.014, 0);
-        const ejPort = new THREE.Mesh(geoRoundedBox(0.006, 0.012, 0.044, 0.002, 0.0005), m.bluedMat);
-        ejPort.position.set(0.016, 0.005, -0.012);
-        const hood = new THREE.Mesh(geoRoundedBox(0.024, 0.009, 0.036, 0.003, 0.0008), m.magMat);
-        hood.position.set(0, 0.014, -0.015);
-        slideGroup.add(slideMain, slideTop, ejPort, hood);
+        // Beveled upper slide profile + chamfered dust shield
+        const slideMain = new THREE.Mesh(geoRoundedBox(0.0255, 0.023, slideLen, 0.0035, 0.0022, 0.18), m.nitrideMat);
+        const slideChamfer = new THREE.Mesh(geoRoundedBox(0.0215, 0.0075, slideLen - 0.004, 0.0032, 0.0014, 0.18), m.nitrideMat);
+        slideChamfer.position.set(0, 0.0125, 0);
+        const ejPort = new THREE.Mesh(geoRoundedBox(0.006, 0.011, 0.040, 0.002, 0.0005), m.bluedMat);
+        ejPort.position.set(0.0115, 0.005, -0.010);
+        const hood = new THREE.Mesh(geoRoundedBox(0.0195, 0.0085, 0.034, 0.0025, 0.0008), m.magMat);
+        hood.position.set(0, 0.013, -0.012);
+        const extractor = new THREE.Mesh(geoRoundedBox(0.0035, 0.0045, 0.018, 0.001, 0.0004), m.steelMat);
+        extractor.position.set(0.0125, 0.003, 0.012);
+        slideGroup.add(slideMain, slideChamfer, ejPort, hood, extractor);
 
-        const serGeo = _cachedGeo('g17_ser', () => new THREE.BoxGeometry(0.0358, 0.017, 0.0024));
-        for (let s = 0; s < 5; s++) {
+        // Rear + front Glock Gen5 slide serrations (7 rear, 4 front)
+        const serGeo = _cachedGeo('g17_ser_hp', () => _uvWrapBox(new THREE.BoxGeometry(0.0268, 0.016, 0.0022), 0.12));
+        for (let s = 0; s < 7; s++) {
           const rib = new THREE.Mesh(serGeo, m.darkMat);
-          rib.position.set(0, 0, 0.072 + s * 0.008);
+          rib.position.set(0, 0, 0.048 + s * 0.0058);
           slideGroup.add(rib);
         }
-        for (let s = 0; s < 3; s++) {
+        for (let s = 0; s < 4; s++) {
           const fRib = new THREE.Mesh(serGeo, m.darkMat);
-          fRib.scale.set(0.99, 0.88, 0.92);
-          fRib.position.set(0, 0, -0.095 + s * 0.008);
+          fRib.scale.set(0.98, 0.86, 0.92);
+          fRib.position.set(0, 0, -0.082 + s * 0.0058);
           slideGroup.add(fRib);
         }
 
-        const slideStop = new THREE.Mesh(geoRoundedBox(0.004, 0.006, 0.022, 0.001, 0.0004), m.magMat);
-        slideStop.position.set(-0.0165, -0.009, 0.036);
-        slideGroup.position.set(0, 0.006, 0);
+        const slideStop = new THREE.Mesh(geoRoundedBox(0.004, 0.006, 0.022, 0.0012, 0.0004), m.nitrideMat);
+        slideStop.position.set(-0.016, -0.009, 0.032);
+        const magRel = new THREE.Mesh(geoRoundedBox(0.004, 0.010, 0.009, 0.0015, 0.0004), m.nitrideMat);
+        magRel.position.set(-0.016, -0.030, 0.052);
+        slideGroup.position.set(0, 0.006, -0.002);
 
-        // Lathe-contoured 9x19mm pistol barrel + dark bore
+        // 114mm cold-hammer-forged 9x19mm pistol barrel + crowned bore + guide rod
         const barrelMesh = new THREE.Mesh(
-          geoLatheZ('g17_bbl', [[-0.02, 0.0075], [0.10, 0.0075], [0.12, 0.0082], [0.126, 0.0082], [0.126, 0.0045]]),
+          geoLatheZ('g17_bbl_hp', [[-0.016, 0.0068], [0.098, 0.0068], [0.105, 0.0074], [0.107, 0.0074], [0.107, 0.0045]], 28),
+          m.nitrideMat
+        );
+        barrelMesh.position.set(0, 0.008, -0.003);
+        const guideRod = new THREE.Mesh(
+          geoLatheZ('g17_rod_hp', [[0.01, 0.0044], [0.095, 0.0044], [0.098, 0.0048]], 16),
           m.magMat
         );
-        barrelMesh.position.set(0, 0.008, -0.005);
-        const bore = new THREE.Mesh(_cachedGeo('g17_bore', () => {
-          const c = new THREE.CylinderGeometry(0.0045, 0.0045, 0.014, 10);
+        guideRod.position.set(0, -0.006, -0.002);
+        const bore = new THREE.Mesh(_cachedGeo('g17_bore_hp', () => {
+          const c = new THREE.CylinderGeometry(0.0045, 0.0045, 0.014, 16);
           c.rotateX(Math.PI / 2);
           return c;
         }), m.boreMat);
-        bore.position.set(0, 0.008, -0.128);
+        bore.position.set(0, 0.008, -0.106);
 
-        const railSlot = new THREE.Mesh(geoPicatinnyRail(-0.024, -0.09, -0.055, 0.028, 0.010), m.bluedMat);
-
+        const railSlot = new THREE.Mesh(geoPicatinnyRail(-0.024, -0.088, -0.055, 0.024, 0.009), m.bluedMat);
         const chamberRd = createCartridgeMesh('pistol', m);
-        chamberRd.position.set(0.003, 0.008, -0.012);
+        chamberRd.position.set(0.002, 0.008, -0.010);
         out.chamberRoundMesh = chamberRd;
 
-        out.triggerMesh = _addTriggerAndPins(g, m, 0.018, -0.024, 0.0155, [[-0.013, 0.012], [-0.014, 0.068]]);
+        out.triggerMesh = _addTriggerAndPins(g, m, 0.018, -0.024, 0.0155, [[-0.013, 0.012], [-0.014, 0.064]]);
 
+        // Standard 17rd mag OR OEM 33rd Extended Stick Mag (+0.078m taller stick)
+        const isExt = mods.magazine === 'ext_mag';
+        const magLen = isExt ? 0.172 : 0.102;
         const pistolMag = new THREE.Group();
-        const magBody = new THREE.Mesh(geoRoundedBox(0.023, 0.105, 0.033, 0.003, 0.001), m.darkMat);
-        const magPlate = new THREE.Mesh(geoRoundedBox(0.031, 0.013, 0.045, 0.0035, 0.0012), m.steelMat);
-        magPlate.position.set(0, -0.056, 0);
+        const magBody = new THREE.Mesh(geoRoundedBox(0.022, magLen, 0.032, 0.003, 0.001), m.darkMat);
+        magBody.position.set(0, -(magLen - 0.102) * 0.5, 0);
+        const magPlate = new THREE.Mesh(geoRoundedBox(0.028, 0.012, 0.038, 0.0035, 0.0012), m.nitrideMat);
+        magPlate.position.set(0, -0.054 - (magLen - 0.102), 0);
         const topRd = createCartridgeMesh('pistol', m);
-        topRd.position.set(0, 0.055, 0.002);
+        topRd.position.set(0, 0.053, 0.002);
         pistolMag.add(magBody, magPlate, topRd);
-        pistolMag.position.set(0, -0.082, 0.075);
+        pistolMag.position.set(0, -0.080, 0.072);
         pistolMag.rotation.x = 0.24;
 
         out.magMesh = pistolMag;
@@ -577,71 +503,96 @@ window.ModelSystem = (() => {
         out.spareMagMesh.visible = false;
         out.boltMesh = slideGroup;
         out.ironSightTarget = slideGroup;
-        out.ironSightOpts = { rearZ: slideLen / 2 - 0.016, frontZ: -slideLen / 2 + 0.014, baseY: 0.019 };
-        out.rightHandPos.set(0.0, -0.056, 0.072);
-        out.leftHandPos.set(-0.004, -0.064, 0.068);
+        out.ironSightOpts = { rearZ: slideLen / 2 - 0.014, frontZ: -slideLen / 2 + 0.012, baseY: 0.017 };
+        out.rightHandPos.set(0.0, -0.056, 0.070);
+        out.leftHandPos.set(-0.004, -0.064, 0.066);
         out.leftHandStyle = 'supportPistol';
-        out.sightHeight = 0.030;
+        out.sightHeight = 0.029;
         out.adsZ = -0.32;
-        out.muzzlePos.set(0, 0.01, -slideLen / 2 - 0.03);
-        out.flashPos.set(0, 0.02, -slideLen / 2 - 0.06);
+        out.muzzlePos.set(0, 0.008, -slideLen / 2 - 0.014);
+        out.flashPos.set(0, 0.016, -slideLen / 2 - 0.048);
 
-        g.add(frame, slideStop, railSlot, barrelMesh, bore, chamberRd, slideGroup, pistolMag, out.spareMagMesh);
+        g.add(frame, slideStop, magRel, railSlot, barrelMesh, guideRod, bore, chamberRd, slideGroup, pistolMag, out.spareMagMesh);
       } else {
-        // PM-9 Makarov
-        const frame = new THREE.Mesh(geoRoundedBox(0.026, 0.018, 0.175, 0.004, 0.0015), m.bluedMat);
-        frame.position.set(0, -0.015, 0.008);
-        const grip = new THREE.Mesh(geoCurvedGrip(0.029, 0.108, 0.044), m.bakeliteMat);
-        grip.position.set(0, -0.066, 0.072);
+        // PM-9 Makarov (161.5mm OAL, 93.5mm fixed barrel, 126.8mm height, 29.4mm width, Russian bakelite star grip)
+        const slideLen = 0.161;
+        const frame = new THREE.Mesh(geoRoundedBox(0.024, 0.016, 0.148, 0.0035, 0.0014, 0.16), m.bluedMat);
+        frame.position.set(0, -0.014, 0.006);
+        const grip = new THREE.Mesh(geoCurvedGrip(0.0294, 0.098, 0.042), m.bakeliteMat);
+        grip.position.set(0, -0.060, 0.058);
         grip.rotation.x = 0.24;
-        const backstrap = new THREE.Mesh(geoRoundedBox(0.020, 0.100, 0.012, 0.004, 0.001), m.bluedMat);
-        backstrap.position.set(0, -0.062, 0.092);
+        const backstrap = new THREE.Mesh(geoRoundedBox(0.018, 0.092, 0.011, 0.0035, 0.001), m.bluedMat);
+        backstrap.position.set(0, -0.056, 0.076);
         backstrap.rotation.x = 0.24;
-
-        const slideLower = new THREE.Mesh(geoRoundedBox(0.030, 0.020, slideLen, 0.004, 0.0015), m.bluedMat);
-        const slideCrown = new THREE.Mesh(_cachedGeo('pm9_crown', () => {
-          const c = new THREE.CylinderGeometry(0.0148, 0.0148, slideLen - 0.004, 14);
-          c.rotateX(Math.PI / 2);
+        // Signature Makarov medallion + grip screw + lanyard loop
+        const gripScrew = new THREE.Mesh(_cachedGeo('pm9_gscrew', () => {
+          const c = new THREE.CylinderGeometry(0.0032, 0.0032, 0.031, 14);
+          c.rotateZ(Math.PI / 2);
           return c;
+        }), m.chromeMat);
+        gripScrew.position.set(0, -0.056, 0.058);
+        const starL = new THREE.Mesh(_cachedGeo('pm9_star', () => _uvWrapCyl(new THREE.CylinderGeometry(0.0095, 0.0095, 0.002, 5), 0.0095, 'y', 0.05)), m.bakeliteMat);
+        starL.rotation.z = Math.PI / 2;
+        starL.position.set(-0.0148, -0.056, 0.058);
+        const starR = starL.clone();
+        starR.position.x = 0.0148;
+        const lanyardRing = new THREE.Mesh(_cachedGeo('pm9_lanyard', () => new THREE.TorusGeometry(0.005, 0.0014, 8, 16)), m.bluedMat);
+        lanyardRing.rotation.y = Math.PI / 2;
+        lanyardRing.position.set(0, -0.106, 0.070);
+
+        const slideLower = new THREE.Mesh(geoRoundedBox(0.0245, 0.018, slideLen, 0.0038, 0.0014, 0.16), m.bluedMat);
+        const slideCrown = new THREE.Mesh(_cachedGeo('pm9_crown_hp', () => {
+          const c = new THREE.CylinderGeometry(0.0122, 0.0122, slideLen - 0.003, 24);
+          c.rotateX(Math.PI / 2);
+          return _uvWrapCyl(c, 0.0122, 'z', 0.14);
         }), m.bluedMat);
-        slideCrown.position.set(0, 0.008, 0);
-        const ejPort = new THREE.Mesh(geoRoundedBox(0.004, 0.011, 0.038, 0.002, 0.0005), m.steelMat);
-        ejPort.position.set(0.014, 0.005, -0.008);
-        const safetyLever = new THREE.Mesh(geoRoundedBox(0.006, 0.010, 0.024, 0.002, 0.0006), m.steelMat);
-        safetyLever.position.set(-0.017, 0.004, 0.075);
-        const hammer = new THREE.Mesh(geoRoundedBox(0.008, 0.014, 0.016, 0.003, 0.0008), m.magMat);
-        hammer.position.set(0, 0.002, slideLen / 2 + 0.004);
+        slideCrown.position.set(0, 0.007, 0);
+        const ejPort = new THREE.Mesh(geoRoundedBox(0.004, 0.010, 0.034, 0.002, 0.0005), m.steelMat);
+        ejPort.position.set(0.0115, 0.004, -0.008);
+        const safetyLever = new THREE.Mesh(geoRoundedBox(0.005, 0.009, 0.022, 0.002, 0.0006), m.bluedMat);
+        safetyLever.position.set(-0.014, 0.004, 0.056);
+        const hammer = new THREE.Mesh(geoRoundedBox(0.007, 0.013, 0.015, 0.003, 0.0008), m.steelMat);
+        hammer.position.set(0, 0.001, slideLen / 2 + 0.003);
         hammer.rotation.x = 0.35;
         slideGroup.add(slideLower, slideCrown, ejPort, safetyLever, hammer);
 
-        const pmSerGeo = _cachedGeo('pm9_ser', () => new THREE.BoxGeometry(0.0316, 0.015, 0.0022));
-        for (let s = 0; s < 5; s++) {
+        const pmSerGeo = _cachedGeo('pm9_ser_hp', () => _uvWrapBox(new THREE.BoxGeometry(0.0258, 0.013, 0.0018), 0.12));
+        for (let s = 0; s < 10; s++) {
           const pmRib = new THREE.Mesh(pmSerGeo, m.darkMat);
-          pmRib.position.set(0, 0, 0.056 + s * 0.007);
+          pmRib.position.set(0, -0.001, 0.034 + s * 0.0042);
           slideGroup.add(pmRib);
         }
-        slideGroup.position.set(0, 0.006, 0);
+        slideGroup.position.set(0, 0.006, -0.002);
 
         const barrelMesh = new THREE.Mesh(
-          geoLatheZ('pm9_bbl', [[-0.01, 0.0070], [0.09, 0.0070], [0.108, 0.0072], [0.108, 0.004]]),
+          geoLatheZ('pm9_bbl_hp', [[-0.012, 0.0062], [0.075, 0.0062], [0.084, 0.0065], [0.084, 0.0040]], 24),
           m.magMat
         );
-        barrelMesh.position.set(0, 0.008, -0.005);
+        barrelMesh.position.set(0, 0.007, -0.002);
+        const bore = new THREE.Mesh(_cachedGeo('pm9_bore_hp', () => {
+          const c = new THREE.CylinderGeometry(0.0044, 0.0044, 0.012, 16);
+          c.rotateX(Math.PI / 2);
+          return c;
+        }), m.boreMat);
+        bore.position.set(0, 0.007, -0.082);
 
         const chamberRd = createCartridgeMesh('pistol', m);
-        chamberRd.position.set(0.003, 0.008, -0.010);
+        chamberRd.position.set(0.002, 0.007, -0.008);
         out.chamberRoundMesh = chamberRd;
 
-        out.triggerMesh = _addTriggerAndPins(g, m, 0.016, -0.022, 0.014, null);
+        out.triggerMesh = _addTriggerAndPins(g, m, 0.012, -0.020, 0.013, null);
 
+        const isExt = mods.magazine === 'ext_mag';
+        const pmMagLen = isExt ? 0.118 : 0.094;
         const pistolMag = new THREE.Group();
-        const magBody = new THREE.Mesh(geoRoundedBox(0.020, 0.102, 0.030, 0.003, 0.0008), m.magMat);
-        const magPlate = new THREE.Mesh(geoRoundedBox(0.026, 0.010, 0.040, 0.003, 0.001), m.bluedMat);
-        magPlate.position.set(0, -0.054, 0);
+        const magBody = new THREE.Mesh(geoRoundedBox(0.018, pmMagLen, 0.027, 0.003, 0.0008), m.bluedMat);
+        magBody.position.set(0, -(pmMagLen - 0.094) * 0.5, 0);
+        const magPlate = new THREE.Mesh(geoRoundedBox(0.024, isExt ? 0.018 : 0.009, 0.036, 0.003, 0.001), isExt ? m.darkMat : m.bluedMat);
+        magPlate.position.set(0, -0.050 - (pmMagLen - 0.094), 0);
         const topRd = createCartridgeMesh('pistol', m);
-        topRd.position.set(0, 0.054, 0.001);
+        topRd.position.set(0, 0.049, 0.001);
         pistolMag.add(magBody, magPlate, topRd);
-        pistolMag.position.set(0, -0.082, 0.075);
+        pistolMag.position.set(0, -0.072, 0.060);
         pistolMag.rotation.x = 0.24;
 
         out.magMesh = pistolMag;
@@ -649,149 +600,154 @@ window.ModelSystem = (() => {
         out.spareMagMesh.visible = false;
         out.boltMesh = slideGroup;
         out.ironSightTarget = slideGroup;
-        out.ironSightOpts = { rearZ: slideLen / 2 - 0.016, frontZ: -slideLen / 2 + 0.014, baseY: 0.019 };
-        out.rightHandPos.set(0.0, -0.056, 0.072);
-        out.leftHandPos.set(-0.004, -0.064, 0.068);
+        out.ironSightOpts = { rearZ: slideLen / 2 - 0.014, frontZ: -slideLen / 2 + 0.012, baseY: 0.017 };
+        out.rightHandPos.set(0.0, -0.052, 0.058);
+        out.leftHandPos.set(-0.004, -0.060, 0.054);
         out.leftHandStyle = 'supportPistol';
-        out.sightHeight = 0.030;
+        out.sightHeight = 0.028;
         out.adsZ = -0.32;
-        out.muzzlePos.set(0, 0.01, -slideLen / 2 - 0.03);
-        out.flashPos.set(0, 0.02, -slideLen / 2 - 0.06);
+        out.muzzlePos.set(0, 0.007, -slideLen / 2 - 0.012);
+        out.flashPos.set(0, 0.015, -slideLen / 2 - 0.046);
 
-        g.add(frame, grip, backstrap, barrelMesh, chamberRd, slideGroup, pistolMag, out.spareMagMesh);
+        g.add(frame, grip, backstrap, gripScrew, starL, starR, lanyardRing, barrelMesh, bore, chamberRd, slideGroup, pistolMag, out.spareMagMesh);
       }
       return out;
     }
 
     if (id === 'mp5k') {
-      const upper = new THREE.Mesh(geoRoundedBox(0.038, 0.034, 0.31, 0.0055, 0.0018), m.steelMat);
-      upper.position.set(0, 0.007, 0.025);
-      const upperTop = new THREE.Mesh(_cachedGeo('mp5_top', () => {
-        const c = new THREE.CylinderGeometry(0.0168, 0.0168, 0.31, 14);
+      // H&K MP5K-PDW / MP5 Compact (325mm OAL stockless / 603mm PDW stocked, 38mm receiver, 115mm barrel + tri-lug)
+      const upper = new THREE.Mesh(geoRoundedBox(0.036, 0.032, 0.275, 0.0055, 0.0018, 0.22), m.nitrideMat);
+      upper.position.set(0, 0.007, 0.032);
+      const upperTop = new THREE.Mesh(_cachedGeo('mp5_top_hp', () => {
+        const c = new THREE.CylinderGeometry(0.0158, 0.0158, 0.275, 24);
         c.rotateX(Math.PI / 2);
-        return c;
-      }), m.steelMat);
-      upperTop.position.set(0, 0.020, 0.025);
-      const fluteL = new THREE.Mesh(geoRoundedBox(0.005, 0.008, 0.29, 0.002, 0.0006), m.bluedMat);
-      fluteL.position.set(-0.020, 0.002, 0.03);
+        return _uvWrapCyl(c, 0.0158, 'z', 0.20);
+      }), m.nitrideMat);
+      upperTop.position.set(0, 0.020, 0.032);
+      const fluteL = new THREE.Mesh(geoRoundedBox(0.004, 0.007, 0.255, 0.002, 0.0006), m.bluedMat);
+      fluteL.position.set(-0.0185, 0.002, 0.036);
       const fluteR = fluteL.clone();
-      fluteR.position.x = 0.020;
+      fluteR.position.x = 0.0185;
 
-      // Ejection port recess + sliding chrome bolt carrier behind it
-      const ejPort = new THREE.Mesh(geoRoundedBox(0.004, 0.015, 0.056, 0.002, 0.0005), m.boreMat);
-      ejPort.position.set(0.0182, 0.010, -0.01);
-      const boltCarrier = new THREE.Mesh(geoRoundedBox(0.010, 0.013, 0.054, 0.002, 0.0005), m.chromeMat);
-      boltCarrier.position.set(0.014, 0.010, -0.01);
+      const ejPort = new THREE.Mesh(geoRoundedBox(0.004, 0.015, 0.052, 0.002, 0.0005), m.boreMat);
+      ejPort.position.set(0.0172, 0.010, -0.008);
+      const boltCarrier = new THREE.Mesh(geoRoundedBox(0.009, 0.013, 0.050, 0.002, 0.0005), m.chromeMat);
+      boltCarrier.position.set(0.0135, 0.010, -0.008);
       out.boltCarrierMesh = boltCarrier;
 
-      const cockingTube = new THREE.Mesh(_cachedGeo('mp5_cock', () => {
-        const c = new THREE.CylinderGeometry(0.0138, 0.0138, 0.25, 14);
+      const cockingTube = new THREE.Mesh(_cachedGeo('mp5_cock_hp', () => {
+        const c = new THREE.CylinderGeometry(0.0132, 0.0132, 0.175, 22);
         c.rotateX(Math.PI / 2);
-        return c;
-      }), m.steelMat);
-      cockingTube.position.set(0, 0.022, -0.175);
-      const tripleFrame = new THREE.Mesh(geoRoundedBox(0.032, 0.044, 0.020, 0.004, 0.0012), m.bluedMat);
-      tripleFrame.position.set(0, 0.012, -0.295);
+        return _uvWrapCyl(c, 0.0132, 'z', 0.18);
+      }), m.nitrideMat);
+      cockingTube.position.set(0, 0.021, -0.155);
+      const tripleFrame = new THREE.Mesh(geoRoundedBox(0.030, 0.042, 0.018, 0.004, 0.0012), m.bluedMat);
+      tripleFrame.position.set(0, 0.012, -0.242);
 
-      // Lathe-turned cold-hammer-forged MP5 barrel + tri-lug adapter
+      // Stepped 115mm cold-hammer-forged barrel + tri-lug shroud (-0.275 muzzle)
       const barrel = new THREE.Mesh(
-        geoLatheZ('mp5_bbl', [
-          [0.06, 0.0105], [0.26, 0.0095], [0.285, 0.0126], [0.30, 0.0126],
-          [0.30, 0.0092], [0.31, 0.0092], [0.31, 0.0045]
-        ]),
+        geoLatheZ('mp5_bbl_hp', [
+          [0.05, 0.0105], [0.22, 0.0096], [0.248, 0.0124], [0.262, 0.0124],
+          [0.262, 0.0090], [0.274, 0.0090], [0.274, 0.0045]
+        ], 26),
         m.bluedMat
       );
       barrel.position.set(0, 0.001, 0.0);
       barrel.renderOrder = -20;
 
-      const hgGeo = geoExtrudeSide('mp5_hg', [
-        [0.09, -0.002], [0.275, -0.002], [0.265, -0.024], [0.165, -0.040], [0.09, -0.036]
-      ], 0.044, null, true);
+      // Vented Navy / Tropical ribbed handguard (-0.090 to -0.232, bottom at y = -0.036)
+      const hgGeo = geoExtrudeSide('mp5_hg_hp', [
+        [0.088, -0.002], [0.232, -0.002], [0.224, -0.024], [0.160, -0.038], [0.088, -0.035]
+      ], 0.042, null, true, 0.18);
       const handguard = new THREE.Mesh(hgGeo, m.darkMat);
-      const hgPin = new THREE.Mesh(_cachedGeo('mp5_pin', () => {
-        const c = new THREE.CylinderGeometry(0.004, 0.004, 0.048, 10);
+      const hgPin = new THREE.Mesh(_cachedGeo('mp5_pin_hp', () => {
+        const c = new THREE.CylinderGeometry(0.0038, 0.0038, 0.046, 12);
         c.rotateZ(Math.PI / 2);
-        return c;
+        return _uvWrapCyl(c, 0.0038, 'x', 0.08);
       }), m.magMat);
-      hgPin.position.set(0, 0.004, -0.255);
+      hgPin.position.set(0, 0.004, -0.215);
 
-      const lower = new THREE.Mesh(geoRoundedBox(0.035, 0.026, 0.175, 0.005, 0.0015), m.darkMat);
-      lower.position.set(0, -0.019, 0.085);
-      const magWell = new THREE.Mesh(geoRoundedBox(0.038, 0.044, 0.056, 0.0045, 0.0015), m.steelMat);
-      magWell.position.set(0, -0.026, -0.045);
-      const paddleRel = new THREE.Mesh(geoRoundedBox(0.014, 0.022, 0.010, 0.0025, 0.0008), m.bluedMat);
-      paddleRel.position.set(0, -0.048, -0.012);
-      const selector = new THREE.Mesh(geoRoundedBox(0.006, 0.012, 0.026, 0.002, 0.0006), m.magMat);
-      selector.position.set(-0.020, -0.020, 0.115);
+      const lower = new THREE.Mesh(geoRoundedBox(0.034, 0.026, 0.165, 0.005, 0.0015), m.darkMat);
+      lower.position.set(0, -0.019, 0.082);
+      const magWell = new THREE.Mesh(geoRoundedBox(0.036, 0.042, 0.054, 0.0045, 0.0015), m.nitrideMat);
+      magWell.position.set(0, -0.025, -0.042);
+      const paddleRel = new THREE.Mesh(geoRoundedBox(0.013, 0.020, 0.009, 0.0025, 0.0008), m.bluedMat);
+      paddleRel.position.set(0, -0.046, -0.012);
+      const selector = new THREE.Mesh(geoRoundedBox(0.006, 0.011, 0.024, 0.002, 0.0006), m.magMat);
+      selector.position.set(-0.019, -0.020, 0.110);
       selector.rotation.x = 0.25;
 
       const grip = new THREE.Mesh(geoCurvedGrip(0.029, 0.098, 0.042), m.darkMat);
-      grip.position.set(0, -0.072, 0.132);
+      grip.position.set(0, -0.072, 0.128);
       grip.rotation.x = 0.28;
-      const endCap = new THREE.Mesh(geoRoundedBox(0.042, 0.050, 0.028, 0.006, 0.0018), m.darkMat);
-      endCap.position.set(0, 0.002, 0.182);
+      const endCap = new THREE.Mesh(geoRoundedBox(0.040, 0.048, 0.026, 0.006, 0.0018), m.darkMat);
+      endCap.position.set(0, 0.002, 0.174);
 
       if (!mods.stock || mods.stock === 'none') {
-        const stRailL = new THREE.Mesh(geoRoundedBox(0.006, 0.009, 0.22, 0.002, 0.0006), m.magMat);
-        stRailL.position.set(-0.019, 0.002, 0.285);
+        const stRailL = new THREE.Mesh(geoRoundedBox(0.006, 0.0085, 0.22, 0.002, 0.0006), m.magMat);
+        stRailL.position.set(-0.018, 0.002, 0.278);
         const stRailR = stRailL.clone();
-        stRailR.position.x = 0.019;
-        const stPad = new THREE.Mesh(geoRoundedBox(0.038, 0.105, 0.026, 0.007, 0.0022), m.darkMat);
-        stPad.position.set(0, -0.022, 0.395);
+        stRailR.position.x = 0.018;
+        const stPad = new THREE.Mesh(geoRoundedBox(0.036, 0.100, 0.024, 0.007, 0.0022), m.rubberMat);
+        stPad.position.set(0, -0.020, 0.388);
         g.add(stRailL, stRailR, stPad);
       }
 
-      const topRail = new THREE.Mesh(geoPicatinnyRail(0.036, -0.075, 0.085, 0.018, 0.014), m.bluedMat);
-      out.triggerMesh = _addTriggerAndPins(g, m, 0.072, -0.038, 0.0195, [[-0.016, 0.168], [-0.016, 0.012], [-0.021, -0.042]]);
+      const topRail = new THREE.Mesh(geoPicatinnyRail(0.036, -0.068, 0.088, 0.018, 0.012), m.anodizedMat);
+      out.triggerMesh = _addTriggerAndPins(g, m, 0.068, -0.038, 0.0195, [[-0.016, 0.160], [-0.016, 0.012], [-0.021, -0.040]]);
 
+      const isExt = mods.magazine === 'ext_mag';
       const mag = new THREE.Group();
-      const mp5MagGeo = _cachedGeo('mp5_mag', () => {
+      const mp5MagGeo = _cachedGeo(`mp5_mag_hp_${isExt ? 40 : 30}`, () => {
         const magShape = new THREE.Shape();
+        const scaleH = isExt ? 1.32 : 1.0;
         magShape.moveTo(-0.018, 0.062);
         magShape.lineTo(0.018, 0.062);
-        magShape.bezierCurveTo(0.024, 0.00, 0.040, -0.062, 0.058, -0.125);
-        magShape.lineTo(0.022, -0.134);
-        magShape.bezierCurveTo(0.004, -0.070, -0.012, -0.008, -0.018, 0.062);
-        const geo = new THREE.ExtrudeGeometry(magShape, { depth: 0.023, bevelEnabled: true, bevelThickness: 0.0018, bevelSize: 0.0016, bevelSegments: 2, curveSegments: 12 });
+        magShape.bezierCurveTo(0.024, 0.00, 0.040, -0.062 * scaleH, 0.058 * scaleH, -0.125 * scaleH);
+        magShape.lineTo(0.022 * scaleH, -0.134 * scaleH);
+        magShape.bezierCurveTo(0.004, -0.070 * scaleH, -0.012, -0.008, -0.018, 0.062);
+        const geo = new THREE.ExtrudeGeometry(magShape, { depth: 0.023, bevelEnabled: true, bevelThickness: 0.0018, bevelSize: 0.0016, bevelSegments: 2, curveSegments: 14 });
         geo.translate(0, 0, -0.0115);
+        _uvWrapExtrude(geo, 0.16);
         geo.rotateY(Math.PI / 2);
         return geo;
       });
-      const mp5MagBody = new THREE.Mesh(mp5MagGeo, m.magMat);
-      const magFloor = new THREE.Mesh(geoRoundedBox(0.028, 0.009, 0.042, 0.003, 0.001), m.bluedMat);
-      magFloor.position.set(0, -0.130, -0.040);
+      const mp5MagBody = new THREE.Mesh(mp5MagGeo, m.bluedMat);
+      const scaleH = isExt ? 1.32 : 1.0;
+      const magFloor = new THREE.Mesh(geoRoundedBox(0.028, 0.009, 0.042, 0.003, 0.001), m.nitrideMat);
+      magFloor.position.set(0, -0.130 * scaleH, -0.040 * scaleH);
       magFloor.rotation.x = -0.26;
       const topRd = createCartridgeMesh('pistol', m);
       topRd.position.set(0, 0.065, 0);
       mag.add(mp5MagBody, magFloor, topRd);
-      mag.position.set(0, -0.096, -0.045);
+      mag.position.set(0, -0.095, -0.042);
       mag.rotation.x = -0.06;
 
       const boltHandle = new THREE.Group();
-      const chStem = new THREE.Mesh(geoRoundedBox(0.026, 0.010, 0.012, 0.003, 0.0008), m.magMat);
-      const chKnob = new THREE.Mesh(_cachedGeo('mp5_knob', () => {
-        const c = new THREE.CylinderGeometry(0.008, 0.009, 0.026, 12);
+      const chStem = new THREE.Mesh(geoRoundedBox(0.024, 0.009, 0.011, 0.003, 0.0008), m.magMat);
+      const chKnob = new THREE.Mesh(_cachedGeo('mp5_knob_hp', () => {
+        const c = new THREE.CylinderGeometry(0.0075, 0.0085, 0.024, 16);
         c.rotateZ(Math.PI / 2);
-        return c;
+        return _uvWrapCyl(c, 0.008, 'x', 0.08);
       }), m.darkMat);
-      chKnob.position.set(-0.016, 0.006, 0);
+      chKnob.position.set(-0.015, 0.006, 0);
       boltHandle.add(chStem, chKnob);
-      boltHandle.position.set(-0.022, 0.024, -0.21);
+      boltHandle.position.set(-0.020, 0.024, -0.185);
 
       const chamberRd = createCartridgeMesh('pistol', m);
-      chamberRd.position.set(0.004, 0.009, -0.012);
+      chamberRd.position.set(0.004, 0.009, -0.010);
       out.chamberRoundMesh = chamberRd;
 
       out.magMesh = mag;
       out.spareMagMesh = mag.clone();
       out.spareMagMesh.visible = false;
       out.boltMesh = boltHandle;
-      out.rightHandPos.set(0.0, -0.064, 0.132);
-      out.leftHandPos.set(0.0, -0.026, -0.185);
+      out.rightHandPos.set(0.0, -0.064, 0.128);
+      out.leftHandPos.set(0.0, -0.026, -0.165);
       out.sightHeight = 0.044;
       out.adsZ = -0.25;
-      out.muzzlePos.set(0, 0.001, -0.31);
-      out.flashPos.set(0, 0.01, -0.35);
+      out.muzzlePos.set(0, 0.001, -0.275);
+      out.flashPos.set(0, 0.01, -0.315);
 
       g.add(
         upper, upperTop, fluteL, fluteR, ejPort, boltCarrier, chamberRd,
@@ -804,109 +760,107 @@ window.ModelSystem = (() => {
     }
 
     if (id === 'ak47') {
-      // AK-47 Type 3 (milled, 880mm OAL): slant muzzle brake, 45-degree gas block,
-      // slab-side steel 30rd mag, laminated wood furniture, smooth top cover, tangent leaf.
-      const receiver = new THREE.Mesh(geoRoundedBox(0.044, 0.050, 0.35, 0.005, 0.0018), m.steelMat);
-      receiver.position.set(0, -0.003, 0.04);
-      // Milled Type 3 lightening cuts (replace stamped-receiver dimples)
-      const cutL = new THREE.Mesh(geoRoundedBox(0.002, 0.016, 0.110, 0.001, 0.0004), m.darkMat);
-      cutL.position.set(-0.0225, -0.004, 0.030);
+      // Izhmash AK-47 Type 3 / AKM (880mm OAL: +0.465 buttplate to -0.415 muzzle, 415mm barrel)
+      const receiver = new THREE.Mesh(geoRoundedBox(0.036, 0.048, 0.34, 0.005, 0.0018, 0.24), m.bluedMat);
+      receiver.position.set(0, -0.003, 0.042);
+      // Signature milled Type 3 lightening pockets
+      const cutL = new THREE.Mesh(geoRoundedBox(0.0025, 0.015, 0.112, 0.001, 0.0004), m.darkMat);
+      cutL.position.set(-0.0185, -0.004, 0.032);
       const cutR = cutL.clone();
-      cutR.position.x = 0.0225;
-      const safety = new THREE.Mesh(geoRoundedBox(0.004, 0.016, 0.145, 0.002, 0.0006), m.bluedMat);
-      safety.position.set(0.0235, -0.003, 0.065);
+      cutR.position.x = 0.0185;
+      const safety = new THREE.Mesh(geoRoundedBox(0.004, 0.015, 0.145, 0.002, 0.0006), m.steelMat);
+      safety.position.set(0.020, -0.003, 0.065);
       safety.rotation.x = 0.06;
 
-      // Smooth Type 3 top cover (no ribs)
-      const dustCover = new THREE.Mesh(geoRoundedBox(0.036, 0.019, 0.29, 0.008, 0.0018), m.bluedMat);
-      dustCover.position.set(0, 0.027, 0.075);
-      const rsBlock = new THREE.Mesh(geoRoundedBox(0.040, 0.024, 0.055, 0.004, 0.0014), m.steelMat);
-      rsBlock.position.set(0, 0.024, -0.085);
+      // Top cover + trunnion sight block
+      const dustCover = new THREE.Mesh(geoRoundedBox(0.033, 0.019, 0.285, 0.009, 0.0018), m.bluedMat);
+      dustCover.position.set(0, 0.026, 0.075);
+      const rsBlock = new THREE.Mesh(geoRoundedBox(0.036, 0.024, 0.056, 0.004, 0.0014), m.steelMat);
+      rsBlock.position.set(0, 0.023, -0.086);
 
-      // Lathe-turned AK-47 stepped barrel, 415mm: chamber swell, gas journal, muzzle threads + brake body
+      // 415mm cold-hammer-forged lathe barrel + AKM slant compensator
       const barrel = new THREE.Mesh(
-        geoLatheZ('ak47_bbl', [
-          [0.10, 0.0112], [0.28, 0.0098], [0.30, 0.0128], [0.33, 0.0128],
-          [0.33, 0.0094], [0.375, 0.0090], [0.375, 0.0108], [0.415, 0.0108], [0.415, 0.0035]
-        ]),
+        geoLatheZ('ak47_bbl_hp', [
+          [0.10, 0.0112], [0.28, 0.0096], [0.30, 0.0128], [0.33, 0.0128],
+          [0.33, 0.0092], [0.376, 0.0088], [0.376, 0.0108], [0.415, 0.0108], [0.415, 0.0038]
+        ], 26),
         m.bluedMat
       );
       barrel.position.set(0, 0.002, 0);
-      // Slant-cut compensator face + top vent (signature AK-47 muzzle)
-      const slantFace = new THREE.Mesh(_cachedGeo('ak47_slant', () => {
-        const c = new THREE.CylinderGeometry(0.0108, 0.0108, 0.004, 16);
+      const slantFace = new THREE.Mesh(_cachedGeo('ak47_slant_hp', () => {
+        const c = new THREE.CylinderGeometry(0.0108, 0.0108, 0.004, 22);
         c.rotateX(Math.PI / 2);
-        return c;
+        return _uvWrapCyl(c, 0.0108, 'z', 0.10);
       }), m.bluedMat);
       slantFace.position.set(0, 0.0045, -0.415);
       slantFace.rotation.x = 0.42;
       const slantPort = new THREE.Mesh(geoRoundedBox(0.008, 0.004, 0.020, 0.001, 0.0004), m.boreMat);
       slantPort.position.set(0, 0.0135, -0.408);
       slantPort.rotation.x = 0.42;
-      const cleaningRod = new THREE.Mesh(_cachedGeo('ak47_rod', () => {
-        const c = new THREE.CylinderGeometry(0.003, 0.003, 0.24, 8);
+      const cleaningRod = new THREE.Mesh(_cachedGeo('ak47_rod_hp', () => {
+        const c = new THREE.CylinderGeometry(0.003, 0.003, 0.25, 12);
         c.rotateX(Math.PI / 2);
-        return c;
+        return _uvWrapCyl(c, 0.003, 'z', 0.10);
       }), m.magMat);
-      cleaningRod.position.set(0, -0.011, -0.29);
+      cleaningRod.position.set(0, -0.011, -0.295);
 
-      const gasTube = new THREE.Mesh(_cachedGeo('ak_gastube', () => {
-        const c = new THREE.CylinderGeometry(0.0105, 0.0105, 0.22, 12);
+      const gasTube = new THREE.Mesh(_cachedGeo('ak_gastube_hp', () => {
+        const c = new THREE.CylinderGeometry(0.0105, 0.0105, 0.22, 18);
         c.rotateX(Math.PI / 2);
-        return c;
-      }), m.steelMat);
+        return _uvWrapCyl(c, 0.0105, 'z', 0.16);
+      }), m.bluedMat);
       gasTube.position.set(0, 0.023, -0.22);
-      // 45-degree AK-47 gas block (vs 90-degree AK-74 block)
       const gasBlock = new THREE.Mesh(geoRoundedBox(0.022, 0.036, 0.036, 0.004, 0.0012), m.bluedMat);
       gasBlock.position.set(0, 0.014, -0.315);
       gasBlock.rotation.x = -0.55;
       const fsbBase = new THREE.Mesh(geoRoundedBox(0.020, 0.040, 0.032, 0.0035, 0.0012), m.bluedMat);
       fsbBase.position.set(0, 0.018, -0.355);
-      // Bayonet lug under the front sight block
       const bayoLug = new THREE.Mesh(geoRoundedBox(0.008, 0.010, 0.030, 0.002, 0.0006), m.bluedMat);
       bayoLug.position.set(0, -0.006, -0.365);
 
-      const hgLower = new THREE.Mesh(geoRoundedBox(0.044, 0.034, 0.195, 0.010, 0.0022), m.woodMat);
+      // Laminated Russian birch lower handguard (y-min = -0.025) & ventilated upper wood guard
+      const hgLower = new THREE.Mesh(geoRoundedBox(0.044, 0.034, 0.195, 0.010, 0.0022, 0.18), m.woodMat);
       hgLower.position.set(0, -0.009, -0.215);
-      const hgUpper = new THREE.Mesh(_cachedGeo('ak_hgup', () => {
-        const c = new THREE.CylinderGeometry(0.0165, 0.0165, 0.185, 14);
+      const hgUpper = new THREE.Mesh(_cachedGeo('ak_hgup_hp', () => {
+        const c = new THREE.CylinderGeometry(0.0165, 0.0165, 0.185, 22);
         c.rotateX(Math.PI / 2);
-        return c;
+        return _uvWrapCyl(c, 0.0165, 'z', 0.18);
       }), m.woodMat);
       hgUpper.position.set(0, 0.023, -0.215);
-      const hgFerrule = new THREE.Mesh(geoRoundedBox(0.046, 0.044, 0.014, 0.005, 0.0012), m.bluedMat);
+      const hgFerrule = new THREE.Mesh(geoRoundedBox(0.045, 0.043, 0.014, 0.005, 0.0012), m.bluedMat);
       hgFerrule.position.set(0, 0.004, -0.310);
 
-      const grip = new THREE.Mesh(geoCurvedGrip(0.029, 0.10, 0.043), m.woodMat);
+      const grip = new THREE.Mesh(geoCurvedGrip(0.029, 0.10, 0.043), m.bakeliteMat);
       grip.position.set(0, -0.075, 0.14);
       grip.rotation.x = 0.26;
       const magPaddle = new THREE.Mesh(geoRoundedBox(0.014, 0.020, 0.012, 0.0025, 0.0008), m.bluedMat);
       magPaddle.position.set(0, -0.034, 0.008);
 
-      out.triggerMesh = _addTriggerAndPins(g, m, 0.08, -0.032, 0.0225, [[-0.014, 0.045], [-0.014, 0.088], [0.006, -0.085], [-0.010, -0.095]]);
+      out.triggerMesh = _addTriggerAndPins(g, m, 0.08, -0.032, 0.0185, [[-0.014, 0.045], [-0.014, 0.088], [0.006, -0.085], [-0.010, -0.095]]);
 
       if (!mods.stock || mods.stock === 'none') {
-        const woodButt = new THREE.Mesh(geoExtrudeSide('ak47_stock', [
-          [-0.0, 0.022], [-0.245, -0.012], [-0.245, -0.108], [-0.055, -0.052], [-0.0, -0.024]
-        ], 0.034, null, true), m.woodMat);
+        const woodButt = new THREE.Mesh(geoExtrudeSide('ak47_stock_hp', [
+          [-0.0, 0.022], [-0.242, -0.012], [-0.242, -0.108], [-0.055, -0.052], [-0.0, -0.024]
+        ], 0.034, null, true, 0.24), m.woodMat);
         woodButt.position.set(0, -0.002, 0.215);
-        const buttPlate = new THREE.Mesh(geoRoundedBox(0.038, 0.100, 0.012, 0.005, 0.0015), m.bluedMat);
-        buttPlate.position.set(0, -0.062, 0.465);
-        const tang = new THREE.Mesh(geoRoundedBox(0.034, 0.010, 0.044, 0.003, 0.001), m.steelMat);
-        tang.position.set(0, 0.020, 0.233);
+        const buttPlate = new THREE.Mesh(geoRoundedBox(0.036, 0.098, 0.012, 0.005, 0.0015), m.bluedMat);
+        buttPlate.position.set(0, -0.062, 0.460);
+        const tang = new THREE.Mesh(geoRoundedBox(0.032, 0.010, 0.042, 0.003, 0.001), m.steelMat);
+        tang.position.set(0, 0.020, 0.232);
         g.add(woodButt, buttPlate, tang);
       }
 
+      // 30rd Ribbed Steel Magazine OR 40rd Russian Bakelite RPK Magazine
       const isExt = mods.magazine === 'ext_mag';
       const magGrp = new THREE.Group();
-      const magDepth = 0.027;
-      const magH = isExt ? 0.245 : 0.182;
-      const curveFwd = isExt ? 0.135 : 0.095;
+      const magDepth = 0.0265;
+      const magH = isExt ? 0.242 : 0.182;
+      const curveFwd = isExt ? 0.132 : 0.095;
       const magThick = 0.052;
       const tipAngle = isExt ? 0.48 : 0.42;
       const rearEndX = magThick * 0.42 + curveFwd - Math.cos(tipAngle) * magThick;
       const rearEndY = 0.048 - magH - Math.sin(tipAngle) * magThick;
-      const magGeo = _cachedGeo(`ak47_mag_${isExt ? 'ext' : 'std'}`, () => {
+      const magGeo = _cachedGeo(`ak47_mag_hp_${isExt ? 'ext' : 'std'}`, () => {
         const shape = new THREE.Shape();
         shape.moveTo(-magThick * 0.5, 0.048);
         shape.lineTo(magThick * 0.5, 0.048);
@@ -921,14 +875,14 @@ window.ModelSystem = (() => {
           -magThick * 0.5 + curveFwd * 0.08, 0.048 - magH * 0.32,
           -magThick * 0.5, 0.048
         );
-        const geo = new THREE.ExtrudeGeometry(shape, { depth: magDepth, bevelEnabled: true, bevelThickness: 0.002, bevelSize: 0.0018, bevelSegments: 1, curveSegments: 10 });
+        const geo = new THREE.ExtrudeGeometry(shape, { depth: magDepth, bevelEnabled: true, bevelThickness: 0.002, bevelSize: 0.0018, bevelSegments: 2, curveSegments: 14 });
         geo.translate(0, 0, -magDepth * 0.5);
+        _uvWrapExtrude(geo, 0.18);
         geo.rotateY(Math.PI / 2);
         return geo;
       });
-      const magBody = new THREE.Mesh(magGeo, m.bluedMat);
-      // Slab-side stiffening rib on the steel magazine
-      const magRib = new THREE.Mesh(geoRoundedBox(0.006, magH * 0.55, 0.010, 0.002, 0.0006), m.magMat);
+      const magBody = new THREE.Mesh(magGeo, isExt ? m.bakeliteMat : m.bluedMat);
+      const magRib = new THREE.Mesh(geoRoundedBox(0.006, magH * 0.55, 0.010, 0.002, 0.0006), isExt ? m.bakeliteMat : m.magMat);
       magRib.position.set(0, 0.048 - magH * 0.52, -(magThick * 0.30 + curveFwd * 0.55));
       magRib.rotation.x = -tipAngle * 0.55;
       const basePlate = new THREE.Mesh(geoRoundedBox(magDepth + 0.006, 0.009, magThick + 0.006, 0.002, 0.0006), m.bluedMat);
@@ -940,17 +894,16 @@ window.ModelSystem = (() => {
       magGrp.position.set(0, -0.048, -0.042);
 
       const boltHandle = new THREE.Group();
-      const carrier = new THREE.Mesh(geoRoundedBox(0.006, 0.014, 0.052, 0.002, 0.0005), m.magMat);
-      const hookKnob = new THREE.Mesh(geoRoundedBox(0.026, 0.010, 0.012, 0.0025, 0.0006), m.chromeMat);
-      hookKnob.position.set(0.012, 0.0, 0.012);
+      const carrier = new THREE.Mesh(geoRoundedBox(0.006, 0.014, 0.054, 0.002, 0.0005), m.chromeMat);
+      const hookKnob = new THREE.Mesh(geoRoundedBox(0.028, 0.010, 0.012, 0.0025, 0.0006), m.chromeMat);
+      hookKnob.position.set(0.013, 0.0, 0.012);
       boltHandle.add(carrier, hookKnob);
-      boltHandle.position.set(0.022, 0.014, -0.02);
+      boltHandle.position.set(0.019, 0.014, -0.02);
 
       const ejSlot = new THREE.Mesh(geoRoundedBox(0.004, 0.013, 0.068, 0.002, 0.0004), m.boreMat);
-      ejSlot.position.set(0.0212, 0.013, -0.018);
-
+      ejSlot.position.set(0.0175, 0.013, -0.018);
       const chamberRd = createCartridgeMesh('x39', m);
-      chamberRd.position.set(0.010, 0.013, -0.026);
+      chamberRd.position.set(0.009, 0.013, -0.026);
       out.chamberRoundMesh = chamberRd;
 
       out.magMesh = magGrp;
@@ -974,66 +927,84 @@ window.ModelSystem = (() => {
       );
       return out;
     }
+
     if (id === 'm870') {
-      const receiver = new THREE.Mesh(geoRoundedBox(0.046, 0.056, 0.28, 0.011, 0.0022), m.steelMat);
+      // Remington Model 870 Police Magnum / Trenchgun (978mm OAL, 470mm barrel, 44mm receiver)
+      const receiver = new THREE.Mesh(geoRoundedBox(0.044, 0.056, 0.25, 0.011, 0.0022, 0.22), m.steelMat);
       receiver.position.set(0, 0.0, 0.04);
       const ejectionRecess = new THREE.Mesh(geoRoundedBox(0.005, 0.020, 0.072, 0.003, 0.0005), m.boreMat);
-      ejectionRecess.position.set(0.0222, 0.009, -0.01);
+      ejectionRecess.position.set(0.0212, 0.009, -0.01);
       const breechBolt = new THREE.Mesh(geoRoundedBox(0.008, 0.018, 0.068, 0.0025, 0.0006), m.chromeMat);
-      breechBolt.position.set(0.0185, 0.009, -0.01);
+      breechBolt.position.set(0.0175, 0.009, -0.01);
       out.boltCarrierMesh = breechBolt;
 
       const barrel = new THREE.Mesh(
-        geoLatheZ('m870_bbl', [[0.08, 0.0155], [0.22, 0.0145], [0.59, 0.0138], [0.60, 0.0144], [0.60, 0.0088]]),
+        geoLatheZ('m870_bbl_hp', [[0.06, 0.0155], [0.20, 0.0142], [0.545, 0.0136], [0.555, 0.0142], [0.555, 0.0092]], 28),
         m.bluedMat
       );
       barrel.position.set(0, 0.014, 0);
-      const magTube = new THREE.Mesh(_cachedGeo('m870_tube', () => {
-        const c = new THREE.CylinderGeometry(0.0128, 0.0128, 0.46, 14);
+      // Perforated steel trench heat shield over upper barrel
+      const heatShield = new THREE.Mesh(_cachedGeo('m870_shield_hp', () => {
+        const c = new THREE.CylinderGeometry(0.0172, 0.0172, 0.34, 22, 1, true, -Math.PI * 0.45, Math.PI * 0.9);
+        c.rotateZ(Math.PI);
         c.rotateX(Math.PI / 2);
-        return c;
-      }), m.steelMat);
-      magTube.position.set(0, -0.016, -0.31);
-      const bblClamp = new THREE.Mesh(geoRoundedBox(0.026, 0.048, 0.022, 0.005, 0.0014), m.bluedMat);
-      bblClamp.position.set(0, -0.001, -0.49);
+        return _uvWrapCyl(c, 0.0172, 'z', 0.16);
+      }), m.anodizedMat);
+      heatShield.position.set(0, 0.015, -0.32);
 
+      const magTube = new THREE.Mesh(_cachedGeo('m870_tube_hp', () => {
+        const c = new THREE.CylinderGeometry(0.0128, 0.0128, 0.43, 22);
+        c.rotateX(Math.PI / 2);
+        return _uvWrapCyl(c, 0.0128, 'z', 0.16);
+      }), m.steelMat);
+      magTube.position.set(0, -0.016, -0.295);
+      const bblClamp = new THREE.Mesh(geoRoundedBox(0.026, 0.048, 0.022, 0.005, 0.0014), m.bluedMat);
+      bblClamp.position.set(0, -0.001, -0.475);
+
+      // Corncob ribbed American walnut pump forend (twin action bars -> slides cleanly during rechamber)
       const pump = new THREE.Group();
-      const pumpCore = new THREE.Mesh(_cachedGeo('m870_pump', () => {
-        const c = new THREE.CylinderGeometry(0.022, 0.023, 0.18, 14);
+      const pumpCore = new THREE.Mesh(_cachedGeo('m870_pump_hp', () => {
+        const c = new THREE.CylinderGeometry(0.022, 0.023, 0.18, 24);
         c.rotateX(Math.PI / 2);
-        return c;
-      }), m.woodMat);
+        return _uvWrapCyl(c, 0.022, 'z', 0.18);
+      }), m.walnutMat);
       pump.add(pumpCore);
-      const ringGeo = _cachedGeo('m870_pring', () => {
-        const c = new THREE.CylinderGeometry(0.0245, 0.0245, 0.012, 14);
+      const ringGeo = _cachedGeo('m870_pring_hp', () => {
+        const c = new THREE.CylinderGeometry(0.0242, 0.0242, 0.010, 24);
         c.rotateX(Math.PI / 2);
-        return c;
+        return _uvWrapCyl(c, 0.0242, 'z', 0.12);
       });
-      for (let r = -2; r <= 2; r++) {
-        const ring = new THREE.Mesh(ringGeo, m.bluedMat);
-        ring.position.set(0, 0, r * 0.032);
+      for (let r = -3; r <= 3; r++) {
+        const ring = new THREE.Mesh(ringGeo, m.walnutMat);
+        ring.position.set(0, 0, r * 0.023);
         pump.add(ring);
       }
       const actionBarL = new THREE.Mesh(geoRoundedBox(0.004, 0.007, 0.16, 0.0015, 0.0004), m.magMat);
-      actionBarL.position.set(-0.021, 0.002, 0.14);
+      actionBarL.position.set(-0.020, 0.002, 0.14);
       const actionBarR = actionBarL.clone();
-      actionBarR.position.x = 0.021;
+      actionBarR.position.x = 0.020;
       pump.add(actionBarL, actionBarR);
       pump.position.set(0, -0.016, -0.24);
 
-      const stockBody = new THREE.Mesh(geoExtrudeSide('m870_stock', [
-        [-0.14, -0.002], [-0.14, -0.032], [-0.175, -0.060], [-0.215, -0.062],
-        [-0.465, -0.098], [-0.465, 0.004], [-0.24, -0.006]
-      ], 0.038, null, true), m.woodMat);
-      const stockPad = new THREE.Mesh(geoRoundedBox(0.040, 0.104, 0.020, 0.007, 0.0022), m.darkMat);
-      stockPad.position.set(0, -0.047, 0.475);
+      const stockBody = new THREE.Mesh(geoExtrudeSide('m870_stock_hp', [
+        [-0.12, -0.002], [-0.12, -0.032], [-0.165, -0.060], [-0.205, -0.062],
+        [-0.430, -0.096], [-0.430, 0.004], [-0.22, -0.006]
+      ], 0.038, null, true, 0.22), m.walnutMat);
+      const stockPad = new THREE.Mesh(geoRoundedBox(0.040, 0.102, 0.022, 0.007, 0.0022), m.rubberMat);
+      stockPad.position.set(0, -0.046, 0.440);
 
-      const topRail = new THREE.Mesh(geoPicatinnyRail(0.030, -0.055, 0.095, 0.018, 0.014), m.bluedMat);
-      out.triggerMesh = _addTriggerAndPins(g, m, 0.08, -0.028, 0.0235, [[-0.012, 0.042], [-0.012, 0.095]]);
+      const topRail = new THREE.Mesh(geoPicatinnyRail(0.030, -0.048, 0.088, 0.018, 0.012), m.bluedMat);
+      out.triggerMesh = _addTriggerAndPins(g, m, 0.078, -0.028, 0.0225, [[-0.012, 0.038], [-0.012, 0.092]]);
 
       const shell = new THREE.Group();
-      const shellHull = new THREE.Mesh(_cachedGeo('m870_sh', () => new THREE.CylinderGeometry(0.0095, 0.0095, 0.058, 12)), m.shellRedMat);
-      const shellBrass = new THREE.Mesh(_cachedGeo('m870_sb', () => new THREE.CylinderGeometry(0.010, 0.010, 0.016, 12)), m.brassMat);
+      const shellHull = new THREE.Mesh(_cachedGeo('m870_sh_hp', () => {
+        const c = new THREE.CylinderGeometry(0.0095, 0.0095, 0.056, 18);
+        return _uvWrapCyl(c, 0.0095, 'y', 0.08);
+      }), m.shellRedMat);
+      const shellBrass = new THREE.Mesh(_cachedGeo('m870_sb_hp', () => {
+        const c = new THREE.CylinderGeometry(0.010, 0.010, 0.016, 18);
+        return _uvWrapCyl(c, 0.010, 'y', 0.08);
+      }), m.brassMat);
       shellBrass.position.set(0, -0.028, 0);
       shell.add(shellHull, shellBrass);
       shell.rotation.x = -Math.PI / 2;
@@ -1045,66 +1016,70 @@ window.ModelSystem = (() => {
 
       out.magMesh = shell;
       out.boltMesh = pump;
-      out.rightHandPos.set(0.004, -0.048, 0.168);
+      out.rightHandPos.set(0.004, -0.048, 0.160);
       out.rightHandRot.set(0.22, -0.04, 0.06);
       out.rightHandStyle = 'shotgunGrip';
       out.leftHandPos.set(0.0, -0.032, -0.24);
       out.sightHeight = 0.042;
       out.adsZ = -0.26;
-      out.muzzlePos.set(0, 0.014, -0.61);
-      out.flashPos.set(0, 0.02, -0.65);
+      out.muzzlePos.set(0, 0.014, -0.560);
+      out.flashPos.set(0, 0.02, -0.600);
 
-      [barrel, magTube, bblClamp].forEach((mm) => { mm.renderOrder = -20; });
-      g.add(receiver, ejectionRecess, breechBolt, chamberRd, barrel, magTube, bblClamp, pump, stockBody, stockPad, topRail, shell);
+      [barrel, heatShield, magTube, bblClamp].forEach((mm) => { mm.renderOrder = -20; });
+      g.add(receiver, ejectionRecess, breechBolt, chamberRd, barrel, heatShield, magTube, bblClamp, pump, stockBody, stockPad, topRail, shell);
       return out;
     }
 
     if (id === 'mosin9130') {
-      const stockBody = new THREE.Mesh(geoExtrudeSide('mosin_stock', [
-        [0.42, -0.002], [0.42, -0.024], [0.08, -0.034], [-0.08, -0.034],
-        [-0.18, -0.056], [-0.415, -0.092], [-0.415, -0.002], [-0.21, -0.010],
+      // Soviet Mosin-Nagant M91/30 (1,232mm OAL: +0.482 butt to -0.750 muzzle, 730mm barrel)
+      const stockBody = new THREE.Mesh(geoExtrudeSide('mosin_stock_hp', [
+        [0.44, -0.002], [0.44, -0.022], [0.08, -0.034], [-0.08, -0.034],
+        [-0.20, -0.056], [-0.470, -0.092], [-0.470, -0.002], [-0.22, -0.010],
         [-0.08, 0.004], [0.06, 0.006]
-      ], 0.039, null, true), m.woodMat);
-      const upperHandguard = new THREE.Mesh(geoRoundedBox(0.034, 0.018, 0.36, 0.007, 0.0018), m.woodMat);
-      upperHandguard.position.set(0, 0.016, -0.22);
-      const buttPlate = new THREE.Mesh(geoRoundedBox(0.040, 0.092, 0.010, 0.005, 0.0014), m.bluedMat);
-      buttPlate.position.set(0, -0.047, 0.420);
+      ], 0.042, null, true, 0.24), m.woodMat);
+      const upperHandguard = new THREE.Mesh(geoRoundedBox(0.034, 0.018, 0.39, 0.007, 0.0018), m.woodMat);
+      upperHandguard.position.set(0, 0.016, -0.24);
+      const buttPlate = new THREE.Mesh(geoRoundedBox(0.042, 0.092, 0.010, 0.005, 0.0014), m.bluedMat);
+      buttPlate.position.set(0, -0.047, 0.476);
 
-      const bandRear = new THREE.Mesh(geoRoundedBox(0.044, 0.046, 0.016, 0.008, 0.0014), m.bluedMat);
-      bandRear.position.set(0, 0.002, -0.18);
-      const bandFront = new THREE.Mesh(geoRoundedBox(0.043, 0.044, 0.016, 0.008, 0.0014), m.bluedMat);
-      bandFront.position.set(0, 0.002, -0.37);
-      const cleaningRod = new THREE.Mesh(_cachedGeo('mosin_rod', () => {
-        const c = new THREE.CylinderGeometry(0.003, 0.003, 0.51, 8);
+      const bandRear = new THREE.Mesh(geoRoundedBox(0.045, 0.046, 0.016, 0.008, 0.0014), m.bluedMat);
+      bandRear.position.set(0, 0.002, -0.20);
+      const bandFront = new THREE.Mesh(geoRoundedBox(0.044, 0.044, 0.016, 0.008, 0.0014), m.bluedMat);
+      bandFront.position.set(0, 0.002, -0.40);
+      const cleaningRod = new THREE.Mesh(_cachedGeo('mosin_rod_hp', () => {
+        const c = new THREE.CylinderGeometry(0.003, 0.003, 0.56, 12);
         c.rotateX(Math.PI / 2);
-        return c;
+        return _uvWrapCyl(c, 0.003, 'z', 0.12);
       }), m.magMat);
-      cleaningRod.position.set(0, -0.002, -0.475);
+      cleaningRod.position.set(0, -0.002, -0.485);
 
-      const receiver = new THREE.Mesh(_cachedGeo('mosin_rec', () => {
-        const c = new THREE.CylinderGeometry(0.020, 0.020, 0.22, 8);
+      const receiver = new THREE.Mesh(_cachedGeo('mosin_rec_hp', () => {
+        const c = new THREE.CylinderGeometry(0.020, 0.020, 0.22, 22);
         c.rotateX(Math.PI / 2);
-        return c;
+        return _uvWrapCyl(c, 0.020, 'z', 0.18);
       }), m.bluedMat);
       receiver.position.set(0, 0.016, 0.02);
       const barrel = new THREE.Mesh(
-        geoLatheZ('mosin_bbl', [[0.06, 0.013], [0.72, 0.0095], [0.73, 0.0095], [0.73, 0.004]]),
+        geoLatheZ('mosin_bbl_hp', [[0.06, 0.0135], [0.735, 0.0095], [0.748, 0.0095], [0.748, 0.0040]], 26),
         m.bluedMat
       );
       barrel.position.set(0, 0.016, 0);
-      const internalMag = new THREE.Mesh(geoRoundedBox(0.026, 0.034, 0.095, 0.004, 0.0014), m.bluedMat);
-      internalMag.position.set(0, -0.044, -0.01);
-      out.triggerMesh = _addTriggerAndPins(g, m, 0.08, -0.034, 0.020, null);
+
+      // 5rd integral box OR 10rd WWI steel trench magazine extension
+      const isExt = mods.magazine === 'ext_mag';
+      const internalMag = new THREE.Mesh(geoRoundedBox(0.026, isExt ? 0.068 : 0.036, 0.096, 0.004, 0.0014), m.bluedMat);
+      internalMag.position.set(0, isExt ? -0.058 : -0.044, -0.01);
+      out.triggerMesh = _addTriggerAndPins(g, m, 0.08, -0.034, 0.021, null);
 
       const boltGroup = new THREE.Group();
-      const boltBody = new THREE.Mesh(_cachedGeo('mosin_bb', () => {
-        const c = new THREE.CylinderGeometry(0.010, 0.010, 0.10, 12);
+      const boltBody = new THREE.Mesh(_cachedGeo('mosin_bb_hp', () => {
+        const c = new THREE.CylinderGeometry(0.010, 0.010, 0.10, 18);
         c.rotateX(Math.PI / 2);
-        return c;
+        return _uvWrapCyl(c, 0.010, 'z', 0.10);
       }), m.chromeMat);
       boltBody.position.set(-0.022, 0, 0);
       const boltStem = new THREE.Mesh(geoRoundedBox(0.034, 0.008, 0.009, 0.0025, 0.0006), m.chromeMat);
-      const boltKnob = new THREE.Mesh(_cachedGeo('mosin_bk', () => new THREE.SphereGeometry(0.011, 10, 8)), m.chromeMat);
+      const boltKnob = new THREE.Mesh(_cachedGeo('mosin_bk_hp', () => new THREE.SphereGeometry(0.011, 16, 12)), m.chromeMat);
       boltKnob.position.set(0.022, 0, 0);
       boltGroup.add(boltBody, boltStem, boltKnob);
       boltGroup.position.set(0.022, 0.018, 0.03);
@@ -1132,8 +1107,8 @@ window.ModelSystem = (() => {
       out.leftHandPos.set(0.0, -0.026, -0.22);
       out.sightHeight = 0.040;
       out.adsZ = -0.24;
-      out.muzzlePos.set(0, 0.016, -0.73);
-      out.flashPos.set(0, 0.02, -0.77);
+      out.muzzlePos.set(0, 0.016, -0.75);
+      out.flashPos.set(0, 0.02, -0.79);
 
       [barrel, cleaningRod, bandFront].forEach((mm) => { mm.renderOrder = -20; });
       g.add(
@@ -1145,80 +1120,81 @@ window.ModelSystem = (() => {
     }
 
     if (id === 'awm338') {
+      // Accuracy International AWM / L115A3 (.338 Lapua, 1,270mm OAL: +0.465 butt to -0.805 brake tip, 686mm barrel)
       const hasStockMod = !!(mods.stock && mods.stock !== 'none');
       const chassisPts = hasStockMod
-        ? [[0.30, 0.016], [0.30, -0.038], [-0.14, -0.038], [-0.15, -0.105], [-0.19, -0.102], [-0.18, 0.008]]
+        ? [[0.32, 0.016], [0.32, -0.038], [-0.14, -0.038], [-0.15, -0.105], [-0.19, -0.102], [-0.18, 0.008]]
         : [
-            [0.30, 0.016], [0.30, -0.036], [-0.12, -0.036], [-0.14, -0.106],
-            [-0.185, -0.104], [-0.365, -0.102], [-0.365, 0.012], [-0.18, 0.010]
+            [0.32, 0.016], [0.32, -0.036], [-0.12, -0.036], [-0.14, -0.106],
+            [-0.185, -0.104], [-0.455, -0.102], [-0.455, 0.012], [-0.18, 0.010]
           ];
-      const thumbHole = hasStockMod ? null : [[[-0.20, -0.018], [-0.29, -0.018], [-0.29, -0.072], [-0.20, -0.072]]];
-      const chassis = new THREE.Mesh(geoExtrudeSide(`awm_ch_${hasStockMod ? 1 : 0}`, chassisPts, 0.044, thumbHole, true), m.chassisMat);
+      const thumbHole = hasStockMod ? null : [[[-0.20, -0.018], [-0.30, -0.018], [-0.30, -0.072], [-0.20, -0.072]]];
+      const chassis = new THREE.Mesh(geoExtrudeSide(`awm_ch_hp_${hasStockMod ? 1 : 0}`, chassisPts, 0.052, thumbHole, true, 0.24), m.chassisMat);
 
-      const receiver = new THREE.Mesh(geoRoundedBox(0.042, 0.042, 0.26, 0.007, 0.002), m.bluedMat);
+      const receiver = new THREE.Mesh(geoRoundedBox(0.044, 0.044, 0.27, 0.007, 0.002), m.nitrideMat);
       receiver.position.set(0, 0.018, 0.04);
-      const topRail = new THREE.Mesh(geoRoundedBox(0.024, 0.008, 0.24, 0.002, 0.0008), m.steelMat);
+      const topRail = new THREE.Mesh(geoRoundedBox(0.024, 0.008, 0.25, 0.002, 0.0008), m.anodizedMat);
       topRail.position.set(0, 0.041, 0.02);
-      const railTeeth = new THREE.Mesh(geoPicatinnyRail(0.0465, -0.092, 0.132, 0.023, 0.013), m.darkMat);
+      const railTeeth = new THREE.Mesh(geoPicatinnyRail(0.0465, -0.10, 0.14, 0.023, 0.011), m.darkMat);
 
       if (!hasStockMod) {
-        const cheekRest = new THREE.Mesh(geoRoundedBox(0.042, 0.024, 0.12, 0.008, 0.002), m.darkMat);
-        cheekRest.position.set(0, 0.022, 0.27);
-        const buttPad = new THREE.Mesh(geoRoundedBox(0.044, 0.114, 0.022, 0.007, 0.0022), m.darkMat);
-        buttPad.position.set(0, -0.044, 0.372);
+        const cheekRest = new THREE.Mesh(geoRoundedBox(0.046, 0.026, 0.14, 0.008, 0.002), m.rubberMat);
+        cheekRest.position.set(0, 0.022, 0.30);
+        const buttPad = new THREE.Mesh(geoRoundedBox(0.048, 0.114, 0.024, 0.007, 0.0022), m.rubberMat);
+        buttPad.position.set(0, -0.044, 0.460);
         g.add(cheekRest, buttPad);
       }
 
+      // 686mm (27") heavy free-floated fluted barrel + AI double-chamber square muzzle brake
       const barrel = new THREE.Mesh(
-        geoLatheZ('awm_bbl', [[0.08, 0.0165], [0.22, 0.0155], [0.68, 0.013], [0.68, 0.005]]),
-        m.bluedMat
+        geoLatheZ('awm_bbl_hp', [[0.08, 0.0170], [0.22, 0.0155], [0.73, 0.0132], [0.73, 0.0052]], 28),
+        m.nitrideMat
       );
       barrel.position.set(0, 0.018, 0);
-      const muzzleBrake = new THREE.Mesh(geoRoundedBox(0.032, 0.026, 0.068, 0.0045, 0.0014), m.steelMat);
-      muzzleBrake.position.set(0, 0.018, -0.71);
-      const portGeo = _cachedGeo('awm_port', () => new THREE.BoxGeometry(0.035, 0.014, 0.010));
+      const muzzleBrake = new THREE.Mesh(geoRoundedBox(0.034, 0.028, 0.074, 0.0045, 0.0014), m.steelMat);
+      muzzleBrake.position.set(0, 0.018, -0.768);
+      const portGeo = _cachedGeo('awm_port_hp', () => _uvWrapBox(new THREE.BoxGeometry(0.036, 0.014, 0.011), 0.1));
       for (let b = -1; b <= 1; b++) {
         const port = new THREE.Mesh(portGeo, m.boreMat);
-        port.position.set(0, 0.018, -0.71 + b * 0.019);
+        port.position.set(0, 0.018, -0.768 + b * 0.020);
         g.add(port);
       }
 
-      const bipodMount = new THREE.Mesh(geoRoundedBox(0.044, 0.022, 0.036, 0.004, 0.0012), m.darkMat);
-      bipodMount.position.set(0, -0.046, -0.26);
-      const bipodL = new THREE.Mesh(_cachedGeo('awm_bip', () => {
-        const c = new THREE.CylinderGeometry(0.006, 0.006, 0.20, 10);
+      const bipodMount = new THREE.Mesh(geoRoundedBox(0.046, 0.022, 0.040, 0.004, 0.0012), m.anodizedMat);
+      bipodMount.position.set(0, -0.046, -0.28);
+      const bipodL = new THREE.Mesh(_cachedGeo('awm_bip_hp', () => {
+        const c = new THREE.CylinderGeometry(0.0065, 0.0065, 0.22, 16);
         c.rotateX(Math.PI / 2);
-        return c;
+        return _uvWrapCyl(c, 0.0065, 'z', 0.12);
       }), m.bluedMat);
-      bipodL.position.set(-0.026, -0.046, -0.36);
+      bipodL.position.set(-0.028, -0.046, -0.39);
       const bipodR = bipodL.clone();
-      bipodR.position.x = 0.026;
+      bipodR.position.x = 0.028;
 
+      const isExt = mods.magazine === 'ext_mag';
       const mag = new THREE.Group();
-      const magBody = new THREE.Mesh(geoRoundedBox(0.032, 0.098, 0.084, 0.004, 0.0012), m.magMat);
-      const magFloor = new THREE.Mesh(geoRoundedBox(0.035, 0.010, 0.088, 0.003, 0.001), m.darkMat);
-      magFloor.position.set(0, -0.050, 0);
+      const magH = isExt ? 0.132 : 0.094;
+      const magBody = new THREE.Mesh(geoRoundedBox(0.032, magH, 0.088, 0.004, 0.0012), m.magMat);
+      magBody.position.set(0, -(magH - 0.094) * 0.5, 0);
+      const magFloor = new THREE.Mesh(geoRoundedBox(0.036, 0.010, 0.092, 0.003, 0.001), m.darkMat);
+      magFloor.position.set(0, -0.048 - (magH - 0.094), 0);
       const topRd = createCartridgeMesh('rifle', m);
-      topRd.position.set(0, 0.052, 0.012);
+      topRd.position.set(0, 0.050, 0.012);
       mag.add(magBody, magFloor, topRd);
       mag.position.set(0, -0.074, -0.02);
 
-      out.triggerMesh = _addTriggerAndPins(g, m, 0.095, -0.038, 0.0225, [[-0.014, -0.06], [-0.014, 0.08], [-0.014, -0.20]]);
+      out.triggerMesh = _addTriggerAndPins(g, m, 0.095, -0.038, 0.024, [[-0.014, -0.06], [-0.014, 0.08], [-0.014, -0.22]]);
 
       const boltGroup = new THREE.Group();
-      const boltCyl = new THREE.Mesh(_cachedGeo('awm_bcyl', () => {
-        const c = new THREE.CylinderGeometry(0.0095, 0.0095, 0.09, 12);
+      const boltCyl = new THREE.Mesh(_cachedGeo('awm_bcyl_hp', () => {
+        const c = new THREE.CylinderGeometry(0.010, 0.010, 0.092, 20);
         c.rotateX(Math.PI / 2);
-        return c;
+        return _uvWrapCyl(c, 0.010, 'z', 0.10);
       }), m.chromeMat);
       boltCyl.position.set(-0.020, 0.0, 0);
-      const boltStem = new THREE.Mesh(geoRoundedBox(0.036, 0.010, 0.011, 0.0025, 0.0006), m.chromeMat);
-      const boltKnob = new THREE.Mesh(_cachedGeo('awm_bk', () => {
-        const c = new THREE.CylinderGeometry(0.011, 0.013, 0.024, 12);
-        c.rotateZ(Math.PI / 2);
-        return c;
-      }), m.darkMat);
-      boltKnob.position.set(0.024, -0.004, 0);
+      const boltStem = new THREE.Mesh(geoRoundedBox(0.038, 0.010, 0.011, 0.0025, 0.0006), m.chromeMat);
+      const boltKnob = new THREE.Mesh(_cachedGeo('awm_bk_hp', () => new THREE.SphereGeometry(0.0125, 16, 12)), m.darkMat);
+      boltKnob.position.set(0.025, -0.005, 0);
       boltGroup.add(boltCyl, boltStem, boltKnob);
       boltGroup.position.set(0.024, 0.020, 0.045);
 
@@ -1234,70 +1210,86 @@ window.ModelSystem = (() => {
       out.leftHandPos.set(0.0, -0.032, -0.18);
       out.sightHeight = 0.078;
       out.adsZ = -0.20;
-      out.muzzlePos.set(0, 0.018, -0.75);
-      out.flashPos.set(0, 0.02, -0.79);
+      out.muzzlePos.set(0, 0.018, -0.805);
+      out.flashPos.set(0, 0.02, -0.845);
 
       [barrel, muzzleBrake].forEach((mm) => { mm.renderOrder = -20; });
       g.add(chassis, receiver, topRail, railTeeth, barrel, muzzleBrake, bipodMount, bipodL, bipodR, chamberRd, mag, out.spareMagMesh, boltGroup);
       return out;
     }
 
-    // Default: M24 SWS Bolt-Action
+    // Default: Remington M24 SWS (1,092mm OAL: +0.462 buttpad to -0.630 muzzle, 610mm / 24" barrel)
     {
       const hasStockMod = !!(mods.stock && mods.stock !== 'none');
       const m24Pts = hasStockMod
-        ? [[0.24, 0.012], [0.24, -0.028], [-0.14, -0.038], [-0.15, -0.106], [-0.19, -0.102], [-0.18, 0.002]]
+        ? [[0.26, 0.012], [0.26, -0.028], [-0.14, -0.038], [-0.15, -0.106], [-0.19, -0.102], [-0.18, 0.002]]
         : [
-            [0.24, 0.012], [0.24, -0.028], [-0.12, -0.038], [-0.14, -0.106],
-            [-0.185, -0.102], [-0.21, -0.052], [-0.465, -0.092], [-0.465, 0.010],
+            [0.26, 0.012], [0.26, -0.028], [-0.12, -0.038], [-0.14, -0.106],
+            [-0.185, -0.102], [-0.21, -0.052], [-0.455, -0.092], [-0.455, 0.010],
             [-0.22, 0.002]
           ];
-      const chassis = new THREE.Mesh(geoExtrudeSide(`m24_ch_${hasStockMod ? 1 : 0}`, m24Pts, 0.044, null, true), m.chassisMat);
+      const chassis = new THREE.Mesh(geoExtrudeSide(`m24_ch_hp_${hasStockMod ? 1 : 0}`, m24Pts, 0.048, null, true, 0.24), m.darkMat);
 
-      const receiver = new THREE.Mesh(_cachedGeo('m24_rec', () => {
-        const c = new THREE.CylinderGeometry(0.021, 0.021, 0.24, 14);
+      const receiver = new THREE.Mesh(_cachedGeo('m24_rec_hp', () => {
+        const c = new THREE.CylinderGeometry(0.021, 0.021, 0.24, 24);
         c.rotateX(Math.PI / 2);
-        return c;
-      }), m.bluedMat);
+        return _uvWrapCyl(c, 0.021, 'z', 0.18);
+      }), m.nitrideMat);
       receiver.position.set(0, 0.016, 0.04);
-      const topRail = new THREE.Mesh(geoRoundedBox(0.022, 0.007, 0.20, 0.002, 0.0008), m.steelMat);
+      const topRail = new THREE.Mesh(geoRoundedBox(0.022, 0.007, 0.20, 0.002, 0.0008), m.anodizedMat);
       topRail.position.set(0, 0.038, 0.03);
-      const railTeeth = new THREE.Mesh(geoPicatinnyRail(0.043, -0.062, 0.122, 0.021, 0.013), m.darkMat);
+      const railTeeth = new THREE.Mesh(geoPicatinnyRail(0.043, -0.064, 0.124, 0.021, 0.011), m.darkMat);
 
+      // 610mm (24") 416R heavy free-floated barrel
       const barrel = new THREE.Mesh(
-        geoLatheZ('m24_bbl', [[0.08, 0.0145], [0.22, 0.0132], [0.61, 0.011], [0.61, 0.0045]]),
-        m.bluedMat
+        geoLatheZ('m24_bbl_hp', [[0.08, 0.0148], [0.22, 0.0134], [0.625, 0.0112], [0.628, 0.0112], [0.628, 0.0045]], 26),
+        m.nitrideMat
       );
       barrel.position.set(0, 0.016, 0);
       barrel.renderOrder = -20;
 
+      // Harris S-BRM folded bipod under beavertail forend
+      const bipBase = new THREE.Mesh(geoRoundedBox(0.036, 0.016, 0.032, 0.004, 0.001), m.anodizedMat);
+      bipBase.position.set(0, -0.036, -0.23);
+      const bipL = new THREE.Mesh(_cachedGeo('m24_bip_hp', () => {
+        const c = new THREE.CylinderGeometry(0.0055, 0.0055, 0.175, 14);
+        c.rotateX(Math.PI / 2);
+        return _uvWrapCyl(c, 0.0055, 'z', 0.10);
+      }), m.bluedMat);
+      bipL.position.set(-0.022, -0.036, -0.325);
+      const bipR = bipL.clone();
+      bipR.position.x = 0.022;
+
       if (!hasStockMod) {
-        const m24Cheek = new THREE.Mesh(geoRoundedBox(0.042, 0.020, 0.13, 0.006, 0.002), m.darkMat);
+        const m24Cheek = new THREE.Mesh(geoRoundedBox(0.044, 0.020, 0.13, 0.006, 0.002), m.rubberMat);
         m24Cheek.position.set(0, 0.016, 0.34);
-        const m24Pad = new THREE.Mesh(geoRoundedBox(0.042, 0.106, 0.020, 0.006, 0.002), m.darkMat);
-        m24Pad.position.set(0, -0.041, 0.475);
+        const m24Pad = new THREE.Mesh(geoRoundedBox(0.044, 0.106, 0.020, 0.006, 0.002), m.rubberMat);
+        m24Pad.position.set(0, -0.041, 0.462);
         g.add(m24Cheek, m24Pad);
       }
 
+      const isExt = mods.magazine === 'ext_mag';
       const mag = new THREE.Group();
-      const magBody = new THREE.Mesh(geoRoundedBox(0.028, 0.085, 0.072, 0.003, 0.001), m.magMat);
+      const magH = isExt ? 0.118 : 0.082;
+      const magBody = new THREE.Mesh(geoRoundedBox(0.028, magH, 0.072, 0.003, 0.001), m.magMat);
+      magBody.position.set(0, -(magH - 0.082) * 0.5, 0);
       const topRd = createCartridgeMesh('rifle', m);
-      topRd.position.set(0, 0.046, 0.010);
+      topRd.position.set(0, 0.045, 0.010);
       mag.add(magBody, topRd);
       mag.position.set(0, -0.068, -0.02);
 
       out.triggerMesh = _addTriggerAndPins(g, m, 0.09, -0.034, 0.0225, [[-0.014, -0.04], [-0.014, 0.09]]);
 
       const boltGroup = new THREE.Group();
-      const boltCyl = new THREE.Mesh(_cachedGeo('m24_bcyl', () => {
-        const c = new THREE.CylinderGeometry(0.009, 0.009, 0.085, 12);
+      const boltCyl = new THREE.Mesh(_cachedGeo('m24_bcyl_hp', () => {
+        const c = new THREE.CylinderGeometry(0.009, 0.009, 0.085, 18);
         c.rotateX(Math.PI / 2);
-        return c;
+        return _uvWrapCyl(c, 0.009, 'z', 0.10);
       }), m.chromeMat);
       boltCyl.position.set(-0.020, 0, 0);
-      const boltStem = new THREE.Mesh(geoRoundedBox(0.032, 0.009, 0.010, 0.0025, 0.0005), m.chromeMat);
-      const boltKnob = new THREE.Mesh(_cachedGeo('m24_bk', () => new THREE.SphereGeometry(0.011, 10, 8)), m.darkMat);
-      boltKnob.position.set(0.020, -0.004, 0);
+      const boltStem = new THREE.Mesh(geoRoundedBox(0.034, 0.009, 0.010, 0.0025, 0.0005), m.chromeMat);
+      const boltKnob = new THREE.Mesh(_cachedGeo('m24_bk_hp', () => new THREE.SphereGeometry(0.0115, 16, 12)), m.darkMat);
+      boltKnob.position.set(0.022, -0.004, 0);
       boltGroup.add(boltCyl, boltStem, boltKnob);
       boltGroup.position.set(0.024, 0.018, 0.04);
 
@@ -1313,10 +1305,10 @@ window.ModelSystem = (() => {
       out.leftHandPos.set(0.0, -0.030, -0.18);
       out.sightHeight = 0.074;
       out.adsZ = -0.22;
-      out.muzzlePos.set(0, 0.016, -0.62);
-      out.flashPos.set(0, 0.02, -0.66);
+      out.muzzlePos.set(0, 0.016, -0.630);
+      out.flashPos.set(0, 0.02, -0.670);
 
-      g.add(chassis, receiver, topRail, railTeeth, barrel, chamberRd, mag, out.spareMagMesh, boltGroup);
+      g.add(chassis, receiver, topRail, railTeeth, barrel, bipBase, bipL, bipR, chamberRd, mag, out.spareMagMesh, boltGroup);
       return out;
     }
   }
@@ -1384,87 +1376,143 @@ window.ModelSystem = (() => {
     });
   }
 
-  // Contoured World Vehicles & Infrastructure (replaces boxy cubes with sculpted silhouettes)
+  // High-Poly PBR Vehicles & Infrastructure (BTR-80 APC, VAZ Sedan, Mi-8 Helicopter)
   function createVehicleWreck(isAPC = false, mats = {}) {
+    const P = window.AshfallPBR;
     const g = new THREE.Group();
-    const darkMat = mats.bossDark || new THREE.MeshLambertMaterial({ color: 0x26292b });
-    const oliveMat = mats.rustOlive || new THREE.MeshLambertMaterial({ color: 0x3b4432 });
-    const tireMat = mats.windowFrame || new THREE.MeshLambertMaterial({ color: 0x181a1c });
-    const hubMat = mats.metal || new THREE.MeshLambertMaterial({ color: 0x5b6268 });
-    const rimMat = mats.darkConcrete || new THREE.MeshLambertMaterial({ color: 0x34383c });
+    const darkMat = (P && P.getMaterial('steel_dark_structural')) || mats.bossDark || new THREE.MeshStandardMaterial({ color: 0x26292b });
+    const oliveMat = (P && P.getMaterial('vehicle_armor_apc')) || mats.rustOlive || new THREE.MeshStandardMaterial({ color: 0x3b4432 });
+    const tireMat = (P && P.getMaterial('rubber_tire_tread')) || mats.windowFrame || new THREE.MeshStandardMaterial({ color: 0x181a1c });
+    const hubMat = (P && P.getMaterial('steel_brushed')) || mats.metal || new THREE.MeshStandardMaterial({ color: 0x5b6268 });
+    const glassMat = (P && P.getGlassMaterial(0x1b2b34, 0.72, 0.12, 0.35)) || mats.windowGlass || darkMat;
 
     if (isAPC) {
-      // Soviet BTR-80 8x8 Sloped-Armor Hull via ExtrudeGeometry
-      const hullGeo = geoExtrudeSide('btr80_hull', [
-        [3.35, 0.92], [3.65, 1.32], [2.45, 1.78], [-2.95, 1.74], [-3.35, 1.48],
-        [-3.30, 0.62], [-2.50, 0.52], [2.65, 0.56]
-      ], 2.55, null, true);
+      // High-poly BTR-80 8x8 Sloped-Armor Hull + BPU-1 Turret + Smoke Dischargers + Engine Louvers
+      const hullGeo = geoExtrudeSide('btr80_hull_hp', [
+        [3.35, 0.92], [3.68, 1.32], [2.45, 1.80], [-2.95, 1.76], [-3.38, 1.48],
+        [-3.32, 0.62], [-2.50, 0.52], [2.65, 0.56]
+      ], 2.58, null, true, 1.2);
       const hull = new THREE.Mesh(hullGeo, oliveMat);
-      const trimVane = new THREE.Mesh(geoRoundedBox(2.2, 0.45, 0.14, 0.04, 0.02), darkMat);
+      const trimVane = new THREE.Mesh(geoRoundedBox(2.24, 0.46, 0.14, 0.04, 0.02, 0.8), darkMat);
       trimVane.position.set(0, 1.18, -3.55);
       trimVane.rotation.x = 0.52;
+      const louver = new THREE.Mesh(geoRoundedBox(1.85, 0.08, 1.35, 0.02, 0.01, 0.8), darkMat);
+      louver.position.set(0, 1.81, 1.85);
+      const portGeo = geoRoundedBox(0.10, 0.32, 0.42, 0.02, 0.01, 0.4);
+      for (const side of [-1.29, 1.29]) {
+        for (const pz of [-0.6, 0.35]) {
+          const hp = new THREE.Mesh(portGeo, darkMat);
+          hp.position.set(side, 1.35, pz);
+          g.add(hp);
+        }
+      }
 
       const turret = new THREE.Mesh(
-        _cachedGeo('btr_turret', () => new THREE.CylinderGeometry(0.68, 0.96, 0.58, 8)),
+        _cachedGeo('btr_turret_hp', () => {
+          const c = new THREE.CylinderGeometry(0.68, 0.98, 0.60, 24);
+          return _uvWrapCyl(c, 0.85, 'y', 0.8);
+        }),
+        oliveMat
+      );
+      turret.position.set(0, 2.05, -0.75);
+      const cupola = new THREE.Mesh(
+        _cachedGeo('btr_cupola_hp', () => _uvWrapCyl(new THREE.CylinderGeometry(0.28, 0.32, 0.16, 18), 0.3, 'y', 0.5)),
         darkMat
       );
-      turret.position.set(0, 2.04, -0.75);
-      const mantlet = new THREE.Mesh(geoRoundedBox(0.55, 0.34, 0.48, 0.05, 0.02), darkMat);
-      mantlet.position.set(0, 2.05, -1.48);
+      cupola.position.set(0, 2.38, -0.70);
+      const mantlet = new THREE.Mesh(geoRoundedBox(0.56, 0.34, 0.50, 0.05, 0.02, 0.5), darkMat);
+      mantlet.position.set(0, 2.06, -1.48);
       const barrel = new THREE.Mesh(
-        geoLatheZ('btr_kpvt', [[0, 0.065], [1.9, 0.042], [2.25, 0.042], [2.32, 0.055], [2.32, 0.022]], 10),
-        tireMat
+        geoLatheZ('btr_kpvt_hp', [[0, 0.068], [1.9, 0.044], [2.25, 0.044], [2.32, 0.056], [2.32, 0.022]], 20),
+        darkMat
       );
       barrel.position.set(0, 2.08, -1.52);
-      g.add(hull, trimVane, turret, mantlet, barrel);
-
-      const tireGeo = _cachedGeo('btr_tire', () => {
-        const c = new THREE.CylinderGeometry(0.49, 0.49, 0.36, 12);
-        c.rotateZ(Math.PI / 2);
-        return c;
+      const coax = new THREE.Mesh(
+        geoLatheZ('btr_coax_hp', [[0, 0.022], [1.15, 0.016], [1.15, 0.008]], 14),
+        darkMat
+      );
+      coax.position.set(0.16, 2.04, -1.52);
+      // 902V "Tucha" smoke grenade discharger tubes on turret cheeks
+      const smkGeo = _cachedGeo('btr_smk_hp', () => {
+        const c = new THREE.CylinderGeometry(0.042, 0.042, 0.24, 12);
+        c.rotateX(Math.PI / 2.6);
+        return _uvWrapCyl(c, 0.042, 'y', 0.2);
       });
-      const hubGeo = _cachedGeo('btr_hub', () => {
-        const c = new THREE.CylinderGeometry(0.24, 0.24, 0.39, 10);
+      for (const sx of [-1, 1]) {
+        for (let t = 0; t < 3; t++) {
+          const tube = new THREE.Mesh(smkGeo, darkMat);
+          tube.position.set(sx * (0.72 + t * 0.09), 1.98, -0.58 - t * 0.12);
+          tube.rotation.y = sx * -0.45;
+          g.add(tube);
+        }
+      }
+      g.add(hull, trimVane, louver, turret, cupola, mantlet, barrel, coax);
+
+      const tireGeo = _cachedGeo('btr_tire_hp', () => {
+        const c = new THREE.CylinderGeometry(0.49, 0.49, 0.36, 24);
         c.rotateZ(Math.PI / 2);
-        return c;
+        return _uvWrapCyl(c, 0.49, 'x', 0.45);
+      });
+      const rimGeo = _cachedGeo('btr_rim_hp', () => {
+        const c = new THREE.CylinderGeometry(0.28, 0.28, 0.38, 18);
+        c.rotateZ(Math.PI / 2);
+        return _uvWrapCyl(c, 0.28, 'x', 0.3);
+      });
+      const hubGeo = _cachedGeo('btr_hub_hp', () => {
+        const c = new THREE.CylinderGeometry(0.14, 0.14, 0.41, 14);
+        c.rotateZ(Math.PI / 2);
+        return _uvWrapCyl(c, 0.14, 'x', 0.2);
       });
       for (const wz of [-2.25, -0.78, 0.78, 2.25]) {
         for (const wx of [-1.32, 1.32]) {
           const wh = new THREE.Mesh(tireGeo, tireMat);
           wh.position.set(wx, 0.49, wz);
-          const hb = new THREE.Mesh(hubGeo, oliveMat);
+          const rm = new THREE.Mesh(rimGeo, oliveMat);
+          rm.position.set(wx, 0.49, wz);
+          const hb = new THREE.Mesh(hubGeo, hubMat);
           hb.position.set(wx, 0.49, wz);
-          g.add(wh, hb);
+          g.add(wh, rm, hb);
         }
       }
       return g;
     }
 
-    // Sloped Russian Lada/UAZ Sedan silhouette
-    const paintMat = Math.random() < 0.5 ? (mats.rustRed || oliveMat) : (mats.rustBlue || oliveMat);
-    const carGeo = geoExtrudeSide('car_body', [
-      [2.15, 0.32], [2.15, 0.78], [1.05, 0.94], [0.52, 1.48],
-      [-0.85, 1.48], [-1.35, 0.96], [-2.12, 0.90], [-2.12, 0.32]
-    ], 1.84, null, true);
+    // High-Poly VAZ-2105 / Russian Sedan
+    const paintCol = Math.random() < 0.5 ? 0x8f4338 : 0x3b5872;
+    const paintMat = (P && P.getMaterial('vehicle_paint_sedan', { color: paintCol })) || mats.rustRed || oliveMat;
+    const carGeo = geoExtrudeSide('car_body_hp', [
+      [2.16, 0.32], [2.16, 0.78], [1.06, 0.94], [0.54, 1.48],
+      [-0.86, 1.48], [-1.36, 0.96], [-2.12, 0.90], [-2.12, 0.32]
+    ], 1.84, null, true, 1.0);
     const body = new THREE.Mesh(carGeo, paintMat);
-    const windshield = new THREE.Mesh(geoRoundedBox(1.52, 0.46, 0.75, 0.04, 0.02), rimMat);
+    const windshield = new THREE.Mesh(geoRoundedBox(1.52, 0.48, 0.76, 0.04, 0.02, 0.8), glassMat);
     windshield.position.set(0, 1.18, -0.78);
     windshield.rotation.x = 0.68;
-    const bumperF = new THREE.Mesh(geoRoundedBox(1.88, 0.18, 0.16, 0.03, 0.01), tireMat);
+    const rearGlass = new THREE.Mesh(geoRoundedBox(1.50, 0.46, 0.72, 0.04, 0.02, 0.8), glassMat);
+    rearGlass.position.set(0, 1.19, 0.98);
+    rearGlass.rotation.x = -0.74;
+    const sideGlass = new THREE.Mesh(geoRoundedBox(1.88, 0.40, 1.24, 0.02, 0.01, 0.8), glassMat);
+    sideGlass.position.set(0, 1.18, 0.12);
+    const grille = new THREE.Mesh(geoRoundedBox(1.42, 0.24, 0.08, 0.02, 0.01), darkMat);
+    grille.position.set(0, 0.64, -2.12);
+    const headlightGeo = geoRoundedBox(0.24, 0.16, 0.06, 0.02, 0.01);
+    const hlL = new THREE.Mesh(headlightGeo, hubMat); hlL.position.set(-0.68, 0.64, -2.14);
+    const hlR = new THREE.Mesh(headlightGeo, hubMat); hlR.position.set(0.68, 0.64, -2.14);
+    const bumperF = new THREE.Mesh(geoRoundedBox(1.88, 0.16, 0.16, 0.03, 0.01), tireMat);
     bumperF.position.set(0, 0.38, -2.16);
     const bumperR = bumperF.clone();
     bumperR.position.z = 2.14;
-    g.add(body, windshield, bumperF, bumperR);
+    g.add(body, windshield, rearGlass, sideGlass, grille, hlL, hlR, bumperF, bumperR);
 
-    const cTireGeo = _cachedGeo('car_tire', () => {
-      const c = new THREE.CylinderGeometry(0.34, 0.34, 0.24, 10);
+    const cTireGeo = _cachedGeo('car_tire_hp', () => {
+      const c = new THREE.CylinderGeometry(0.34, 0.34, 0.24, 22);
       c.rotateZ(Math.PI / 2);
-      return c;
+      return _uvWrapCyl(c, 0.34, 'x', 0.38);
     });
-    const cHubGeo = _cachedGeo('car_hub', () => {
-      const c = new THREE.CylinderGeometry(0.18, 0.18, 0.26, 8);
+    const cHubGeo = _cachedGeo('car_hub_hp', () => {
+      const c = new THREE.CylinderGeometry(0.20, 0.20, 0.26, 16);
       c.rotateZ(Math.PI / 2);
-      return c;
+      return _uvWrapCyl(c, 0.20, 'x', 0.25);
     });
     for (const wz of [-1.32, 1.32]) {
       for (const wx of [-0.96, 0.96]) {
@@ -1479,54 +1527,91 @@ window.ModelSystem = (() => {
   }
 
   function createHelicopterWreck(mats = {}) {
+    const P = window.AshfallPBR;
     const g = new THREE.Group();
-    const oliveMat = mats.rustOlive || new THREE.MeshLambertMaterial({ color: 0x3b4432 });
-    const darkMat = mats.bossDark || new THREE.MeshLambertMaterial({ color: 0x222628 });
-    const glassMat = mats.windowFrame || new THREE.MeshLambertMaterial({ color: 0x1c262c });
-    const metalMat = mats.metal || new THREE.MeshLambertMaterial({ color: 0x5c646c });
+    const oliveMat = (P && P.getMaterial('vehicle_armor_apc')) || mats.rustOlive || new THREE.MeshStandardMaterial({ color: 0x3b4432 });
+    const darkMat = (P && P.getMaterial('steel_dark_structural')) || mats.bossDark || new THREE.MeshStandardMaterial({ color: 0x222628 });
+    const glassMat = (P && P.getGlassMaterial(0x1a2d3a, 0.65, 0.08, 0.35)) || mats.windowGlass || darkMat;
+    const metalMat = (P && P.getMaterial('steel_brushed')) || mats.metal || new THREE.MeshStandardMaterial({ color: 0x5c646c });
+    const tireMat = (P && P.getMaterial('rubber_tire_tread')) || darkMat;
 
-    const fuseGeo = geoExtrudeSide('helo_fuse', [
-      [4.2, 0.25], [5.4, 0.65], [4.5, 1.55], [2.4, 2.35],
-      [-2.8, 2.35], [-4.2, 1.45], [-4.2, 0.35], [-2.5, 0.22]
-    ], 2.7, null, true);
+    const fuseGeo = geoExtrudeSide('helo_fuse_hp', [
+      [4.2, 0.25], [5.45, 0.68], [4.55, 1.58], [2.45, 2.38],
+      [-2.85, 2.38], [-4.25, 1.48], [-4.25, 0.35], [-2.55, 0.22]
+    ], 2.75, null, true, 1.5);
     const fuse = new THREE.Mesh(fuseGeo, oliveMat);
-    const glass = new THREE.Mesh(geoRoundedBox(2.2, 0.85, 1.7, 0.12, 0.04), glassMat);
-    glass.position.set(0, 1.48, -4.35);
+    const noseDome = new THREE.Mesh(_cachedGeo('helo_nose_hp', () => {
+      const s = new THREE.SphereGeometry(1.18, 22, 16);
+      s.scale(1.05, 0.78, 1.15);
+      return _uvWrapCyl(s, 1.18, 'z', 1.0);
+    }), oliveMat);
+    noseDome.position.set(0, 0.85, -4.35);
+    const glass = new THREE.Mesh(geoRoundedBox(2.15, 0.86, 1.75, 0.14, 0.04, 1.0), glassMat);
+    glass.position.set(0, 1.48, -4.32);
     glass.rotation.x = 0.55;
-    const podL = new THREE.Mesh(geoRoundedBox(0.58, 0.65, 2.4, 0.12, 0.03), darkMat);
-    podL.position.set(-1.55, 0.95, -0.5);
+    const podL = new THREE.Mesh(geoRoundedBox(0.58, 0.66, 2.55, 0.14, 0.03, 0.9), darkMat);
+    podL.position.set(-1.58, 0.95, -0.5);
     const podR = podL.clone();
-    podR.position.x = 1.55;
-    const engineDeck = new THREE.Mesh(geoRoundedBox(1.5, 0.68, 3.2, 0.14, 0.04), darkMat);
-    engineDeck.position.set(0, 2.55, -0.2);
+    podR.position.x = 1.58;
+    const engineDeck = new THREE.Mesh(geoRoundedBox(1.56, 0.70, 3.3, 0.16, 0.04, 1.0), darkMat);
+    engineDeck.position.set(0, 2.58, -0.2);
 
-    const boom = new THREE.Mesh(geoExtrudeSide('helo_boom', [
-      [0.0, 2.15], [-6.2, 1.95], [-7.4, 3.35], [-8.0, 3.35], [-7.3, 1.55], [0.0, 1.35]
-    ], 0.72, null, true), oliveMat);
+    // Twin turbine exhaust nacelles
+    const exhGeo = _cachedGeo('helo_exh_hp', () => {
+      const c = new THREE.CylinderGeometry(0.24, 0.28, 0.65, 18);
+      c.rotateX(Math.PI / 2);
+      return _uvWrapCyl(c, 0.26, 'z', 0.4);
+    });
+    for (const sx of [-0.46, 0.46]) {
+      const exh = new THREE.Mesh(exhGeo, metalMat);
+      exh.position.set(sx, 2.68, 1.55);
+      g.add(exh);
+    }
+
+    const boom = new THREE.Mesh(geoExtrudeSide('helo_boom_hp', [
+      [0.0, 2.18], [-6.25, 1.98], [-7.45, 3.40], [-8.05, 3.40], [-7.35, 1.58], [0.0, 1.38]
+    ], 0.72, null, true, 1.2), oliveMat);
     boom.position.set(0.35, 0, 3.6);
     boom.rotation.y = 0.22;
 
-    const mast = new THREE.Mesh(_cachedGeo('helo_mast', () => new THREE.CylinderGeometry(0.24, 0.30, 1.0, 10)), metalMat);
-    mast.position.set(0, 3.15, -0.2);
-    const blade1 = new THREE.Mesh(geoRoundedBox(10.6, 0.07, 0.40, 0.02, 0.01), darkMat);
-    blade1.position.set(0, 3.55, -0.2);
-    blade1.rotation.z = 0.12;
-    const blade2 = new THREE.Mesh(geoRoundedBox(0.40, 0.07, 9.6, 0.02, 0.01), darkMat);
-    blade2.position.set(0, 3.52, -0.2);
-    blade2.rotation.x = -0.09;
+    const hStab = new THREE.Mesh(geoRoundedBox(3.1, 0.12, 0.72, 0.04, 0.02), oliveMat);
+    hStab.position.set(-0.95, 1.85, 8.85);
+    hStab.rotation.y = 0.22;
 
-    g.add(fuse, glass, podL, podR, engineDeck, boom, mast, blade1, blade2);
+    const mast = new THREE.Mesh(_cachedGeo('helo_mast_hp', () => _uvWrapCyl(new THREE.CylinderGeometry(0.24, 0.30, 1.05, 20), 0.27, 'y', 0.4)), metalMat);
+    mast.position.set(0, 3.16, -0.2);
+    for (let b = 0; b < 4; b++) {
+      const blade = new THREE.Mesh(geoRoundedBox(5.6, 0.055, 0.36, 0.02, 0.01), darkMat);
+      const ang = (b / 4) * Math.PI * 2 + 0.35;
+      blade.position.set(Math.cos(ang) * 2.8, 3.54, -0.2 + Math.sin(ang) * 2.8);
+      blade.rotation.y = -ang;
+      blade.rotation.z = 0.06;
+      g.add(blade);
+    }
+    const wheelGeo = _cachedGeo('helo_wheel_hp', () => {
+      const c = new THREE.CylinderGeometry(0.32, 0.32, 0.22, 18);
+      c.rotateZ(Math.PI / 2);
+      return _uvWrapCyl(c, 0.32, 'x', 0.3);
+    });
+    for (const [wx, wz] of [[-1.35, 0.9], [1.35, 0.9], [0, -3.55]]) {
+      const w = new THREE.Mesh(wheelGeo, tireMat);
+      w.position.set(wx, 0.32, wz);
+      g.add(w);
+    }
+
+    g.add(fuse, noseDome, glass, podL, podR, engineDeck, boom, hStab, mast);
     return g;
   }
 
   function createFloodlightTower(height = 10.5, bulbColor = 0xfff0cc, doubleHead = true) {
+    const P = window.AshfallPBR;
     const g = new THREE.Group();
-    const metalMat = _matCache.ft_metal || (_matCache.ft_metal = new THREE.MeshLambertMaterial({ color: 0x383e44 }));
-    const housingMat = _matCache.ft_house || (_matCache.ft_house = new THREE.MeshLambertMaterial({ color: 0x202428 }));
+    const metalMat = (P && P.getMaterial('steel_dark_structural')) || _matCache.ft_metal || (_matCache.ft_metal = new THREE.MeshStandardMaterial({ color: 0x383e44 }));
+    const housingMat = (P && P.getMaterial('aluminum_anodized')) || _matCache.ft_house || (_matCache.ft_house = new THREE.MeshStandardMaterial({ color: 0x202428 }));
     const lKey = `ft_lens_${bulbColor}`;
-    const lensMat = _matCache[lKey] || (_matCache[lKey] = new THREE.MeshBasicMaterial({ color: bulbColor }));
+    const lensMat = _matCache[lKey] || (_matCache[lKey] = _markShared(new THREE.MeshBasicMaterial({ color: bulbColor })));
 
-    const pole = new THREE.Mesh(_cachedGeo(`ft_pole_${height.toFixed(1)}`, () => new THREE.CylinderGeometry(0.14, 0.26, height, 8)), metalMat);
+    const pole = new THREE.Mesh(_cachedGeo(`ft_pole_hp_${height.toFixed(1)}`, () => _uvWrapCyl(new THREE.CylinderGeometry(0.14, 0.26, height, 14), 0.2, 'y', 0.8)), metalMat);
     pole.position.y = height * 0.5;
     const bar = new THREE.Mesh(geoRoundedBox(doubleHead ? 1.8 : 0.8, 0.16, 0.16, 0.02, 0.01), metalMat);
     bar.position.y = height;
@@ -1546,7 +1631,6 @@ window.ModelSystem = (() => {
   }
 
   // Smooth & Snap Keyframe Track Evaluator for MW2019+ Animations
-  // tracks: [{ t: 0..1, v: [x, y, z] | number, ease: 'smooth'|'snap'|'overshoot'|'linear' }, ...]
   function evalKeyframes(keys, p) {
     if (!keys || keys.length === 0) return [0, 0, 0];
     if (p <= keys[0].t) return Array.isArray(keys[0].v) ? keys[0].v.slice() : [keys[0].v];
@@ -1660,7 +1744,6 @@ window.LensFlareSystem = (() => {
       c.fillStyle = g;
       c.fillRect(0, 0, w, h);
 
-      // 12 crisp optical diffraction rays
       c.save();
       c.translate(cx, cy);
       for (let i = 0; i < 12; i++) {
@@ -1735,7 +1818,6 @@ window.LensFlareSystem = (() => {
 
   function _isOccluded(camPos, world, dirUnit, maxRayDist, checkTerrain = false) {
     if (!world) return false;
-    // Fast analytical terrain horizon occlusion (mountains, dam walls, cliffs)
     if (checkTerrain && typeof world.getTerrainHeight === 'function') {
       const steps = maxRayDist > 300 ? 7 : 4;
       for (let s = 1; s <= steps; s++) {
@@ -1831,12 +1913,10 @@ window.LensFlareSystem = (() => {
       const intensity = (src.intensity || 1.0) * curVis * (gfxLight >= 3 ? 1.0 : 0.72);
       const basePx = Math.min(W, H) * 0.22 * (src.flareScale || 1.0) * (0.45 + 0.55 * distFactor);
 
-      // 1. Primary Optical Starburst Core
       ctx.globalAlpha = Math.min(0.92, intensity * 0.85);
       const sbSize = basePx * 1.45;
       ctx.drawImage(starburstSprite, sx - sbSize * 0.5, sy - sbSize * 0.5, sbSize, sbSize);
 
-      // 2. Anamorphic Horizontal Streak (Cinema blue/warm sweep across sun & floodlights)
       if (src.anamorphic !== false) {
         const stW = basePx * 3.8;
         const stH = basePx * 0.36;
@@ -1844,7 +1924,6 @@ window.LensFlareSystem = (() => {
         ctx.drawImage(streakSprite, sx - stW * 0.5, sy - stH * 0.5, stW, stH);
       }
 
-      // 3. Multi-Ghost Chromatic Aperture Reflections along optical center axis
       if (src.ghosts !== false && curVis > 0.08) {
         const dx = cx - sx;
         const dy = cy - sy;

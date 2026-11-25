@@ -221,16 +221,27 @@
     const uniformDark = uniformCol.clone().multiplyScalar(0.76);
     const pantsCol = opts.pantsColor != null ? new THREE.Color(opts.pantsColor) : uniformCol.clone().multiplyScalar(0.80);
 
-    const uniformMat = new THREE.MeshLambertMaterial({ color: uniformCol });
-    const uniformDarkMat = new THREE.MeshLambertMaterial({ color: uniformDark });
-    const pantsMat = new THREE.MeshLambertMaterial({ color: pantsCol });
-    const gearMat = new THREE.MeshLambertMaterial({ color: 0x1e2124 });
-    const strapMat = new THREE.MeshLambertMaterial({ color: 0x262925 });
-    const padMat = new THREE.MeshLambertMaterial({ color: 0x171a19 });
-    const helmetMat = new THREE.MeshLambertMaterial({ color: opts.helmetColor != null ? opts.helmetColor : (isHeavy ? 0x1c1f24 : 0x2d332b) });
-    const skinMat = new THREE.MeshLambertMaterial({ color: opts.headColor != null ? opts.headColor : 0xd1a483 });
-    const balaclavaMat = new THREE.MeshLambertMaterial({ color: isScav ? 0x3d332a : 0x222522 });
-    const visorMat = new THREE.MeshLambertMaterial({ color: isHeavy ? 0x4a1d1d : 0x101820, emissive: isHeavy ? 0x220808 : 0x061018 });
+    const P = window.AshfallPBR;
+    const mkPBR = (preset, col, opts2 = {}) => {
+      if (P) {
+        const m = P.getMaterial(preset).clone();
+        if (m.userData) delete m.userData._ashShared;
+        if (col != null) m.color.set(col);
+        Object.assign(m, opts2);
+        return m;
+      }
+      return new THREE.MeshStandardMaterial({ color: col != null ? col : 0x3b4437, ...opts2 });
+    };
+    const uniformMat = mkPBR('cordura_olive', uniformCol, { roughness: 0.86 });
+    const uniformDarkMat = mkPBR('cordura_olive', uniformDark, { roughness: 0.88 });
+    const pantsMat = mkPBR('cordura_olive', pantsCol, { roughness: 0.88 });
+    const gearMat = (P && P.getMaterial('cordura_black')) || new THREE.MeshStandardMaterial({ color: 0x1e2124, roughness: 0.82 });
+    const strapMat = mkPBR('cordura_olive', 0x262925, { roughness: 0.84 });
+    const padMat = (P && P.getMaterial('polymer_stippled')) || new THREE.MeshStandardMaterial({ color: 0x171a19, roughness: 0.62 });
+    const helmetMat = mkPBR('painted_olive', opts.helmetColor != null ? opts.helmetColor : (isHeavy ? 0x1c1f24 : 0x2d332b), { roughness: 0.56, metalness: 0.15 });
+    const skinMat = mkPBR('skin_tactical', opts.headColor != null ? opts.headColor : 0xd1a483, { roughness: 0.62 });
+    const balaclavaMat = mkPBR('cordura_black', isScav ? 0x3d332a : 0x222522, { roughness: 0.90 });
+    const visorMat = new THREE.MeshStandardMaterial({ color: isHeavy ? 0x4a1d1d : 0x101820, emissive: isHeavy ? 0x220808 : 0x061018, roughness: 0.12, metalness: 0.85 });
 
     const root = new THREE.Group();
     // Local character forward is -Z; rotate root (NOT rigPivot!) by PI so rigPivot's local X/Y/Z pitch/roll/lean
@@ -279,7 +290,7 @@
     const vestColor = opts.vestColor != null
       ? opts.vestColor
       : (vestId === 'vest_3' ? 0x26292d : (vestId === 'vest_2' ? 0x3b4238 : (vestId === 'vest_1' ? 0x4b4739 : 0x343832)));
-    const vestMat = new THREE.MeshLambertMaterial({ color: vestColor });
+    const vestMat = mkPBR('cordura_olive', vestColor, { roughness: 0.84 });
     const plateFront = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.33, 0.065), vestMat);
     plateFront.position.set(0, 0.22, -0.13);
     const plateBack = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.34, 0.065), vestMat);
@@ -320,7 +331,7 @@
       sculpted.position.set(0, 0.22, 0.16);
       packGroup.add(sculpted);
     } else {
-      packMat = new THREE.MeshLambertMaterial({ color: bagId === 'bag_large' ? 0x353b31 : 0x3f433a });
+      packMat = mkPBR('cordura_olive', bagId === 'bag_large' ? 0x353b31 : 0x3f433a, { roughness: 0.86 });
       const packMain = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.36, 0.13), packMat);
       packMain.position.set(0, 0.20, 0.20);
       const packTopPouch = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.10, 0.075), strapMat);
@@ -364,7 +375,7 @@
       head.add(helmetDome, nvgMount, goggles, earCupL, earCupR);
     } else {
       // Scavenger beanie/cap
-      const beanie = new THREE.Mesh(new THREE.BoxGeometry(0.215, 0.09, 0.225), new THREE.MeshLambertMaterial({ color: 0x3a3228 }));
+      const beanie = new THREE.Mesh(new THREE.BoxGeometry(0.215, 0.09, 0.225), mkPBR('cordura_black', 0x3a3228, { roughness: 0.92 }));
       beanie.position.set(0, 0.20, 0.0);
       head.add(beanie);
     }
@@ -457,8 +468,8 @@
           plateProp.scale.multiplyScalar(0.80);
         } else {
           plateProp = new THREE.Group();
-          const plateBody = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.17, 0.020), new THREE.MeshLambertMaterial({ color: 0x22384c }));
-          const plateTrim = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.024, 0.024), new THREE.MeshLambertMaterial({ color: 0x4ea8de }));
+          const plateBody = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.17, 0.020), mkPBR('polymer_stippled', 0x22384c, { roughness: 0.55 }));
+          const plateTrim = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.024, 0.024), mkPBR('polymer_od', 0x4ea8de, { roughness: 0.45 }));
           plateTrim.position.y = 0.056;
           plateProp.add(plateBody, plateTrim);
         }
@@ -466,18 +477,18 @@
         plateProp.rotation.set(0.35, 0, 0.12);
         plateProp.visible = false;
 
-        handMag = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.15, 0.065), new THREE.MeshLambertMaterial({ color: 0x4c5259 }));
+        handMag = new THREE.Mesh(new THREE.BoxGeometry(0.042, 0.15, 0.065), mkPBR('gunmetal_nitride', 0x4c5259, { roughness: 0.42, metalness: 0.85 }));
         handMag.position.set(0.02, -0.06, -0.03);
         handMag.visible = false;
 
-        handShell = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.075, 8), new THREE.MeshLambertMaterial({ color: 0xb52b2b }));
+        handShell = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.016, 0.075, 14), mkPBR('polymer_stippled', 0xb52b2b, { roughness: 0.48 }));
         handShell.rotation.z = Math.PI / 2;
         handShell.position.set(0.02, -0.05, -0.03);
         handShell.visible = false;
 
         inventoryTablet = new THREE.Group();
         const tabBody = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.020, 0.16), gearMat);
-        const tabScreen = new THREE.Mesh(new THREE.PlaneGeometry(0.185, 0.125), new THREE.MeshBasicMaterial({ color: 0x164a3a }));
+        const tabScreen = new THREE.Mesh(new THREE.PlaneGeometry(0.185, 0.125), new THREE.MeshStandardMaterial({ color: 0x164a3a, emissive: 0x0c3428, emissiveIntensity: 0.7, roughness: 0.18 }));
         tabScreen.rotation.x = -Math.PI / 2;
         tabScreen.position.y = 0.012;
         inventoryTablet.add(tabBody, tabScreen);
@@ -490,19 +501,19 @@
         // 3D Combat Revive Syringe prop (glowing emerald bio-stim auto-injector)
         syringeProp = new THREE.Group();
         const sBarrel = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.015, 0.015, 0.12, 10),
-          new THREE.MeshPhongMaterial({ color: 0x26f0a8, emissive: 0x0c7a52, shininess: 68 })
+          new THREE.CylinderGeometry(0.015, 0.015, 0.12, 16),
+          new THREE.MeshStandardMaterial({ color: 0x26f0a8, emissive: 0x0c7a52, emissiveIntensity: 0.8, roughness: 0.22, metalness: 0.1 })
         );
-        const sCollar = new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.018, 0.032, 10), gearMat);
+        const sCollar = new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.018, 0.032, 16), gearMat);
         sCollar.position.set(0, -0.055, 0);
         const sNeedle = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.0028, 0.0032, 0.058, 8),
-          new THREE.MeshLambertMaterial({ color: 0xd0d8e0 })
+          new THREE.CylinderGeometry(0.0028, 0.0032, 0.058, 12),
+          (P && P.getMaterial('steel_chrome')) || new THREE.MeshStandardMaterial({ color: 0xd0d8e0, roughness: 0.16, metalness: 0.96 })
         );
         sNeedle.position.set(0, -0.098, 0);
         const sPlunger = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.018, 0.016, 0.024, 10),
-          new THREE.MeshLambertMaterial({ color: 0xd94626 })
+          new THREE.CylinderGeometry(0.018, 0.016, 0.024, 16),
+          mkPBR('polymer_stippled', 0xd94626, { roughness: 0.48 })
         );
         sPlunger.position.set(0, 0.076, 0);
         syringeProp.add(sBarrel, sCollar, sNeedle, sPlunger);
@@ -513,12 +524,12 @@
         // 3D M67 Frag Grenade prop for 3P throw animations
         grenadeProp = new THREE.Group();
         const gBody = new THREE.Mesh(
-          new THREE.SphereGeometry(0.044, 10, 8),
-          new THREE.MeshLambertMaterial({ color: 0x45503b })
+          new THREE.SphereGeometry(0.044, 16, 12),
+          mkPBR('polymer_od', 0x45503b, { roughness: 0.62 })
         );
         const gFuze = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.014, 0.017, 0.024, 8),
-          new THREE.MeshLambertMaterial({ color: 0x8b939c })
+          new THREE.CylinderGeometry(0.014, 0.017, 0.024, 14),
+          (P && P.getMaterial('steel_brushed')) || new THREE.MeshStandardMaterial({ color: 0x8b939c, roughness: 0.32, metalness: 0.9 })
         );
         gFuze.position.set(0, 0.045, 0);
         grenadeProp.add(gBody, gFuze);

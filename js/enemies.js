@@ -410,15 +410,31 @@ class Enemy {
       built.skull.userData = { enemy: this, part: 'head' };
       this.hitboxes.push(built.chest, built.skull);
 
-      // The Rhinoceros: front ballistic riot shield mounted on left forearm
+      // The Rhinoceros: high-poly curved EOD ballistic riot shield with armored viewport frame & polycarbonate slit
       if (this.hasFrontShield && built.leftArm && built.leftArm.elbow) {
-        const shMat = new THREE.MeshPhongMaterial({ color: 0x1e2226, specular: 0x5c6870, shininess: 44 });
-        const slitMat = new THREE.MeshBasicMaterial({ color: 0x76b8d8 });
-        const shield = new THREE.Mesh(new THREE.BoxGeometry(0.62, 1.24, 0.055), shMat);
+        const P = window.AshfallPBR;
+        const shMat = (P && P.getMaterial('vehicle_armor_apc', { color: 0x262c32 }))
+          || new THREE.MeshStandardMaterial({ color: 0x1e2226, roughness: 0.42, metalness: 0.72 });
+        const trimMat = (P && P.getMaterial('gunmetal_nitride'))
+          || new THREE.MeshStandardMaterial({ color: 0x16191c, roughness: 0.36, metalness: 0.88 });
+        const slitMat = (P && P.getGlassMaterial)
+          ? P.getGlassMaterial(0x528aa8, 0.58, 0.08, 0.25)
+          : new THREE.MeshStandardMaterial({ color: 0x528aa8, roughness: 0.1, metalness: 0.5, transparent: true, opacity: 0.58 });
+        const shield = new THREE.Mesh(new THREE.BoxGeometry(0.46, 1.24, 0.055), shMat);
         shield.position.set(-0.08, -0.10, -0.20);
-        const viewport = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.09, 0.065), slitMat);
+        const wingL = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.22, 0.050), shMat);
+        wingL.position.set(-0.27, 0, 0.035);
+        wingL.rotation.y = 0.46;
+        const wingR = new THREE.Mesh(new THREE.BoxGeometry(0.14, 1.22, 0.050), shMat);
+        wingR.position.set(0.27, 0, 0.035);
+        wingR.rotation.y = -0.46;
+        const vpFrame = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.13, 0.064), trimMat);
+        vpFrame.position.set(0, 0.34, 0);
+        const viewport = new THREE.Mesh(new THREE.BoxGeometry(0.27, 0.085, 0.068), slitMat);
         viewport.position.set(0, 0.34, 0);
-        shield.add(viewport);
+        const bossPlate = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.18, 0.020), trimMat);
+        bossPlate.position.set(0, 0.04, -0.028);
+        shield.add(wingL, wingR, vpFrame, viewport, bossPlate);
         built.leftArm.elbow.add(shield);
         this._rhinoShield = shield;
       }
@@ -442,7 +458,8 @@ class Enemy {
         }
       }
       if (!weaponObj) {
-        weaponObj = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.09, 0.62), new THREE.MeshLambertMaterial({ color: 0x1a1c1e }));
+        const wMat = (window.AshfallPBR && window.AshfallPBR.getMaterial('gunmetal_nitride')) || new THREE.MeshStandardMaterial({ color: 0x1a1c1e, roughness: 0.38, metalness: 0.88 });
+        weaponObj = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.09, 0.62), wMat);
         weaponObj.position.set(0, 0.01, -0.16);
         muzzleLocalPos.set(0, 0, -0.34);
       }
@@ -461,10 +478,11 @@ class Enemy {
       return;
     }
 
-    const bodyMat = new THREE.MeshLambertMaterial({ color: this.armorColor });
-    const headMat = new THREE.MeshLambertMaterial({ color: this.headColor });
-    const limbMat = new THREE.MeshLambertMaterial({ color: 0x2c2b29 });
-    const gunMat = new THREE.MeshLambertMaterial({ color: 0x1a1c1e });
+    const P = window.AshfallPBR;
+    const bodyMat = (P && P.getMaterial('cordura_olive', { color: this.armorColor })) || new THREE.MeshStandardMaterial({ color: this.armorColor, roughness: 0.84 });
+    const headMat = (P && P.getMaterial('skin_tactical', { color: this.headColor })) || new THREE.MeshStandardMaterial({ color: this.headColor, roughness: 0.62 });
+    const limbMat = (P && P.getMaterial('cordura_black', { color: 0x2c2b29 })) || new THREE.MeshStandardMaterial({ color: 0x2c2b29, roughness: 0.86 });
+    const gunMat = (P && P.getMaterial('gunmetal_nitride')) || new THREE.MeshStandardMaterial({ color: 0x1a1c1e, roughness: 0.38, metalness: 0.88 });
 
     // Legs anchored at hip joints (y = 0.8)
     const legGeo = new THREE.BoxGeometry(0.22, 0.8, 0.24);
@@ -1835,11 +1853,13 @@ class Enemy {
     this._throwAnimTimer = 0.65;
     const isSmoke = kind === 'smoke';
     const mesh = new THREE.Mesh(
-      new THREE.SphereGeometry(0.085, 8, 8),
-      new THREE.MeshLambertMaterial({
+      new THREE.SphereGeometry(0.085, 16, 12),
+      new THREE.MeshStandardMaterial({
         color: isSmoke ? 0x6b7a70 : 0x3b4d35,
         emissive: isSmoke ? 0x223328 : 0xaa2211,
-        emissiveIntensity: isSmoke ? 0.25 : 0.7
+        emissiveIntensity: isSmoke ? 0.3 : 0.75,
+        roughness: 0.58,
+        metalness: 0.25
       })
     );
     const startPos = new THREE.Vector3(this.position.x, 1.55, this.position.z);
@@ -1919,8 +1939,8 @@ class Enemy {
         this.scene.remove(g.mesh);
         if (g.kind === 'smoke') {
           const puff = new THREE.Mesh(
-            new THREE.SphereGeometry(2.8, 10, 8),
-            new THREE.MeshLambertMaterial({ color: 0xaab2ac, transparent: true, opacity: 0.65 })
+            new THREE.SphereGeometry(2.8, 16, 12),
+            new THREE.MeshStandardMaterial({ color: 0xaab2ac, roughness: 0.96, metalness: 0.0, transparent: true, opacity: 0.65 })
           );
           puff.position.set(g.pos.x, 1.5, g.pos.z);
           this.scene.add(puff);

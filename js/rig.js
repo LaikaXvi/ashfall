@@ -203,17 +203,35 @@
         }
 
         const makeLambert = (orig) => {
-          if (!orig) return new THREE.MeshLambertMaterial({ color: 0xffffff, skinning: true });
+          const P = window.AshfallPBR;
+          const fabricMaps = P ? P.getMaps('cordura_olive') : null;
+          if (!orig) {
+            return new THREE.MeshStandardMaterial({
+              color: 0xffffff,
+              roughness: 0.78,
+              metalness: 0.08,
+              normalMap: fabricMaps ? fabricMaps.normalMap : null,
+              normalScale: new THREE.Vector2(0.55, 0.55),
+              roughnessMap: fabricMaps ? fabricMaps.roughnessMap : null,
+              skinning: true
+            });
+          }
           if (orig.map) {
-            orig.map.magFilter = THREE.NearestFilter;
-            orig.map.encoding = THREE.LinearEncoding;
+            orig.map.magFilter = THREE.LinearFilter;
+            orig.map.minFilter = THREE.LinearMipmapLinearFilter;
+            orig.map.encoding = THREE.sRGBEncoding;
             orig.map.needsUpdate = true;
           }
           const col = orig.map
             ? new THREE.Color(0xffffff)
             : (orig.color ? orig.color.clone() : new THREE.Color(0x162229));
-          return new THREE.MeshLambertMaterial({
+          return new THREE.MeshStandardMaterial({
             map: orig.map || null,
+            normalMap: orig.normalMap || (fabricMaps ? fabricMaps.normalMap : null),
+            normalScale: new THREE.Vector2(0.55, 0.55),
+            roughnessMap: orig.roughnessMap || (fabricMaps ? fabricMaps.roughnessMap : null),
+            roughness: orig.roughness != null ? orig.roughness : 0.76,
+            metalness: orig.metalness != null ? orig.metalness : 0.08,
             color: col,
             skinning: true
           });
@@ -608,11 +626,16 @@
     const g = new THREE.Group();
     g.userData.bagId = id;
 
-    const mkMat = (color, spec = 0x000000, shine = 18) => (
-      forIcon
-        ? new THREE.MeshPhongMaterial({ color, specular: spec, shininess: shine })
-        : new THREE.MeshLambertMaterial({ color })
-    );
+    const P = window.AshfallPBR;
+    const cordMaps = P ? P.getMaps('cordura_olive') : null;
+    const mkMat = (color, spec = 0x000000, shine = 18) => new THREE.MeshStandardMaterial({
+      color,
+      normalMap: cordMaps ? cordMaps.normalMap : null,
+      normalScale: new THREE.Vector2(0.6, 0.6),
+      roughnessMap: cordMaps ? cordMaps.roughnessMap : null,
+      roughness: shine > 30 ? 0.42 : 0.84,
+      metalness: shine > 30 ? 0.55 : 0.06
+    });
 
     const mkRoundedRectShape = (w, h, r) => {
       const hw = w * 0.5;
@@ -1690,10 +1713,15 @@
       }
       geom.setAttribute('armSide', new THREE.BufferAttribute(armSideArr, 1));
 
-      // Custom Lambert shader discarding torso/legs/head & toggled arms cleanly
+      // Custom PBR Standard shader discarding torso/legs/head & toggled arms cleanly
       const origMat = Array.isArray(this.body.material) ? this.body.material[0] : this.body.material;
-      const fpMat = new THREE.MeshLambertMaterial({
+      const fpMat = new THREE.MeshStandardMaterial({
         map: (origMat && origMat.map) || null,
+        normalMap: (origMat && origMat.normalMap) || null,
+        normalScale: (origMat && origMat.normalScale) ? origMat.normalScale.clone() : new THREE.Vector2(0.55, 0.55),
+        roughnessMap: (origMat && origMat.roughnessMap) || null,
+        roughness: (origMat && origMat.roughness != null) ? origMat.roughness : 0.76,
+        metalness: (origMat && origMat.metalness != null) ? origMat.metalness : 0.08,
         color: 0xffffff,
         skinning: true,
         fog: false,
@@ -1717,6 +1745,7 @@
           );
         fpMat.userData.shader = shader;
       };
+      fpMat.customProgramCacheKey = () => 'ashfall_fp_arms_pbr_v5';
       this.body.material = fpMat;
       this.body.castShadow = false;
       this.body.receiveShadow = false;
@@ -2116,15 +2145,30 @@
     shape.lineTo(-0.23,  0.16);
     shape.closePath();
 
-    const plateMat = forIcon
-      ? new THREE.MeshPhongMaterial({ color: 0x3d444d, specular: 0x7b8896, shininess: 38 })
-      : new THREE.MeshPhongMaterial({ color: 0x383f48, specular: 0x5c6876, shininess: 28 });
-    const trimMat = forIcon
-      ? new THREE.MeshPhongMaterial({ color: 0x262b31, specular: 0x454e58, shininess: 22 })
-      : new THREE.MeshLambertMaterial({ color: 0x24292f });
-    const stencilMat = forIcon
-      ? new THREE.MeshPhongMaterial({ color: 0xdce6f0, emissive: 0x1a2633, shininess: 55 })
-      : new THREE.MeshLambertMaterial({ color: 0xd8e2ec });
+    const P = window.AshfallPBR;
+    const UV = P && P.UVUnwrap;
+    const polyMaps = P ? P.getMaps('polymer_stippled') : null;
+    const cordMaps = P ? P.getMaps('cordura_black') : null;
+    const plateMat = new THREE.MeshStandardMaterial({
+      color: forIcon ? 0x3d444d : 0x383f48,
+      normalMap: polyMaps ? polyMaps.normalMap : null,
+      normalScale: new THREE.Vector2(0.55, 0.55),
+      roughnessMap: polyMaps ? polyMaps.roughnessMap : null,
+      roughness: forIcon ? 0.46 : 0.54,
+      metalness: 0.14
+    });
+    const trimMat = new THREE.MeshStandardMaterial({
+      color: forIcon ? 0x262b31 : 0x24292f,
+      normalMap: cordMaps ? cordMaps.normalMap : null,
+      roughness: 0.78,
+      metalness: 0.08
+    });
+    const stencilMat = new THREE.MeshStandardMaterial({
+      color: forIcon ? 0xdce6f0 : 0xd8e2ec,
+      emissive: forIcon ? 0x1a2633 : 0x000000,
+      roughness: 0.38,
+      metalness: 0.12
+    });
 
     const plateGeo = new THREE.ExtrudeGeometry(shape, {
       depth: 0.048,
@@ -2133,6 +2177,7 @@
       bevelSize: 0.012,
       bevelSegments: 2
     });
+    if (UV) UV.unwrapExtrude(plateGeo, 0.2);
     const plate = new THREE.Mesh(plateGeo, plateMat);
     plate.position.z = -0.024;
     g.add(plate);

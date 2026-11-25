@@ -1,13 +1,10 @@
 // ============================================================================
-// ASHFALL // Shared Rendering Engine, PBR Surface Bank, Instancer,
-// Unified GPU Post-Pipeline & Deterministic Raid Memory Disposer
+// ASHFALL // High-Poly WebGL2 HDR PBR Rendering Engine, Shared Surface Bank,
+// Instanced Batching, SSAO + HDR Bloom Post-Pipeline & 0-Leak Disposer
 // ============================================================================
 window.AshfallRenderer = (() => {
-  const _texCache = new Map();
   const _geoCache = new Map();
   const _matCache = new Map();
-  let _envMap = null;
-  let _envAttempted = false;
 
   function _markShared(obj) {
     if (!obj) return obj;
@@ -16,40 +13,16 @@ window.AshfallRenderer = (() => {
     return obj;
   }
 
-  function _seedRng(seed = 1337) {
-    let s = seed | 1;
-    return () => {
-      s = (s * 1664525 + 1013904223) >>> 0;
-      return s / 4294967296;
-    };
-  }
-
-  function _canvasTex(key, size, drawFn, opts = {}) {
-    if (_texCache.has(key)) return _texCache.get(key);
-    const canvas = document.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext('2d');
-    drawFn(ctx, size, _seedRng(opts.seed || key.split('').reduce((a, c) => ((a * 31 + c.charCodeAt(0)) | 0), 17)));
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.wrapS = opts.wrapS || THREE.RepeatWrapping;
-    tex.wrapT = opts.wrapT || THREE.RepeatWrapping;
-    tex.magFilter = opts.magFilter || THREE.LinearFilter;
-    tex.minFilter = opts.minFilter || THREE.LinearMipmapLinearFilter;
-    tex.anisotropy = opts.anisotropy !== undefined ? opts.anisotropy : 4;
-    if (opts.repeat) tex.repeat.set(opts.repeat[0], opts.repeat[1]);
-    _markShared(tex);
-    _texCache.set(key, tex);
-    return tex;
-  }
-
   // --------------------------------------------------------------------------
-  // 1. Canonical Shared Geometry Pool (zero redundant allocations)
+  // 1. Canonical Shared Geometry Pool (with uv2 for aoMap & zero allocations)
   // --------------------------------------------------------------------------
   const GeoPool = {
     get(key, factoryFn) {
       if (_geoCache.has(key)) return _geoCache.get(key);
       const geo = factoryFn();
+      if (geo && geo.attributes && geo.attributes.uv && !geo.attributes.uv2) {
+        geo.setAttribute('uv2', geo.attributes.uv);
+      }
       _markShared(geo);
       _geoCache.set(key, geo);
       return geo;
@@ -57,422 +30,139 @@ window.AshfallRenderer = (() => {
     unitBox() {
       return this.get('unitBox', () => new THREE.BoxGeometry(1, 1, 1));
     },
-    unitCylinder(segs = 12) {
+    unitCylinder(segs = 16) {
       return this.get(`unitCyl_${segs}`, () => new THREE.CylinderGeometry(1, 1, 1, segs));
     },
     unitPlane() {
       return this.get('unitPlane', () => new THREE.PlaneGeometry(1, 1));
     },
-    sphere(wSeg = 10, hSeg = 8) {
+    sphere(wSeg = 14, hSeg = 10) {
       return this.get(`sphere_${wSeg}_${hSeg}`, () => new THREE.SphereGeometry(1, wSeg, hSeg));
     },
-    ring(innerRatio = 0.72, segs = 20) {
+    ring(innerRatio = 0.72, segs = 28) {
       const k = `ring_${Number(innerRatio).toFixed(3)}_${segs}`;
       return this.get(k, () => new THREE.RingGeometry(innerRatio, 1.0, segs));
     }
   };
 
-  // --------------------------------------------------------------------------
-  // 2. Procedural PMREM Environment Map & Cached PBR Surface Texture Bank
-  // --------------------------------------------------------------------------
-  function getEnvMap(renderer) {
-    if (_envMap) return _envMap;
-    if (_envAttempted || !renderer || typeof THREE.PMREMGenerator !== 'function') return null;
-    _envAttempted = true;
-    try {
-      const pmrem = new THREE.PMREMGenerator(renderer);
-      if (pmrem.compileEquirectangularShader) pmrem.compileEquirectangularShader();
-      const envScene = new THREE.Scene();
-      const domeGeo = new THREE.SphereGeometry(12, 16, 12);
-      const c = document.createElement('canvas');
-      c.width = 64; c.height = 32;
-      const g = c.getContext('2d');
-      const grad = g.createLinearGradient(0, 0, 0, 32);
-      grad.addColorStop(0.0, '#8ba6be');
-      grad.addColorStop(0.42, '#50606b');
-      grad.addColorStop(0.54, '#24292b');
-      grad.addColorStop(1.0, '#121413');
-      g.fillStyle = grad;
-      g.fillRect(0, 0, 64, 32);
-      g.fillStyle = '#ffdfb2';
-      g.fillRect(10, 6, 8, 5);
-      const envTex = new THREE.CanvasTexture(c);
-      const domeMat = new THREE.MeshBasicMaterial({ map: envTex, side: THREE.BackSide });
-      const dome = new THREE.Mesh(domeGeo, domeMat);
-      envScene.add(dome);
-      const rt = pmrem.fromScene(envScene, 0.04);
-      _envMap = rt.texture;
-      _markShared(_envMap);
-      domeGeo.dispose();
-      domeMat.dispose();
-      envTex.dispose();
-      pmrem.dispose();
-    } catch (e) {
-      _envMap = null;
+  function configureRenderer(renderer) {
+    if (!renderer) return;
+    if (THREE.sRGBEncoding !== undefined) renderer.outputEncoding = THREE.sRGBEncoding;
+    if (THREE.ACESFilmicToneMapping !== undefined) {
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.08;
     }
-    return _envMap;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap !== undefined ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    renderer.shadowMap.autoUpdate = false;
+    renderer.physicallyCorrectLights = false;
+  }
+
+  // --------------------------------------------------------------------------
+  // 2. Dual HDR PMREM Probes & 720p PBR Surface Bank / World Materials
+  // --------------------------------------------------------------------------
+  function getEnvMap(renderer, kind = 'outdoor') {
+    if (window.AshfallPBR && window.AshfallPBR.getEnvMap) {
+      return window.AshfallPBR.getEnvMap(renderer, kind);
+    }
+    return null;
   }
 
   function getSurfaceBank() {
-    if (_texCache.has('concrete') && _texCache.has('concreteBump')) {
+    if (window.AshfallPBR && window.AshfallPBR.getMaps) {
+      const P = window.AshfallPBR;
+      const concrete = P.getMaps('bunker_concrete_formwork');
+      const plaster = P.getMaps('plaster_aged_white');
+      const brick = P.getMaps('brick_soviet_weathered');
+      const siding = P.getMaps('steel_rusted_corrugated');
+      const floorTile = P.getMaps('tile_subway_dirty');
+      const wood = P.getMaps('wood_planks_weathered');
+      const roofTar = P.getMaps('roof_bitumen_tar');
+      const asphalt = P.getMaps('asphalt_cracked');
+      const metal = P.getMaps('steel_dark_structural');
+      const grate = P.getMaps('steel_diamond_grate');
+      const crate = P.getMaps('crate_supply');
+      const terrain = P.getMaps('terrain_detail');
+      if (terrain && terrain.map) terrain.map.repeat.set(160, 160);
+      if (terrain && terrain.normalMap) terrain.normalMap.repeat.set(160, 160);
+      if (terrain && terrain.roughnessMap) terrain.roughnessMap.repeat.set(160, 160);
       return {
-        ground: _texCache.get('ground'),
-        concrete: _texCache.get('concrete'),
-        concreteBump: _texCache.get('concreteBump'),
-        plaster: _texCache.get('plaster'),
-        brick: _texCache.get('brick'),
-        brickBump: _texCache.get('brickBump'),
-        siding: _texCache.get('siding'),
-        sidingBump: _texCache.get('sidingBump'),
-        floorTile: _texCache.get('floorTile'),
-        floorTileBump: _texCache.get('floorTileBump'),
-        wood: _texCache.get('wood'),
-        roofTar: _texCache.get('roofTar'),
-        asphalt: _texCache.get('asphalt'),
-        metal: _texCache.get('metal'),
-        metalBump: _texCache.get('metalBump'),
-        grate: _texCache.get('grate'),
-        grateBump: _texCache.get('grateBump'),
-        crate: _texCache.get('crate')
+        ground: terrain.map,
+        groundNormal: terrain.normalMap,
+        groundRoughness: terrain.roughnessMap,
+        concrete: concrete.map,
+        concreteBump: concrete.normalMap,
+        plaster: plaster.map,
+        brick: brick.map,
+        brickBump: brick.normalMap,
+        siding: siding.map,
+        sidingBump: siding.normalMap,
+        floorTile: floorTile.map,
+        floorTileBump: floorTile.normalMap,
+        wood: wood.map,
+        roofTar: roofTar.map,
+        asphalt: asphalt.map,
+        metal: metal.map,
+        metalBump: metal.normalMap,
+        grate: grate.map,
+        grateBump: grate.normalMap,
+        crate: crate.map
       };
     }
-
-    const ground = _canvasTex('ground', 256, (ctx, s, rnd) => {
-      ctx.fillStyle = '#55573f';
-      ctx.fillRect(0, 0, s, s);
-      for (let i = 0; i < 160; i++) {
-        ctx.fillStyle = rnd() > 0.45 ? 'rgba(107,94,68,0.36)' : 'rgba(74,75,51,0.36)';
-        ctx.beginPath(); ctx.arc(rnd() * s, rnd() * s, 8 + rnd() * 22, 0, Math.PI * 2); ctx.fill();
-      }
-      for (let i = 0; i < 1100; i++) {
-        ctx.fillStyle = rnd() > 0.5 ? 'rgba(42,40,30,0.36)' : 'rgba(128,120,92,0.24)';
-        ctx.fillRect(rnd() * s, rnd() * s, 2, 2);
-      }
-      const cols = ['rgba(124,120,76,0.42)', 'rgba(94,96,62,0.46)', 'rgba(66,68,44,0.40)'];
-      for (let i = 0; i < 1800; i++) {
-        ctx.fillStyle = cols[i % cols.length];
-        ctx.fillRect(rnd() * s, rnd() * s, 2, 2 + rnd() * 4);
-      }
-    }, { magFilter: THREE.NearestFilter, repeat: [110, 110] });
-
-    const concrete = _canvasTex('concrete', 512, (ctx, s, rnd) => {
-      ctx.fillStyle = '#babab6';
-      ctx.fillRect(0, 0, s, s);
-      for (let i = 0; i < 6000; i++) {
-        const v = 155 + Math.floor(rnd() * 55);
-        ctx.fillStyle = `rgba(${v},${v},${v - 2},0.28)`;
-        ctx.fillRect(rnd() * s, rnd() * s, 2 + rnd() * 3, 2 + rnd() * 3);
-      }
-      ctx.strokeStyle = 'rgba(80,80,76,0.38)';
-      ctx.lineWidth = 2;
-      for (let g = 128; g < s; g += 128) {
-        ctx.beginPath(); ctx.moveTo(0, g); ctx.lineTo(s, g); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(g, 0); ctx.lineTo(g, s); ctx.stroke();
-      }
-      for (let y = 64; y < s; y += 128) {
-        for (let x = 64; x < s; x += 128) {
-          ctx.fillStyle = 'rgba(65,65,62,0.58)';
-          ctx.beginPath(); ctx.arc(x, y, 4.5, 0, Math.PI * 2); ctx.fill();
-          ctx.fillStyle = 'rgba(218,218,212,0.42)';
-          ctx.beginPath(); ctx.arc(x - 1, y - 1, 2.0, 0, Math.PI * 2); ctx.fill();
-        }
-      }
-      for (let i = 0; i < 40; i++) {
-        const x = rnd() * s, y = rnd() * (s * 0.6), h = 50 + rnd() * 140;
-        const grad = ctx.createLinearGradient(0, y, 0, y + h);
-        grad.addColorStop(0, 'rgba(60,60,57,0.18)');
-        grad.addColorStop(1, 'rgba(60,60,57,0)');
-        ctx.fillStyle = grad;
-        ctx.fillRect(x, y, 2 + rnd() * 4, h);
-      }
-    });
-
-    const concreteBump = _canvasTex('concreteBump', 256, (ctx, s, rnd) => {
-      ctx.fillStyle = '#808080';
-      ctx.fillRect(0, 0, s, s);
-      for (let i = 0; i < 3800; i++) {
-        const v = 90 + Math.floor(rnd() * 80);
-        ctx.fillStyle = `rgb(${v},${v},${v})`;
-        ctx.fillRect(rnd() * s, rnd() * s, 2, 2);
-      }
-      ctx.strokeStyle = '#383838';
-      ctx.lineWidth = 2;
-      for (let g = 64; g < s; g += 64) {
-        ctx.beginPath(); ctx.moveTo(0, g); ctx.lineTo(s, g); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(g, 0); ctx.lineTo(g, s); ctx.stroke();
-      }
-    });
-
-    const plaster = _canvasTex('plaster', 512, (ctx, s, rnd) => {
-      ctx.fillStyle = '#c4c2bc';
-      ctx.fillRect(0, 0, s, s);
-      for (let i = 0; i < 7000; i++) {
-        const v = 165 + Math.floor(rnd() * 55);
-        ctx.fillStyle = `rgba(${v},${v},${v - 3},0.25)`;
-        ctx.fillRect(rnd() * s, rnd() * s, 2, 2);
-      }
-      for (let i = 0; i < 24; i++) {
-        const x = rnd() * s, y = rnd() * s, r = 18 + rnd() * 44;
-        const g = ctx.createRadialGradient(x, y, 2, x, y, r);
-        g.addColorStop(0, 'rgba(110,106,98,0.18)');
-        g.addColorStop(1, 'rgba(110,106,98,0)');
-        ctx.fillStyle = g;
-        ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill();
-      }
-    });
-
-    const brick = _canvasTex('brick', 512, (ctx, s, rnd) => {
-      ctx.fillStyle = '#8d8478';
-      ctx.fillRect(0, 0, s, s);
-      const courses = 8, rowH = s / courses, cols = 4, colW = s / cols, mortar = 5;
-      for (let r = 0; r < courses; r++) {
-        const off = (r % 2) * (colW * 0.5);
-        for (let c = -1; c <= cols; c++) {
-          const bx = c * colW + off + mortar * 0.5, by = r * rowH + mortar * 0.5;
-          const bw = colW - mortar, bh = rowH - mortar;
-          ctx.fillStyle = `rgb(${132 + Math.floor(rnd() * 34)},${48 + Math.floor(rnd() * 22)},${38 + Math.floor(rnd() * 18)})`;
-          ctx.fillRect(bx, by, bw, bh);
-          ctx.fillStyle = 'rgba(255,220,190,0.08)';
-          ctx.fillRect(bx, by, bw, 4);
-        }
-      }
-    });
-
-    const brickBump = _canvasTex('brickBump', 256, (ctx, s) => {
-      ctx.fillStyle = '#404040';
-      ctx.fillRect(0, 0, s, s);
-      const courses = 8, rowH = s / courses, cols = 4, colW = s / cols, mortar = 3;
-      ctx.fillStyle = '#c8c8c8';
-      for (let r = 0; r < courses; r++) {
-        const off = (r % 2) * (colW * 0.5);
-        for (let c = -1; c <= cols; c++) {
-          ctx.fillRect(c * colW + off + mortar * 0.5, r * rowH + mortar * 0.5, colW - mortar, rowH - mortar);
-        }
-      }
-    });
-
-    const siding = _canvasTex('siding', 256, (ctx, s, rnd) => {
-      ctx.fillStyle = '#b4b6b2';
-      ctx.fillRect(0, 0, s, s);
-      for (let x = 0; x < s; x += 16) {
-        const g = ctx.createLinearGradient(x, 0, x + 16, 0);
-        g.addColorStop(0.0, 'rgba(65,65,65,0.34)');
-        g.addColorStop(0.28, 'rgba(235,235,235,0.26)');
-        g.addColorStop(0.85, 'rgba(55,55,55,0.30)');
-        g.addColorStop(1.0, 'rgba(65,65,65,0.34)');
-        ctx.fillStyle = g;
-        ctx.fillRect(x, 0, 16, s);
-      }
-      for (let i = 0; i < 24; i++) {
-        const x = Math.floor(rnd() * 16) * 16 + rnd() * 6, y = rnd() * 120, h = 35 + rnd() * 110;
-        const rg = ctx.createLinearGradient(0, y, 0, y + h);
-        rg.addColorStop(0, 'rgba(115,58,32,0.34)');
-        rg.addColorStop(1, 'rgba(115,58,32,0)');
-        ctx.fillStyle = rg;
-        ctx.fillRect(x, y, 2 + rnd() * 4, h);
-      }
-    });
-
-    const sidingBump = _canvasTex('sidingBump', 256, (ctx, s) => {
-      for (let x = 0; x < s; x += 16) {
-        const g = ctx.createLinearGradient(x, 0, x + 16, 0);
-        g.addColorStop(0.0, '#444'); g.addColorStop(0.5, '#d8d8d8'); g.addColorStop(1.0, '#444');
-        ctx.fillStyle = g;
-        ctx.fillRect(x, 0, 16, s);
-      }
-    });
-
-    const floorTile = _canvasTex('floorTile', 512, (ctx, s, rnd) => {
-      ctx.fillStyle = '#bab6ae';
-      ctx.fillRect(0, 0, s, s);
-      const count = 4, step = s / count;
-      for (let r = 0; r < count; r++) {
-        for (let c = 0; c < count; c++) {
-          const v = 186 + Math.floor((rnd() - 0.5) * 14);
-          ctx.fillStyle = `rgb(${v},${v - 2},${v - 6})`;
-          ctx.fillRect(c * step + 2, r * step + 2, step - 4, step - 4);
-        }
-      }
-      ctx.strokeStyle = 'rgba(72,70,64,0.55)';
-      ctx.lineWidth = 3;
-      for (let g = 0; g <= s; g += step) {
-        ctx.beginPath(); ctx.moveTo(0, g); ctx.lineTo(s, g); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(g, 0); ctx.lineTo(g, s); ctx.stroke();
-      }
-    });
-
-    const floorTileBump = _canvasTex('floorTileBump', 256, (ctx, s) => {
-      ctx.fillStyle = '#c4c4c4';
-      ctx.fillRect(0, 0, s, s);
-      ctx.strokeStyle = '#383838';
-      ctx.lineWidth = 3;
-      const step = s / 4;
-      for (let g = 0; g <= s; g += step) {
-        ctx.beginPath(); ctx.moveTo(0, g); ctx.lineTo(s, g); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(g, 0); ctx.lineTo(g, s); ctx.stroke();
-      }
-    });
-
-    const wood = _canvasTex('wood', 256, (ctx, s, rnd) => {
-      ctx.fillStyle = '#b9a690';
-      ctx.fillRect(0, 0, s, s);
-      const planks = 6, ph = s / planks;
-      for (let p = 0; p < planks; p++) {
-        const y0 = p * ph, tone = 172 + Math.floor((rnd() - 0.5) * 26);
-        ctx.fillStyle = `rgb(${tone + 10},${tone - 4},${tone - 22})`;
-        ctx.fillRect(0, y0, s, ph - 2);
-        ctx.fillStyle = 'rgba(55,40,26,0.45)';
-        ctx.fillRect(0, y0 + ph - 2, s, 2);
-        for (let g = 0; g < 16; g++) {
-          ctx.fillStyle = rnd() > 0.5 ? 'rgba(85,62,42,0.18)' : 'rgba(235,220,198,0.12)';
-          ctx.fillRect(0, y0 + rnd() * (ph - 3), s, 1);
-        }
-      }
-    });
-
-    const roofTar = _canvasTex('roofTar', 256, (ctx, s, rnd) => {
-      ctx.fillStyle = '#9e9c98';
-      ctx.fillRect(0, 0, s, s);
-      for (let i = 0; i < 4200; i++) {
-        const v = 115 + Math.floor(rnd() * 80);
-        ctx.fillStyle = `rgba(${v},${v},${v - 2},0.34)`;
-        ctx.fillRect(rnd() * s, rnd() * s, 2.2, 2.2);
-      }
-    });
-
-    const asphalt = _canvasTex('asphalt', 512, (ctx, s, rnd) => {
-      ctx.fillStyle = '#a8a8a4';
-      ctx.fillRect(0, 0, s, s);
-      for (let i = 0; i < 9000; i++) {
-        const v = 110 + Math.floor(rnd() * 95);
-        ctx.fillStyle = `rgba(${v},${v},${v - 2},0.32)`;
-        ctx.fillRect(rnd() * s, rnd() * s, 2, 2);
-      }
-      ctx.strokeStyle = 'rgba(42,42,42,0.45)';
-      ctx.lineWidth = 1.6;
-      for (let i = 0; i < 8; i++) {
-        let cx = rnd() * s, cy = rnd() * s;
-        ctx.beginPath(); ctx.moveTo(cx, cy);
-        for (let k = 0; k < 8; k++) { cx += (rnd() - 0.5) * 38; cy += (rnd() - 0.5) * 38; ctx.lineTo(cx, cy); }
-        ctx.stroke();
-      }
-    });
-
-    const metal = _canvasTex('metal', 256, (ctx, s, rnd) => {
-      ctx.fillStyle = '#babec2';
-      ctx.fillRect(0, 0, s, s);
-      for (let i = 0; i < 420; i++) {
-        ctx.fillStyle = rnd() > 0.5 ? 'rgba(235,240,244,0.18)' : 'rgba(82,88,96,0.20)';
-        ctx.fillRect(rnd() * s, rnd() * s, 18 + rnd() * 75, 1.2);
-      }
-    });
-
-    const metalBump = _canvasTex('metalBump', 256, (ctx, s, rnd) => {
-      ctx.fillStyle = '#808080';
-      ctx.fillRect(0, 0, s, s);
-      for (let i = 0; i < 500; i++) {
-        const v = 105 + Math.floor(rnd() * 50);
-        ctx.fillStyle = `rgb(${v},${v},${v})`;
-        ctx.fillRect(rnd() * s, rnd() * s, 20 + rnd() * 60, 1);
-      }
-    });
-
-    const grate = _canvasTex('grate', 128, (ctx, s) => {
-      ctx.fillStyle = '#3b4044';
-      ctx.fillRect(0, 0, s, s);
-      ctx.fillStyle = '#8b9298';
-      for (let y = 0; y < s; y += 16) {
-        for (let x = ((y >> 4) & 1) * 8; x < s; x += 16) {
-          ctx.fillRect(x + 2, y + 5, 10, 4);
-        }
-      }
-    });
-
-    const grateBump = _canvasTex('grateBump', 128, (ctx, s) => {
-      ctx.fillStyle = '#404040';
-      ctx.fillRect(0, 0, s, s);
-      ctx.fillStyle = '#e0e0e0';
-      for (let y = 0; y < s; y += 16) {
-        for (let x = ((y >> 4) & 1) * 8; x < s; x += 16) {
-          ctx.fillRect(x + 2, y + 5, 10, 4);
-        }
-      }
-    });
-
-    const crate = _canvasTex('crate', 256, (ctx, s, rnd) => {
-      ctx.fillStyle = '#c0beb4';
-      ctx.fillRect(0, 0, s, s);
-      for (let i = 0; i < 1600; i++) {
-        const v = 160 + Math.floor(rnd() * 55);
-        ctx.fillStyle = `rgba(${v},${v - 2},${v - 6},0.22)`;
-        ctx.fillRect(rnd() * s, rnd() * s, 6, 1.5);
-      }
-      ctx.strokeStyle = 'rgba(60,58,52,0.55)';
-      ctx.lineWidth = 18;
-      ctx.strokeRect(9, 9, s - 18, s - 18);
-      ctx.fillStyle = 'rgba(42,42,38,0.55)';
-      ctx.fillRect(42, 42, 54, 10);
-      ctx.fillRect(42, 58, 34, 6);
-    });
-
-    return {
-      ground, concrete, concreteBump, plaster, brick, brickBump,
-      siding, sidingBump, floorTile, floorTileBump, wood, roofTar,
-      asphalt, metal, metalBump, grate, grateBump, crate
-    };
+    return {};
   }
 
   function getWorldMaterialSet(renderer = null) {
     if (_matCache.has('worldSet')) return _matCache.get('worldSet');
+    const P = window.AshfallPBR;
     const tx = getSurfaceBank();
-    const envMap = getEnvMap(renderer || window.mainWebGLRenderer || null);
-    const makeMat = (opts, tile, usePhong = true) => {
-      const m = usePhong
-        ? new THREE.MeshPhongMaterial({ specular: 0x22262a, shininess: 18, ...opts })
-        : new THREE.MeshLambertMaterial(opts);
-      m.userData.tile = tile;
-      _markShared(m);
-      return m;
-    };
+    if (!P) return {};
 
-    const windowGlassMat = new THREE.MeshPhongMaterial({
-      color: 0x1d2c36,
-      specular: 0xb8d8f0,
-      shininess: 110,
-      envMap,
-      reflectivity: 0.45,
-      transparent: true,
-      opacity: 0.72
+    const groundMat = P.getMaterial('terrain_detail', {
+      vertexColors: true,
+      roughness: 0.92,
+      metalness: 0.0,
+      normalScale: 0.95,
+      envMapIntensity: 0.55,
+      tile: 4.0
     });
+    if (groundMat.map) { groundMat.map.repeat.set(160, 160); }
+    if (groundMat.normalMap) { groundMat.normalMap.repeat.set(160, 160); }
+    if (groundMat.roughnessMap) { groundMat.roughnessMap.repeat.set(160, 160); }
+
+    const windowGlassMat = P.getGlassMaterial(0x1f3442, 0.52, 0.06, 0.35);
     windowGlassMat.userData.tile = 2.0;
-    _markShared(windowGlassMat);
 
     const set = {
-      ground: _markShared(new THREE.MeshLambertMaterial({ map: tx.ground, vertexColors: true })),
-      road: makeMat({ map: tx.asphalt, bumpMap: tx.concreteBump, bumpScale: 0.025, color: 0x6a6a68, specular: 0x2a2e32, shininess: 22, polygonOffset: true, polygonOffsetFactor: -2 }, 6.0),
-      concrete: makeMat({ map: tx.concrete, bumpMap: tx.concreteBump, bumpScale: 0.035, color: 0x9a9a94 }, 3.0),
-      darkConcrete: makeMat({ map: tx.concrete, bumpMap: tx.concreteBump, bumpScale: 0.04, color: 0x66665f }, 3.0),
-      whiteWall: makeMat({ map: tx.plaster, bumpMap: tx.concreteBump, bumpScale: 0.015, color: 0xf0efe8 }, 2.5),
-      policeNavy: makeMat({ map: tx.plaster, color: 0x3a5680 }, 2.5, false),
-      fireRed: makeMat({ map: tx.brick, bumpMap: tx.brickBump, bumpScale: 0.04, color: 0xffffff }, 2.0),
-      bossDark: makeMat({ map: tx.concrete, bumpMap: tx.concreteBump, bumpScale: 0.04, color: 0x3c3e42 }, 3.0),
-      interiorPlaster: makeMat({ map: tx.plaster, bumpMap: tx.concreteBump, bumpScale: 0.015, color: 0xd9d4c8 }, 2.5),
-      floorTile: makeMat({ map: tx.floorTile, bumpMap: tx.floorTileBump, bumpScale: 0.025, specular: 0x485058, shininess: 42, color: 0xcfcac0 }, 2.4),
-      roofTar: makeMat({ map: tx.roofTar, bumpMap: tx.concreteBump, bumpScale: 0.02, color: 0x5a5a58 }, 3.0),
-      hazardAmber: makeMat({ color: 0xd99b26 }, 2.0, false),
+      ground: groundMat,
+      road: P.getMaterial('asphalt_cracked', {
+        color: 0x909290, roughness: 0.86, metalness: 0.04, normalScale: 1.05,
+        polygonOffset: true, polygonOffsetFactor: -2, tile: 6.0
+      }),
+      concrete: P.getMaterial('concrete_weathered', { color: 0xbcbcb4, tile: 3.2 }),
+      darkConcrete: P.getMaterial('bunker_concrete_formwork', { color: 0x7c7e78, tile: 3.2 }),
+      whiteWall: P.getMaterial('plaster_aged_white', { color: 0xf4f2eb, tile: 2.8 }),
+      policeNavy: P.getMaterial('plaster_soviet_blue', { color: 0x4c6f9c, tile: 2.6 }),
+      fireRed: P.getMaterial('brick_soviet_weathered', { color: 0xeadad4, normalScale: 1.15, tile: 2.2 }),
+      bossDark: P.getMaterial('bunker_concrete_formwork', { color: 0x4a4d52, roughness: 0.78, tile: 3.0 }),
+      interiorPlaster: P.getMaterial('plaster_aged_white', { color: 0xe6e0d4, tile: 2.6 }),
+      floorTile: P.getMaterial('tile_subway_dirty', { color: 0xdad6cc, roughness: 0.48, tile: 2.2 }),
+      roofTar: P.getMaterial('roof_bitumen_tar', { color: 0x626466, tile: 3.4 }),
+      hazardAmber: P.getMaterial('hazard_chevron_pbr', { color: 0xffffff, roughness: 0.58, metalness: 0.28, tile: 1.8 }),
       windowGlass: windowGlassMat,
-      windowFrame: makeMat({ map: tx.metal, bumpMap: tx.metalBump, bumpScale: 0.02, color: 0x2a2e32, envMap, reflectivity: 0.25, specular: 0x606870, shininess: 48 }, 1.5),
-      doorWood: makeMat({ map: tx.wood, color: 0x7a5a3c, specular: 0x241a10, shininess: 16 }, 1.5),
-      doorSteel: makeMat({ map: tx.metal, bumpMap: tx.metalBump, bumpScale: 0.025, color: 0x56606a, envMap, reflectivity: 0.28, specular: 0x6a7682, shininess: 54 }, 1.5),
-      rustRed: makeMat({ map: tx.siding, bumpMap: tx.sidingBump, bumpScale: 0.045, color: 0x8c4a36 }, 2.0),
-      rustOlive: makeMat({ map: tx.siding, bumpMap: tx.sidingBump, bumpScale: 0.045, color: 0x6d7558 }, 2.0),
-      rustBlue: makeMat({ map: tx.siding, bumpMap: tx.sidingBump, bumpScale: 0.045, color: 0x46627a }, 2.0),
-      wood: makeMat({ map: tx.wood, color: 0x8a6a4a }, 1.5, false),
-      metal: makeMat({ map: tx.metal, bumpMap: tx.metalBump, bumpScale: 0.02, color: 0x6a6e72, envMap, reflectivity: 0.30, specular: 0x7a8490, shininess: 58 }, 1.5),
-      grate: makeMat({ map: tx.grate, bumpMap: tx.grateBump, bumpScale: 0.035, color: 0x6b7076, envMap, reflectivity: 0.22, specular: 0x707880, shininess: 46 }, 1.0),
-      crateMil: makeMat({ map: tx.crate, color: 0x55683f }, 1.2, false),
-      crateMed: makeMat({ map: tx.plaster, color: 0xe8ece8 }, 2.5, false),
-      crateSup: makeMat({ map: tx.crate, color: 0x9a7444 }, 1.2, false)
+      windowFrame: P.getMaterial('aluminum_anodized', { color: 0x3a4046, roughness: 0.42, metalness: 0.82, tile: 1.4 }),
+      doorWood: P.getMaterial('wood_walnut', { color: 0xa6825c, roughness: 0.58, metalness: 0.0, tile: 1.4 }),
+      doorSteel: P.getMaterial('steel_dark_structural', { color: 0x7a8590, roughness: 0.44, metalness: 0.84, tile: 1.6 }),
+      rustRed: P.getMaterial('steel_rusted_corrugated', { color: 0xb8664e, normalScale: 1.15, tile: 2.4 }),
+      rustOlive: P.getMaterial('steel_rusted_corrugated', { color: 0x86906a, normalScale: 1.1, tile: 2.4 }),
+      rustBlue: P.getMaterial('steel_rusted_corrugated', { color: 0x5c7e98, normalScale: 1.1, tile: 2.4 }),
+      wood: P.getMaterial('wood_planks_weathered', { color: 0xc2a27c, roughness: 0.78, tile: 1.8 }),
+      metal: P.getMaterial('steel_dark_structural', { color: 0x9aa2aa, roughness: 0.44, metalness: 0.86, tile: 1.8 }),
+      grate: P.getMaterial('steel_diamond_grate', { color: 0x8b9298, roughness: 0.48, metalness: 0.84, normalScale: 1.2, tile: 1.2 }),
+      crateMil: P.getMaterial('crate_military', { color: 0xb8c89a, roughness: 0.76, metalness: 0.08, tile: 1.1 }),
+      crateMed: P.getMaterial('tile_lab_ceramic', { color: 0xeaf0ec, roughness: 0.36, metalness: 0.08, tile: 1.6 }),
+      crateSup: P.getMaterial('crate_supply', { color: 0xd0b084, roughness: 0.74, metalness: 0.06, tile: 1.1 }),
+      surfaceBank: tx
     };
     _matCache.set('worldSet', set);
     return set;
@@ -488,6 +178,9 @@ window.AshfallRenderer = (() => {
     }
     add(geo, mat, matrix, castShadow = false) {
       if (!geo || !mat || !matrix) return;
+      if (geo.attributes && geo.attributes.uv && !geo.attributes.uv2) {
+        geo.setAttribute('uv2', geo.attributes.uv);
+      }
       const ex = matrix.elements[12];
       const ez = matrix.elements[14];
       const cx = Math.floor(ex / this.cellSize);
@@ -604,32 +297,133 @@ window.AshfallRenderer = (() => {
   }
 
   // --------------------------------------------------------------------------
-  // 5. Unified Single-Pass GPU Post-Processing Pipeline (PS2 + NVG + Rad + UW)
+  // 5. WebGL 2.0 HDR Post-Processing Pipeline (Depth SSAO + Bloom + ACES + CAS)
   // --------------------------------------------------------------------------
   function createRenderPipeline(renderer) {
+    const gl = renderer && renderer.getContext ? renderer.getContext() : null;
+    const isWebGL2 = !!(renderer && renderer.capabilities && renderer.capabilities.isWebGL2);
+    const hasFloatRT = !!(gl && (isWebGL2
+      ? (gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float'))
+      : gl.getExtension('EXT_color_buffer_half_float')));
+    const hasDepthTex = !!(gl && (isWebGL2 || gl.getExtension('WEBGL_depth_texture')));
+    const rtType = (hasFloatRT && THREE.HalfFloatType) ? THREE.HalfFloatType : THREE.UnsignedByteType;
+
     const getScale = () => {
-      const p = (window.GFX_SETTINGS && typeof window.GFX_SETTINGS.pixel === 'number') ? window.GFX_SETTINGS.pixel : 2;
+      const p = (window.GFX_SETTINGS && typeof window.GFX_SETTINGS.pixel === 'number') ? window.GFX_SETTINGS.pixel : 1;
       return Math.max(1, Math.min(3, Math.round(p)));
     };
-    let curScale = getScale();
-    let rtW = Math.max(1, Math.ceil(window.innerWidth / curScale));
-    let rtH = Math.max(1, Math.ceil(window.innerHeight / curScale));
-    const rt = new THREE.WebGLRenderTarget(rtW, rtH, {
-      minFilter: THREE.NearestFilter,
-      magFilter: THREE.NearestFilter,
-      format: THREE.RGBAFormat,
-      depthBuffer: true,
-      stencilBuffer: false
-    });
-    rt.texture.generateMipmaps = false;
+    const computeSize = (s) => {
+      if (s > 1) {
+        return [Math.max(1, Math.ceil(window.innerWidth / s)), Math.max(1, Math.ceil(window.innerHeight / s))];
+      }
+      const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+      return [Math.max(1, Math.round(window.innerWidth * dpr)), Math.max(1, Math.round(window.innerHeight * dpr))];
+    };
 
-    const postScene = new THREE.Scene();
+    let curScale = getScale();
+    let [rtW, rtH] = computeSize(curScale);
+
+    const depthTex = hasDepthTex
+      ? new THREE.DepthTexture(rtW, rtH, THREE.UnsignedIntType || THREE.UnsignedShortType)
+      : null;
+    if (depthTex) {
+      depthTex.minFilter = THREE.NearestFilter;
+      depthTex.magFilter = THREE.NearestFilter;
+      depthTex.generateMipmaps = false;
+    }
+
+    const rtScene = new THREE.WebGLRenderTarget(rtW, rtH, {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      format: THREE.RGBAFormat,
+      type: rtType,
+      depthBuffer: true,
+      stencilBuffer: false,
+      depthTexture: depthTex
+    });
+    rtScene.texture.generateMipmaps = false;
+
+    const bW = Math.max(1, Math.floor(rtW * 0.5));
+    const bH = Math.max(1, Math.floor(rtH * 0.5));
+    const rtBloomA = new THREE.WebGLRenderTarget(bW, bH, {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      format: THREE.RGBAFormat,
+      type: rtType,
+      depthBuffer: false
+    });
+    const rtBloomB = new THREE.WebGLRenderTarget(bW, bH, {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      format: THREE.RGBAFormat,
+      type: rtType,
+      depthBuffer: false
+    });
+
     const postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const quadGeo = new THREE.PlaneGeometry(2, 2);
+
+    // Bloom Extract
+    const bloomExtractMat = new THREE.ShaderMaterial({
+      uniforms: {
+        tDiffuse: { value: rtScene.texture },
+        uThresh: { value: rtType === THREE.HalfFloatType ? 1.05 : 0.84 }
+      },
+      vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }`,
+      fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform float uThresh;
+        varying vec2 vUv;
+        void main() {
+          vec3 c = texture2D(tDiffuse, vUv).rgb;
+          float b = max(c.r, max(c.g, c.b));
+          float soft = clamp((b - (uThresh - 0.18)) / 0.36, 0.0, 1.0);
+          float w = max(smoothstep(uThresh, uThresh + 0.45, b), soft * soft * 0.55);
+          gl_FragColor = vec4(c * w, 1.0);
+        }
+      `,
+      toneMapped: false, depthTest: false, depthWrite: false
+    });
+    const bloomExtractScene = new THREE.Scene();
+    bloomExtractScene.add(new THREE.Mesh(quadGeo, bloomExtractMat));
+
+    // Separable Gaussian Blur for Bloom
+    const bloomBlurMat = new THREE.ShaderMaterial({
+      uniforms: {
+        tDiffuse: { value: rtBloomA.texture },
+        uDir: { value: new THREE.Vector2(1 / bW, 0) }
+      },
+      vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }`,
+      fragmentShader: `
+        uniform sampler2D tDiffuse;
+        uniform vec2 uDir;
+        varying vec2 vUv;
+        void main() {
+          vec3 sum = texture2D(tDiffuse, vUv).rgb * 0.227027;
+          sum += texture2D(tDiffuse, vUv + uDir * 1.384615).rgb * 0.316216;
+          sum += texture2D(tDiffuse, vUv - uDir * 1.384615).rgb * 0.316216;
+          sum += texture2D(tDiffuse, vUv + uDir * 3.230769).rgb * 0.070270;
+          sum += texture2D(tDiffuse, vUv - uDir * 3.230769).rgb * 0.070270;
+          gl_FragColor = vec4(sum, 1.0);
+        }
+      `,
+      toneMapped: false, depthTest: false, depthWrite: false
+    });
+    const bloomBlurScene = new THREE.Scene();
+    bloomBlurScene.add(new THREE.Mesh(quadGeo, bloomBlurMat));
+
+    // Final Photorealistic Composite: Depth SSAO + HDR Bloom + CAS Sharpening + Tarkov/DMZ ACES Filmic Grade + NVG/Rad/UW
     const postMat = new THREE.ShaderMaterial({
       uniforms: {
-        tDiffuse: { value: rt.texture },
+        tDiffuse: { value: rtScene.texture },
+        tDepth: { value: depthTex },
+        tBloom: { value: rtBloomA.texture },
+        uHasDepth: { value: depthTex ? 1.0 : 0.0 },
+        uEnableAO: { value: 1.0 },
+        uEnableBloom: { value: 1.0 },
         uRes: { value: new THREE.Vector2(rtW, rtH) },
         uScale: { value: curScale },
+        uExposure: { value: 1.08 },
         uLevels: { value: 48.0 },
         uDither: { value: 0.75 },
         uNvg: { value: 0.0 },
@@ -646,8 +440,14 @@ window.AshfallRenderer = (() => {
       `,
       fragmentShader: `
         uniform sampler2D tDiffuse;
+        uniform sampler2D tDepth;
+        uniform sampler2D tBloom;
+        uniform float uHasDepth;
+        uniform float uEnableAO;
+        uniform float uEnableBloom;
         uniform vec2 uRes;
         uniform float uScale;
+        uniform float uExposure;
         uniform float uLevels;
         uniform float uDither;
         uniform float uNvg;
@@ -655,27 +455,89 @@ window.AshfallRenderer = (() => {
         uniform float uUnderwater;
         uniform float uTime;
         varying vec2 vUv;
+
         float b2(vec2 a) { a = floor(a); return fract(dot(a, vec2(0.5, a.y * 0.75))); }
         float b4(vec2 a) { return b2(0.5 * a) * 0.25 + b2(a); }
         float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
+
+        vec3 acesFilmic(vec3 x) {
+          float a = 2.51;
+          float b = 0.03;
+          float c = 2.43;
+          float d = 0.59;
+          float e = 0.14;
+          return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
+        }
+
+        float computeSSAO(vec2 uv) {
+          float d0 = texture2D(tDepth, uv).r;
+          if (d0 >= 0.9994 || d0 <= 0.0001) return 1.0;
+          float radPx = mix(4.5, 11.0, 1.0 - smoothstep(0.92, 0.999, d0));
+          vec2 px = radPx / uRes;
+          float rot = hash(gl_FragCoord.xy) * 6.28318;
+          float occ = 0.0;
+          float maxRange = max(0.00035, (1.0 - d0) * 0.16);
+          for (int i = 0; i < 6; i++) {
+            float ang = rot + float(i) * 1.0471975;
+            vec2 off = vec2(cos(ang), sin(ang)) * px * (0.45 + 0.55 * fract(float(i) * 0.618));
+            float ds = texture2D(tDepth, clamp(uv + off, 0.002, 0.998)).r;
+            float diff = d0 - ds;
+            float rangeW = smoothstep(maxRange, 0.0, abs(diff));
+            occ += step(0.00008, diff) * rangeW;
+          }
+          return clamp(1.0 - (occ / 6.0) * 0.42, 0.52, 1.0);
+        }
+
         void main() {
           vec2 uv = vUv;
           if (uUnderwater > 0.01) {
             uv.x += sin(uv.y * 22.0 + uTime * 3.2) * 0.0045 * uUnderwater;
             uv.y += cos(uv.x * 18.0 + uTime * 2.5) * 0.0035 * uUnderwater;
           }
-          vec3 c = texture2D(tDiffuse, clamp(uv, 0.001, 0.999)).rgb * 1.08;
+          uv = clamp(uv, 0.001, 0.999);
+
+          vec3 hdr = texture2D(tDiffuse, uv).rgb;
+          // Subtle Contrast-Adaptive Sharpening (CAS) in native HD mode
+          if (uScale <= 1.01 && uUnderwater < 0.05) {
+            vec2 tx = 1.0 / uRes;
+            vec3 n = texture2D(tDiffuse, uv + vec2(0.0, tx.y)).rgb;
+            vec3 s = texture2D(tDiffuse, uv - vec2(0.0, tx.y)).rgb;
+            vec3 e = texture2D(tDiffuse, uv + vec2(tx.x, 0.0)).rgb;
+            vec3 w = texture2D(tDiffuse, uv - vec2(tx.x, 0.0)).rgb;
+            vec3 avg = (n + s + e + w) * 0.25;
+            hdr = max(vec3(0.0), hdr + (hdr - avg) * 0.22);
+          }
+
+          if (uHasDepth > 0.5 && uEnableAO > 0.5 && uScale <= 1.01) {
+            float ao = computeSSAO(uv);
+            hdr *= mix(1.0, ao, 0.85);
+          }
+
+          if (uEnableBloom > 0.5) {
+            hdr += texture2D(tBloom, uv).rgb * 0.38;
+          }
+
+          // ACES Filmic Tone Mapping + Linear-to-sRGB encoding
+          vec3 c = acesFilmic(hdr * uExposure);
+          c = pow(max(c, vec3(0.0)), vec3(1.0 / 2.2));
+
+          // Optional Retro PS2 Pixelation (OFF by default on Alpha RC 0.2.94+)
           if (uScale > 1.01) {
             float d = b4(gl_FragCoord.xy / max(1.0, uScale)) - 0.5;
             c = floor(clamp(c, 0.0, 1.0) * uLevels + d * uDither) / uLevels;
           }
+
+          // Tarkov / Call of Duty DMZ Cold Steel Atmospheric Grade + Vignette
           float lum = dot(c, vec3(0.299, 0.587, 0.114));
-          c = mix(c, vec3(lum), 0.18);
-          c *= vec3(1.02, 1.0, 0.94);
-          c = clamp((c - 0.5) * 1.08 + 0.5, 0.0, 1.0);
+          c = mix(c, vec3(lum), 0.12);
+          c = c * vec3(1.00, 1.00, 0.98) + vec3(0.005, 0.008, 0.011) * (1.0 - lum);
+          c = clamp((c - 0.5) * 1.05 + 0.5, 0.0, 1.0);
+          float vig = smoothstep(0.95, 0.28, length(vUv - 0.5));
+          c *= mix(0.84, 1.0, vig);
+
           if (uNvg > 0.01) {
-            float nvgLum = pow(clamp(lum * 1.38 + 0.04, 0.0, 1.0), 0.85);
-            float grain = (hash(uv * uRes + fract(uTime * 19.7)) - 0.5) * 0.09;
+            float nvgLum = pow(clamp(lum * 1.42 + 0.04, 0.0, 1.0), 0.85);
+            float grain = (hash(uv * uRes + fract(uTime * 19.7)) - 0.5) * 0.08;
             float scan = 0.96 + 0.04 * sin(gl_FragCoord.y * 1.4);
             float distC = length(vUv - vec2(0.5, 0.5));
             float tube = smoothstep(0.76, 0.42, distC);
@@ -687,34 +549,34 @@ window.AshfallRenderer = (() => {
             c = mix(c, c * vec3(1.08, 1.04, 0.62) + vec3(0.35, 0.42, 0.05) * geiger, uRad * 0.72);
           }
           if (uUnderwater > 0.01) {
-            float vig = smoothstep(0.25, 0.85, length(vUv - 0.5));
-            c = mix(c, c * vec3(0.32, 0.72, 0.86) + vec3(0.02, 0.10, 0.16), uUnderwater * (0.46 + vig * 0.35));
+            float uwVig = smoothstep(0.25, 0.85, length(vUv - 0.5));
+            c = mix(c, c * vec3(0.30, 0.72, 0.88) + vec3(0.02, 0.11, 0.18), uUnderwater * (0.48 + uwVig * 0.35));
           }
+
           gl_FragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
         }
       `,
-      depthTest: false,
-      depthWrite: false
+      toneMapped: false, depthTest: false, depthWrite: false
     });
-    postScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), postMat));
-
-    const needsRT = () => (
-      curScale > 1 ||
-      postMat.uniforms.uNvg.value > 0.01 ||
-      postMat.uniforms.uRad.value > 0.01 ||
-      postMat.uniforms.uUnderwater.value > 0.01
-    );
+    const postScene = new THREE.Scene();
+    postScene.add(new THREE.Mesh(quadGeo, postMat));
 
     const resize = () => {
       curScale = getScale();
-      const s = curScale > 1 ? curScale : 1;
-      rtW = Math.max(1, Math.ceil(window.innerWidth / s));
-      rtH = Math.max(1, Math.ceil(window.innerHeight / s));
-      if (rt.width !== rtW || rt.height !== rtH) {
-        rt.setSize(rtW, rtH);
+      const [nw, nh] = computeSize(curScale);
+      if (nw !== rtW || nh !== rtH) {
+        rtW = nw; rtH = nh;
+        rtScene.setSize(rtW, rtH);
+        const nbW = Math.max(1, Math.floor(rtW * 0.5));
+        const nbH = Math.max(1, Math.floor(rtH * 0.5));
+        rtBloomA.setSize(nbW, nbH);
+        rtBloomB.setSize(nbW, nbH);
       }
       postMat.uniforms.uRes.value.set(rtW, rtH);
       postMat.uniforms.uScale.value = curScale;
+      if (renderer && renderer.toneMappingExposure !== undefined) {
+        postMat.uniforms.uExposure.value = renderer.toneMappingExposure;
+      }
     };
 
     return {
@@ -735,9 +597,16 @@ window.AshfallRenderer = (() => {
       },
       begin() {
         curScale = getScale();
+        const lightingQ = (window.GFX_SETTINGS && typeof window.GFX_SETTINGS.lighting === 'number')
+          ? window.GFX_SETTINGS.lighting : 3;
         postMat.uniforms.uScale.value = curScale;
         postMat.uniforms.uTime.value = performance.now() * 0.001;
-        renderer.setRenderTarget(needsRT() ? rt : null);
+        postMat.uniforms.uEnableAO.value = lightingQ >= 2 ? 1.0 : 0.0;
+        postMat.uniforms.uEnableBloom.value = lightingQ >= 2 ? 1.0 : 0.0;
+        if (renderer && renderer.toneMappingExposure !== undefined) {
+          postMat.uniforms.uExposure.value = renderer.toneMappingExposure;
+        }
+        renderer.setRenderTarget(rtScene);
         renderer.autoClear = false;
         renderer.clear();
       },
@@ -747,11 +616,31 @@ window.AshfallRenderer = (() => {
         renderer.render(sc, cam);
       },
       end() {
-        if (needsRT()) {
-          renderer.setRenderTarget(null);
+        const lightingQ = (window.GFX_SETTINGS && typeof window.GFX_SETTINGS.lighting === 'number')
+          ? window.GFX_SETTINGS.lighting : 3;
+        if (lightingQ >= 2) {
+          renderer.setRenderTarget(rtBloomA);
           renderer.clear();
-          renderer.render(postScene, postCam);
+          renderer.render(bloomExtractScene, postCam);
+
+          const bTexW = Math.max(1, rtBloomA.width);
+          const bTexH = Math.max(1, rtBloomA.height);
+          bloomBlurMat.uniforms.tDiffuse.value = rtBloomA.texture;
+          bloomBlurMat.uniforms.uDir.value.set(1.35 / bTexW, 0);
+          renderer.setRenderTarget(rtBloomB);
+          renderer.clear();
+          renderer.render(bloomBlurScene, postCam);
+
+          bloomBlurMat.uniforms.tDiffuse.value = rtBloomB.texture;
+          bloomBlurMat.uniforms.uDir.value.set(0, 1.35 / bTexH);
+          renderer.setRenderTarget(rtBloomA);
+          renderer.clear();
+          renderer.render(bloomBlurScene, postCam);
         }
+
+        renderer.setRenderTarget(null);
+        renderer.clear();
+        renderer.render(postScene, postCam);
       }
     };
   }
@@ -759,6 +648,7 @@ window.AshfallRenderer = (() => {
   return {
     GeoPool,
     InstancedPropBatcher,
+    configureRenderer,
     getEnvMap,
     getSurfaceBank,
     getWorldMaterialSet,
