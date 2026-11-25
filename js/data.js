@@ -3,15 +3,15 @@
 // Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
 // With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'Alpha RC 0.2.99',
+  VERSION: 'Alpha RC 0.3.0',
   VERSION_INFO: {
     major: 0,
-    minor: 2,
-    patch: 99,
+    minor: 3,
+    patch: 0,
     channel: 'Alpha', // Alpha | Beta — never blank while major === 0
     stage: 'RC',     // RC = Release Candidate
     updated: 'Nov 24, 2026',
-    changelog: 'HK MP7A1 Compact Proportions & Grip-Mag Alignment Overhaul: shortened monolithic receiver from 380mm to 294mm, increased receiver height for authentic 4.9:1 compact PDW silhouette, tucked factory twin-strut PDW stock (374.5mm compact OAL), pulled optics/sights/foregrip & charging handle proportionally forward, rebuilt straight coaxial 4.6x30mm box magazine & parallel-walled -0.14 rad raked pistol grip with hollow magwell funnel to eliminate grip clipping across the full reload stroke; + Prior Alpha RC 0.2.98 HK MP7A1 PDW, Colt M4A1 Carbine & 720p PBR Remaster.',
+    changelog: 'Vostok City Overhaul (Al-Mazrah City Inspired): rebuilt Vostok City spanning across both banks of RIVER_B (F2-G3) with concrete canal quay seawalls, riverside promenades, 4 canal water-egress stairs, 3 cross-river avenue bridges plus a raised steel pedestrian tactical footbridge, the 5-level walkable Highrise Skyscraper + 3F Skybridge + Rooftop Helipad, Municipal 2-Deck Parking Garage framing Z9 A/1, Fortified Diplomatic Embassy, Police Precinct, Bank of Vostok, Eastern Elevated Highway Viaduct, and a full West Bank District featuring Grand Riverfront Hotel, Channel-7 Broadcast Studio, Pharmacy & Waterfront Apartments.',
     get semver() { return `${this.major}.${this.minor}.${this.patch}`; },
     get label() { return `${this.channel} ${this.stage} ${this.major}.${this.minor}.${this.patch}`; }
   },

@@ -7780,6 +7780,33 @@ class GameUI {
       const pBR = toMap(251, 486);
       ctx.fillStyle = '#8b949a';
       ctx.fillRect(pTL.x, pTL.y, pBR.x - pTL.x, pBR.y - pTL.y);
+
+      // Al-Mazrah-Inspired Vostok City Urban Block Silhouettes across both banks of RIVER_B (F2-G3)
+      const drawCityFootprint = (wx, wz, ww, wd, fill = '#5b646a', stroke = 'rgba(218, 226, 232, 0.45)') => {
+        const bTL = toMap(wx - ww * 0.5, wz - wd * 0.5);
+        const bBR = toMap(wx + ww * 0.5, wz + wd * 0.5);
+        ctx.fillStyle = fill;
+        ctx.fillRect(bTL.x, bTL.y, Math.max(1.5, bBR.x - bTL.x), Math.max(1.5, bBR.y - bTL.y));
+        if (stroke) {
+          ctx.strokeStyle = stroke;
+          ctx.lineWidth = 0.85;
+          ctx.strokeRect(bTL.x, bTL.y, Math.max(1.5, bBR.x - bTL.x), Math.max(1.5, bBR.y - bTL.y));
+        }
+      };
+      drawCityFootprint(268, -372, 26, 22, '#69737b', 'rgba(255, 202, 40, 0.65)'); // Vostok Highrise Tower
+      drawCityFootprint(298, -372, 16, 18, '#626b72'); // Highrise East Annex
+      drawCityFootprint(285.5, -372, 9, 4.4, '#7d8890'); // 3F Glazed Skybridge
+      drawCityFootprint(212, -409, 22, 16, '#576066'); // Parking Structure
+      drawCityFootprint(291, -322, 18, 16, '#6e777d'); // Diplomatic Embassy Chancery
+      drawCityFootprint(254, -282, 20, 14, '#44596b'); // Police Precinct
+      drawCityFootprint(290, -282, 20, 14, '#5e666a'); // Bank of Vostok
+      drawCityFootprint(329, -342, 11, 112, '#687178'); // East Ring Elevated Viaduct
+      drawCityFootprint(123, -325, 16, 22, '#6a5753'); // West Bank Grand Hotel
+      drawCityFootprint(87, -322, 20, 18, '#4e606e');  // Channel-7 Broadcast Studio
+      drawCityFootprint(123, -364, 16, 13, '#636c70'); // West Canal Pharmacy & Bank
+      drawCityFootprint(121, -282, 18, 13, '#5d6366'); // South Waterfront Apartments
+      drawCityFootprint(87, -282, 18, 12, '#665b55');  // West Mechanic / Cafe
+      drawCityFootprint(166, -324, 50, 4.4, '#88949c'); // Pedestrian River Footbridge
     }
 
     // 3b. Northern Dam Concrete Structure in E2

@@ -94,10 +94,16 @@ class WastelandWorld {
       [-520, -240, -438, -388, 9],    // Compound Delta (B3) -> Quarry West Rim (C2)
       [-362, -395, -232, -395, 10],   // Quarry East Rim (C2) -> Compound Bravo (D2)
       [-232, -395, -172, -408, 10],   // Compound Bravo (D2) -> Northern Dam West Abutment (E2)
-      [88, -408, 248, -368, 10],      // Northern Dam East Abutment -> Vostok City Center (G2, crosses City River Bridge!)
-      [242, -485, 248, -368, 9],      // Compound Alpha (G1.5) -> Vostok City Center (G2)
-      [118, -352, 215, -352, 9],      // Vostok City West Bank -> East City Plaza Bridge
-      [248, -368, 252, -225, 10],     // Vostok City Center (G2) -> S. Vostok Industrial (G3)
+      [88, -408, 214, -392, 10],      // Northern Dam East Abutment -> Vostok City North Canal Bridge
+      [214, -392, 316, -392, 10],     // Vostok City North Avenue (Parking Garage -> Highrise -> East Ring)
+      [242, -485, 316, -416, 9],      // Compound Alpha (G1.5) -> Vostok City East Ring Highway
+      [316, -416, 316, -276, 11],     // Vostok City East Ring Highway Corridor
+      [316, -276, 252, -225, 10],     // Vostok City East Ring -> S. Vostok Industrial (G3)
+      [232, -412, 232, -276, 10],     // East Bank Downtown Boulevard (N-S arterial)
+      [106, -368, 106, -276, 9],      // West Bank Riverfront Commercial Ave (N-S arterial)
+      [84, -348, 316, -348, 11],      // Central Grand Boulevard Bridge (West Bank -> River -> Highrise -> East Ring)
+      [84, -298, 316, -298, 10],      // South Embassy & Broadcast Bridge (Channel-7 -> River -> City Hall -> Embassy)
+      [232, -276, 252, -225, 10],     // Downtown South Blvd -> S. Vostok Industrial (G3)
       [252, -225, 248, -75, 10],      // S. Vostok Industrial (G3) -> East Strip-Town (G4)
       [248, -75, 402, 80, 9],         // East Strip-Town (G4) -> Compound Charlie (H5)
       [248, -75, 95, 85, 10],         // East Strip-Town (G4) -> Superstore (F5)
@@ -127,8 +133,14 @@ class WastelandWorld {
       { x:   95, z:  85,  r: 40, h: 3.8 },  // Vostok Superstore (F5)
       { x:  245, z: 408,  r: 36, h: 2.1 },  // Cruise Terminal on Southern Beach (G7)
       { x: -375, z: 372,  r: 28, h: 12.8 }, // Coastal Lighthouse Sea-Cliff Promontory (C7)
-      { x:  248, z: -368, r: 44, h: 6.8 },  // Vostok City Center East Plaza (G2)
-      { x:  118, z: -355, r: 22, h: 6.4 },  // Vostok City West Riverbank Block
+      { x:  254, z: -368, r: 54, h: 6.8 },  // Vostok City Downtown & Highrise North Core (G2 East Bank)
+      { x:  214, z: -404, r: 24, h: 6.8 },  // Vostok City North Municipal Parking Garage & North Bridge Plaza
+      { x:  264, z: -304, r: 46, h: 6.8 },  // Vostok City Embassy, Precinct & Civic South District (G2 East Bank)
+      { x:  318, z: -346, r: 38, h: 6.8 },  // Vostok City East Ring Highway Viaduct Corridor (G2/H2)
+      { x:  328, z: -394, r: 24, h: 6.8 },  // Vostok City East Ring Viaduct North Ramp
+      { x:  328, z: -292, r: 24, h: 6.8 },  // Vostok City East Ring Viaduct South Ramp
+      { x:  114, z: -346, r: 28, h: 6.6 },  // Vostok City West Canal Commercial & Hotel Block (F2 West Bank)
+      { x:  102, z: -296, r: 34, h: 6.6 },  // Vostok City West Channel-7 Broadcast & Waterfront Market (F2/F3 West Bank)
       { x:  252, z: -225, r: 38, h: 5.8 },  // South Vostok Industrial Construction (G3)
       // 6 Guarded Military Compounds (Alpha - Foxtrot)
       { x:  242, z: -485, r: 32, h: 10.6 }, // Compound Alpha (G1.5)
@@ -920,11 +932,24 @@ class WastelandWorld {
         const dist = Math.hypot(dx, dz);
         const outer = pad.r + 24;
         if (dist < outer) {
-          if (dist <= pad.r) return pad.h;
+          if (dist <= pad.r) { h = pad.h; break; }
           const t = (dist - pad.r) / (outer - pad.r);
           const blend = t * t * (3 - 2 * t);
           h = pad.h * (1 - blend) + h * blend;
         }
+      }
+    }
+
+    // 4. Preserve carved river channels (RIVER_A / RIVER_B) so nearby city pads never fill in the canal bed
+    const riverCarvedH = Math.min(hA, hB);
+    const rMargin = Math.min(rA.margin, rB.margin);
+    if (rMargin < 9.0) {
+      if (rMargin <= 0.4) {
+        h = Math.min(h, riverCarvedH);
+      } else {
+        const rt = (rMargin - 0.4) / 8.6;
+        const rSmooth = rt * rt * (3 - 2 * rt);
+        h = Math.min(h, riverCarvedH * (1 - rSmooth) + h * rSmooth);
       }
     }
     return h;
@@ -4591,70 +4616,618 @@ class WastelandWorld {
       this.pois.push({ name: 'LIGHTHOUSE', x: cx, z: cz, color: '#ffee58', threat: 'low' });
     }
 
-    // 7. VOSTOK CITY CENTER (G2: 248, -368) — 3-Story Brutalist Command Tower, L-Shape Arcade Apartments & Obelisk Plaza
+    // 7. VOSTOK CITY — AL-MAZRAH-INSPIRED METROPOLITAN CORE SPANNING BOTH BANKS OF RIVER_B (F2–G3)
     {
-      const cx = 248, cz = -368;
-      const cy = this.getTerrainHeight(cx, cz);
-      const hqx = cx + 10, hqz = cz - 10;
-      const hqY = this.getTerrainHeight(hqx, hqz);
-      const f1H = 4.2, f2H = 4.0;
-      const f2Base = hqY + f1H;
-      const f3Base = f2Base + f2H;
-      this.bossSpawnPos = new THREE.Vector3(hqx - 3.0, f2Base + 0.30, hqz + 2.5);
-      this.bossGuardSpawns = [
-        new THREE.Vector3(hqx + 4.0, hqY + 0.25, hqz + 3.0),
-        new THREE.Vector3(cx - 6.0, cy + 0.25, cz + 6.0),
-        new THREE.Vector3(hqx - 3.0, f2Base + 0.30, hqz - 3.5)
-      ];
-      this._addBuilding(hqx, hqz, 22, 18, f1H + f2H, 'west', this._materials.bossDark, (by) => {
-        this._addPartition(hqx + 2.0, hqz - 9.0, hqx + 2.0, hqz - 1.0, by, f1H, [
-          { at: hqz - 5.0, w: 1.8, door: 'steel', label: 'Command Armory Door' }
+      const conc = this._materials.concrete;
+      const darkConc = this._materials.darkConcrete;
+      const bossMat = this._materials.bossDark;
+      const whiteMat = this._materials.whiteWall;
+      const brickMat = this._materials.fireRed;
+      const policeMat = this._materials.policeNavy;
+      const plasterMat = this._materials.interiorPlaster;
+      const tileMat = this._materials.floorTile;
+      const metalMat = this._materials.metal;
+      const grateMat = this._materials.grate || metalMat;
+      const winGlass = this._materials.windowGlass;
+      const winFrame = this._materials.windowFrame;
+      const hazardMat = this._materials.hazardAmber;
+
+      // Helper: query RIVER_B centerline X, halfW, and waterY at any Z in the Vostok City corridor
+      const sampleRiverBAtZ = (z) => {
+        const pts = this._riverB.pts;
+        const cum = this._riverB.cumLen;
+        const tot = this._riverB.totalLen;
+        for (let i = 0; i < pts.length - 1; i++) {
+          const az = pts[i][1], bz = pts[i + 1][1];
+          if ((z >= az && z <= bz) || (z <= az && z >= bz)) {
+            const dz = (bz - az) || 1;
+            const t = THREE.MathUtils.clamp((z - az) / dz, 0, 1);
+            const rx = pts[i][0] + (pts[i + 1][0] - pts[i][0]) * t;
+            const hw = (pts[i][2] || 18) + ((pts[i + 1][2] || 18) - (pts[i][2] || 18)) * t;
+            const s = (cum[i] + t * (cum[i + 1] - cum[i])) / tot;
+            return { x: rx, hw, waterY: this._riverWaterYB(s) };
+          }
+        }
+        return { x: 168, hw: 18, waterY: 3.0 };
+      };
+
+      // Helper: hollow curtain-wall story shell with corner mega-piers, sill spandrels & open firing bays
+      const addTowerStoryShell = (cx, yBot, cz, w, d, h, wallMat, opts = {}) => {
+        const t = 0.45;
+        const sillH = 1.05;
+        const headerH = 0.85;
+        const openSouth = opts.openSouth || null;
+        const openEast = opts.openEast || null;
+        const openWest = opts.openWest || null;
+        const openNorth = opts.openNorth || null;
+
+        // Corner structural mega-columns
+        for (const sx of [-1, 1]) {
+          for (const sz of [-1, 1]) {
+            this._addBox(cx + sx * (w * 0.5), yBot + h * 0.5, cz + sz * (d * 0.5), 1.15, h, 1.15, bossMat, true);
+          }
+        }
+
+        const buildFace = (isHoriz, fixedCoord, span, winOpen, doorGap) => {
+          if (doorGap) {
+            // Solid floor with doorway gap
+            const dw = doorGap.w || 2.2;
+            const sideL = (span - dw) * 0.5;
+            const linH = Math.max(0.35, h - 2.65);
+            if (isHoriz) {
+              this._addBox(cx - (dw * 0.5 + sideL * 0.5), yBot + h * 0.5, fixedCoord, sideL, h, t, wallMat, true);
+              this._addBox(cx + (dw * 0.5 + sideL * 0.5), yBot + h * 0.5, fixedCoord, sideL, h, t, wallMat, true);
+              this._addBox(cx, yBot + 2.65 + linH * 0.5, fixedCoord, dw, linH, t, wallMat, true);
+              this._addDoor(cx, yBot + 0.08, fixedCoord, dw, 2.62, 0, doorGap.label || 'Tower Entrance', 'steel');
+            } else {
+              this._addBox(fixedCoord, yBot + h * 0.5, cz - (dw * 0.5 + sideL * 0.5), t, h, sideL, wallMat, true);
+              this._addBox(fixedCoord, yBot + h * 0.5, cz + (dw * 0.5 + sideL * 0.5), t, h, sideL, wallMat, true);
+              this._addBox(fixedCoord, yBot + 2.65 + linH * 0.5, cz, t, linH, dw, wallMat, true);
+              this._addDoor(fixedCoord, yBot + 0.08, cz, dw, 2.62, Math.PI / 2, doorGap.label || 'Tower Entrance', 'steel');
+            }
+            return;
+          }
+          if (winOpen && winOpen.fullOpen) {
+            // Skybridge portal archway: side piers + upper header only
+            const ow = winOpen.w || 4.0;
+            const sideL = Math.max(0.5, (span - ow) * 0.5);
+            const portalLinH = Math.max(0.4, h - 2.9);
+            if (isHoriz) {
+              this._addBox(cx - (ow * 0.5 + sideL * 0.5), yBot + h * 0.5, fixedCoord, sideL, h, t, wallMat, true);
+              this._addBox(cx + (ow * 0.5 + sideL * 0.5), yBot + h * 0.5, fixedCoord, sideL, h, t, wallMat, true);
+              this._addBox(cx, yBot + 2.9 + portalLinH * 0.5, fixedCoord, ow, portalLinH, t, wallMat, true);
+            } else {
+              this._addBox(fixedCoord, yBot + h * 0.5, cz - (ow * 0.5 + sideL * 0.5), t, h, sideL, wallMat, true);
+              this._addBox(fixedCoord, yBot + h * 0.5, cz + (ow * 0.5 + sideL * 0.5), t, h, sideL, wallMat, true);
+              this._addBox(fixedCoord, yBot + 2.9 + portalLinH * 0.5, cz, t, portalLinH, ow, wallMat, true);
+            }
+            return;
+          }
+          // Upper-floor glazed curtain wall: waist-high sill + top header + center pier + alternating glass/open bays
+          if (isHoriz) {
+            this._addBox(cx, yBot + sillH * 0.5, fixedCoord, span, sillH, t, wallMat, true);
+            this._addBox(cx, yBot + h - headerH * 0.5, fixedCoord, span, headerH, t, wallMat, true);
+            this._addBox(cx, yBot + h * 0.5, fixedCoord, 0.9, h, t + 0.1, bossMat, true);
+            const mullH = Math.max(0.6, h - sillH - headerH);
+            this._addDecor(cx - span * 0.25, yBot + sillH + mullH * 0.5, fixedCoord, 0.14, mullH, 0.14, winFrame);
+            this._addDecor(cx + span * 0.25, yBot + sillH + mullH * 0.5, fixedCoord, 0.14, mullH, 0.14, winFrame);
+            this._addDecor(cx - span * 0.25, yBot + sillH + mullH * 0.5, fixedCoord, span * 0.32, mullH * 0.92, 0.08, winGlass);
+          } else {
+            this._addBox(fixedCoord, yBot + sillH * 0.5, cz, t, sillH, span, wallMat, true);
+            this._addBox(fixedCoord, yBot + h - headerH * 0.5, cz, t, headerH, span, wallMat, true);
+            this._addBox(fixedCoord, yBot + h * 0.5, cz, t + 0.1, h, 0.9, bossMat, true);
+            const mullH = Math.max(0.6, h - sillH - headerH);
+            this._addDecor(fixedCoord, yBot + sillH + mullH * 0.5, cz - span * 0.25, 0.14, mullH, 0.14, winFrame);
+            this._addDecor(fixedCoord, yBot + sillH + mullH * 0.5, cz + span * 0.25, 0.14, mullH, 0.14, winFrame);
+            this._addDecor(fixedCoord, yBot + sillH + mullH * 0.5, cz + span * 0.25, 0.08, mullH * 0.92, span * 0.32, winGlass);
+          }
+        };
+
+        buildFace(true, cz - d * 0.5, w, openNorth, opts.doorNorth || null);
+        buildFace(true, cz + d * 0.5, w, openSouth, opts.doorSouth || null);
+        buildFace(false, cx - w * 0.5, d, openWest, opts.doorWest || null);
+        buildFace(false, cx + w * 0.5, d, openEast, opts.doorEast || null);
+      };
+
+      // =======================================================================
+      // A. URBAN CANAL QUAY WALLS, PROMENADES & 4 WATER-EGRESS STAIRS (z -414..-274)
+      // =======================================================================
+      for (let zSeg = -414; zSeg < -274; zSeg += 12) {
+        const zc = zSeg + 6;
+        // Keep the 3 vehicular bridge approaches open so asphalt bridge decks transition smoothly!
+        if (Math.abs(zc - (-398)) < 11.0 || Math.abs(zc - (-348)) < 9.5 || Math.abs(zc - (-298)) < 9.5) continue;
+        const sR = sampleRiverBAtZ(zc);
+        const wBankX = sR.x - sR.hw - 0.6;
+        const eBankX = sR.x + sR.hw + 0.6;
+        const seaBot = sR.waterY - 1.6;
+
+        // West Canal Seawall + Promenade Deck (y = 6.6m)
+        const wWallH = 6.6 - seaBot;
+        this._addBox(wBankX, seaBot + wWallH * 0.5, zc, 1.2, wWallH, 12.2, darkConc, true);
+        this._addBox(wBankX - 5.1, 6.6 - 0.25, zc, 9.4, 0.50, 12.2, conc, true);
+
+        // East Canal Seawall + Promenade Deck (y = 6.8m)
+        const eWallH = 6.8 - seaBot;
+        this._addBox(eBankX, seaBot + eWallH * 0.5, zc, 1.2, eWallH, 12.2, darkConc, true);
+        this._addBox(eBankX + 5.1, 6.8 - 0.25, zc, 9.4, 0.50, 12.2, conc, true);
+
+        // Waist-high canal quay parapets (leaving openings at the z=-324 footbridge and water stairs)
+        const isFootOrStairGap = (Math.abs(zc - (-324)) < 7.5 || Math.abs(zc - (-372)) < 5.5);
+        if (!isFootOrStairGap) {
+          this._addBox(wBankX + 0.15, 6.6 + 0.45, zc, 0.45, 0.90, 12.0, conc, true);
+          this._addBox(eBankX - 0.15, 6.8 + 0.45, zc, 0.45, 0.90, 12.0, conc, true);
+        }
+        if (zSeg % 24 === -414 % 24) {
+          addFloodlight(wBankX - 2.2, zc, Math.PI / 2, 8.2, 0xfff0cc);
+          addFloodlight(eBankX + 2.2, zc, -Math.PI / 2, 8.2, 0xfff0cc);
+        }
+      }
+
+      // 4 Canal Water-Egress Staircases so swimmers can climb onto either riverbank promenade!
+      const buildCanalWaterStairs = (x, zStart, topY, waterY, landingX) => {
+        const footBase = waterY - 0.35;
+        this._addBox(x, footBase - 0.35, zStart + 1.2, 2.8, 0.70, 2.6, darkConc, true);
+        addStaircase(x, footBase, zStart, 17, 2.4, topY - footBase, 8.8, 'north');
+        this._addBox((x + landingX) * 0.5, topY - 0.25, zStart - 10.1, Math.abs(landingX - x) + 2.8, 0.50, 3.0, conc, true);
+      };
+      buildCanalWaterStairs(150.6, -365.5, 6.6, sampleRiverBAtZ(-366).waterY, 147.8); // West North canal stairs
+      buildCanalWaterStairs(147.6, -310.0, 6.6, sampleRiverBAtZ(-312).waterY, 144.8); // West South canal stairs
+      buildCanalWaterStairs(184.8, -365.5, 6.8, sampleRiverBAtZ(-366).waterY, 187.8); // East North canal stairs
+      buildCanalWaterStairs(181.2, -310.0, 6.8, sampleRiverBAtZ(-312).waterY, 184.4); // East South canal stairs
+
+      // =======================================================================
+      // B. CROSS-RIVER BRIDGE SUPERSTRUCTURES + RAISED PEDESTRIAN FOOTBRIDGE
+      // =======================================================================
+      // 1. Central Grand Boulevard Bridge Portal Arches & Jersey Cover (z = -348)
+      const cBr = sampleRiverBAtZ(-348);
+      const cDeckY = cBr.waterY + 1.08;
+      for (const px of [cBr.x - 16, cBr.x + 16]) {
+        this._addBox(px, cDeckY + 2.8, -353.6, 0.85, 5.6, 0.85, bossMat, true);
+        this._addBox(px, cDeckY + 2.8, -342.4, 0.85, 5.6, 0.85, bossMat, true);
+        this._addBox(px, cDeckY + 5.75, -348.0, 0.95, 0.85, 12.2, metalMat, false);
+      }
+      this._addBox(cBr.x - 4, cDeckY + 0.55, -353.3, 18.0, 1.05, 0.55, conc, true);
+      this._addBox(cBr.x + 4, cDeckY + 0.55, -342.7, 18.0, 1.05, 0.55, conc, true);
+      addFloodlight(cBr.x - 15, -354.5, 0, 9.0, 0xfff0cc);
+      addFloodlight(cBr.x + 15, -341.5, Math.PI, 9.0, 0xfff0cc);
+
+      // 2. Raised Steel Pedestrian Footbridge (z = -324, x = 141..191, deckY = 7.45m)
+      const fBrY = 7.45;
+      this._addBox(166.0, fBrY - 0.22, -324.0, 50.0, 0.44, 4.4, grateMat, true);
+      this._addBox(166.0, fBrY + 0.55, -326.05, 49.0, 1.05, 0.30, metalMat, true);
+      this._addBox(166.0, fBrY + 0.55, -321.95, 49.0, 1.05, 0.30, metalMat, true);
+      for (const fpX of [154.0, 178.0]) {
+        const pierBot = sampleRiverBAtZ(-324).waterY - 1.5;
+        this._addBox(fpX, (pierBot + fBrY - 0.44) * 0.5, -324.0, 1.4, fBrY - 0.44 - pierBot, 4.0, darkConc, true);
+      }
+      addStaircase(137.4, 6.6, -324.0, 4, 3.8, fBrY - 6.6, 3.6, 'east');
+      addStaircase(194.6, 6.8, -324.0, 4, 3.8, fBrY - 6.8, 3.6, 'west');
+
+      // =======================================================================
+      // C. EAST BANK DISTRICT: HIGHRISE, SKYBRIDGE, PARKING, EMBASSY, POLICE, BANK & VIADUCT
+      // =======================================================================
+      const eastY = 6.8;
+
+      // 1. THE HIGHRISE — 5-Level Twin-Stepped Skyscraper (x = 268, z = -372, 26m x 22m)
+      {
+        const hx = 268, hz = -372;
+        const hy = this.getTerrainHeight(hx, hz);
+        const f1H = 4.4, f2H = 4.2, f3H = 4.2, f4H = 4.2;
+        const y2 = hy + f1H;
+        const y3 = y2 + f2H;
+        const y4 = y3 + f3H;
+        const y5Roof = y4 + f4H;
+
+        // Ground Floor Foundation + Tile Floor
+        this._addBox(hx, hy - 0.45, hz, 26.8, 0.9, 22.8, darkConc, false);
+        this._addBox(hx, hy + 0.08, hz, 25.6, 0.16, 21.6, tileMat, false);
+
+        // Exterior Stories (1F Lobby with West/South doors, 2F–4F curtain wall + 3F East Skybridge Arch)
+        addTowerStoryShell(hx, hy, hz, 26, 22, f1H, bossMat, {
+          doorWest: { w: 2.4, label: 'Highrise West Lobby' },
+          doorSouth: { w: 2.4, label: 'Highrise Main Entrance' }
+        });
+        addTowerStoryShell(hx, y2, hz, 26, 22, f2H, conc, {});
+        addTowerStoryShell(hx, y3, hz, 26, 22, f3H, conc, { openEast: { fullOpen: true, w: 4.4 } });
+        addTowerStoryShell(hx, y4, hz, 26, 22, f4H, bossMat, {});
+
+        // Slabs for 2F, 3F, 4F, and 5F Roof leaving NE stairwell bay (x 269.5..280.6, z -382.6..-374.0) OPEN!
+        const addTowerSlab = (yTop) => {
+          this._addBox(262.4, yTop - 0.16, hz, 14.2, 0.32, 21.4, darkConc, true);        // West section (x 255.3..269.5)
+          this._addBox(275.1, yTop - 0.16, -367.65, 11.2, 0.32, 12.7, darkConc, true);   // SE section (x 269.5..280.7, z -374..-361.3)
+        };
+        addTowerSlab(y2);
+        addTowerSlab(y3);
+        addTowerSlab(y4);
+        addTowerSlab(y5Roof);
+
+        // Stacked Double-Helix Interior Stairwell in NE Bay (x 269.5..280.6, z -382.2..-374.0)
+        // East Landing at y1 (connects south to 1F Lobby), West Landing at y2/y4, East Landing at y3/y5Roof
+        this._addBox(279.6, hy + 0.08, -378.1, 2.2, 0.16, 8.2, metalMat, true);
+        addStaircase(278.6, hy + 0.12, -380.1, 16, 2.3, f1H - 0.12, 8.2, 'west');
+        this._addBox(269.0, y2 - 0.16, -378.2, 3.2, 0.32, 7.6, metalMat, true);        // 2F West stairwell landing
+        addStaircase(270.6, y2, -376.3, 16, 2.3, f2H, 8.2, 'east');
+        this._addBox(279.6, y3 - 0.16, -377.4, 2.2, 0.32, 8.8, metalMat, true);        // 3F East stairwell landing -> joins SE slab at z=-374
+        addStaircase(278.6, y3, -380.1, 16, 2.3, f3H, 8.2, 'west');
+        this._addBox(269.0, y4 - 0.16, -378.2, 3.2, 0.32, 7.6, metalMat, true);        // 4F West stairwell landing
+        addStaircase(270.6, y4, -376.3, 16, 2.3, f4H, 8.2, 'east');
+        this._addBox(279.6, y5Roof - 0.16, -377.4, 2.2, 0.32, 8.8, metalMat, true);    // 5F Roof landing -> joins Roof slab at z=-374
+
+        // 1F Lobby Reception + Key-Locked Highrise Armory Vault (SW quadrant)
+        this._addPartition(hx - 2.5, hz - 10.6, hx - 2.5, hz - 2.5, hy, f1H, [
+          { at: hz - 6.5, w: 1.8, door: 'steel', label: 'Highrise Security Vault' }
         ]);
-        this._addPartition(hqx + 2.0, hqz - 1.0, hqx + 11.0, hqz - 1.0, by, f1H, []);
-        this._addLootContainer(hqx + 6.8, 0.16, hqz - 5.2, 'boss_key_room', 'Vostok Command Vault [KEY ROOM]', 'boss_key');
-        this._addBox(hqx + 3.2, f2Base - 0.15, hqz, 15.2, 0.32, 17.4, this._materials.darkConcrete, true);
-        addStaircase(hqx - 6.8, by + 0.16, hqz + 6.8, 16, 2.4, f1H - 0.16, 10.5, 'north');
-        // Second flight up to Accessible 3F Sandbagged Roof Sniper Deck!
-        addStaircase(hqx + 8.5, f2Base + 0.04, hqz - 7.0, 16, 2.2, f2H + 0.2, 10.5, 'south');
-        addDeskProp(hqx + 5.5, f2Base + 0.02, hqz + 4.2);
-      });
-      // 3F Command Tower Rooftop Parapet Walls & Sandbags
-      this._addBox(hqx, f3Base + 0.65, hqz - 8.8, 22.0, 1.0, 0.45, this._materials.darkConcrete, true);
-      this._addBox(hqx, f3Base + 0.65, hqz + 8.8, 22.0, 1.0, 0.45, this._materials.darkConcrete, true);
-      this._addSignBoard(hqx - 11.4, hqY + 5.4, hqz, 8.6, 2.4, -Math.PI / 2, {
-        title: 'VOSTOK CITY',
-        sub: 'MUNICIPAL COMMAND // RESTRICTED',
-        bg: '#1c1818',
-        accent: '#ffc107'
-      });
-      this._addLootContainer(hqx + 6.5, f1H + 0.04, hqz + 5.8, 'valuables', 'Commander Warlord Safe');
-      this._addLootContainer(hqx - 5.0, f1H + f2H + 0.35, hqz + 2.0, 'military', '3F Rooftop Sniper Case');
-      this._addGunLocker(hqx - 2.0, hqz - 7.2, 0, 'military', 'Garrison HQ Gun Locker');
+        this._addPartition(hx - 12.6, hz - 2.5, hx - 2.5, hz - 2.5, hy, f1H, []);
+        this._addBox(hx + 3.5, hy + 0.58, hz + 3.5, 5.2, 1.0, 1.2, darkConc, true);
+        addDeskProp(hx + 3.5, hy + 0.16, hz + 1.2);
+        this._addLootContainer(hx - 8.2, 0.16, hz - 6.8, 'boss_key_room', 'Vostok Highrise Vault [KEY ROOM]', 'boss_key');
+        this._addGunLocker(hx - 1.5, hz + 8.6, 0, 'military', 'Tower Lobby Security Locker');
+        this._addWallFirstAidKit(hx + 6.5, hz + 10.5, 'north', 'Tower Lobby Triage Kit');
 
-      // 2-Story Apartment Block
-      this._addBuilding(cx - 12, cz + 14, 18, 13, 7.8, 'north', this._materials.concrete, (by, bh) => {
-        this._addPartition(cx - 12, cz + 7.5, cx - 12, cz + 20.5, by, 4.0, [
-          { at: cz + 14, w: 1.7, door: 'wood', label: 'Apartment Hallway' }
+        // 2F & 3F Office Suites + Interior Cover
+        addDeskProp(hx - 6.5, y2 + 0.02, hz - 4.5);
+        addDeskProp(hx - 6.5, y2 + 0.02, hz + 4.5);
+        this._addLootContainer(hx - 9.2, (y2 - hy) + 0.02, hz - 6.5, 'office', '2F Corporate Archive Cabinet');
+        this._addLootContainer(hx + 6.5, (y2 - hy) + 0.02, hz + 6.2, 'valuables', '2F Executive Boardroom Safe');
+        addDeskProp(hx - 5.5, y3 + 0.02, hz + 4.5);
+        this._addLootContainer(hx - 8.5, (y3 - hy) + 0.02, hz + 6.5, 'office', '3F Skybridge Operations Cabinet');
+        this._addLootContainer(hx + 6.2, (y3 - hy) + 0.02, hz + 7.2, 'military', '3F Recon Overwatch Case');
+
+        // 4F Command Penthouse (Boss & Guard Arena!)
+        this._addBox(hx - 6.0, y4 + 0.65, hz + 4.5, 4.2, 1.3, 1.0, darkConc, true);
+        this._addLootContainer(hx - 8.8, (y4 - hy) + 0.02, hz - 6.8, 'valuables', '4F Penthouse Director Safe');
+        this._addLootContainer(hx + 6.4, (y4 - hy) + 0.02, hz + 6.2, 'military', '4F Command Munitions Case');
+
+        // 5F Rooftop Helipad + Parapet Cover + Elevator Penthouse + 13m Aviation Comms Spire
+        this._addBox(hx, y5Roof + 0.50, hz - 10.8, 25.8, 1.0, 0.45, bossMat, true);
+        this._addBox(hx, y5Roof + 0.50, hz + 10.8, 25.8, 1.0, 0.45, bossMat, true);
+        this._addBox(hx - 12.8, y5Roof + 0.50, hz, 0.45, 1.0, 21.6, bossMat, true);
+        this._addBox(hx + 12.8, y5Roof + 0.50, hz, 0.45, 1.0, 21.6, bossMat, true);
+        // Painted H Helipad pad & markings on SW/Center Roof (addCollider = false)
+        this._addBox(hx - 3.5, y5Roof + 0.03, hz + 2.0, 11.0, 0.05, 11.0, darkConc, false);
+        this._addBox(hx - 5.6, y5Roof + 0.06, hz + 2.0, 0.85, 0.04, 6.2, hazardMat, false);
+        this._addBox(hx - 1.4, y5Roof + 0.06, hz + 2.0, 0.85, 0.04, 6.2, hazardMat, false);
+        this._addBox(hx - 3.5, y5Roof + 0.06, hz + 2.0, 4.2, 0.04, 0.9, hazardMat, false);
+        // Penthouse & Lattice Radio Spire
+        this._addBox(hx + 6.5, y5Roof + 1.8, hz + 5.0, 6.2, 3.6, 5.4, bossMat, true);
+        this._addBox(hx + 6.5, y5Roof + 9.2, hz + 5.0, 0.75, 11.2, 0.75, metalMat, false);
+        const towerStrobe = new THREE.Mesh(new THREE.SphereGeometry(0.55, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff2a2a }));
+        towerStrobe.position.set(hx + 6.5, y5Roof + 15.2, hz + 5.0);
+        this.scene.add(towerStrobe);
+        this.registerLightSource(towerStrobe.position, { intensity: 1.15, maxDist: 320, flareScale: 1.05, anamorphic: true, ghosts: true });
+        this._addLootContainer(hx + 2.0, (y5Roof - hy) + 0.02, hz - 6.5, 'military', 'Highrise Helipad Sniper Case');
+
+        this._addSignBoard(hx - 13.4, hy + 5.6, hz, 8.6, 2.4, -Math.PI / 2, {
+          title: 'VOSTOK HIGHRISE',
+          sub: 'AL-MAZRAH SECTOR // COMMAND TOWER',
+          bg: '#181c22',
+          accent: '#ffc107'
+        });
+
+        // 3F Glazed Skybridge (x = 281..290, z = -372, y = y3) -> Connects Highrise to Stepped East Annex!
+        this._addBox(285.5, y3 - 0.16, hz, 9.4, 0.32, 4.4, darkConc, true);
+        this._addBox(285.5, y3 + 0.55, hz - 2.05, 9.0, 1.1, 0.30, bossMat, true);
+        this._addBox(285.5, y3 + 0.55, hz + 2.05, 9.0, 1.1, 0.30, bossMat, true);
+        this._addDecor(285.5, y3 + 1.85, hz - 2.05, 8.8, 1.6, 0.08, winGlass);
+        this._addDecor(285.5, y3 + 1.85, hz + 2.05, 8.8, 1.6, 0.08, winGlass);
+        this._addBox(285.5, y3 + 3.05, hz, 9.4, 0.28, 4.6, metalMat, true);
+
+        // Stepped Highrise East Annex (x = 298, z = -372, 16m x 18m, 3 floors + 4F Roof Terrace)
+        const ax = 298, az = -372;
+        this._addBox(ax, hy - 0.45, az, 16.6, 0.9, 18.6, darkConc, false);
+        this._addBox(ax, hy + 0.08, az, 15.6, 0.16, 17.6, tileMat, false);
+        addTowerStoryShell(ax, hy, az, 16, 18, f1H, conc, { doorSouth: { w: 2.2, label: 'East Annex Lobby' } });
+        addTowerStoryShell(ax, y2, az, 16, 18, f2H, conc, {});
+        addTowerStoryShell(ax, y3, az, 16, 18, f3H, bossMat, { openWest: { fullOpen: true, w: 4.4 } });
+        const addAnnexSlab = (yTop) => {
+          this._addBox(ax - 2.8, yTop - 0.16, az, 10.2, 0.32, 17.4, darkConc, true);       // West section (x 290.1..300.3)
+          this._addBox(ax + 5.1, yTop - 0.16, az - 5.0, 5.4, 0.32, 7.4, darkConc, true);   // NE landing (x 300.3..305.7, z -380.7..-373.3)
+        };
+        addAnnexSlab(y2);
+        addAnnexSlab(y3);
+        addAnnexSlab(y4);
+        this._addBox(ax + 5.0, hy + 0.10, az - 5.2, 5.0, 0.20, 6.2, metalMat, true);
+        addStaircase(ax + 3.8, hy + 0.14, az - 3.0, 16, 2.2, f1H - 0.14, 8.2, 'south');
+        this._addBox(ax + 4.4, y2 - 0.16, az + 6.4, 5.2, 0.32, 4.4, metalMat, true);
+        addStaircase(ax + 5.2, y2, az + 4.8, 16, 2.2, f2H, 8.2, 'north');
+        this._addBox(ax + 4.4, y3 - 0.16, az - 5.2, 5.2, 0.32, 5.4, metalMat, true);
+        addStaircase(ax + 3.8, y3, az - 3.0, 16, 2.2, f3H, 8.2, 'south');
+        this._addBox(ax + 4.4, y4 - 0.16, az + 6.4, 5.2, 0.32, 4.4, metalMat, true);
+        this._addBox(ax, y4 + 0.45, az - 8.8, 16.0, 0.90, 0.40, bossMat, true);
+        this._addBox(ax, y4 + 0.45, az + 8.8, 16.0, 0.90, 0.40, bossMat, true);
+        this._addLootContainer(ax - 3.5, (y3 - hy) + 0.02, az - 4.5, 'office', 'East Annex 3F Comms Cabinet');
+        this._addLootContainer(ax - 3.5, (y4 - hy) + 0.02, az, 'military', 'Annex Roof Overwatch Crate');
+
+        // Boss & 5 Armored Guards spanning Downtown Highrise, Plaza, Embassy & West Bank Canal!
+        this.bossSpawnPos = new THREE.Vector3(264.0, y4 + 0.25, -372.0);
+        this.bossGuardSpawns = [
+          new THREE.Vector3(268.0, y4 + 0.25, -366.0),
+          new THREE.Vector3(265.0, hy + 0.25, -366.0),
+          new THREE.Vector3(248.0, eastY + 0.25, -328.0),
+          new THREE.Vector3(276.0, eastY + 0.25, -322.0),
+          new THREE.Vector3(136.0, 6.6 + 0.25, -336.0)
+        ];
+      }
+
+      // 2. MUNICIPAL 2-DECK PARKING GARAGE (x = 212, z = -409, 22m x 16m) + UNOBSTRUCTED Z9 A/1 FORECOURT (214, -374)
+      {
+        const px = 212, pz = -409;
+        const py = this.getTerrainHeight(px, pz);
+        this._addBox(px, py + 0.08, pz, 22.0, 0.16, 16.0, darkConc, false);
+        // 2F Parking Deck (y = py + 4.4) leaving SE ramp stairwell cutout (x 217..223, z -416..-401)
+        this._addBox(px - 2.5, py + 4.4, pz, 16.6, 0.36, 15.8, conc, true);
+        for (const cxP of [px - 10.4, px - 2.0, px + 5.2]) {
+          for (const czP of [pz - 7.4, pz + 7.4]) {
+            this._addBox(cxP, py + 2.2, czP, 0.8, 4.4, 0.8, bossMat, true);
+          }
+        }
+        // 2F Concrete Parapet Jersey Walls
+        this._addBox(px - 2.5, py + 5.05, pz - 7.7, 16.6, 0.95, 0.4, conc, true);
+        this._addBox(px - 2.5, py + 5.05, pz + 7.7, 16.6, 0.95, 0.4, conc, true);
+        this._addBox(px - 10.6, py + 5.05, pz, 0.4, 0.95, 15.4, conc, true);
+        addStaircase(px + 7.8, py + 0.10, pz + 6.0, 16, 3.0, 4.3, 10.5, 'north');
+        this._addBox(px + 7.8, py + 4.4, pz - 6.1, 3.4, 0.36, 3.6, conc, true);
+        this._addSignBoard(px - 2.0, py + 5.8, pz + 8.0, 7.6, 2.0, 0, {
+          title: 'CITY PARKING',
+          sub: 'P-01 // ZAVOD-9 A/1 ACCESS',
+          bg: '#1c2428',
+          accent: '#ffa726'
+        });
+        addWreckedVehicle(px - 5.5, pz + 1.5, 0.15, false, false);
+        this._addLootContainer(px - 4.0, 4.58, pz - 4.2, 'supply', 'Parking Deck Quartermaster Crate');
+        this._addLootContainer(px + 1.5, 4.58, pz + 4.2, 'military', 'Upper Deck Patrol Case');
+
+        // Frame ZAVOD-9 A/1 Bunker Forecourt (214, -374) with clear south approach (206..222, -380..-358 open!)
+        const fAy = this.getTerrainHeight(214, -366);
+        this._addBox(202.5, fAy + 1.4, -368.0, 2.6, 2.8, 2.6, darkConc, true);
+        this._addBox(206.5, fAy + 0.5, -363.5, 0.45, 1.0, 0.45, hazardMat, true);
+        this._addBox(221.5, fAy + 0.5, -363.5, 0.45, 1.0, 0.45, hazardMat, true);
+        addFloodlight(203.0, -376.0, 0.4, 9.5, 0xffd89c);
+      }
+
+      // 3. FORTIFIED DIPLOMATIC EMBASSY COMPOUND (x = 286, z = -322, 34m x 26m)
+      {
+        const ex = 286, ez = -322;
+        const ey = this.getTerrainHeight(ex, ez);
+        const wallH = 3.2;
+        // North wall (z = -335) & East wall (x = 303) solid; West wall (x = 269) has 7m gate; South wall (z = -309) has 7m gate
+        this._addBox(ex, ey + wallH * 0.5, ez - 13.0, 34.4, wallH, 0.9, darkConc, true);
+        this._addBox(ex + 17.0, ey + wallH * 0.5, ez, 0.9, wallH, 26.4, darkConc, true);
+        this._addBox(ex - 17.0, ey + wallH * 0.5, ez - 8.25, 0.9, wallH, 9.5, darkConc, true);
+        this._addBox(ex - 17.0, ey + wallH * 0.5, ez + 8.25, 0.9, wallH, 9.5, darkConc, true);
+        this._addBox(ex - 8.5, ey + wallH * 0.5, ez + 13.0, 17.0, wallH, 0.9, darkConc, true);
+        this._addBox(ex + 9.5, ey + wallH * 0.5, ez + 13.0, 15.0, wallH, 0.9, darkConc, true);
+        this._addBox(ex - 14.0, ey + 1.5, ez - 10.0, 3.0, 3.0, 3.0, bossMat, true); // Gatehouse kiosk
+        this._addSignBoard(ex - 17.6, ey + 4.4, ez - 7.5, 6.8, 2.0, -Math.PI / 2, {
+          title: 'EMBASSY COMPOUND',
+          sub: 'DIPLOMATIC ZONE // AUTHORIZED ONLY',
+          bg: '#1e242c',
+          accent: '#64b5f6'
+        });
+
+        // 2-Story Neoclassical Embassy Chancery (x = 291, z = -322, 18m x 16m, h = 8.4m)
+        const cxE = 291, czE = -322;
+        const f1E = 4.2, f2E = 4.2;
+        this._addBuilding(cxE, czE, 18, 16, f1E + f2E, 'west', whiteMat, (by) => {
+          this._addPartition(cxE + 2.0, czE - 8.0, cxE + 2.0, czE + 8.0, by, f1E, [
+            { at: czE - 2.5, w: 1.8, door: 'steel', label: 'Ambassador Office Door' }
+          ]);
+          addDeskProp(cxE - 4.0, by + 0.16, czE + 3.8);
+          addDeskProp(cxE + 5.4, by + 0.16, czE - 3.5);
+          this._addBox(cxE - 1.5, by + f1E - 0.15, czE, 14.4, 0.30, 15.2, darkConc, true);
+          addStaircase(cxE + 7.2, by + 0.16, czE + 6.4, 15, 2.2, f1E - 0.16, 8.2, 'north');
+        });
+        addStaircase(cxE - 9.8, ey + 0.10, czE + 6.8, 24, 2.0, f1E + f2E + 0.30, 13.6, 'north');
+        this._addLootContainer(cxE + 6.2, 0.16, czE + 4.8, 'valuables', 'Embassy Diplomatic Code Safe');
+        this._addLootContainer(cxE + 5.8, f1E + 0.04, czE - 4.8, 'office', '2F Chancery Encrypted Archive');
+        this._addGunLocker(cxE - 6.8, czE - 6.2, Math.PI / 2, 'military', 'Embassy Marine Guard Locker');
+        addWreckedVehicle(ex - 9.5, ez + 4.0, 0.35, false, false);
+      }
+
+      // 4. VOSTOK POLICE PRECINCT (x = 254, z = -282) & BANK OF VOSTOK (x = 290, z = -282)
+      {
+        const py = this.getTerrainHeight(254, -282);
+        this._addBuilding(254, -282, 20, 14, 7.8, 'north', policeMat, (by) => {
+          this._addPartition(254 + 2.5, -282 - 7.0, 254 + 2.5, -282 + 7.0, by, 4.0, [
+            { at: -282 + 2.0, w: 1.7, door: 'steel', label: 'Precinct Evidence Lockup' }
+          ]);
+          addDeskProp(254 - 4.5, by + 0.16, -282 - 2.5);
+          this._addBox(254 - 1.8, by + 3.9, -282, 15.8, 0.30, 13.2, darkConc, true);
+          addStaircase(254 + 7.6, by + 0.16, -282 + 5.6, 15, 2.0, 3.85, 8.0, 'north');
+        });
+        addStaircase(254 - 11.2, py + 0.10, -282 + 5.8, 22, 1.8, 8.1, 11.8, 'north');
+        this._addSignBoard(254, py + 4.8, -282 - 7.4, 5.8, 1.8, Math.PI, 'police');
+        this._addGunLocker(254 + 7.8, -282 - 4.2, -Math.PI / 2, 'police_fire', 'City Precinct Armory Locker');
+        this._addLootContainer(254 - 5.5, 4.06, -282 + 3.5, 'office', '2F Detective Case Files');
+
+        const bky = this.getTerrainHeight(290, -282);
+        this._addBuilding(290, -282, 20, 14, 8.0, 'north', conc, (by) => {
+          this._addPartition(290 - 2.0, -282 - 7.0, 290 - 2.0, -282 + 7.0, by, 4.0, [
+            { at: -282, w: 1.8, door: 'steel', label: 'Bank Vault Door' }
+          ]);
+          this._addBox(290 + 3.8, by + 0.58, -282 - 2.2, 6.2, 1.0, 1.1, darkConc, true);
+          this._addBox(290 + 1.8, by + 4.0, -282, 15.8, 0.30, 13.2, darkConc, true);
+          addStaircase(290 - 7.8, by + 0.16, -282 + 5.6, 15, 2.0, 3.95, 8.0, 'north');
+        });
+        this._addSignBoard(290, bky + 5.0, -282 - 7.4, 6.4, 1.9, Math.PI, {
+          title: 'BANK OF VOSTOK',
+          sub: 'CENTRAL BULLION DEPOSITORY',
+          bg: '#1c2420',
+          accent: '#ffd54f'
+        });
+        this._addLootContainer(290 - 6.8, 0.16, -282 - 3.6, 'valuables', 'Bank Bullion Reserve Safe');
+        this._addWorkbenchTable(290 + 4.0, -282 + 3.6, 0, [
+          { id: 'pure_silver', qty: 1 }, { id: 'financial_ledger', qty: 1 }, { id: 'antique_watch', qty: 1 }
         ]);
-        this._addBox(cx - 12 + 2.4, by + 3.9, cz + 14, 12.6, 0.30, 12.4, this._materials.darkConcrete, true);
-        addStaircase(cx - 19.0, by + 0.16, cz + 18.0, 15, 2.0, 3.85, 7.6, 'north');
-      });
-      this._addLootContainer(cx - 17.2, 0.16, cz + 16.5, 'household', 'City Apartment Cupboard');
-      this._addLootContainer(cx - 6.8, 4.10, cz + 16.5, 'office', '2F Municipal Tax Office Cabinet');
-      this._addWorkbenchTable(cx - 16.5, cz + 10.5, 0, [
-        { id: 'family_photo', qty: 1 }, { id: 'pure_silver', qty: 1 }, { id: 'clothes', qty: 2 }
-      ]);
+      }
 
-      this._addBuilding(118, -355, 14, 12, 4.8, 'east', this._materials.interiorPlaster, () => {});
-      this._addLootContainer(118 - 3.8, 0.16, -355 - 3.2, 'hospital', 'City Pharmacy Cabinet');
-      this._addLootContainer(118 - 3.8, 0.16, -355 + 3.2, 'household', 'Riverfront Flat Closet');
+      // 5. CENTRAL CIVIC MONUMENT PLAZA (x = 248, z = -324) & OBELISK (leaves POI x=232, z=-346 clear!)
+      {
+        const plY = this.getTerrainHeight(254, -324);
+        this._addBox(252, plY + 0.05, -324, 24, 0.10, 26, tileMat, false);
+        this._addBox(256, plY + 0.65, -324, 4.8, 1.3, 4.8, darkConc, true);
+        this._addBox(256, plY + 4.6, -324, 1.5, 7.6, 1.5, conc, true);
+        addFloodlight(244, -315, 0.8, 10.5, 0xffe4aa);
+        addWreckedVehicle(244, -334, 0.42, true, true);
+      }
 
-      // Central Soviet Monument Obelisk + Plaza Floodlights
-      this._addBox(cx - 8, cy + 0.6, cz - 4, 4.6, 1.2, 4.6, this._materials.darkConcrete, true);
-      this._addBox(cx - 8, cy + 4.4, cz - 4, 1.4, 7.6, 1.4, this._materials.concrete, true);
-      addFloodlight(cx - 4, cz + 2, 0.7, 10.5, 0xffe4aa);
-      addWreckedVehicle(cx - 18, cz - 6, 0.55, true, true);
-      this.pois.push({ name: 'VOSTOK CITY', x: cx, z: cz, color: '#ffc107', threat: 'boss' });
+      // 6. AL-MAZRAH EASTERN ELEVATED HIGHWAY VIADUCT (x = 329, z = -398 .. -286, deckY = 12.8m)
+      {
+        const vx = 329.0, vDeckY = 12.8, vW = 11.0;
+        const vy0 = this.getTerrainHeight(vx, -342);
+        const vLen = 112.0;
+        this._addBox(vx, vDeckY - 0.35, -342.0, vW, 0.70, vLen, conc, true);
+        this._addBox(vx - vW * 0.5 + 0.3, vDeckY + 0.50, -342.0, 0.55, 1.0, vLen, darkConc, true);
+        this._addBox(vx + vW * 0.5 - 0.3, vDeckY + 0.50, -342.0, 0.55, 1.0, vLen, darkConc, true);
+        for (let pz = -390; pz <= -294; pz += 24) {
+          const pGnd = this.getTerrainHeight(vx, pz);
+          const pH = (vDeckY - 0.70) - pGnd + 0.6;
+          this._addBox(vx - 3.6, pGnd + pH * 0.5 - 0.3, pz, 1.4, pH, 1.4, bossMat, true);
+          this._addBox(vx + 3.6, pGnd + pH * 0.5 - 0.3, pz, 1.4, pH, 1.4, bossMat, true);
+          this._addBox(vx, vDeckY - 1.05, pz, vW - 0.8, 0.75, 1.3, bossMat, true);
+        }
+        // North & South walkable approach stairs onto Elevated Highway Overpass
+        const yN = this.getTerrainHeight(vx, -412);
+        addStaircase(vx, yN, -412.0, 24, 4.6, vDeckY - yN, 14.0, 'south');
+        const yS = this.getTerrainHeight(vx, -272);
+        addStaircase(vx, yS, -272.0, 24, 4.6, vDeckY - yS, 14.0, 'north');
+        this._addBox(vx, vDeckY + 1.4, -352.0, 2.6, 2.8, 6.2, this._materials.rustOlive, true);
+        this._addLootContainer(vx + 2.2, vDeckY - this.getTerrainHeight(vx + 2.2, -338.0) + 0.02, -338.0, 'military', 'Highway Overpass Convoy Case');
+        this._addSignBoard(vx - 5.8, vDeckY + 1.6, -342.0, 8.2, 2.1, -Math.PI / 2, {
+          title: 'EAST RING VIADUCT',
+          sub: 'ELEVATED EXPRESSWAY // M-07',
+          bg: '#133022',
+          accent: '#ffd54f'
+        });
+      }
+
+      // =======================================================================
+      // D. WEST BANK DISTRICT: GRAND RIVERFRONT HOTEL, CHANNEL-7 & COMMERCIAL BLOCKS
+      // =======================================================================
+      // 7. GRAND RIVERFRONT HOTEL (x = 123, z = -325, 16m x 22m, 3F + 4F Roof Overwatch)
+      {
+        const gx = 123, gz = -325;
+        const gy = this.getTerrainHeight(gx, gz);
+        const h1 = 4.0, h2 = 4.0, h3 = 4.0;
+        const gy2 = gy + h1, gy3 = gy2 + h2, gyRoof = gy3 + h3;
+
+        this._addBox(gx, gy - 0.45, gz, 16.6, 0.9, 22.6, darkConc, false);
+        this._addBox(gx, gy + 0.08, gz, 15.6, 0.16, 21.6, tileMat, false);
+        addTowerStoryShell(gx, gy, gz, 16, 22, h1, brickMat, {
+          doorWest: { w: 2.2, label: 'Hotel Street Lobby' },
+          doorEast: { w: 2.2, label: 'Hotel Promenade Entrance' }
+        });
+        addTowerStoryShell(gx, gy2, gz, 16, 22, h2, brickMat, {});
+        addTowerStoryShell(gx, gy3, gz, 16, 22, h3, conc, {});
+        // Upper hotel slabs with SW stairwell cutout (x 115.3..120.5, z -323.5..-314.3 open)
+        const addHotelSlab = (yTop) => {
+          this._addBox(gx + 2.7, yTop - 0.16, gz, 10.2, 0.32, 21.4, darkConc, true);
+          this._addBox(gx - 5.1, yTop - 0.16, gz - 4.6, 5.4, 0.32, 12.0, darkConc, true);
+        };
+        addHotelSlab(gy2);
+        addHotelSlab(gy3);
+        addHotelSlab(gyRoof);
+        this._addBox(gx - 5.0, gy + 0.08, gz + 8.6, 4.8, 0.16, 4.0, metalMat, true);
+        addStaircase(gx - 4.0, gy + 0.12, gz + 7.0, 15, 2.2, h1 - 0.12, 7.6, 'north');
+        this._addBox(gx - 4.8, gy2 - 0.16, gz - 2.6, 4.8, 0.32, 4.2, metalMat, true);
+        addStaircase(gx - 6.0, gy2, gz - 0.5, 15, 2.2, h2, 7.6, 'south');
+        this._addBox(gx - 5.0, gy3 - 0.16, gz + 8.6, 4.8, 0.32, 4.0, metalMat, true);
+        addStaircase(gx - 4.0, gy3, gz + 7.0, 15, 2.2, h3, 7.6, 'north');
+        this._addBox(gx - 4.8, gyRoof - 0.16, gz - 2.6, 4.8, 0.32, 4.2, metalMat, true);
+        // 4F Rooftop Overwatch Parapets
+        this._addBox(gx, gyRoof + 0.48, gz - 10.8, 16.0, 0.95, 0.4, conc, true);
+        this._addBox(gx, gyRoof + 0.48, gz + 10.8, 16.0, 0.95, 0.4, conc, true);
+        this._addBox(gx - 7.8, gyRoof + 0.48, gz, 0.4, 0.95, 21.6, conc, true);
+        this._addBox(gx + 7.8, gyRoof + 0.48, gz, 0.4, 0.95, 21.6, conc, true);
+        this._addSignBoard(gx + 8.4, gy + 5.0, gz, 8.2, 2.2, Math.PI / 2, {
+          title: 'GRAND HOTEL',
+          sub: 'WEST CANAL RIVERFRONT // suites 1-3',
+          bg: '#2b1918',
+          accent: '#ffca28'
+        });
+        this._addLootContainer(gx + 4.5, 0.16, gz - 6.8, 'valuables', 'Hotel Front Desk Safe');
+        this._addLootContainer(gx + 4.5, (gy2 - gy) + 0.02, gz + 5.8, 'household', '2F Riverview Suite Wardrobe');
+        this._addMedicineCabinet(gx + 6.8, gz - 1.2, 'east', 'Hotel Suite Bathroom Cabinet');
+        this._addLootContainer(gx + 3.2, (gyRoof - gy) + 0.02, gz - 4.0, 'military', 'Hotel Roof Sniper Overwatch Case');
+      }
+
+      // 8. CHANNEL-7 METRO BROADCAST STUDIO & COMMS MAST (x = 87, z = -322, 20m x 18m)
+      {
+        const cx7 = 87, cz7 = -322;
+        const y7 = this.getTerrainHeight(cx7, cz7);
+        this._addBuilding(cx7, cz7, 20, 18, 8.2, 'east', conc, (by) => {
+          this._addPartition(cx7 - 2.0, cz7 - 9.0, cx7 - 2.0, cz7 + 9.0, by, 4.2, [
+            { at: cz7, w: 1.8, door: 'steel', label: 'Channel-7 Studio Floor' }
+          ]);
+          addDeskProp(cx7 - 5.8, by + 0.16, cz7 - 4.2);
+          this._addBox(cx7 + 2.2, by + 4.1, cz7, 14.8, 0.30, 17.2, darkConc, true);
+          addStaircase(cx7 - 7.8, by + 0.16, cz7 + 7.0, 15, 2.2, 4.05, 8.2, 'north');
+        });
+        addStaircase(cx7 - 11.2, y7 + 0.10, cz7 + 7.4, 22, 1.9, 8.5, 12.2, 'north');
+        // 18m Rooftop Comms Mast + Red Strobe overlooking West Bank
+        this._addBox(cx7 + 4.5, y7 + 16.5, cz7 - 4.5, 1.2, 16.0, 1.2, brickMat, false);
+        const c7Strobe = new THREE.Mesh(new THREE.SphereGeometry(0.48, 8, 8), new THREE.MeshBasicMaterial({ color: 0xff2a2a }));
+        c7Strobe.position.set(cx7 + 4.5, y7 + 24.8, cz7 - 4.5);
+        this.scene.add(c7Strobe);
+        this.registerLightSource(c7Strobe.position, { intensity: 0.95, maxDist: 260, flareScale: 0.85, anamorphic: true, ghosts: false });
+        this._addSignBoard(cx7 + 10.4, y7 + 5.2, cz7, 8.0, 2.2, Math.PI / 2, {
+          title: 'CHANNEL 07',
+          sub: 'METRO BROADCAST // WEST CITY',
+          bg: '#14202b',
+          accent: '#29b6f6'
+        });
+        this._addLootContainer(cx7 - 6.8, 0.16, cz7 + 4.5, 'office', 'Broadcast Tape & Server Rack');
+        this._addLootContainer(cx7 + 5.5, 4.28, cz7 - 5.2, 'valuables', '2F Executive Producer Safe');
+        this._addMetalShelf(cx7 + 5.0, cz7 + 5.2, 0, [
+          { id: 'exp_radio_transmitter', qty: 1 }, { id: 'classified_documents', qty: 1 }
+        ]);
+      }
+
+      // 9. WEST CANAL PHARMACY & COMMERCIAL BLOCK (x = 123, z = -364, 16m x 13m)
+      {
+        const wx = 123, wz = -364;
+        const wy = this.getTerrainHeight(wx, wz);
+        this._addBuilding(wx, wz, 16, 13, 7.8, 'west', whiteMat, (by) => {
+          this._addPartition(wx + 1.5, wz - 6.5, wx + 1.5, wz + 6.5, by, 4.0, [
+            { at: wz, w: 1.7, door: 'wood', label: 'Pharmacy Dispensary' }
+          ]);
+          this._addBox(wx - 1.5, by + 3.9, wz, 12.2, 0.30, 12.2, darkConc, true);
+          addStaircase(wx + 5.8, by + 0.16, wz + 5.0, 15, 2.0, 3.85, 7.6, 'north');
+        });
+        this._addSignBoard(wx - 8.4, wy + 4.6, wz, 4.4, 1.5, -Math.PI / 2, 'clinic');
+        this._addLootContainer(wx + 4.8, 0.16, wz - 3.6, 'hospital', 'West Canal Pharmacy Cabinet');
+        this._addWallFirstAidKit(wx - 6.8, wz + 3.0, 'east', 'Pharmacy First Aid Box');
+        this._addLootContainer(wx - 4.5, 4.06, wz - 3.2, 'office', '2F Commercial Exchange Cabinet');
+      }
+
+      // 10. SOUTH WATERFRONT APARTMENTS (x = 121, z = -282) & WEST MECHANIC / CAFE (x = 87, z = -282)
+      {
+        this._addBuilding(121, -282, 18, 13, 7.6, 'north', plasterMat, (by) => {
+          this._addPartition(121, -282 - 6.5, 121, -282 + 6.5, by, 3.8, [
+            { at: -282 + 1.2, w: 1.6, door: 'wood', label: 'Apartment Unit 1B' }
+          ]);
+          this._addBox(121 - 2.2, by + 3.8, -282, 12.8, 0.30, 12.2, darkConc, true);
+          addStaircase(121 + 6.8, by + 0.16, -282 + 5.2, 14, 2.0, 3.75, 7.4, 'north');
+        });
+        this._addLootContainer(121 - 5.6, 0.16, -282 - 3.6, 'household', 'Waterfront Flat Dresser');
+        this._addMedicineCabinet(121 + 5.6, -282 - 5.6, 'north', 'Apartment Medicine Cabinet');
+
+        this._addBuilding(87, -282, 18, 12, 4.4, 'east', this._materials.rustRed, (by) => {
+          addDeskProp(87 - 4.8, by + 0.16, -282 - 2.8);
+        });
+        this._addLootContainer(87 - 5.0, 0.16, -282 + 3.2, 'supply', 'Westside Service Garage Crate');
+        this._addWorkbenchTable(87 + 3.8, -282 + 2.8, 0, [
+          { id: 'tools', qty: 1 }, { id: 'basic_chemicals', qty: 2 }
+        ]);
+      }
+
+      // Streetlights & battlefield vehicles across East & West Bank Boulevards
+      addFloodlight(232, -372, 0, 10.5, 0xfff0cc);
+      addFloodlight(106, -342, 0, 10.5, 0xfff0cc);
+      addWreckedVehicle(232, -360, 0.12, false, false);
+      addWreckedVehicle(106, -338, -0.08, false, false);
+
+      this.pois.push({ name: 'VOSTOK CITY', x: 232, z: -346, color: '#ffc107', threat: 'boss' });
     }
 
     // 8. SOUTH VOSTOK INDUSTRIAL CONSTRUCTION (G3: 252, -225) — 3-Level Open-Frame Concrete Tower + 34m Aviation Crane + Twin Silos!
@@ -4779,8 +5352,7 @@ class WastelandWorld {
       [-310,  305,  0.85, false, false],
       [  85,  392,  0.18, true,  true],
       [ 325,  245, -0.65, false, false],
-      [-315, -395,  0.05, true,  false],
-      [ 168, -352,  0.08, false, false]
+      [-315, -395,  0.05, true,  false]
     ];
     for (const [vx, vz, vrot, isApc, smk] of battleVehicles) {
       addWreckedVehicle(vx, vz, vrot, isApc, smk);
@@ -5402,7 +5974,7 @@ class WastelandWorld {
     this._addWorkbenchTable(92.0, 384.0, Math.PI / 2, [
       { id: 'syringe', qty: 1 }, { id: 'gunpowder', qty: 2 }
     ], 0);
-    this._addWorkbenchTable(162.0, -348.0, 0, [
+    this._addWorkbenchTable(135.5, -336.0, 0, [
       { id: 'classified_documents', qty: 1 }, { id: 'ammo_739', qty: 24 }
     ], 0);
     this._addWorkbenchTable(-315.0, -388.0, Math.PI / 2, [
