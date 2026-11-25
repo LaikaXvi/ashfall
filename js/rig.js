@@ -1632,7 +1632,13 @@
     ledgeGrabL:     { f: new THREE.Vector3( 0.08,  0.01, -0.996), back: new THREE.Vector3(-0.15,  0.96,  0.20), palmOffset: new THREE.Vector3(-0.004,  0.010, 0.002), curl: [0.05, 0.11, 0.08], thumb: 0.18 },
     ledgeGrabR:     { f: new THREE.Vector3(-0.08,  0.01, -0.996), back: new THREE.Vector3( 0.15,  0.96,  0.20), palmOffset: new THREE.Vector3( 0.004,  0.010, 0.002), curl: [0.05, 0.11, 0.08], thumb: 0.18 },
     ledgePressL:    { f: new THREE.Vector3( 0.14, -0.10, -0.985), back: new THREE.Vector3(-0.18, 0.95,  0.22), palmOffset: new THREE.Vector3(-0.004,  0.010, 0.002), curl: [0.20, 0.24, 0.16], thumb: 0.28 },
-    ledgePressR:    { f: new THREE.Vector3(-0.14, -0.10, -0.985), back: new THREE.Vector3( 0.18, 0.95,  0.22), palmOffset: new THREE.Vector3( 0.004,  0.010, 0.002), curl: [0.20, 0.24, 0.16], thumb: 0.28 }
+    ledgePressR:    { f: new THREE.Vector3(-0.14, -0.10, -0.985), back: new THREE.Vector3( 0.18, 0.95,  0.22), palmOffset: new THREE.Vector3( 0.004,  0.010, 0.002), curl: [0.20, 0.24, 0.16], thumb: 0.28 },
+    // Killstreak Tactical ATAK Comms Phone & Binocular Laser Designator IK Styles
+    uavPhoneHold:   { f: new THREE.Vector3(-0.58,  0.56, -0.59), back: new THREE.Vector3( 0.58,  0.06, -0.81), palmOffset: new THREE.Vector3( 0.008, -0.006, -0.012), curl: [1.20, 1.32, 0.88], thumb: 0.28 },
+    uavPhoneTap:    { f: new THREE.Vector3(-0.58,  0.56, -0.59), back: new THREE.Vector3( 0.58,  0.06, -0.81), palmOffset: new THREE.Vector3( 0.008, -0.006, -0.012), curl: [1.24, 1.36, 0.90], thumb: 0.98 },
+    binocHoldL:     { f: new THREE.Vector3( 0.22,  0.14, -0.965), back: new THREE.Vector3(-0.94,  0.24, -0.24), palmOffset: new THREE.Vector3(-0.016, -0.004,  0.006), curl: [1.12, 1.24, 0.84], thumb: 0.72 },
+    binocHoldR:     { f: new THREE.Vector3(-0.22,  0.14, -0.965), back: new THREE.Vector3( 0.94,  0.24, -0.24), palmOffset: new THREE.Vector3( 0.016, -0.004,  0.006), curl: [1.12, 1.24, 0.84], thumb: 0.72 },
+    binocFireR:     { f: new THREE.Vector3(-0.24,  0.10, -0.965), back: new THREE.Vector3( 0.93,  0.26, -0.25), palmOffset: new THREE.Vector3( 0.016, -0.004,  0.006), curl: [1.36, 1.30, 0.88], thumb: 0.92 }
   };
 
   function isEffectivelyVisible(obj, stopAt) {
@@ -1970,14 +1976,21 @@
           shOff.z = THREE.MathUtils.clamp(shOff.z + shVel.z * stepDt, -0.055, 0.055);
 
           // Right shoulder pockets inward/upward matching tucked shoulder-center viewmodel; left clavicle protracts slightly forward for support
-          const isPlatingArm = !!(side === 'left' && ws && ws.isPlating);
-          const isHealingArm = !!(ws && ws.isHealing);
+          const isBinocArm = styleKey === 'binocHoldL' || styleKey === 'binocHoldR' || styleKey === 'binocFireR';
+          const isPhoneArm = styleKey === 'uavPhoneHold' || styleKey === 'uavPhoneTap';
+          const isKillstreakArm = isBinocArm || isPhoneArm;
+          const effAdsB = isKillstreakArm ? 0 : adsB;
+          const effVmRoll = isKillstreakArm ? 0 : vmRoll;
+          const isPlatingArm = !!(side === 'left' && ws && ws.isPlating && !isKillstreakArm);
+          const isHealingArm = !!(ws && ws.isHealing && !isKillstreakArm);
           const isForearmBrace = isHealingArm && side === 'left' && styleKey === 'medForearmBraceL';
-          const shBaseX = isHealingArm ? 0.215 : (side === 'right' ? 0.175 : (isPlatingArm ? 0.25 : 0.21));
+          const shBaseX = isBinocArm
+            ? 0.205
+            : (isPhoneArm ? 0.20 : (isHealingArm ? 0.215 : (side === 'right' ? 0.175 : (isPlatingArm ? 0.25 : 0.21))));
           const shCamLocal = new THREE.Vector3(
-            sideSign * (shBaseX - (isHealingArm ? 0 : (side === 'right' ? adsB * 0.032 : adsB * 0.015))) + shOff.x,
-            (isPlatingArm ? -0.255 : (isHealingArm ? -0.275 : -0.29)) + (side === 'right' ? adsB * 0.024 : adsB * 0.014) - wp * 0.020 + shOff.y,
-            (isPlatingArm ? -0.08 : (isHealingArm ? 0.06 : 0.14)) + (side === 'left' ? -adsB * 0.022 : adsB * 0.012) + wp * 0.035 + shOff.z
+            sideSign * (shBaseX - (isHealingArm || isKillstreakArm ? 0 : (side === 'right' ? effAdsB * 0.032 : effAdsB * 0.015))) + shOff.x,
+            (isPlatingArm ? -0.255 : (isBinocArm ? -0.275 : (isPhoneArm ? -0.28 : (isHealingArm ? -0.275 : -0.29)))) + (side === 'right' ? effAdsB * 0.024 : effAdsB * 0.014) - wp * 0.020 + shOff.y,
+            (isPlatingArm ? -0.08 : (isBinocArm ? 0.06 : (isPhoneArm ? 0.05 : (isHealingArm ? 0.06 : 0.14)))) + (side === 'left' ? -effAdsB * 0.022 : effAdsB * 0.012) + wp * 0.035 + shOff.z
           );
           const camSh = cam.localToWorld(shCamLocal);
           const anchor = shoulderW.clone().lerp(camSh, 0.50);
@@ -2013,16 +2026,16 @@
           }
 
           // MW4 Kinetic Dynamic Elbow Pole: tucks ribs cleanly on ADS, 45° Tactical Stance cant, Corner Lean & CQB Wall Push!
-          const cantTuck = THREE.MathUtils.clamp(-vmRoll * sideSign * 0.22, -0.14, 0.16);
+          const cantTuck = THREE.MathUtils.clamp(-effVmRoll * sideSign * 0.22, -0.14, 0.16);
           const poleOut = isPlatingArm
             ? -0.52
-            : (isForearmBrace ? -0.46 : (isHealingArm ? sideSign * 0.38 : (sideSign * (0.42 - adsB * 0.09 - wp * 0.08) - cantTuck)));
+            : (isForearmBrace ? -0.46 : (isBinocArm ? (sideSign * 0.40) : (isPhoneArm ? 0.36 : (isHealingArm ? sideSign * 0.38 : (sideSign * (0.42 - effAdsB * 0.09 - wp * 0.08) - cantTuck)))));
           const poleDown = isPlatingArm
             ? 0.22
-            : (isForearmBrace ? 0.26 : (isHealingArm ? 0.36 : (0.48 + adsB * 0.06 + wp * 0.10 + Math.abs(vmRoll) * 0.08)));
+            : (isForearmBrace ? 0.26 : (isBinocArm ? 0.44 : (isPhoneArm ? 0.46 : (isHealingArm ? 0.36 : (0.48 + effAdsB * 0.06 + wp * 0.10 + Math.abs(effVmRoll) * 0.08)))));
           const poleBack = isPlatingArm
             ? 0.02
-            : (isForearmBrace ? 0.02 : (isHealingArm ? 0.05 : (0.04 + wp * 0.14 + (side === 'right' ? adsB * 0.04 : -adsB * 0.02))));
+            : (isForearmBrace ? 0.02 : (isBinocArm ? 0.04 : (isPhoneArm ? 0.04 : (isHealingArm ? 0.05 : (0.04 + wp * 0.14 + (side === 'right' ? effAdsB * 0.04 : -effAdsB * 0.02))))));
           const pole = anchor.clone()
             .addScaledVector(camRight, poleOut)
             .addScaledVector(camDown, poleDown)

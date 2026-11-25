@@ -251,7 +251,7 @@ class ThrowableSystem {
 
   startPrep(slot, player, weaponSystem) {
     if (this.state !== 'idle') return false;
-    if (player && (player.isDowned || player.dead)) return false;
+    if (player && (player.isDowned || player.dead || player.isUsingKillstreakPhone)) return false;
     const itemId = slot === 'lethal' ? player.lethal : player.tactical;
     const qty = slot === 'lethal' ? player.lethalQty : player.tacticalQty;
     const hasEquipped = !!(itemId && GAME_DATA.ITEMS[itemId] && qty > 0);
@@ -261,6 +261,9 @@ class ThrowableSystem {
       return false;
     }
 
+    if (player && player.isUsingDesignator && window.cancelDesignator) {
+      window.cancelDesignator();
+    }
     if (weaponSystem) {
       weaponSystem.cancelInspect();
       weaponSystem.cancelPlating();

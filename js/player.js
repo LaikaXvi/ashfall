@@ -1594,7 +1594,7 @@ class Player {
   }
 
   startInspect() {
-    if (this.isDowned || this.dead) return;
+    if (this.isDowned || this.dead || this.isUsingDesignator || this.isUsingKillstreakPhone) return;
     const def = this.getActiveWeaponDef();
     if (def) this.weaponSystem.startInspect(def);
   }
@@ -1610,7 +1610,8 @@ class Player {
   }
 
   switchSlot(slotName) {
-    if (this.isDowned || this.dead) return;
+    if (this.isDowned || this.dead || this.isUsingKillstreakPhone) return;
+    if (this.isUsingDesignator && window.cancelDesignator) window.cancelDesignator();
     if (slotName === 'melee') {
       if (this.activeSlot === 'melee') return;
       this.activeSlot = 'melee';
@@ -1701,7 +1702,7 @@ class Player {
   }
 
   startReload() {
-    if (this.isDowned || this.dead) return;
+    if (this.isDowned || this.dead || this.isUsingDesignator || this.isUsingKillstreakPhone) return;
     const slotObj = this.getActiveWeaponSlot();
     const def = this.getActiveWeaponDef();
     if (!slotObj || !def) return;
@@ -1763,7 +1764,8 @@ class Player {
   }
 
   startPlating() {
-    if (this.isDowned || this.dead) return false;
+    if (this.isDowned || this.dead || this.isUsingKillstreakPhone) return false;
+    if (this.isUsingDesignator && window.cancelDesignator) window.cancelDesignator();
     if (this.maxArmor <= 0) return false;
     if (!window.DEV_MODE && (this.armor >= this.maxArmor || this.plates <= 0)) return false;
     const perPlate = (GAME_DATA.OPERATOR_STATS && GAME_DATA.OPERATOR_STATS.plateArmor) || 35;
@@ -1804,7 +1806,8 @@ class Player {
   }
 
   startMedkit() {
-    if (this.isDowned || this.dead) return false;
+    if (this.isDowned || this.dead || this.isUsingKillstreakPhone) return false;
+    if (this.isUsingDesignator && window.cancelDesignator) window.cancelDesignator();
     const needsMed = this.hp < this.maxHp || (this.disabledHp || 0) > 0 || (this.tempHealthTimer || 0) > 0;
     if (!window.DEV_MODE && (this.getMedkitCount() <= 0 || !needsMed)) return false;
     return this.weaponSystem.startMedkit();
