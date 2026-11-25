@@ -132,7 +132,7 @@ class Enemy {
       this.armorColor = st.col;
       this.headColor = 0x26292d;
       const opPrimaries = this.playstyle === 'marksman' ? ['m24', 'ak47']
-        : (this.playstyle === 'rusher' ? ['mp5k', 'm870'] : ['ak47', 'mp5k', 'm870']);
+        : (this.playstyle === 'rusher' ? ['mp5k', 'm870'] : ['m4a1', 'ak47', 'mp5k', 'm870']);
       this.weaponId = opPrimaries[Math.floor(Math.random() * opPrimaries.length)];
       const vests = ['vest_1plate', 'vest_2plate', 'vest_2plate_gel', 'vest_2plate_helmet', 'vest_3plate'];
       const bags = ['bag_small', 'bag_medium', 'bag_large', 'bag_weapon'];
@@ -174,7 +174,7 @@ class Enemy {
       };
       // Only Weapon Pack operators can spawn with a stowed weapon in their top-left backpack weapon slot!
       if (this.operatorEquipment.backpack === 'bag_weapon' && Math.random() < 0.65) {
-        const bwPool = ['mp5k', 'ak47', 'm870', 'm24', 'g17'];
+        const bwPool = ['mp5k', 'm4a1', 'ak47', 'm870', 'm24', 'g17'];
         const bwId = bwPool[Math.floor(Math.random() * bwPool.length)];
         const bwDef = GAME_DATA.ITEMS[bwId];
         const bwRoll = GAME_DATA.rollRandomAttachmentsForRarity
@@ -254,7 +254,7 @@ class Enemy {
       this.speed = 3.0;
       this.armorColor = 0x3b1e22;
       this.headColor = 0x1d1e22;
-      const bossWpns = ['ak47', 'm24', 'awm338', 'm870'];
+      const bossWpns = ['m4a1', 'ak47', 'm24', 'awm338', 'm870'];
       this.weaponId = bossWpns[Math.floor(Math.random() * bossWpns.length)];
     } else if (tier === 'boss_guard') {
       this.name = 'Armored Command Guard';
@@ -268,7 +268,7 @@ class Enemy {
       this.armorColor = 0x222830;
       this.headColor = 0x1a1e24;
       // Armored Boss Guards carry higher-tier weapons than standard raiders!
-      const guardWpns = ['ak47', 'm24', 'awm338', 'mp5k', 'm870'];
+      const guardWpns = ['m4a1', 'ak47', 'm24', 'awm338', 'mp5k', 'm870'];
       this.weaponId = guardWpns[Math.floor(Math.random() * guardWpns.length)];
     } else if (tier === 'heavy') {
       this.name = 'Armored Juggernaut';
@@ -289,7 +289,7 @@ class Enemy {
       this.speed = 3.5;
       this.armorColor = 0x4b4232;
       this.headColor = 0x6b5a48;
-      const raiderWpns = ['ak47', 'mp5k', 'm870'];
+      const raiderWpns = ['m4a1', 'ak47', 'mp5k', 'm870'];
       this.weaponId = raiderWpns[Math.floor(Math.random() * raiderWpns.length)];
     } else {
       this.name = 'Scavenger';

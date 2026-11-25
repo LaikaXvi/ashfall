@@ -1312,6 +1312,40 @@ class Player {
             if (tp.boltMesh) tp.boltMesh.position.z = tp.boltRestPos.z + pull * 0.055;
             lShX = 1.06 - pull * 0.18; lElbX = 1.04; lShZ = -0.36;
           }
+        } else if (wId === 'm4a1') {
+          // Colt M4A1: chest rig STANAG draw -> vertical flared magwell seat -> left-thumb bolt-catch slap on empty
+          const magEnd = ws.wasEmptyReload ? 0.72 : 1.0;
+          if (rp < magEnd) {
+            const mp = rp / magEnd;
+            if (mp < 0.28) {
+              const t = smooth(mp / 0.28);
+              if (tp.magMesh) tp.magMesh.position.y = tp.magRestPos.y - t * 0.24;
+              lShX = THREE.MathUtils.lerp(0.84, chestShX, t);
+              lElbX = THREE.MathUtils.lerp(0.78, chestElbX, t);
+              lShZ = THREE.MathUtils.lerp(-0.28, chestShZ, t);
+            } else if (mp < 0.56) {
+              const t = smooth((mp - 0.28) / 0.28);
+              if (tp.magMesh) tp.magMesh.visible = false;
+              if (p.handMag) p.handMag.visible = mp > 0.36;
+              lShX = THREE.MathUtils.lerp(chestShX, 0.94, t);
+              lElbX = THREE.MathUtils.lerp(chestElbX, 1.00, t);
+              lShZ = THREE.MathUtils.lerp(chestShZ, -0.34, t);
+            } else {
+              const t = smooth(Math.min(1, (mp - 0.56) / 0.34));
+              if (p.handMag) p.handMag.visible = t < 0.65;
+              if (tp.magMesh) {
+                tp.magMesh.visible = t >= 0.65;
+                tp.magMesh.position.y = tp.magRestPos.y - (1 - t) * 0.14;
+              }
+              lShX = 0.94; lElbX = 0.98; lShZ = -0.32;
+            }
+          } else {
+            const sp = (rp - magEnd) / (1 - magEnd);
+            wpnRotZ = 0.22;
+            lShX = 0.96 + Math.sin(sp * Math.PI) * 0.16;
+            lElbX = 1.06;
+            lShZ = -0.34;
+          }
         } else if (wId === 'ak47') {
           // AK-47: grab fresh mag from chest rig -> flick old mag out with new mag -> rock new mag in -> right-hand bolt rack!
           const magEnd = ws.wasEmptyReload ? 0.74 : 1.0;

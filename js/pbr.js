@@ -421,6 +421,16 @@ window.AshfallPBR = (() => {
           mixT = patchA ? 0.85 : (patchB ? 0.15 : 0.48);
           rgh = baseRough + weave * 0.4;
           ao = 0.92 + 0.08 * hVal;
+        } else if (kind === 'anodized_forged') {
+          // Mil-Spec Type III bead-blasted hard-coat 7075-T6 anodizing / phosphate steel with faint CNC passes & CLP oil sheen
+          const cncPass = Math.sin(v * 110 * Math.PI * 2) * 0.04;
+          const bead = fine * 0.34 + micro * 0.18;
+          const oilSheen = macro > 0.58 ? (macro - 0.58) * 0.28 : 0;
+          const edgeWear = fbm > 0.72 ? (fbm - 0.72) * 0.65 : 0;
+          hVal = 0.42 + bead + cncPass + edgeWear * 0.20;
+          mixT = Math.max(0, Math.min(1, macro * 0.45 + fbm * 0.35 + edgeWear * 0.55));
+          rgh = baseRough + (0.48 - bead) * roughVar - oilSheen - edgeWear * 0.18;
+          ao = 0.88 + 0.12 * (1 - oilSheen * 0.4);
         }
 
         hf[idx] = hVal;
@@ -507,6 +517,9 @@ window.AshfallPBR = (() => {
     bakelite_russian:    { seed: 113, pattern: 'bakelite', c0: [132, 48, 22], c1: [192, 82, 32], rough: 0.30, roughVar: 0.12, metal: 0.02, bump: 1.5 },
     brass_casing:        { seed: 114, pattern: 'brushed_metal', c0: [186, 148, 62], c1: [228, 192, 98], rough: 0.24, roughVar: 0.12, metal: 0.96, bump: 1.1 },
     rubber_buttpad:      { seed: 115, pattern: 'stipple', c0: [20, 21, 23], c1: [30, 32, 34], rough: 0.86, roughVar: 0.10, metal: 0.0, bump: 2.2 },
+    m4_anodized_receiver:{ seed: 116, pattern: 'anodized_forged', c0: [30, 33, 38], c1: [46, 51, 58], rough: 0.43, roughVar: 0.16, metal: 0.84, bump: 1.55 },
+    m4_phosphate_steel:  { seed: 117, pattern: 'anodized_forged', c0: [38, 41, 44], c1: [58, 63, 66], rough: 0.48, roughVar: 0.18, metal: 0.86, bump: 1.95 },
+    stanag_gray_teflon:  { seed: 118, pattern: 'brushed_metal', c0: [68, 73, 77], c1: [98, 104, 108], rough: 0.39, roughVar: 0.15, metal: 0.85, bump: 1.60 },
 
     // --- Soldier Uniforms, Armor, Gear & Skin ---
     cordura_olive:       { seed: 201, pattern: 'cordura', c0: [58, 68, 48], c1: [78, 90, 64], rough: 0.82, roughVar: 0.14, metal: 0.02, bump: 3.0 },

@@ -3,15 +3,15 @@
 // Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
 // With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'Alpha RC 0.2.96',
+  VERSION: 'Alpha RC 0.2.97',
   VERSION_INFO: {
     major: 0,
     minor: 2,
-    patch: 96,
+    patch: 97,
     channel: 'Alpha', // Alpha | Beta — never blank while major === 0
     stage: 'RC',     // RC = Release Candidate
     updated: 'Nov 24, 2026',
-    changelog: 'Killstreak First-Person IK Hands Overhaul: rebuilt UAV ATAK tactical comms phone and Precision Airstrike binocular laser designator to use sculpted Mixamo RiggedFPArms IK hands & AshfallPBR materials with calibrated clavicle/thumb/finger poses and coordinated weapon/throwable guards; Hotfix: fixed Deploy / Deploy Now and Matchmaking ReferenceError (slideGroup scope on PM9 secondary weapon rig), reassigned non-indexed UV-unwrapped extrude geometries in js/models.js, and hardened startRaid error boundary and hideout roam cleanup; Full 720p Photorealistic PBR & High-Poly Engine Remaster: added js/pbr.js procedural 720p/1024px albedo + Sobel tangent-space normal + roughness synthesis with metric seam-stitched UVs/UV2 and dual outdoor/indoor equirectangular PMREM reflection probes; upgraded WebGL2 renderer post pipeline (HDR HalfFloat bloom, 6-tap depth SSAO, CAS sharpening, ACES Filmic, sRGB, antialiasing & HD pixel default OFF); rebuilt all 8 firearms, extended mags, 3 melees, 4 throwables, and 10 functional attachments to 1:1 millimeter CAD specs with Mixamo skeletal 2-bone IK + finger curls; eliminated all ZAVOD-9 invisible walls & surfaces (a1_round rotunda overlap, enclosed Layer-1 atrium office walls, distance-culled closed doors/barricades, station/pylon/trap hitboxes & stanchions, hinged door bullet blocking, and Layer-1 floor item drops) alongside wet concrete/tile/water PBR; remastered Vostok 256x256 terrain, animated normal-mapped rivers/reservoir/ocean, 5-tier pines, sculpted granite boulders, BTR-80 APC, VAZ sedan, Mi-8/FOB choppers, and The Rhinoceros curved polycarbonate riot shield + Prior Alpha RC 0.2.93 ZAVOD-9 transfer, Social Drawer & FOB workflow fixes.',
+    changelog: 'Colt M4A1 Carbine (5.56x45mm NATO) Remaster Release: modeled 1:1 millimeter CAD Colt M4A1 / AR-15 direct-impingement platform with KAC M4 RAS quad rail, M203 step-cut barrel, functional bolt catch & non-reciprocating T-charging handle, native 720p anodized/phosphate/STANAG PBR textures, and fluid MW2019 tactical mag-retention reload, empty bolt-catch paddle slap, and press-check inspect animations; Killstreak First-Person IK Hands Overhaul: rebuilt UAV ATAK tactical comms phone and Precision Airstrike binocular laser designator to use sculpted Mixamo RiggedFPArms IK hands & AshfallPBR materials with calibrated clavicle/thumb/finger poses and coordinated weapon/throwable guards; Hotfix: fixed Deploy / Deploy Now and Matchmaking ReferenceError (slideGroup scope on PM9 secondary weapon rig), reassigned non-indexed UV-unwrapped extrude geometries in js/models.js, and hardened startRaid error boundary and hideout roam cleanup; Full 720p Photorealistic PBR & High-Poly Engine Remaster: added js/pbr.js procedural 720p/1024px albedo + Sobel tangent-space normal + roughness synthesis with metric seam-stitched UVs/UV2 and dual outdoor/indoor equirectangular PMREM reflection probes; upgraded WebGL2 renderer post pipeline (HDR HalfFloat bloom, 6-tap depth SSAO, CAS sharpening, ACES Filmic, sRGB, antialiasing & HD pixel default OFF); rebuilt all 8 firearms, extended mags, 3 melees, 4 throwables, and 10 functional attachments to 1:1 millimeter CAD specs with Mixamo skeletal 2-bone IK + finger curls; eliminated all ZAVOD-9 invisible walls & surfaces (a1_round rotunda overlap, enclosed Layer-1 atrium office walls, distance-culled closed doors/barricades, station/pylon/trap hitboxes & stanchions, hinged door bullet blocking, and Layer-1 floor item drops) alongside wet concrete/tile/water PBR; remastered Vostok 256x256 terrain, animated normal-mapped rivers/reservoir/ocean, 5-tier pines, sculpted granite boulders, BTR-80 APC, VAZ sedan, Mi-8/FOB choppers, and The Rhinoceros curved polycarbonate riot shield + Prior Alpha RC 0.2.93 ZAVOD-9 transfer, Social Drawer & FOB workflow fixes.',
     get semver() { return `${this.major}.${this.minor}.${this.patch}`; },
     get label() { return `${this.channel} ${this.stage} ${this.major}.${this.minor}.${this.patch}`; }
   },
@@ -113,6 +113,37 @@ window.GAME_DATA = {
     },
 
     // === WEAPONS (Primaries) ===
+    m4a1: {
+      id: 'm4a1',
+      name: 'Colt M4A1 Carbine',
+      type: 'weapon',
+      slot: 'primary',
+      rarity: 'rare',
+      value: 9200,
+      weight: 3.1,
+      ammoType: 'ammo_556',
+      magSize: 30,
+      damage: 32,
+      fireRate: 0.075,
+      auto: true,
+      reloadTime: 1.95,
+      spread: 0.019,
+      adsSpread: 0.0032,
+      recoil: 0.021,
+      adsFov: 52,
+      adsZoom: 1.40,
+      adsTime: 0.225,
+      sprintToFire: 0.155,
+      tacSprintToFire: 0.245,
+      adsMoveMult: 0.68,
+      idleSway: 0.86,
+      gunKick: 0.86,
+      flinchRes: 0.96,
+      range: 145,
+      pellets: 1,
+      color: 0x26292e,
+      desc: '5.56x45mm NATO direct-impingement carbine with KAC RAS quad rail and 14.5" barrel.'
+    },
     mp5k: {
       id: 'mp5k',
       name: 'MP5-K Wasteland',
@@ -329,6 +360,18 @@ window.GAME_DATA = {
       maxStack: 120,
       buyQty: 30,
       desc: 'Light SMG & pistol cartridges. Stacks up to 120.'
+    },
+    ammo_556: {
+      id: 'ammo_556',
+      name: '5.56x45mm NATO Ammo',
+      type: 'ammo',
+      rarity: 'common',
+      value: 26,
+      weight: 0.012,
+      stackable: true,
+      maxStack: 120,
+      buyQty: 30,
+      desc: 'High-velocity intermediate NATO rifle cartridges. Stacks up to 120.'
     },
     ammo_739: {
       id: 'ammo_739',
@@ -1313,6 +1356,14 @@ window.GAME_DATA = {
       ingredients: [{ id: 'chemicals', qty: 14 }, { id: 'tools', qty: 1 }]
     },
     {
+      id: 'craft_ammo_556',
+      outputId: 'ammo_556',
+      outputQty: 60,
+      name: '60x 5.56x45mm NATO Ammo',
+      desc: 'Reload 60 high-velocity 5.56mm NATO cartridges from brass casings & gunpowder.',
+      ingredients: [{ id: 'brass_casings', qty: 2 }, { id: 'gunpowder', qty: 2 }]
+    },
+    {
       id: 'craft_ammo_739',
       outputId: 'ammo_739',
       outputQty: 60,
@@ -1379,8 +1430,8 @@ window.GAME_DATA = {
   ],
 
   TRADER_STOCK: {
-    weapons: ['pm9', 'g17', 'mp5k', 'm870', 'ak47', 'mosin9130', 'm24', 'awm338'],
-    ammo: ['ammo_9x18', 'ammo_9x19', 'ammo_12g', 'ammo_739', 'ammo_762', 'ammo_rocket'],
+    weapons: ['pm9', 'g17', 'mp5k', 'm870', 'm4a1', 'ak47', 'mosin9130', 'm24', 'awm338'],
+    ammo: ['ammo_9x18', 'ammo_9x19', 'ammo_12g', 'ammo_556', 'ammo_739', 'ammo_762', 'ammo_rocket'],
     gear: [
       'bandage', 'sterile_bandage', 'painkillers', 'medkit', 'self_revive',
       'gas_mask', 'nvg_goggles', 'zavod_rebreather', 'armor_plate',
@@ -1489,9 +1540,11 @@ window.GAME_DATA = {
       { id: 'pm9', min: 1, max: 1, w: 10 },
       { id: 'g17', min: 1, max: 1, w: 10 },
       { id: 'mp5k', min: 1, max: 1, w: 7 },
+      { id: 'm4a1', min: 1, max: 1, w: 4 },
       { id: 'm870', min: 1, max: 1, w: 7 },
       { id: 'armor_plate', min: 1, max: 3, w: 14 },
       { id: 'ammo_9x19', min: 20, max: 45, w: 12 },
+      { id: 'ammo_556', min: 20, max: 45, w: 8 },
       { id: 'ammo_12g', min: 8, max: 16, w: 10 },
       { id: 'tools', min: 1, max: 2, w: 10 },
       { id: 'documents', min: 1, max: 2, w: 8 },
@@ -1511,6 +1564,7 @@ window.GAME_DATA = {
       { id: 'concussion_grenade', min: 1, max: 2, w: 8 },
       { id: 'metallic_alloy', min: 1, max: 2, w: 9 },
       { id: 'reactive_metals', min: 1, max: 1, w: 5 },
+      { id: 'ammo_556', min: 24, max: 60, w: 14 },
       { id: 'ammo_739', min: 20, max: 45, w: 14 },
       { id: 'ammo_762', min: 8, max: 18, w: 9 },
       { id: 'armor_plate', min: 1, max: 3, w: 12 },
@@ -1522,6 +1576,7 @@ window.GAME_DATA = {
       { id: 'gas_mask', min: 1, max: 1, w: 4 },
       { id: 'nvg_goggles', min: 1, max: 1, w: 3 },
       { id: 'zavod_rebreather', min: 1, max: 1, w: 5 },
+      { id: 'm4a1', min: 1, max: 1, w: 6 },
       { id: 'ak47', min: 1, max: 1, w: 6 },
       { id: 'mosin9130', min: 1, max: 1, w: 5 },
       { id: 'm24', min: 1, max: 1, w: 4 },
@@ -1569,7 +1624,7 @@ window.GAME_DATA = {
       'vest_2plate_gel', 'bag_medium', 'decorative_bowl', 'ancient_coin', 'nylon_cloth_roll',
       'kevlar_padding', 'metallic_alloy', 'sterile_bandage', 'syringe', 'medkit', 'ammo_762'
     ],
-    boss_legendary_weapons: ['ak47', 'm24', 'awm338', 'mosin9130', 'mp5k', 'm870']
+    boss_legendary_weapons: ['m4a1', 'ak47', 'm24', 'awm338', 'mosin9130', 'mp5k', 'm870']
   },
 
   normalizeWeaponMods(mods) {

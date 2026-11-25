@@ -3911,7 +3911,8 @@ class GameUI {
 
     document.getElementById('btn-dev-grant').addEventListener('click', () => {
       this.profile.credits += 50000;
-      ['pm9', 'g17', 'mp5k', 'ak47', 'm870', 'mosin9130', 'm24', 'awm338', 'vest_1plate', 'vest_2plate_gel', 'vest_2plate_helmet', 'vest_3plate', 'bag_large', 'bag_weapon', 'boss_key', 'melee_karambit', 'fu_dead_silence', 'ks_uav', 'ks_airstrike'].forEach(id => this.addToStash(id, 1));
+      ['pm9', 'g17', 'mp5k', 'm4a1', 'ak47', 'm870', 'mosin9130', 'm24', 'awm338', 'vest_1plate', 'vest_2plate_gel', 'vest_2plate_helmet', 'vest_3plate', 'bag_large', 'bag_weapon', 'boss_key', 'melee_karambit', 'fu_dead_silence', 'ks_uav', 'ks_airstrike'].forEach(id => this.addToStash(id, 1));
+      this.addToStash('ammo_556', 90);
       this.addToStash('medkit', 5);
       this.addToStash('armor_plate', 6);
       this.addToStash('scrap_metal', 10);
@@ -4327,8 +4328,8 @@ class GameUI {
 
   _getItemShortTag(id, def) {
     const map = {
-      pm9: 'PM9', g17: 'G17', mp5k: 'MP5', ak47: 'AK', m870: '870', m24: 'M24', mosin9130: 'M91', awm338: 'AWM',
-      ammo_9x18: '918', ammo_9x19: '9MM', ammo_12g: '12G', ammo_739: '739', ammo_762: '762', ammo_rocket: 'RKT',
+      pm9: 'PM9', g17: 'G17', mp5k: 'MP5', m4a1: 'M4A1', ak47: 'AK', m870: '870', m24: 'M24', mosin9130: 'M91', awm338: 'AWM',
+      ammo_9x18: '918', ammo_9x19: '9MM', ammo_12g: '12G', ammo_556: '556', ammo_739: '739', ammo_762: '762', ammo_rocket: 'RKT',
       medkit: 'MED', bandage: 'BND', painkillers: 'PK', self_revive: 'SR',
       armor_plate: 'PLT', vest_1plate: 'V1', vest_2plate: 'V2', vest_2plate_gel: 'V2G', vest_2plate_helmet: 'V2H', vest_3plate: 'V3',
       bag_small: 'BG1', bag_medium: 'BG2', bag_large: 'BG3', bag_weapon: 'BGW',

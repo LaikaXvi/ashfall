@@ -8,6 +8,7 @@ const ITEM_MODEL_MAP = {
   ammo_9x18:    { model: 'ammo_box', tint: 0xc9b27a },
   ammo_9x19:    { model: 'ammo_box', tint: 0xb0b6a0 },
   ammo_739:     { model: 'ammo_box', tint: 0x8f9a6a },
+  ammo_556:     { model: 'ammo_box', tint: 0x5c7a58 },
   ammo_12g:     { model: 'ammo_box', tint: 0xb04a3a },
   ammo_762:     { model: 'ammo_box', tint: 0x7a8a5a },
   fu_ammo_box:  { model: 'ammo_box', tint: 0xffffff },
@@ -214,6 +215,24 @@ class ItemIconRenderer {
         mag: [[96, 40], [106, 40], [117, 65], [105, 67]],
         lines: [[[66, 28], [112, 28]], [[66, 35], [110, 35]]],
         anchors: { optic: { x: 68, y: 24, len: 42 }, muzzle: { x: 156, y: 33 }, under: { x: 125, y: 41 }, stock: { x: 52, y: 32 } }
+      },
+      m4a1: {
+        parts: [
+          { pts: [[50, 26], [106, 26], [106, 39], [50, 39]], kind: 'body' },
+          { pts: [[52, 23], [146, 23], [146, 27], [52, 27]], kind: 'detail' },
+          { pts: [[64, 39], [74, 39], [69, 60], [59, 59]], kind: 'body' },
+          { pts: [[74, 39], [89, 39], [89, 46], [74, 46]], kind: 'detail' },
+          { pts: [[106, 25], [146, 25], [146, 37], [106, 37]], kind: 'detail' },
+          { pts: [[146, 28], [180, 28], [180, 31.5], [146, 31.5]], kind: 'body' }
+        ],
+        iron: [
+          [[148, 17], [156, 17], [153, 28], [147, 28]],
+          [[56, 18], [64, 18], [64, 23], [56, 23]]
+        ],
+        factoryStock: [[10, 27], [50, 27], [50, 35], [24, 43], [10, 50], [7, 46]],
+        mag: [[89, 39], [103, 39], [109, 66], [94, 67]],
+        lines: [[[58, 30], [102, 30]], [[112, 31], [140, 31]]],
+        anchors: { optic: { x: 66, y: 23, len: 44 }, muzzle: { x: 180, y: 29 }, under: { x: 126, y: 39 }, stock: { x: 50, y: 31 } }
       },
       ak47: {
         parts: [
@@ -990,7 +1009,7 @@ class ItemIconRenderer {
         return g;
       }
       const isShotgun = id === 'ammo_12g';
-      const isRifle = id === 'ammo_739' || id === 'ammo_762';
+      const isRifle = id === 'ammo_556' || id === 'ammo_739' || id === 'ammo_762';
       const caseCol = isShotgun ? 0xb52b2b : 0xd4a946;
       const tipCol = isShotgun ? 0xd4a946 : 0xb87333;
       [-0.12, 0, 0.12].forEach((x) => {
