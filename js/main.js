@@ -1,7 +1,7 @@
 // Main Game Loop, Three.js Scene Setup & Raid Lifecycle
 (function () {
   const canvas = document.getElementById('game-canvas');
-  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
   const _targetDpr = () => {
     const px = (window.GFX_SETTINGS && typeof window.GFX_SETTINGS.pixel === 'number') ? window.GFX_SETTINGS.pixel : 1;
     return px > 1 ? 1 : Math.min(window.devicePixelRatio || 1, 1.5);
@@ -976,6 +976,13 @@
     };
     ui.addFeedMessage(`Deployed to ${zone.name}`, '#69f0ae');
     if (window.ZavodBunker) window.ZavodBunker.onRaidStart(world, getZavodCtx());
+    // Precompile all world & viewmodel shaders once during infil to eliminate first-look camera stutters!
+    try {
+      if (renderer && renderer.compile) {
+        if (scene && camera) renderer.compile(scene, camera);
+        if (viewmodelScene && viewmodelCamera) renderer.compile(viewmodelScene, viewmodelCamera);
+      }
+    } catch (e) {}
     if (ui && ui.syncUpdateBadges) ui.syncUpdateBadges();
     try { canvas.requestPointerLock(); } catch (e) {}
     } catch (err) {

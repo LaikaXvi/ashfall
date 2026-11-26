@@ -532,9 +532,142 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
       type: rtType,
       depthBuffer: false
     });
+    // Dedicated Half-Resolution SSAO + Depth-Aware Bilateral Blur Targets (4x fewer pixels than full-res AO!)
+    const rtAO = new THREE.WebGLRenderTarget(bW, bH, {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      format: THREE.RGBAFormat,
+      type: THREE.UnsignedByteType,
+      depthBuffer: false
+    });
+    const rtAOBlur = new THREE.WebGLRenderTarget(bW, bH, {
+      minFilter: THREE.LinearFilter,
+      magFilter: THREE.LinearFilter,
+      format: THREE.RGBAFormat,
+      type: THREE.UnsignedByteType,
+      depthBuffer: false
+    });
 
     const postCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     const quadGeo = new THREE.PlaneGeometry(2, 2);
+
+    // Half-Res View-Space Normal SSAO Pass (8-tap IGN spiral GTAO/SSAO with linear depth reconstruction)
+    const aoMat = new THREE.ShaderMaterial({
+      uniforms: {
+        tDepth: { value: depthTex },
+        uTexel: { value: new THREE.Vector2(1 / rtW, 1 / rtH) },
+        uTanHalf: { value: new THREE.Vector2(1.0, 0.76) },
+        uNear: { value: 0.05 },
+        uFar: { value: 360.0 },
+        uAspect: { value: rtW / Math.max(1, rtH) }
+      },
+      vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }`,
+      fragmentShader: `
+        uniform sampler2D tDepth;
+        uniform vec2 uTexel;
+        uniform vec2 uTanHalf;
+        uniform float uNear;
+        uniform float uFar;
+        uniform float uAspect;
+        varying vec2 vUv;
+        float ign(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
+        float linearZ(float dRaw) {
+          float d01 = clamp((dRaw - 0.05) / 0.95, 0.0, 0.99999);
+          return (uNear * uFar) / max(1e-4, uFar - d01 * (uFar - uNear));
+        }
+        vec3 viewPos(vec2 uv, float z) {
+          return vec3((uv * 2.0 - 1.0) * uTanHalf * z, -z);
+        }
+        void main() {
+          float d0Raw = texture2D(tDepth, vUv).r;
+          if (d0Raw < 0.0503 || d0Raw >= 0.9994) { gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0); return; }
+          float z0 = linearZ(d0Raw);
+          if (z0 > 85.0) { gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0); return; }
+          vec3 P = viewPos(vUv, z0);
+
+          vec2 ox = vec2(uTexel.x * 2.0, 0.0);
+          vec2 oy = vec2(0.0, uTexel.y * 2.0);
+          float dl = texture2D(tDepth, clamp(vUv - ox, 0.001, 0.999)).r;
+          float dr = texture2D(tDepth, clamp(vUv + ox, 0.001, 0.999)).r;
+          float dd = texture2D(tDepth, clamp(vUv - oy, 0.001, 0.999)).r;
+          float du = texture2D(tDepth, clamp(vUv + oy, 0.001, 0.999)).r;
+          float zl = dl < 0.0503 ? z0 : linearZ(dl);
+          float zr = dr < 0.0503 ? z0 : linearZ(dr);
+          float zd = dd < 0.0503 ? z0 : linearZ(dd);
+          float zu = du < 0.0503 ? z0 : linearZ(du);
+
+          vec3 dx = abs(zl - z0) < abs(zr - z0) ? (P - viewPos(vUv - ox, zl)) : (viewPos(vUv + ox, zr) - P);
+          vec3 dy = abs(zd - z0) < abs(zu - z0) ? (P - viewPos(vUv - oy, zd)) : (viewPos(vUv + oy, zu) - P);
+          vec3 n = cross(dx, dy);
+          float nLen = length(n);
+          if (nLen < 1e-6) { gl_FragColor = vec4(1.0, 1.0, 1.0, 1.0); return; }
+          n /= nLen;
+
+          float R = 0.58 * (0.65 + 0.35 * clamp(z0 / 12.0, 0.0, 1.0));
+          float rUv = clamp(R / max(0.25, 2.0 * z0 * uTanHalf.y), 3.0 * uTexel.y, 0.085);
+          float R2 = R * R;
+          float rot = ign(gl_FragCoord.xy) * 6.2831853;
+          float sum = 0.0;
+          float valid = 0.0;
+          for (int i = 0; i < 8; i++) {
+            float a = (float(i) + 0.5) / 8.0;
+            float th = a * 6.2831853 * 2.5 + rot;
+            vec2 off = vec2(cos(th) / max(0.5, uAspect), sin(th)) * a * rUv;
+            vec2 uv2 = clamp(vUv + off, 0.002, 0.998);
+            float dsRaw = texture2D(tDepth, uv2).r;
+            if (dsRaw < 0.0503) continue;
+            float z2 = linearZ(dsRaw);
+            vec3 v = viewPos(uv2, z2) - P;
+            float vv = dot(v, v);
+            float vn = dot(v, n);
+            float f = max(R2 - vv, 0.0);
+            sum += f * f * f * max((vn - (0.015 + 0.004 * z0)) / (vv + 0.004), 0.0);
+            valid += 1.0;
+          }
+          float ao = valid < 1.0 ? 1.0 : max(0.32, 1.0 - 1.42 * sum * 5.0 / (R2 * R2 * R2 * valid));
+          ao = mix(ao, 1.0, smoothstep(48.0, 85.0, z0));
+          gl_FragColor = vec4(ao, clamp(z0 / 100.0, 0.0, 1.0), 0.0, 1.0);
+        }
+      `,
+      toneMapped: false, depthTest: false, depthWrite: false
+    });
+    const aoScene = new THREE.Scene();
+    aoScene.add(new THREE.Mesh(quadGeo, aoMat));
+
+    // Edge-Preserving Cross-Bilateral Blur for Noise-Free Half-Res SSAO
+    const aoBlurMat = new THREE.ShaderMaterial({
+      uniforms: {
+        tAO: { value: rtAO.texture },
+        uTexel: { value: new THREE.Vector2(1 / bW, 1 / bH) }
+      },
+      vertexShader: `varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.0,1.0); }`,
+      fragmentShader: `
+        uniform sampler2D tAO;
+        uniform vec2 uTexel;
+        varying vec2 vUv;
+        void main() {
+          vec2 c0 = texture2D(tAO, vUv).rg;
+          float sum = c0.r * 2.0;
+          float wSum = 2.0;
+          vec2 offs[4];
+          offs[0] = vec2(uTexel.x * 1.25, uTexel.y * 0.5);
+          offs[1] = vec2(-uTexel.x * 1.25, -uTexel.y * 0.5);
+          offs[2] = vec2(uTexel.x * 0.5, -uTexel.y * 1.25);
+          offs[3] = vec2(-uTexel.x * 0.5, uTexel.y * 1.25);
+          for (int i = 0; i < 4; i++) {
+            vec2 s = texture2D(tAO, clamp(vUv + offs[i], 0.002, 0.998)).rg;
+            float dz = abs(s.g - c0.g);
+            float w = exp(-dz * dz * 1800.0);
+            sum += s.r * w;
+            wSum += w;
+          }
+          gl_FragColor = vec4(sum / max(0.001, wSum), c0.g, 0.0, 1.0);
+        }
+      `,
+      toneMapped: false, depthTest: false, depthWrite: false
+    });
+    const aoBlurScene = new THREE.Scene();
+    aoBlurScene.add(new THREE.Mesh(quadGeo, aoBlurMat));
 
     // Bloom Extract with Karis firefly suppression
     const bloomExtractMat = new THREE.ShaderMaterial({
@@ -586,11 +719,12 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
     const bloomBlurScene = new THREE.Scene();
     bloomBlurScene.add(new THREE.Mesh(quadGeo, bloomBlurMat));
 
-    // Final Photorealistic Composite: Linear View-Space Normal SSAO + Sunlit Luma Mask + HDR Bloom + CAS + ACES
+    // Final Photorealistic Composite: Half-Res Bilateral SSAO + Sunlit Luma Mask + HDR Bloom + CAS + ACES
     const postMat = new THREE.ShaderMaterial({
       uniforms: {
         tDiffuse: { value: rtScene.texture },
         tDepth: { value: depthTex },
+        tAO: { value: rtAOBlur.texture },
         tBloom: { value: rtBloomA.texture },
         uHasDepth: { value: depthTex ? 1.0 : 0.0 },
         uEnableAO: { value: 1.0 },
@@ -599,7 +733,7 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
         uTexel: { value: new THREE.Vector2(1 / rtW, 1 / rtH) },
         uTanHalf: { value: new THREE.Vector2(1.0, 0.76) },
         uNear: { value: 0.05 },
-        uFar: { value: 1420.0 },
+        uFar: { value: 360.0 },
         uAspect: { value: rtW / Math.max(1, rtH) },
         uScale: { value: curScale },
         uExposure: { value: 1.08 },
@@ -620,6 +754,7 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
       fragmentShader: `
         uniform sampler2D tDiffuse;
         uniform sampler2D tDepth;
+        uniform sampler2D tAO;
         uniform sampler2D tBloom;
         uniform float uHasDepth;
         uniform float uEnableAO;
@@ -643,7 +778,6 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
         float b2(vec2 a) { a = floor(a); return fract(dot(a, vec2(0.5, a.y * 0.75))); }
         float b4(vec2 a) { return b2(0.5 * a) * 0.25 + b2(a); }
         float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
-        float ign(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
 
         vec3 acesFilmic(vec3 x) {
           float a = 2.51;
@@ -652,66 +786,6 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
           float d = 0.59;
           float e = 0.14;
           return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
-        }
-
-        float linearZ(float dRaw) {
-          float d01 = clamp((dRaw - 0.05) / 0.95, 0.0, 0.99999);
-          return (uNear * uFar) / max(1e-4, uFar - d01 * (uFar - uNear));
-        }
-
-        vec3 viewPos(vec2 uv, float z) {
-          return vec3((uv * 2.0 - 1.0) * uTanHalf * z, -z);
-        }
-
-        float computeSSAO(vec2 uv) {
-          float d0Raw = texture2D(tDepth, uv).r;
-          if (d0Raw < 0.0503 || d0Raw >= 0.9994) return 1.0;
-          float z0 = linearZ(d0Raw);
-          if (z0 > 75.0) return 1.0;
-          vec3 P = viewPos(uv, z0);
-
-          vec2 ox = vec2(uTexel.x * 1.5, 0.0);
-          vec2 oy = vec2(0.0, uTexel.y * 1.5);
-          float dl = texture2D(tDepth, clamp(uv - ox, 0.001, 0.999)).r;
-          float dr = texture2D(tDepth, clamp(uv + ox, 0.001, 0.999)).r;
-          float dd = texture2D(tDepth, clamp(uv - oy, 0.001, 0.999)).r;
-          float du = texture2D(tDepth, clamp(uv + oy, 0.001, 0.999)).r;
-          float zl = dl < 0.0503 ? z0 : linearZ(dl);
-          float zr = dr < 0.0503 ? z0 : linearZ(dr);
-          float zd = dd < 0.0503 ? z0 : linearZ(dd);
-          float zu = du < 0.0503 ? z0 : linearZ(du);
-
-          vec3 dx = abs(zl - z0) < abs(zr - z0) ? (P - viewPos(uv - ox, zl)) : (viewPos(uv + ox, zr) - P);
-          vec3 dy = abs(zd - z0) < abs(zu - z0) ? (P - viewPos(uv - oy, zd)) : (viewPos(uv + oy, zu) - P);
-          vec3 n = cross(dx, dy);
-          float nLen = length(n);
-          if (nLen < 1e-6) return 1.0;
-          n /= nLen;
-
-          float R = 0.54 * (0.65 + 0.35 * clamp(z0 / 12.0, 0.0, 1.0));
-          float rUv = clamp(R / max(0.25, 2.0 * z0 * uTanHalf.y), 3.0 * uTexel.y, 0.08);
-          float R2 = R * R;
-          float rot = ign(gl_FragCoord.xy) * 6.2831853;
-          float sum = 0.0;
-          float valid = 0.0;
-          for (int i = 0; i < 6; i++) {
-            float a = (float(i) + 0.5) / 6.0;
-            float th = a * 6.2831853 * 2.0 + rot;
-            vec2 off = vec2(cos(th) / max(0.5, uAspect), sin(th)) * a * rUv;
-            vec2 uv2 = clamp(uv + off, 0.002, 0.998);
-            float dsRaw = texture2D(tDepth, uv2).r;
-            if (dsRaw < 0.0503) continue;
-            float z2 = linearZ(dsRaw);
-            vec3 v = viewPos(uv2, z2) - P;
-            float vv = dot(v, v);
-            float vn = dot(v, n);
-            float f = max(R2 - vv, 0.0);
-            sum += f * f * f * max((vn - (0.015 + 0.004 * z0)) / (vv + 0.004), 0.0);
-            valid += 1.0;
-          }
-          if (valid < 1.0) return 1.0;
-          float ao = max(0.34, 1.0 - 1.35 * sum * 5.0 / (R2 * R2 * R2 * valid));
-          return mix(ao, 1.0, smoothstep(42.0, 75.0, z0));
         }
 
         void main() {
@@ -735,7 +809,7 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
           }
 
           if (uHasDepth > 0.5 && uEnableAO > 0.5 && uScale <= 1.01) {
-            float ao = computeSSAO(uv);
+            float ao = texture2D(tAO, uv).r;
             float hdrLum = dot(hdr, vec3(0.2126, 0.7152, 0.0722));
             float ambMask = 1.0 - 0.72 * smoothstep(0.20, 0.95, hdrLum * uExposure);
             float a = mix(1.0, ao, 0.90 * ambMask);
@@ -800,10 +874,15 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
         const nbH = Math.max(1, Math.floor(rtH * 0.5));
         rtBloomA.setSize(nbW, nbH);
         rtBloomB.setSize(nbW, nbH);
+        rtAO.setSize(nbW, nbH);
+        rtAOBlur.setSize(nbW, nbH);
+        aoBlurMat.uniforms.uTexel.value.set(1 / nbW, 1 / nbH);
       }
       postMat.uniforms.uRes.value.set(rtW, rtH);
       postMat.uniforms.uTexel.value.set(1 / rtW, 1 / rtH);
       postMat.uniforms.uAspect.value = rtW / Math.max(1, rtH);
+      aoMat.uniforms.uTexel.value.set(1 / rtW, 1 / rtH);
+      aoMat.uniforms.uAspect.value = rtW / Math.max(1, rtH);
       postMat.uniforms.uScale.value = curScale;
       if (renderer && renderer.toneMappingExposure !== undefined) {
         postMat.uniforms.uExposure.value = renderer.toneMappingExposure;
@@ -850,9 +929,17 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
             const asp = cam.aspect || (rtW / Math.max(1, rtH));
             postMat.uniforms.uTanHalf.value.set(tanY * asp, tanY);
             postMat.uniforms.uAspect.value = asp;
+            aoMat.uniforms.uTanHalf.value.set(tanY * asp, tanY);
+            aoMat.uniforms.uAspect.value = asp;
           }
-          if (cam.near !== undefined) postMat.uniforms.uNear.value = cam.near;
-          if (cam.far !== undefined) postMat.uniforms.uFar.value = cam.far;
+          if (cam.near !== undefined) {
+            postMat.uniforms.uNear.value = cam.near;
+            aoMat.uniforms.uNear.value = cam.near;
+          }
+          if (cam.far !== undefined) {
+            postMat.uniforms.uFar.value = cam.far;
+            aoMat.uniforms.uFar.value = cam.far;
+          }
           if (gl && depthTex) gl.depthRange(0.05, 1.0);
         } else {
           if (gl && depthTex) {
@@ -868,6 +955,15 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
         const lightingQ = (window.GFX_SETTINGS && typeof window.GFX_SETTINGS.lighting === 'number')
           ? window.GFX_SETTINGS.lighting : 3;
         if (lightingQ >= 2) {
+          if (depthTex && curScale <= 1.01) {
+            renderer.setRenderTarget(rtAO);
+            renderer.clear();
+            renderer.render(aoScene, postCam);
+            renderer.setRenderTarget(rtAOBlur);
+            renderer.clear();
+            renderer.render(aoBlurScene, postCam);
+          }
+
           renderer.setRenderTarget(rtBloomA);
           renderer.clear();
           renderer.render(bloomExtractScene, postCam);
@@ -956,106 +1052,70 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
     let culled = 0;
     let losCulled = 0;
 
-    // 1. Static batched meshes & P1 InstancedMesh runs (fog-horizon + frustum + time-sliced LOS)
-    const batched = world._batchedMeshes;
-    if (batched && batched.length > 0) {
-      for (let i = 0; i < batched.length; i++) {
-        const m = batched[i];
-        if (!m) continue;
+    // 1. Static batched meshes, foliage chunks & terrain chunks via flat Float32Array SoA table
+    //    (Zero self-occlusion: buildings & terrain are NEVER hidden by their own front walls;
+    //     they fade smoothly into the 55m..255m linear fog before hard-culling at 275m!)
+    const staticDist = world.isBunkerMap ? 145 : 275;
+    if (!world._vpSoA) {
+      const items = [];
+      const pushMesh = (m, pad, maxD) => {
+        if (!m) return;
         const bs = (m.isInstancedMesh && m.boundingSphere)
           ? m.boundingSphere
-          : (m.geometry && m.geometry.boundingSphere);
-        let inView = true;
-        let dist = 0;
-        if (bs) {
-          _vpSphere.copy(bs).applyMatrix4(m.matrixWorld);
-          const dx = _vpSphere.center.x - camX;
-          const dy = _vpSphere.center.y - camY;
-          const dz = _vpSphere.center.z - camZ;
-          dist = Math.hypot(dx, dy, dz);
-          if (dist - _vpSphere.radius > maxRenderDist) {
-            inView = false;
-          } else {
-            _vpSphere.radius += 1.5;
-            inView = _vpFrustum.intersectsSphere(_vpSphere);
-          }
-        }
-        // Time-sliced LOS occlusion for mid/far compact cells behind solid structures
-        if (inView && canRay && bs && dist > 48 && _vpSphere.radius < 46) {
-          const stale = !m._vpLosTs || (nowMs - m._vpLosTs) > 220;
-          if (stale && rayBudget > 0) {
-            rayBudget -= 2;
-            m._vpLosTs = nowMs;
-            const cx = _vpSphere.center.x, cy = _vpSphere.center.y, cz = _vpSphere.center.z;
-            const r = _vpSphere.radius * 0.55;
-            const vis = _vpHasLos(world, camX, camY, camZ, cx, cy + r * 0.6, cz)
-              || _vpHasLos(world, camX, camY, camZ, cx, cy, cz);
-            if (vis) m._vpLosHold = nowMs + 420;
-            m._vpLosHidden = !vis && (!m._vpLosHold || nowMs > m._vpLosHold);
-          }
-          if (m._vpLosHidden) {
-            inView = false;
-            losCulled++;
-          }
-        } else if (inView) {
-          m._vpLosHidden = false;
-        }
-        const wantLayer = inView ? 0 : 3;
-        if (m._vpLayer !== wantLayer) {
-          m._vpLayer = wantLayer;
-          m.layers.set(wantLayer);
-        }
-        if (inView) visible++; else culled++;
+          : (m.geometry && (m.geometry.boundingSphere || (m.geometry.computeBoundingSphere(), m.geometry.boundingSphere)));
+        if (!bs) return;
+        _vpSphere.copy(bs).applyMatrix4(m.matrixWorld);
+        items.push({ m, cx: _vpSphere.center.x, cy: _vpSphere.center.y, cz: _vpSphere.center.z, r: _vpSphere.radius + pad, maxD });
+      };
+      if (world._batchedMeshes) {
+        for (let i = 0; i < world._batchedMeshes.length; i++) pushMesh(world._batchedMeshes[i], 2.0, staticDist);
       }
-    }
-
-    // 2. Spatially chunked foliage InstancedMeshes (trees, grass, ferns)
-    const foliage = world._foliageChunks;
-    if (foliage && foliage.length > 0) {
-      for (let i = 0; i < foliage.length; i++) {
-        const ch = foliage[i];
-        if (!ch || !ch.boundingSphere) continue;
-        let inView = true;
-        const maxD = Math.min(maxRenderDist, (ch.userData && ch.userData.cullMaxDist) || maxRenderDist);
-        const dx = ch.boundingSphere.center.x - camX;
-        const dz = ch.boundingSphere.center.z - camZ;
-        const lim = maxD + ch.boundingSphere.radius;
-        if (dx * dx + dz * dz > lim * lim) {
-          inView = false;
-        } else {
-          _vpSphere.copy(ch.boundingSphere);
-          _vpSphere.radius += 2.0;
-          inView = _vpFrustum.intersectsSphere(_vpSphere);
+      if (world._foliageChunks) {
+        for (let i = 0; i < world._foliageChunks.length; i++) {
+          const ch = world._foliageChunks[i];
+          const md = Math.min(staticDist, (ch && ch.userData && ch.userData.cullMaxDist) || staticDist);
+          pushMesh(ch, 2.5, md);
         }
-        const wantLayer = inView ? 0 : 3;
-        if (ch._vpLayer !== wantLayer) {
-          ch._vpLayer = wantLayer;
-          ch.layers.set(wantLayer);
-        }
-        if (inView) visible++; else culled++;
       }
+      if (world.terrainChunks) {
+        for (let i = 0; i < world.terrainChunks.length; i++) pushMesh(world.terrainChunks[i], 4.0, staticDist + 25);
+      }
+      const n = items.length;
+      const data = new Float32Array(n * 5);
+      const refs = new Array(n);
+      const layers = new Uint8Array(n);
+      for (let i = 0; i < n; i++) {
+        const it = items[i];
+        const b = i * 5;
+        data[b] = it.cx;
+        data[b + 1] = it.cy;
+        data[b + 2] = it.cz;
+        data[b + 3] = it.r;
+        data[b + 4] = it.maxD;
+        refs[i] = it.m;
+        layers[i] = 255;
+      }
+      world._vpSoA = { n, data, refs, layers };
     }
-
-    // 3. Terrain chunks (culled beyond fog horizon + outside frustum)
-    const tChunks = world.terrainChunks;
-    if (tChunks && tChunks.length > 0) {
-      for (let i = 0; i < tChunks.length; i++) {
-        const tc = tChunks[i];
-        if (!tc || !tc.geometry) continue;
-        if (!tc.geometry.boundingSphere) tc.geometry.computeBoundingSphere();
-        _vpSphere.copy(tc.geometry.boundingSphere).applyMatrix4(tc.matrixWorld);
-        const dx = _vpSphere.center.x - camX;
-        const dz = _vpSphere.center.z - camZ;
-        const lim = maxRenderDist + _vpSphere.radius + 20;
-        let inView = (dx * dx + dz * dz <= lim * lim);
+    {
+      const soa = world._vpSoA;
+      const d = soa.data;
+      const refs = soa.refs;
+      const layers = soa.layers;
+      for (let i = 0, b = 0; i < soa.n; i++, b += 5) {
+        const cx = d[b], cy = d[b + 1], cz = d[b + 2], r = d[b + 3], maxD = d[b + 4];
+        const dx = cx - camX, dy = cy - camY, dz = cz - camZ;
+        const lim = maxD + r;
+        let inView = (dx * dx + dy * dy + dz * dz <= lim * lim);
         if (inView) {
-          _vpSphere.radius += 2.0;
+          _vpSphere.center.set(cx, cy, cz);
+          _vpSphere.radius = r;
           inView = _vpFrustum.intersectsSphere(_vpSphere);
         }
         const wantLayer = inView ? 0 : 3;
-        if (tc._vpLayer !== wantLayer) {
-          tc._vpLayer = wantLayer;
-          tc.layers.set(wantLayer);
+        if (layers[i] !== wantLayer) {
+          layers[i] = wantLayer;
+          refs[i].layers.set(wantLayer);
         }
         if (inView) visible++; else culled++;
       }
@@ -1080,13 +1140,13 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
           _vpSphere.radius = radius;
           inView = _vpFrustum.intersectsSphere(_vpSphere);
         }
-        if (inView && useLos && canRay && dSq > 64) {
+        if (inView && useLos && canRay && dSq > 196) {
           const stale = !item._vpLosTs || (nowMs - item._vpLosTs) > 200;
           if (stale && rayBudget > 0) {
             rayBudget--;
             item._vpLosTs = nowMs;
             const vis = _vpHasLos(world, camX, camY, camZ, pos.x, pos.y + 0.55, pos.z);
-            if (vis) item._vpLosHold = nowMs + 350;
+            if (vis) item._vpLosHold = nowMs + 420;
             item._vpLosHidden = !vis && (!item._vpLosHold || nowMs > item._vpLosHold);
           }
           if (item._vpLosHidden) {
@@ -1194,15 +1254,15 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
           _vpSphere.radius = 2.6;
           inView = _vpFrustum.intersectsSphere(_vpSphere);
         }
-        // LOS wall occlusion when > 8m away (time-sliced every 140ms with 320ms visible hold)
-        if (inView && canRay && dSq > 64) {
-          const stale = !a._vpLosTs || (nowMs - a._vpLosTs) > 140;
+        // LOS wall occlusion when > 14m away (multi-point head/chest/shoulder test so peeking actors never pop!)
+        if (inView && canRay && dSq > 196) {
+          const stale = !a._vpLosTs || (nowMs - a._vpLosTs) > 130;
           if (stale && rayBudget > 0) {
             rayBudget -= 2;
             a._vpLosTs = nowMs;
             const vis = _vpHasLos(world, camX, camY, camZ, a.position.x, a.position.y + 1.55, a.position.z)
               || _vpHasLos(world, camX, camY, camZ, a.position.x, a.position.y + 0.85, a.position.z);
-            if (vis) a._vpLosHold = nowMs + 320;
+            if (vis) a._vpLosHold = nowMs + 420;
             a._vpLosHidden = !vis && (!a._vpLosHold || nowMs > a._vpLosHold);
           }
           if (a._vpLosHidden) {

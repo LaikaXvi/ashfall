@@ -22,11 +22,11 @@ window.AshfallPBR = (() => {
   function _getTexDims(isSquare = false) {
     const q = (window.GFX_SETTINGS && typeof window.GFX_SETTINGS.textures === 'number')
       ? window.GFX_SETTINGS.textures : 3;
+    // Strictly power-of-two dimensions for fast hardware trilinear mipmaps & GLSL distance mip-bias LOD scaling
     if (isSquare) {
-      return q <= 1 ? [512, 512] : (q === 2 ? [768, 768] : [1024, 1024]);
+      return q <= 1 ? [256, 256] : (q === 2 ? [512, 512] : [512, 512]);
     }
-    // Native 720p (1280x720) at High texture setting
-    return q <= 1 ? [640, 360] : (q === 2 ? [960, 540] : [1280, 720]);
+    return q <= 1 ? [512, 256] : (q === 2 ? [512, 512] : [1024, 512]);
   }
 
   function _getMaxAniso() {
@@ -812,23 +812,38 @@ float slWetK = 0.0;`
         )
         .replace(
           '#include <map_fragment>',
-          `#include <map_fragment>
+          `float slDist = length(vSlWorldPos - cameraPosition);
+float slLodT = smoothstep(26.0, 155.0, slDist);
+#ifdef USE_MAP
+  vec4 sampledDiffuseColor = texture2D( map, vUv, slLodT * 2.2 );
+  #ifdef DECODE_VIDEO_TEXTURE
+    sampledDiffuseColor = vec4( mix( pow( sampledDiffuseColor.rgb * 0.9478672986 + vec3( 0.0521327014 ), vec3( 2.4 ) ), sampledDiffuseColor.rgb * 0.0773993808, vec3( lessThanEqual( sampledDiffuseColor.rgb, vec3( 0.04045 ) ) ) ), sampledDiffuseColor.w );
+  #endif
+  diffuseColor *= sampledDiffuseColor;
+#endif
 {
   vec3 slMp = vSlWorldPos * uSlMacro.x;
   slMac = slN3(slMp);
-  slMac2 = slN3(slMp * 3.7 + 11.3);
-  float slM = slMac * 0.65 + slMac2 * 0.35 - 0.5;
-  diffuseColor.rgb *= (1.0 + slM * 0.24);
-  float slAbsY = abs(vSlWorldNorm.y);
-  float slVert = 1.0 - smoothstep(0.35, 0.72, slAbsY);
-  float slSc = vSlWorldPos.x + vSlWorldPos.z;
-  float slStreak = slN3(vec3(slSc * 1.9, vSlWorldPos.y * 0.26, 5.7)) * slN3(vec3(slSc * 5.2, vSlWorldPos.y * 0.55, 2.3));
-  slStreak = smoothstep(0.14, 0.44, slStreak) * slVert;
-  float slLow = smoothstep(0.80, 0.0, abs(vSlWorldPos.y - uSlGroundY)) * slVert;
-  float slGrime = clamp(slStreak * 0.30 + slLow * 0.22 + smoothstep(0.55, 0.88, slMac * 0.6 + slMac2 * 0.4) * 0.14, 0.0, 0.42);
-  diffuseColor.rgb *= (1.0 - slGrime);
-  slWetK = clamp(uSlWet * (slLow * 0.65 + slStreak * 0.45), 0.0, 0.75);
-  diffuseColor.rgb *= (1.0 - 0.16 * slWetK);
+  float slDetailW = 1.0 - smoothstep(68.0, 112.0, slDist);
+  if (slDetailW > 0.01) {
+    slMac2 = slN3(slMp * 3.7 + 11.3);
+    float slM = slMac * 0.65 + slMac2 * 0.35 - 0.5;
+    diffuseColor.rgb *= (1.0 + slM * 0.24);
+    float slAbsY = abs(vSlWorldNorm.y);
+    float slVert = 1.0 - smoothstep(0.35, 0.72, slAbsY);
+    float slSc = vSlWorldPos.x + vSlWorldPos.z;
+    float slStreak = slN3(vec3(slSc * 1.9, vSlWorldPos.y * 0.26, 5.7)) * slN3(vec3(slSc * 5.2, vSlWorldPos.y * 0.55, 2.3));
+    slStreak = smoothstep(0.14, 0.44, slStreak) * slVert * slDetailW;
+    float slLow = smoothstep(0.80, 0.0, abs(vSlWorldPos.y - uSlGroundY)) * slVert * slDetailW;
+    float slGrime = clamp(slStreak * 0.30 + slLow * 0.22 + smoothstep(0.55, 0.88, slMac * 0.6 + slMac2 * 0.4) * 0.14 * slDetailW, 0.0, 0.42);
+    diffuseColor.rgb *= (1.0 - slGrime);
+    slWetK = clamp(uSlWet * (slLow * 0.65 + slStreak * 0.45), 0.0, 0.75);
+    diffuseColor.rgb *= (1.0 - 0.16 * slWetK);
+  } else {
+    slMac2 = 0.5;
+    slWetK = 0.0;
+    diffuseColor.rgb *= (1.0 + (slMac - 0.5) * 0.18);
+  }
 }`
         )
         .replace(
@@ -840,7 +855,7 @@ float slWetK = 0.0;`
   vec3 slDnX = dFdx(vSlWorldNorm);
   vec3 slDnY = dFdy(vSlWorldNorm);
   float slCurv = clamp(dot(slDnX, slDnX) + dot(slDnY, slDnY), 0.0, 0.45);
-  roughnessFactor = clamp(sqrt(roughnessFactor * roughnessFactor + slCurv * 0.35), 0.05, 1.0);
+  roughnessFactor = clamp(sqrt(roughnessFactor * roughnessFactor + slCurv * 0.35 + slLodT * 0.12), 0.05, 1.0);
 }`
         );
     };

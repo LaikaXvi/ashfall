@@ -2205,7 +2205,34 @@ class WastelandWorld {
     this._pineMeshes = [...livePineChunks, ...deadTreeChunks];
     this._maxPines = livePineMats.length;
 
-    // 2. Crisp Grass Tufts (3,200 instances chunked in 128m viewport cells, hidden past 115m!)
+    // Smooth GPU distance fade for foliage cards so grass & ferns dissolve smoothly before chunk culling (zero pop-in!)
+    const applyFoliageDistanceFade = (mat, fadeStart, fadeEnd) => {
+      mat.onBeforeCompile = (shader) => {
+        shader.uniforms.uFolFade = { value: new THREE.Vector2(fadeStart, fadeEnd) };
+        shader.vertexShader = shader.vertexShader
+          .replace('#include <common>', '#include <common>\nvarying float vFolDist;')
+          .replace(
+            '#include <project_vertex>',
+            `vec4 folWp = vec4(transformed, 1.0);
+#ifdef USE_INSTANCING
+  folWp = instanceMatrix * folWp;
+#endif
+vFolDist = length((modelMatrix * folWp).xyz - cameraPosition);
+#include <project_vertex>`
+          );
+        shader.fragmentShader = shader.fragmentShader
+          .replace('#include <common>', '#include <common>\nuniform vec2 uFolFade;\nvarying float vFolDist;')
+          .replace(
+            '#include <alphatest_fragment>',
+            `float folFade = 1.0 - smoothstep(uFolFade.x, uFolFade.y, vFolDist);
+diffuseColor.a *= folFade;
+#include <alphatest_fragment>`
+          );
+      };
+      mat.customProgramCacheKey = () => `ash_fol_fade_${fadeStart}_${fadeEnd}`;
+    };
+
+    // 2. Crisp Grass Tufts (3,200 instances chunked in 128m viewport cells, smooth fade 85m..112m!)
     const grassCount = 3200;
     const grassGeo = buildCrossedPlanesGeo(0.9, 0.55, -0.04, 2);
     const grassMat = new THREE.MeshStandardMaterial({
@@ -2215,6 +2242,7 @@ class WastelandWorld {
       metalness: 0.02,
       side: THREE.DoubleSide
     });
+    applyFoliageDistanceFade(grassMat, 85.0, 112.0);
     const grassMats = [];
     for (let tries = 0; tries < 9500 && grassMats.length < grassCount; tries++) {
       const x = (rand() * 2 - 1) * this.mapHalfSize;
@@ -2242,6 +2270,7 @@ class WastelandWorld {
       metalness: 0.02,
       side: THREE.DoubleSide
     });
+    applyFoliageDistanceFade(fernMat, 122.0, 152.0);
     const fernMats = [];
     for (let tries = 0; tries < 3600 && fernMats.length < fernCount; tries++) {
       const x = (rand() * 2 - 1) * this.mapHalfSize;

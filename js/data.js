@@ -3,15 +3,15 @@
 // Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
 // With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'Alpha RC 0.3.13',
+  VERSION: 'Alpha RC 0.3.14',
   VERSION_INFO: {
     major: 0,
     minor: 3,
-    patch: 13,
+    patch: 14,
     channel: 'Alpha', // Alpha | Beta — never blank while major === 0
     stage: 'RC',     // RC = Release Candidate
     updated: 'Nov 26, 2026',
-    changelog: 'Major FPS & Stutter Optimization + Line-of-Sight Occlusion Culling: reduced outdoor render distance to 265m hidden smoothly behind linear atmospheric fog (55m-255m, camera.far 360m); eliminated static batch draw-call & triangle explosion by merging non-repeating boxes per 96m cell and promoting only >=8-box runs to 12-tri InstancedMeshes; cut PCSS shadow taps (18->10) and SSAO taps (10->6); and added zero-allocation time-sliced LOS wall-occlusion culling for AI/squad rigs, loot containers, ground items, and mid/far building cells.',
+    changelog: 'Rebuilt WebGL2 Rendering & Culling Architecture: Half-Res View-Space Normal SSAO + Edge-Preserving Cross-Bilateral Blur (4x faster, cleaner ambient occlusion); GLSL continuous distance-based texture mip-bias scaling & shader-detail LOD on power-of-two hardware-mipmapped PBR textures (zero texture pop-in); flat Float32Array SoA viewport + fog-horizon culler eliminating building self-occlusion pop-in; smooth GPU distance-dissolve on grass & ferns; time-sliced multi-point LOS wall-occlusion on actors & props (>14m); and upfront renderer.compile() shader precompilation + antialias:false backbuffer optimization to eliminate camera-turn stutters.',
     get semver() { return `${this.major}.${this.minor}.${this.patch}`; },
     get label() { return `${this.channel} ${this.stage} ${this.major}.${this.minor}.${this.patch}`; }
   },
