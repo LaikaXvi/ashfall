@@ -4814,6 +4814,9 @@
       }
 
       renderer.shadowMap.needsUpdate = ((window._shadowFrameCount = ((window._shadowFrameCount || 0) + 1) % 3) === 0);
+      if (window.AshfallRenderer && window.AshfallRenderer.updateViewportCulling) {
+        window.AshfallRenderer.updateViewportCulling(camera, world, enemyManager, squadManager);
+      }
       if (window.renderPipeline) {
         window.renderPipeline.begin();
         window.renderPipeline.render(scene, camera, false);

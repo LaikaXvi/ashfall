@@ -2121,14 +2121,54 @@ class WastelandWorld {
       roughness: 0.86,
       metalness: 0.02
     });
-    const livePineInst = new THREE.InstancedMesh(livePineGeo, treeMat, pineCount);
-    const deadTreeInst = new THREE.InstancedMesh(deadTreeGeo, treeMat, Math.ceil(pineCount * 0.35));
-    livePineInst.castShadow = false;
-    deadTreeInst.castShadow = false;
+    // Spatial-grid InstancedMesh builder so foliage outside the camera viewport is culled by chunk!
+    const buildChunkedInstanced = (geo, mat, matrices, cellSize, padR, cullMaxDist = Infinity) => {
+      const cells = new Map();
+      for (let i = 0; i < matrices.length; i++) {
+        const m = matrices[i];
+        const mx = m.elements[12], mz = m.elements[14];
+        const key = `${Math.floor(mx / cellSize)}|${Math.floor(mz / cellSize)}`;
+        let b = cells.get(key);
+        if (!b) { b = []; cells.set(key, b); }
+        b.push(m);
+      }
+      const chunks = [];
+      for (const list of cells.values()) {
+        const inst = new THREE.InstancedMesh(geo, mat, list.length);
+        inst.castShadow = false;
+        inst.receiveShadow = false;
+        let minX = Infinity, minY = Infinity, minZ = Infinity;
+        let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+        for (let k = 0; k < list.length; k++) {
+          const m = list[k];
+          inst.setMatrixAt(k, m);
+          const ex = m.elements[12], ey = m.elements[13], ez = m.elements[14];
+          if (ex < minX) minX = ex; if (ex > maxX) maxX = ex;
+          if (ey < minY) minY = ey; if (ey > maxY) maxY = ey;
+          if (ez < minZ) minZ = ez; if (ez > maxZ) maxZ = ez;
+        }
+        inst.count = list.length;
+        inst.userData.maxCount = list.length;
+        inst.userData.cullMaxDist = cullMaxDist;
+        inst.instanceMatrix.needsUpdate = true;
+        inst.matrixAutoUpdate = false;
+        inst.updateMatrix();
+        inst.frustumCulled = true;
+        const cx = (minX + maxX) * 0.5, cy = (minY + maxY) * 0.5, cz = (minZ + maxZ) * 0.5;
+        inst.boundingSphere = new THREE.Sphere(
+          new THREE.Vector3(cx, cy + padR * 0.35, cz),
+          Math.hypot(maxX - cx, maxY - cy, maxZ - cz) + padR
+        );
+        this.scene.add(inst);
+        chunks.push(inst);
+      }
+      return chunks;
+    };
 
+    const livePineMats = [];
+    const deadTreeMats = [];
+    const maxDeadCount = Math.ceil(pineCount * 0.35);
     let placedPines = 0;
-    let placedLive = 0;
-    let placedDead = 0;
     for (let tries = 0; tries < 3600 && placedPines < pineCount; tries++) {
       const x = (rand() * 2 - 1) * (this.mapHalfSize + 70);
       const z = (rand() * 2 - 1) * (this.mapHalfSize + 70);
@@ -2138,16 +2178,16 @@ class WastelandWorld {
 
       const y = this.getTerrainHeight(x, z);
       const s = 0.78 + rand() * 0.72;
-      const isDead = rand() < 0.25 && placedDead < deadTreeInst.instanceMatrix.count;
+      const isDead = rand() < 0.25 && deadTreeMats.length < maxDeadCount;
       dummy.position.set(x, y - 0.15, z);
       dummy.rotation.set((rand() - 0.5) * 0.05, rand() * Math.PI * 2, (rand() - 0.5) * 0.05);
       dummy.scale.set(s, s * (0.9 + rand() * 0.28), s);
       dummy.updateMatrix();
 
       if (isDead) {
-        deadTreeInst.setMatrixAt(placedDead++, dummy.matrix);
+        deadTreeMats.push(dummy.matrix.clone());
       } else {
-        livePineInst.setMatrixAt(placedLive++, dummy.matrix);
+        livePineMats.push(dummy.matrix.clone());
       }
 
       if (this.getOutOfBoundsDist(x, z) <= 45) {
@@ -2160,19 +2200,12 @@ class WastelandWorld {
       }
       placedPines++;
     }
-    livePineInst.count = placedLive;
-    deadTreeInst.count = placedDead;
-    livePineInst.userData.maxCount = placedLive;
-    deadTreeInst.userData.maxCount = placedDead;
-    livePineInst.instanceMatrix.needsUpdate = true;
-    deadTreeInst.instanceMatrix.needsUpdate = true;
-    livePineInst.matrixAutoUpdate = false;
-    deadTreeInst.matrixAutoUpdate = false;
-    this._pineMeshes = [livePineInst, deadTreeInst];
-    this._maxPines = placedLive;
-    this.scene.add(livePineInst, deadTreeInst);
+    const livePineChunks = buildChunkedInstanced(livePineGeo, treeMat, livePineMats, 128, 16.0, Infinity);
+    const deadTreeChunks = buildChunkedInstanced(deadTreeGeo, treeMat, deadTreeMats, 128, 16.0, Infinity);
+    this._pineMeshes = [...livePineChunks, ...deadTreeChunks];
+    this._maxPines = livePineMats.length;
 
-    // 2. Crisp Grass Tufts (3,200 instances of 2-plane crossed cards -> 1 draw call!)
+    // 2. Crisp Grass Tufts (3,200 instances chunked in 96m viewport cells!)
     const grassCount = 3200;
     const grassGeo = buildCrossedPlanesGeo(0.9, 0.55, -0.04, 2);
     const grassMat = new THREE.MeshStandardMaterial({
@@ -2182,12 +2215,8 @@ class WastelandWorld {
       metalness: 0.02,
       side: THREE.DoubleSide
     });
-    const grassInst = new THREE.InstancedMesh(grassGeo, grassMat, grassCount);
-    grassInst.receiveShadow = false;
-    grassInst.castShadow = false;
-
-    let placedGrass = 0;
-    for (let tries = 0; tries < 9500 && placedGrass < grassCount; tries++) {
+    const grassMats = [];
+    for (let tries = 0; tries < 9500 && grassMats.length < grassCount; tries++) {
       const x = (rand() * 2 - 1) * this.mapHalfSize;
       const z = (rand() * 2 - 1) * this.mapHalfSize;
       if (!isClearForNature(x, z, 2, true)) continue;
@@ -2197,16 +2226,13 @@ class WastelandWorld {
       dummy.rotation.set(0, rand() * Math.PI * 2, 0);
       dummy.scale.set(s, s * (0.75 + rand() * 0.5), s);
       dummy.updateMatrix();
-      grassInst.setMatrixAt(placedGrass++, dummy.matrix);
+      grassMats.push(dummy.matrix.clone());
     }
-    grassInst.count = placedGrass;
-    grassInst.instanceMatrix.needsUpdate = true;
-    grassInst.matrixAutoUpdate = false;
-    this._bushInst = grassInst;
-    this._maxBushes = placedGrass;
-    this.scene.add(grassInst);
+    this._bushChunks = buildChunkedInstanced(grassGeo, grassMat, grassMats, 96, 3.0, 260);
+    this._bushInst = this._bushChunks[0] || null;
+    this._maxBushes = grassMats.length;
 
-    // 3. Sharp PBR Fern / Sapling Cards (700 instances of 3-plane cards -> 1 draw call!)
+    // 3. Sharp PBR Fern / Sapling Cards (700 instances chunked in 128m viewport cells!)
     const fernCount = 700;
     const fernGeo = buildCrossedPlanesGeo(1.6, 1.3, -0.05, 3);
     const fernMat = new THREE.MeshStandardMaterial({
@@ -2216,12 +2242,8 @@ class WastelandWorld {
       metalness: 0.02,
       side: THREE.DoubleSide
     });
-    const fernInst = new THREE.InstancedMesh(fernGeo, fernMat, fernCount);
-    fernInst.receiveShadow = false;
-    fernInst.castShadow = false;
-
-    let placedFerns = 0;
-    for (let tries = 0; tries < 3600 && placedFerns < fernCount; tries++) {
+    const fernMats = [];
+    for (let tries = 0; tries < 3600 && fernMats.length < fernCount; tries++) {
       const x = (rand() * 2 - 1) * this.mapHalfSize;
       const z = (rand() * 2 - 1) * this.mapHalfSize;
       if (!isClearForNature(x, z, 3, true)) continue;
@@ -2231,14 +2253,12 @@ class WastelandWorld {
       dummy.rotation.set(0, rand() * Math.PI * 2, 0);
       dummy.scale.set(s, s * (0.85 + rand() * 0.35), s);
       dummy.updateMatrix();
-      fernInst.setMatrixAt(placedFerns++, dummy.matrix);
+      fernMats.push(dummy.matrix.clone());
     }
-    fernInst.count = placedFerns;
-    fernInst.instanceMatrix.needsUpdate = true;
-    fernInst.matrixAutoUpdate = false;
-    this._fernInst = fernInst;
-    this._maxFerns = placedFerns;
-    this.scene.add(fernInst);
+    this._fernChunks = buildChunkedInstanced(fernGeo, fernMat, fernMats, 128, 4.0, 310);
+    this._fernInst = this._fernChunks[0] || null;
+    this._maxFerns = fernMats.length;
+    this._foliageChunks = [...this._pineMeshes, ...this._bushChunks, ...this._fernChunks];
 
     // 4. Sculpted Granite Rock Outcrops & Tactical Cover Boulders (110 formations with colliders -> 1 draw call!)
     const rockCount = 110;
@@ -2296,6 +2316,9 @@ class WastelandWorld {
       rockInst.geometry.computeBoundingSphere();
       rockInst.geometry.computeBoundingBox();
     }
+    rockInst.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, 12, 0), this.mapHalfSize * 1.45);
+    rockInst.matrixAutoUpdate = false;
+    rockInst.updateMatrix();
     rockInst.updateMatrixWorld(true);
     this.scene.add(rockInst);
     this._rockInst = rockInst;
@@ -2372,7 +2395,7 @@ class WastelandWorld {
       if (!e.isAABox && !e.geometry) continue;
       const ex = e.isAABox ? e.x : e.matrix.elements[12];
       const ez = e.isAABox ? e.z : e.matrix.elements[14];
-      const bcs = this._batchCellSize || 96;
+      const bcs = this._batchCellSize || 64;
       let key = `${e.material.uuid}|${Math.floor(ex / bcs)}|${Math.floor(ez / bcs)}`;
       if (e.isAABox) {
         key += `|box:${e.w.toFixed(2)}x${e.h.toFixed(2)}x${e.d.toFixed(2)}`; // Saltline P1: repeat-dimension second merge
@@ -5596,16 +5619,26 @@ class WastelandWorld {
     const lod = gfx.lod ?? 3; // 1..4
     const lighting = gfx.lighting ?? 3; // 1..4
     const lodFrac = lod === 1 ? 0.35 : (lod === 2 ? 0.62 : (lod === 3 ? 0.85 : 1.0));
-    if (this._pineMeshes && this._maxPines) {
+    if (this._pineMeshes && this._pineMeshes.length) {
       this._pineMeshes.forEach((m) => {
-        const maxC = (m.userData && m.userData.maxCount) || this._maxPines;
-        m.count = Math.max(20, Math.round(maxC * lodFrac));
+        const maxC = (m.userData && m.userData.maxCount) || m.count || 0;
+        m.count = maxC > 0 ? Math.max(1, Math.round(maxC * lodFrac)) : 0;
       });
     }
-    if (this._bushInst && this._maxBushes) {
+    if (this._bushChunks && this._bushChunks.length) {
+      this._bushChunks.forEach((m) => {
+        const maxC = (m.userData && m.userData.maxCount) || m.count || 0;
+        m.count = maxC > 0 ? Math.max(1, Math.round(maxC * lodFrac)) : 0;
+      });
+    } else if (this._bushInst && this._maxBushes) {
       this._bushInst.count = Math.max(80, Math.round(this._maxBushes * lodFrac));
     }
-    if (this._fernInst && this._maxFerns) {
+    if (this._fernChunks && this._fernChunks.length) {
+      this._fernChunks.forEach((m) => {
+        const maxC = (m.userData && m.userData.maxCount) || m.count || 0;
+        m.count = maxC > 0 ? Math.max(1, Math.round(maxC * lodFrac)) : 0;
+      });
+    } else if (this._fernInst && this._maxFerns) {
       this._fernInst.count = Math.max(40, Math.round(this._maxFerns * lodFrac));
     }
     if (this.fogLayers) {
@@ -5675,10 +5708,11 @@ class WastelandWorld {
         this.skyDome.material.uniforms.uTime.value = time;
       }
     }
-    // Animate rising Vostok battlefield smoke plumes trailing into the sky!
+    // Animate rising Vostok battlefield smoke plumes trailing into the sky (skip when culled outside viewport)
     if (this.smokePlumes && this.smokePlumes.length > 0) {
       for (let i = 0; i < this.smokePlumes.length; i++) {
         const pl = this.smokePlumes[i];
+        if (pl._vpCulled) continue;
         const maxRise = 44 * pl.scale;
         for (let j = 0; j < pl.puffs.length; j++) {
           const pf = pl.puffs[j];
@@ -5692,22 +5726,25 @@ class WastelandWorld {
         }
       }
     }
-    // Gently drift volumetric valley mist layers
+    // Gently drift volumetric valley mist layers (skip when culled outside viewport)
     if (this.fogLayers && this.fogLayers.length > 0) {
       for (let i = 0; i < this.fogLayers.length; i++) {
         const fl = this.fogLayers[i];
+        if (fl._vpCulled) continue;
         fl.mesh.position.x = fl.baseX + Math.sin(time * 0.08 + fl.phase) * 18;
         fl.mesh.position.z = fl.baseZ + Math.cos(time * 0.06 + fl.phase) * 14;
       }
     }
     // Animate extraction beacons
     for (const ez of this.extractZones) {
+      if (ez._vpCulled) continue;
       ez.beaconMesh.rotation.y += dt * 0.8;
       const pulse = 0.18 + Math.sin(time * 3.0) * 0.08;
       ez.beaconMesh.material.opacity = pulse;
     }
     // Subtle pulse on loose & dropped ground item rings
     for (const gi of this.groundItems) {
+      if (gi._vpCulled) continue;
       if (gi.ringMesh && gi.ringMesh.material) {
         gi.ringMesh.material.opacity = 0.48 + Math.sin(time * 3.2 + gi.position.x) * 0.20;
       }

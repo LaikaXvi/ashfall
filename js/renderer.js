@@ -894,11 +894,235 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
     };
   }
 
+  // --------------------------------------------------------------------------
+  // 6. Real-Time Camera Viewport Frustum Culling (Layer 0 = In-View, Layer 3 = Culled)
+  //    Never mutates gameplay .visible flags or hitboxes; skips GPU rendering for
+  //    every batched cell, foliage chunk, terrain chunk, prop, and rig outside
+  //    the active camera viewport until observed.
+  // --------------------------------------------------------------------------
+  const _vpProjScreen = new THREE.Matrix4();
+  const _vpFrustum = new THREE.Frustum();
+  const _vpSphere = new THREE.Sphere();
+
+  function _vpSetRootLayer(root, on, excludeSet = null) {
+    if (!root) return;
+    const ud = root.userData || (root.userData = {});
+    const childSig = root.children ? root.children.length : 0;
+    if (!ud._vpMeshes || ud._vpChildSig !== childSig || excludeSet) {
+      const list = [];
+      root.traverse((o) => {
+        if ((o.isMesh || o.isSprite) && (!excludeSet || !excludeSet.has(o))) {
+          list.push(o);
+        }
+      });
+      ud._vpMeshes = list;
+      ud._vpChildSig = childSig;
+    }
+    const layer = on ? 0 : 3;
+    const list = ud._vpMeshes;
+    for (let i = 0; i < list.length; i++) {
+      list[i].layers.set(layer);
+    }
+  }
+
+  function updateViewportCulling(camera, world, enemyManager = null, squadManager = null) {
+    if (!camera || !world) return null;
+    camera.updateMatrixWorld();
+    _vpProjScreen.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+    _vpFrustum.setFromProjectionMatrix(_vpProjScreen);
+
+    const camX = camera.position.x;
+    const camY = camera.position.y;
+    const camZ = camera.position.z;
+    let visible = 0;
+    let culled = 0;
+
+    // 1. Static batched meshes & P1 InstancedMesh runs (64m spatial cells)
+    const batched = world._batchedMeshes;
+    if (batched && batched.length > 0) {
+      for (let i = 0; i < batched.length; i++) {
+        const m = batched[i];
+        if (!m) continue;
+        const bs = (m.isInstancedMesh && m.boundingSphere)
+          ? m.boundingSphere
+          : (m.geometry && m.geometry.boundingSphere);
+        let inView = true;
+        if (bs) {
+          _vpSphere.copy(bs).applyMatrix4(m.matrixWorld);
+          _vpSphere.radius += 1.5;
+          inView = _vpFrustum.intersectsSphere(_vpSphere);
+        }
+        const wantLayer = inView ? 0 : 3;
+        if (m._vpLayer !== wantLayer) {
+          m._vpLayer = wantLayer;
+          m.layers.set(wantLayer);
+        }
+        if (inView) visible++; else culled++;
+      }
+    }
+
+    // 2. Spatially chunked foliage InstancedMeshes (trees, grass, ferns)
+    const foliage = world._foliageChunks;
+    if (foliage && foliage.length > 0) {
+      for (let i = 0; i < foliage.length; i++) {
+        const ch = foliage[i];
+        if (!ch || !ch.boundingSphere) continue;
+        let inView = true;
+        const maxD = ch.userData && ch.userData.cullMaxDist;
+        if (maxD && maxD < Infinity) {
+          const dx = ch.boundingSphere.center.x - camX;
+          const dz = ch.boundingSphere.center.z - camZ;
+          const lim = maxD + ch.boundingSphere.radius;
+          if (dx * dx + dz * dz > lim * lim) inView = false;
+        }
+        if (inView) {
+          _vpSphere.copy(ch.boundingSphere);
+          _vpSphere.radius += 2.0;
+          inView = _vpFrustum.intersectsSphere(_vpSphere);
+        }
+        const wantLayer = inView ? 0 : 3;
+        if (ch._vpLayer !== wantLayer) {
+          ch._vpLayer = wantLayer;
+          ch.layers.set(wantLayer);
+        }
+        if (inView) visible++; else culled++;
+      }
+    }
+
+    // 3. Terrain chunks
+    const tChunks = world.terrainChunks;
+    if (tChunks && tChunks.length > 0) {
+      for (let i = 0; i < tChunks.length; i++) {
+        const tc = tChunks[i];
+        if (!tc || !tc.geometry) continue;
+        if (!tc.geometry.boundingSphere) tc.geometry.computeBoundingSphere();
+        _vpSphere.copy(tc.geometry.boundingSphere).applyMatrix4(tc.matrixWorld);
+        _vpSphere.radius += 2.0;
+        const inView = _vpFrustum.intersectsSphere(_vpSphere);
+        const wantLayer = inView ? 0 : 3;
+        if (tc._vpLayer !== wantLayer) {
+          tc._vpLayer = wantLayer;
+          tc.layers.set(wantLayer);
+        }
+        if (inView) visible++; else culled++;
+      }
+    }
+
+    // 4. Dynamic world props (loot containers, doors, ground items, munition boxes, extracts, smoke, mist)
+    const cullPointList = (list, radius, getRoot, getPos) => {
+      if (!list || list.length === 0) return;
+      for (let i = 0; i < list.length; i++) {
+        const item = list[i];
+        if (!item) continue;
+        const pos = getPos(item);
+        const root = getRoot(item);
+        if (!pos || !root) continue;
+        _vpSphere.center.set(pos.x, pos.y, pos.z);
+        _vpSphere.radius = typeof radius === 'function' ? radius(item) : radius;
+        const inView = _vpFrustum.intersectsSphere(_vpSphere);
+        item._vpCulled = !inView;
+        if (item._vpLastInView !== inView) {
+          item._vpLastInView = inView;
+          _vpSetRootLayer(root, inView);
+        }
+        if (inView) visible++; else culled++;
+      }
+    };
+
+    cullPointList(world.lootContainers, 2.8, (c) => c.mesh, (c) => c.position);
+    cullPointList(world.doors, 3.2, (d) => d.pivot || d.mesh, (d) => d.position);
+    cullPointList(world.groundItems, 1.8, (g) => g.mesh, (g) => g.position);
+    cullPointList(world.munitionBoxes, 2.0, (m) => m.mesh, (m) => m.position);
+
+    if (world.extractZones && world.extractZones.length > 0) {
+      for (let i = 0; i < world.extractZones.length; i++) {
+        const ez = world.extractZones[i];
+        if (!ez || !ez.position) continue;
+        _vpSphere.center.set(ez.position.x, ez.position.y + 8.0, ez.position.z);
+        _vpSphere.radius = (ez.radius || 5) + 18.0;
+        const inView = _vpFrustum.intersectsSphere(_vpSphere);
+        ez._vpCulled = !inView;
+        if (ez._vpLastInView !== inView) {
+          ez._vpLastInView = inView;
+          const layer = inView ? 0 : 3;
+          if (ez.ringMesh) ez.ringMesh.layers.set(layer);
+          if (ez.beaconMesh) ez.beaconMesh.layers.set(layer);
+        }
+        if (inView) visible++; else culled++;
+      }
+    }
+
+    if (world.smokePlumes && world.smokePlumes.length > 0) {
+      for (let i = 0; i < world.smokePlumes.length; i++) {
+        const pl = world.smokePlumes[i];
+        if (!pl || !pl.puffs) continue;
+        const rise = 24 * (pl.scale || 1);
+        _vpSphere.center.set(pl.x, pl.y + rise, pl.z);
+        _vpSphere.radius = 48 * (pl.scale || 1);
+        const inView = _vpFrustum.intersectsSphere(_vpSphere);
+        pl._vpCulled = !inView;
+        if (pl._vpLastInView !== inView) {
+          pl._vpLastInView = inView;
+          const layer = inView ? 0 : 3;
+          for (let j = 0; j < pl.puffs.length; j++) {
+            if (pl.puffs[j] && pl.puffs[j].sprite) pl.puffs[j].sprite.layers.set(layer);
+          }
+        }
+        if (inView) visible++; else culled++;
+      }
+    }
+
+    if (world.fogLayers && world.fogLayers.length > 0) {
+      for (let i = 0; i < world.fogLayers.length; i++) {
+        const fl = world.fogLayers[i];
+        if (!fl || !fl.mesh) continue;
+        _vpSphere.center.set(fl.mesh.position.x, fl.mesh.position.y, fl.mesh.position.z);
+        _vpSphere.radius = 95.0;
+        const inView = _vpFrustum.intersectsSphere(_vpSphere);
+        fl._vpCulled = !inView;
+        if (fl._vpLastInView !== inView) {
+          fl._vpLastInView = inView;
+          fl.mesh.layers.set(inView ? 0 : 3);
+        }
+        if (inView) visible++; else culled++;
+      }
+    }
+
+    // 5. Articulated AI & Squad rigs (hitboxes stay on layer 0; visual meshes culled outside viewport)
+    const cullActors = (actors) => {
+      if (!actors || actors.length === 0) return;
+      for (let i = 0; i < actors.length; i++) {
+        const a = actors[i];
+        if (!a || !a.group || !a.position) continue;
+        _vpSphere.center.set(a.position.x, a.position.y + 1.0, a.position.z);
+        _vpSphere.radius = 2.6;
+        const inView = _vpFrustum.intersectsSphere(_vpSphere);
+        a._vpCulled = !inView;
+        const wantVis = inView && !a._zavodLosCulled;
+        if (a._vpLastVis !== wantVis) {
+          a._vpLastVis = wantVis;
+          const hb = (a.hitboxes && a.hitboxes.length) ? new Set(a.hitboxes) : null;
+          _vpSetRootLayer(a.group, wantVis, hb);
+        }
+        if (wantVis) visible++; else culled++;
+      }
+    };
+    if (enemyManager && enemyManager.enemies) cullActors(enemyManager.enemies);
+    if (squadManager && squadManager.allies) cullActors(squadManager.allies);
+
+    const stats = { visible, culled, total: visible + culled };
+    window._viewportCullStats = stats;
+    void camY;
+    return stats;
+  }
+
   return {
     GeoPool,
     InstancedPropBatcher,
     configureRenderer,
     installSoftShadows,
+    installInstancedFrustumCulling,
+    updateViewportCulling,
     getEnvMap,
     getSurfaceBank,
     getWorldMaterialSet,

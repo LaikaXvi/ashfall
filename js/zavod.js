@@ -677,14 +677,16 @@
         if (vis) rec.hold = 0.75;
         else rec.hold -= 0.25;
         const want = vis || rec.hold > 0;
-        if (want !== rec.on) {
-          rec.on = want;
+        e._zavodLosCulled = !want;
+        const finalOn = want && !e._vpCulled;
+        if (finalOn !== rec.on) {
+          rec.on = finalOn;
           // Re-collect each toggle (weapon swaps / ragdolls); hitboxes & overhead alert sprites are never culled
           const hb = new Set(e.hitboxes || []);
-          if (want) this._cullSetLayer(rec.meshes, true);
+          if (finalOn) this._cullSetLayer(rec.meshes, true);
           rec.meshes = [];
           e.group.traverse(m => { if (m.isMesh && !hb.has(m)) rec.meshes.push(m); });
-          this._cullSetLayer(rec.meshes, want);
+          this._cullSetLayer(rec.meshes, finalOn);
         }
       }
     },

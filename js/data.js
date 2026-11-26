@@ -3,15 +3,15 @@
 // Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
 // With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'Alpha RC 0.3.11',
+  VERSION: 'Alpha RC 0.3.12',
   VERSION_INFO: {
     major: 0,
     minor: 3,
-    patch: 11,
+    patch: 12,
     channel: 'Alpha', // Alpha | Beta — never blank while major === 0
     stage: 'RC',     // RC = Release Candidate
     updated: 'Nov 26, 2026',
-    changelog: 'Fixed Vostok Highrise outer walls and other batched InstancedMesh geometry disappearing when looking away from world origin: backported InstancedMesh.boundingSphere frustum-culling support into THREE.Frustum.prototype.intersectsObject for Three.js r128 so P1 InstancedMesh wall runs and InstancedPropBatcher clusters cull accurately against their world-space cluster spheres.',
+    changelog: 'Added real-time camera viewport culling (AshfallRenderer.updateViewportCulling): objects outside the active camera frustum (64m batched world cells, P1 InstancedMesh runs, spatially chunked pines/grass/ferns, terrain chunks, loot containers, doors, ground items, extract beacons, smoke plumes, mist layers, and articulated AI/squad rigs) are moved to cull layer 3 until observed; also skips off-screen smoke/mist/beacon/ring animation updates.',
     get semver() { return `${this.major}.${this.minor}.${this.patch}`; },
     get label() { return `${this.channel} ${this.stage} ${this.major}.${this.minor}.${this.patch}`; }
   },
