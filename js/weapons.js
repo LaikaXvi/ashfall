@@ -4052,8 +4052,9 @@ class WeaponSystem {
           ? window.GAME_DATA.computeAdsFov(vmBaseNow, adsZoom)
           : (vmBaseNow / Math.max(1.0, adsZoom));
         const tanHalfVm = Math.max(0.04, Math.tan(THREE.MathUtils.degToRad(targetVmAdsFov * 0.5)));
-        const dEye = THREE.MathUtils.clamp(sc.rEye / (targetScreenFrac * tanHalfVm), 0.042, 0.56);
-        effectiveAdsZ = -(sc.rearZ + dEye);
+        const scVmScale = this.isFistsMode ? 1.0 : 1.24;
+        const dEye = THREE.MathUtils.clamp((sc.rEye * scVmScale) / (targetScreenFrac * tanHalfVm), 0.042, 0.56);
+        effectiveAdsZ = -(sc.rearZ * scVmScale + dEye);
       }
     }
     if (this.muzzleMesh && this.muzzleMesh.material) {
@@ -4099,15 +4100,20 @@ class WeaponSystem {
     }
 
     // MW4/DMZ One-Handed High-Port Tactical Sprint + 45° Tactical Stance cant pivot!
+    // Scale 1st-person weapon viewmodel 1.24x for bold, authoritative FPS framing while preserving exact ADS sight alignment!
+    const vmScale = this.isFistsMode ? 1.0 : 1.24;
+    this.viewmodelGroup.scale.setScalar(vmScale);
+    const effSightH = this.sightHeight * vmScale;
     const adsPivotActive = isAdsActive && (!customRot || isAdsReload);
-    const adsPivotX = adsPivotActive ? (Math.sin(targetRotZ) * this.sightHeight) : 0;
-    const adsPivotY = adsPivotActive ? ((1 - Math.cos(targetRotZ)) * this.sightHeight) : 0;
-    const hipPosX = (tacSprintingHip ? 0.145 : (sprintingHip ? 0.115 : 0.135)) + hipScaleX;
-    const hipPosY = tacSprintingHip ? -0.14 : (sprintingHip ? -0.235 : -0.20);
-    const hipPosZ = (tacSprintingHip ? -0.34 : (sprintingHip ? -0.40 : -0.42)) + hipScaleZ;
+    const adsPivotX = adsPivotActive ? (Math.sin(targetRotZ) * effSightH) : 0;
+    const adsPivotY = adsPivotActive ? ((1 - Math.cos(targetRotZ)) * effSightH) : 0;
+    const hipPosX = (tacSprintingHip ? 0.156 : (sprintingHip ? 0.125 : 0.148)) + hipScaleX;
+    const hipPosY = tacSprintingHip ? -0.15 : (sprintingHip ? -0.245 : -0.215);
+    const hipPosZ = (tacSprintingHip ? -0.34 : (sprintingHip ? -0.40 : -0.40)) + hipScaleZ;
     const adsTargetX = adsPivotX + 0.056 * tsB;
-    const adsTargetY = -this.sightHeight + adsPivotY - 0.022 * tsB;
-    const adsTargetZ = THREE.MathUtils.lerp(effectiveAdsZ, this.adsZ - 0.045, tsB);
+    const adsTargetY = -effSightH + adsPivotY - 0.022 * tsB;
+    const nonScopeAdsZ = (effectiveAdsZ === this.adsZ) ? (this.adsZ * vmScale) : effectiveAdsZ;
+    const adsTargetZ = THREE.MathUtils.lerp(nonScopeAdsZ, this.adsZ * vmScale - 0.045, tsB);
 
     const basePosX = this.isFistsMode ? 0.0 : THREE.MathUtils.lerp(hipPosX, adsTargetX, this._adsBlend);
     const basePosY = this.isFistsMode ? -0.16 : THREE.MathUtils.lerp(hipPosY, adsTargetY, this._adsBlend);

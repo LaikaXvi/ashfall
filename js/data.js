@@ -3,15 +3,15 @@
 // Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
 // With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'Alpha RC 0.3.15',
+  VERSION: 'Alpha RC 0.3.16',
   VERSION_INFO: {
     major: 0,
     minor: 3,
-    patch: 15,
+    patch: 16,
     channel: 'Alpha', // Alpha | Beta — never blank while major === 0
     stage: 'RC',     // RC = Release Candidate
     updated: 'Nov 26, 2026',
-    changelog: 'Life-Accurate Colt M4A1 Carbine (MIL-DTL-71186 / SOPMOD Block I) & Anchor-Driven 1P/3P IK Grip Rig: rebuilt 1:1 M4A1 with 14.5" SOCOM heavy step-cut barrel & 5-slot A2 birdcage flash hider, 4-sided KAC M4 RAS quad-rail w/ cooling vents & 11-rib panels, spring-loaded hinged ejection port dust cover (snaps open on first shot/bolt cycle), detailed DI bolt carrier group w/ forward-assist serrations & 7-lug rotating bolt head, raised magwell fence + mag catch bar, staked endplate, animated Mil-Spec trigger, and explicit weapon-mounted rearGripAnchor / frontGripAnchor / foregripAnchor Object3Ds driving both 1st-person and 3rd-person 2-bone IK hands.',
+    changelog: 'Increased 1st-person weapon viewmodel scale to 1.24x with recalibrated hipfire framing, exact sightHeight/optic ADS alignment, scope eye-relief scaling, and 1P IK hand lock.',
     get semver() { return `${this.major}.${this.minor}.${this.patch}`; },
     get label() { return `${this.channel} ${this.stage} ${this.major}.${this.minor}.${this.patch}`; }
   },
