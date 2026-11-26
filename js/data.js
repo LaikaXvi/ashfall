@@ -3,15 +3,15 @@
 // Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
 // With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'Alpha RC 0.3.14',
+  VERSION: 'Alpha RC 0.3.15',
   VERSION_INFO: {
     major: 0,
     minor: 3,
-    patch: 14,
+    patch: 15,
     channel: 'Alpha', // Alpha | Beta — never blank while major === 0
     stage: 'RC',     // RC = Release Candidate
     updated: 'Nov 26, 2026',
-    changelog: 'Rebuilt WebGL2 Rendering & Culling Architecture: Half-Res View-Space Normal SSAO + Edge-Preserving Cross-Bilateral Blur (4x faster, cleaner ambient occlusion); GLSL continuous distance-based texture mip-bias scaling & shader-detail LOD on power-of-two hardware-mipmapped PBR textures (zero texture pop-in); flat Float32Array SoA viewport + fog-horizon culler eliminating building self-occlusion pop-in; smooth GPU distance-dissolve on grass & ferns; time-sliced multi-point LOS wall-occlusion on actors & props (>14m); and upfront renderer.compile() shader precompilation + antialias:false backbuffer optimization to eliminate camera-turn stutters.',
+    changelog: 'Life-Accurate Colt M4A1 Carbine (MIL-DTL-71186 / SOPMOD Block I) & Anchor-Driven 1P/3P IK Grip Rig: rebuilt 1:1 M4A1 with 14.5" SOCOM heavy step-cut barrel & 5-slot A2 birdcage flash hider, 4-sided KAC M4 RAS quad-rail w/ cooling vents & 11-rib panels, spring-loaded hinged ejection port dust cover (snaps open on first shot/bolt cycle), detailed DI bolt carrier group w/ forward-assist serrations & 7-lug rotating bolt head, raised magwell fence + mag catch bar, staked endplate, animated Mil-Spec trigger, and explicit weapon-mounted rearGripAnchor / frontGripAnchor / foregripAnchor Object3Ds driving both 1st-person and 3rd-person 2-bone IK hands.',
     get semver() { return `${this.major}.${this.minor}.${this.patch}`; },
     get label() { return `${this.channel} ${this.stage} ${this.major}.${this.minor}.${this.patch}`; }
   },

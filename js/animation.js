@@ -680,26 +680,69 @@
         stanceTrans: st.stanceTrans || null
       };
 
-      // Update grip anchors for pistol vs rifle (using exact live 3P foregrip shaft anchor when equipped!)
+      // Update grip anchors for pistol vs rifle (live weapon-mounted rearGripAnchor + foregripAnchor / frontGripAnchor!)
       if (r.rearGripTarget && r.foregripTarget) {
         const pumpOff = st.pumpOffset || 0;
+        // Dynamically resolve exact 3P grip anchors from the equipped weapon hierarchy in weaponMount -> weaponPivot space
+        let liveRear = null;
+        let liveFg = null;
+        let liveFront = null;
+        if (r.weaponMount && r.weaponMount.children && r.weaponMount.children.length > 0) {
+          const wpnRoot = r.weaponMount.children[0];
+          if (wpnRoot) {
+            if (!wpnRoot.userData._ikAnchorCache) {
+              const cache = { rear: null, fg: null, front: null };
+              wpnRoot.traverse((o) => {
+                const role = o.userData && o.userData._tpRole;
+                if (role === 'rearGrip') cache.rear = o;
+                else if (role === 'foregrip') cache.fg = o;
+                else if (role === 'frontGrip') cache.front = o;
+              });
+              wpnRoot.userData._ikAnchorCache = cache;
+            }
+            const c = wpnRoot.userData._ikAnchorCache;
+            const toPivotLocal = (anchorObj, outVec) => {
+              let cur = anchorObj;
+              outVec.set(0, 0, 0);
+              while (cur && cur !== r.weaponPivot) {
+                outVec.multiply(cur.scale).applyQuaternion(cur.quaternion).add(cur.position);
+                cur = cur.parent;
+              }
+              return outVec;
+            };
+            if (!this._ikTmpRear) this._ikTmpRear = new THREE.Vector3();
+            if (!this._ikTmpFront) this._ikTmpFront = new THREE.Vector3();
+            if (c.rear) liveRear = toPivotLocal(c.rear, this._ikTmpRear);
+            if (c.fg) liveFg = toPivotLocal(c.fg, this._ikTmpFront);
+            else if (c.front) liveFront = toPivotLocal(c.front, this._ikTmpFront);
+          }
+        }
+
         if (isPistol) {
           r.rearGripTarget.position.set(0.01, -0.05, 0.02);
           r.foregripTarget.position.set(-0.02, -0.055, -0.01); // Two-handed weaver/isosceles pistol grip
-        } else if (st.foregripPivotPos) {
-          r.rearGripTarget.position.set(0.01, -0.055, 0.04);
-          // Shift wrist slightly left (-2.4cm) & back (+4.6cm wrist->palmCenter) so 3P palm & fingers wrap dead-center around the foregrip shaft!
-          r.foregripTarget.position.set(
-            st.foregripPivotPos.x - 0.024,
-            st.foregripPivotPos.y,
-            st.foregripPivotPos.z + 0.046
-          );
-        } else if (st.hasVertGrip) {
-          r.rearGripTarget.position.set(0.01, -0.055, 0.04);
-          r.foregripTarget.position.set(-0.024, -0.098, -0.375 + pumpOff * 1.38);
         } else {
-          r.rearGripTarget.position.set(0.01, -0.055, 0.04);
-          r.foregripTarget.position.set(-0.01, -0.035, -0.25 + pumpOff * 1.38); // Left hand on rifle handguard / shotgun pump
+          if (liveRear) {
+            r.rearGripTarget.position.set(liveRear.x + 0.010, liveRear.y + 0.008, liveRear.z + 0.018);
+          } else {
+            r.rearGripTarget.position.set(0.01, -0.055, 0.04);
+          }
+          if (st.foregripPivotPos) {
+            // Shift wrist slightly left (-2.4cm) & back (+4.6cm wrist->palmCenter) so 3P palm & fingers wrap dead-center around the foregrip shaft!
+            r.foregripTarget.position.set(
+              st.foregripPivotPos.x - 0.024,
+              st.foregripPivotPos.y,
+              st.foregripPivotPos.z + 0.046
+            );
+          } else if (liveFg) {
+            r.foregripTarget.position.set(liveFg.x - 0.024, liveFg.y, liveFg.z + 0.046);
+          } else if (st.hasVertGrip) {
+            r.foregripTarget.position.set(-0.024, -0.098, -0.375 + pumpOff * 1.38);
+          } else if (liveFront) {
+            r.foregripTarget.position.set(liveFront.x - 0.010, liveFront.y - 0.008, liveFront.z + 0.032 + pumpOff * 1.38);
+          } else {
+            r.foregripTarget.position.set(-0.01, -0.035, -0.25 + pumpOff * 1.38); // Left hand on rifle handguard / shotgun pump
+          }
         }
       }
 

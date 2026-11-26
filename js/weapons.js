@@ -2456,7 +2456,14 @@ class WeaponSystem {
       this.boltCarrierRestPos.copy(this.boltCarrierMesh.position);
     }
     this.boltCatchMesh = rig.boltCatchMesh || null;
+    this.dustCoverMesh = rig.dustCoverMesh || null;
+    this.triggerMesh = rig.triggerMesh || null;
+    this._dustCoverOpen = false;
+    this._dustCoverAngle = 0;
+    this._triggerPull = 0;
     this.chamberRoundMesh = rig.chamberRoundMesh || null;
+    this.rearGripAnchor = rig.rearGripAnchor || null;
+    this.frontGripAnchor = rig.frontGripAnchor || null;
     this.foregripAnchor = rig.foregripAnchor || null;
     this.hasVertGrip = !!this.foregripAnchor;
     this.magMesh = rig.magMesh;
@@ -2834,13 +2841,15 @@ class WeaponSystem {
 
     const cloneFromProto = (proto) => {
       const grp = proto.group.clone(true);
-      let magMesh = null, spareMagMesh = null, boltMesh = null, foregripAnchor = null;
+      let magMesh = null, spareMagMesh = null, boltMesh = null, foregripAnchor = null, rearGripAnchor = null, frontGripAnchor = null;
       grp.traverse((o) => {
         const role = o.userData && o.userData._tpRole;
         if (role === 'mag') magMesh = o;
         else if (role === 'spareMag') spareMagMesh = o;
         else if (role === 'bolt') boltMesh = o;
         else if (role === 'foregrip') foregripAnchor = o;
+        else if (role === 'rearGrip') rearGripAnchor = o;
+        else if (role === 'frontGrip') frontGripAnchor = o;
       });
       return {
         group: grp,
@@ -2848,6 +2857,8 @@ class WeaponSystem {
         isPistol: proto.isPistol,
         hasVertGrip: proto.hasVertGrip,
         foregripAnchor,
+        rearGripAnchor,
+        frontGripAnchor,
         muzzlePos: proto.muzzlePos.clone(),
         magMesh,
         spareMagMesh,
@@ -2867,6 +2878,10 @@ class WeaponSystem {
       currentMesh: this.currentMesh,
       hasVertGrip: !!this.hasVertGrip,
       foregripAnchor: this.foregripAnchor,
+      rearGripAnchor: this.rearGripAnchor,
+      frontGripAnchor: this.frontGripAnchor,
+      dustCoverMesh: this.dustCoverMesh,
+      triggerMesh: this.triggerMesh,
       magMesh: this.magMesh,
       magTopRoundMesh: this.magTopRoundMesh,
       magRestPos: this.magRestPos.clone(),
@@ -2904,11 +2919,13 @@ class WeaponSystem {
     [this.rightHand, this.leftHand, this.rightArm, this.leftArm, this.leftFist].forEach((h) => {
       if (h && h.parent) h.parent.remove(h);
     });
-    const dynRoots = new Set([this.magMesh, this.spareMagMesh, this.boltMesh, this.boltCarrierMesh, this.boltCatchMesh, this.chamberRoundMesh].filter(Boolean));
+    const dynRoots = new Set([this.magMesh, this.spareMagMesh, this.boltMesh, this.boltCarrierMesh, this.boltCatchMesh, this.chamberRoundMesh, this.dustCoverMesh, this.triggerMesh, this.rearGripAnchor, this.frontGripAnchor].filter(Boolean));
     if (this.magMesh) this.magMesh.userData._tpRole = 'mag';
     if (this.spareMagMesh) this.spareMagMesh.userData._tpRole = 'spareMag';
     if (this.boltMesh) this.boltMesh.userData._tpRole = 'bolt';
     if (this.foregripAnchor) this.foregripAnchor.userData._tpRole = 'foregrip';
+    if (this.rearGripAnchor) this.rearGripAnchor.userData._tpRole = 'rearGrip';
+    if (this.frontGripAnchor) this.frontGripAnchor.userData._tpRole = 'frontGrip';
 
     if (window.ModelSystem && typeof window.ModelSystem.mergeGeos === 'function') {
       g.updateMatrixWorld(true);
@@ -2979,6 +2996,10 @@ class WeaponSystem {
     this.currentMesh = saved.currentMesh;
     this.hasVertGrip = saved.hasVertGrip;
     this.foregripAnchor = saved.foregripAnchor;
+    this.rearGripAnchor = saved.rearGripAnchor;
+    this.frontGripAnchor = saved.frontGripAnchor;
+    this.dustCoverMesh = saved.dustCoverMesh;
+    this.triggerMesh = saved.triggerMesh;
     this.magMesh = saved.magMesh;
     this.magTopRoundMesh = saved.magTopRoundMesh;
     this.magRestPos.copy(saved.magRestPos);
@@ -3706,6 +3727,12 @@ class WeaponSystem {
           if (this.boltCatchMesh) {
             this.boltCatchMesh.rotation.z = lockOpen ? catchAngle : 0;
           }
+          if (this.dustCoverMesh && weaponDef.id === 'm4a1') {
+            if (lockOpen || this.boltKick > 0.005 || this.isReloading) this._dustCoverOpen = true;
+            const targetDc = this._dustCoverOpen ? -Math.PI * 0.92 : 0;
+            this._dustCoverAngle = THREE.MathUtils.lerp(this._dustCoverAngle || 0, targetDc, Math.min(1, dt * 28));
+            this.dustCoverMesh.rotation.z = this._dustCoverAngle;
+          }
         } else {
           const lockOpen = weaponDef && weaponDef.slot === 'secondary' && slotObj && (slotObj.mag === 0 || (stg >= 1 && slotObj.reloadWasEmpty));
           const offset = lockOpen ? 0.052 : (weaponDef && weaponDef.id === 'm870' ? pumpOffset : this.boltKick);
@@ -3722,6 +3749,10 @@ class WeaponSystem {
       }
       if (this.chamberRoundMesh) {
         this.chamberRoundMesh.visible = !!(slotObj && slotObj.mag > 0 && !(stg >= 1 && slotObj.reloadWasEmpty));
+      }
+      if (this.triggerMesh) {
+        this._triggerPull = Math.max(0, (this._triggerPull || 0) - dt * 11.0);
+        this.triggerMesh.rotation.x = 0.24 - this._triggerPull * 0.34;
       }
     }
 
@@ -6973,6 +7004,8 @@ class WeaponSystem {
     }
     this.muzzleFlash.intensity = 3.5;
     this.muzzleTimer = 0.048;
+    this._dustCoverOpen = true;
+    this._triggerPull = 1.0;
     this._sinceShotTimer = 0;
     this._barrelHeat = Math.min(1.0, (this._barrelHeat || 0) + 0.09);
     if (this.muzzleMesh && this.muzzleMesh.material && this.muzzleMesh.material.uniforms) {

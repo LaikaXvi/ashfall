@@ -1170,91 +1170,127 @@ window.ModelSystem = (() => {
     }
 
     if (id === 'm4a1') {
-      // Colt M4A1 Carbine / SOPMOD Block I (838mm extended / 756mm collapsed, 368mm 14.5" barrel)
-      // 1. Forged 7075-T6 Flat-Top Upper Receiver + MIL-STD-1913 Top Rail + Ejection Port + Brass Deflector + Forward Assist
-      const upper = new THREE.Mesh(geoRoundedBox(0.029, 0.032, 0.198, 0.006, 0.0018, 0.20), m.m4AnodizedMat);
-      upper.position.set(0, 0.011, 0.012);
-      const upperDeck = new THREE.Mesh(geoRoundedBox(0.021, 0.005, 0.196, 0.002, 0.0008, 0.16), m.m4AnodizedMat);
-      upperDeck.position.set(0, 0.0265, 0.012);
-      const upperRail = new THREE.Mesh(geoPicatinnyRail(0.0305, -0.086, 0.108, 0.0212, 0.010), m.m4AnodizedMat);
+      // Colt M4A1 Carbine / SOPMOD Block I (MIL-DTL-71186 life-accurate 1:1 scale: 838mm extended, 368.3mm 14.5" SOCOM barrel)
+      // 1. Forged 7075-T6 Flat-Top Upper Receiver + 13-Slot MIL-STD-1913 Top Rail + Hinged Dust Cover + Brass Deflector + Forward Assist
+      const upper = new THREE.Mesh(geoRoundedBox(0.0294, 0.0324, 0.198, 0.0055, 0.0018, 0.20), m.m4AnodizedMat);
+      upper.position.set(0, 0.0112, 0.012);
+      const upperDeck = new THREE.Mesh(geoRoundedBox(0.0216, 0.0052, 0.196, 0.002, 0.0008, 0.16), m.m4AnodizedMat);
+      upperDeck.position.set(0, 0.0268, 0.012);
+      const upperRail = new THREE.Mesh(geoPicatinnyRail(0.0312, -0.086, 0.108, 0.0212, 0.010), m.m4AnodizedMat);
 
-      const ejRecess = new THREE.Mesh(geoRoundedBox(0.005, 0.0145, 0.072, 0.002, 0.0004), m.boreMat);
-      ejRecess.position.set(0.0125, 0.011, -0.014);
-      const dustCover = new THREE.Mesh(geoRoundedBox(0.0025, 0.0145, 0.074, 0.0012, 0.0004), m.m4PhosphateMat);
-      dustCover.position.set(0.0158, 0.000, -0.014);
-      out.dustCoverMesh = dustCover;
-
-      const brassDeflector = new THREE.Mesh(geoRoundedBox(0.009, 0.015, 0.022, 0.0025, 0.001, 0.10), m.m4AnodizedMat);
-      brassDeflector.position.set(0.0165, 0.011, 0.036);
-      brassDeflector.rotation.y = -0.34;
-
-      const faHousing = new THREE.Mesh(_cachedGeo('m4a1_fah_hp', () => {
-        const c = new THREE.CylinderGeometry(0.0066, 0.0074, 0.044, 16);
+      // Recessed 72x14.5mm Ejection Port + Spring-Loaded Bottom-Hinged Ejection Port Dust Cover (flips open on first shot!)
+      const ejRecess = new THREE.Mesh(geoRoundedBox(0.0052, 0.0145, 0.072, 0.002, 0.0004), m.boreMat);
+      ejRecess.position.set(0.0126, 0.0112, -0.014);
+      const dustCoverPivot = new THREE.Group();
+      dustCoverPivot.position.set(0.0150, 0.0040, -0.014);
+      const dcRod = new THREE.Mesh(_cachedGeo('m4a1_dcrod_hp', () => {
+        const c = new THREE.CylinderGeometry(0.0014, 0.0014, 0.080, 10);
         c.rotateX(Math.PI / 2);
-        return _uvWrapCyl(c, 0.0070, 'z', 0.10);
-      }), m.m4AnodizedMat);
-      faHousing.position.set(0.0168, 0.008, 0.074);
-      faHousing.rotation.y = 0.24;
-      const faPlunger = new THREE.Mesh(_cachedGeo('m4a1_fap_hp', () => {
-        const c = new THREE.CylinderGeometry(0.0062, 0.0062, 0.010, 16);
-        c.rotateX(Math.PI / 2);
-        return _uvWrapCyl(c, 0.0062, 'z', 0.08);
+        return _uvWrapCyl(c, 0.0014, 'z', 0.08);
       }), m.m4PhosphateMat);
-      faPlunger.position.set(0.0218, 0.008, 0.095);
-      faPlunger.rotation.y = 0.24;
+      const dcPlate = new THREE.Mesh(geoRoundedBox(0.0024, 0.0148, 0.074, 0.0012, 0.0004), m.m4PhosphateMat);
+      dcPlate.position.set(0.0008, 0.0072, 0);
+      const dcDetent = new THREE.Mesh(geoRoundedBox(0.0036, 0.0042, 0.0075, 0.001, 0.0003), m.steelMat);
+      dcDetent.position.set(0.0014, 0.0118, 0);
+      dustCoverPivot.add(dcRod, dcPlate, dcDetent);
+      out.dustCoverMesh = dustCoverPivot;
 
-      // 2. Stoner Direct-Impingement Bolt Carrier Group (out.boltCarrierMesh) & Chambered 5.56x45mm Round
+      // Triangular Shell / Brass Deflector (45-deg rear face)
+      const brassDeflector = new THREE.Mesh(geoRoundedBox(0.0096, 0.0155, 0.022, 0.0022, 0.001, 0.10), m.m4AnodizedMat);
+      brassDeflector.position.set(0.0168, 0.0112, 0.036);
+      brassDeflector.rotation.y = -0.38;
+
+      // Canted Teardrop Forward Assist Housing + Serrated Thumb Plunger
+      const faHousing = new THREE.Mesh(_cachedGeo('m4a1_fah_hp', () => {
+        const c = new THREE.CylinderGeometry(0.0066, 0.0076, 0.045, 16);
+        c.rotateX(Math.PI / 2);
+        return _uvWrapCyl(c, 0.0071, 'z', 0.10);
+      }), m.m4AnodizedMat);
+      faHousing.position.set(0.0170, 0.0080, 0.074);
+      faHousing.rotation.y = 0.26;
+      const faPlunger = new THREE.Mesh(_cachedGeo('m4a1_fap_hp', () => {
+        const c = new THREE.CylinderGeometry(0.0062, 0.0064, 0.010, 16);
+        c.rotateX(Math.PI / 2);
+        return _uvWrapCyl(c, 0.0063, 'z', 0.08);
+      }), m.m4PhosphateMat);
+      faPlunger.position.set(0.0224, 0.0080, 0.096);
+      faPlunger.rotation.y = 0.26;
+
+      // 2. Stoner Direct-Impingement Bolt Carrier Group (out.boltCarrierMesh):
+      //    Phosphated Carrier, Chrome Inner Channel, 2 Gas Exhaust Ports, 5 Forward-Assist Serrations & 7-Lug Rotating Bolt Head
       const bcgGroup = new THREE.Group();
       const bcgCyl = new THREE.Mesh(_cachedGeo('m4a1_bcg_hp', () => {
-        const c = new THREE.CylinderGeometry(0.0072, 0.0072, 0.068, 18);
+        const c = new THREE.CylinderGeometry(0.0074, 0.0074, 0.070, 18);
         c.rotateX(Math.PI / 2);
-        return _uvWrapCyl(c, 0.0072, 'z', 0.12);
+        return _uvWrapCyl(c, 0.0074, 'z', 0.12);
       }), m.m4PhosphateMat);
       const bcgPort = new THREE.Mesh(geoRoundedBox(0.0032, 0.0095, 0.048, 0.0012, 0.0004), m.chromeMat);
       bcgPort.position.set(0.0046, 0, -0.002);
-      for (const vz of [-0.012, -0.003]) {
-        const vent = new THREE.Mesh(geoRoundedBox(0.0016, 0.0032, 0.0032, 0.0008, 0.0002), m.boreMat);
-        vent.position.set(0.0060, 0, vz);
+      for (const vz of [-0.014, -0.005]) {
+        const vent = new THREE.Mesh(geoRoundedBox(0.0018, 0.0032, 0.0032, 0.0008, 0.0002), m.boreMat);
+        vent.position.set(0.0062, 0, vz);
         bcgGroup.add(vent);
       }
-      bcgGroup.add(bcgCyl, bcgPort);
-      bcgGroup.position.set(0.0110, 0.011, -0.014);
+      // Forward-assist ratchet serrations machined on rear right carrier flank
+      for (let si = 0; si < 5; si++) {
+        const notch = new THREE.Mesh(geoRoundedBox(0.0014, 0.0065, 0.0018, 0.0004, 0.0001), m.boreMat);
+        notch.position.set(0.0068, 0, 0.006 + si * 0.0046);
+        bcgGroup.add(notch);
+      }
+      // Rotating multi-lug bolt head visible at front of carrier
+      const boltHead = new THREE.Mesh(_cachedGeo('m4a1_bhead_hp', () => {
+        const c = new THREE.CylinderGeometry(0.0056, 0.0056, 0.014, 14);
+        c.rotateX(Math.PI / 2);
+        return _uvWrapCyl(c, 0.0056, 'z', 0.08);
+      }), m.steelMat);
+      boltHead.position.set(0, 0, -0.036);
+      bcgGroup.add(bcgCyl, bcgPort, boltHead);
+      bcgGroup.position.set(0.0110, 0.0112, -0.014);
       out.boltCarrierMesh = bcgGroup;
 
       const chamberRd = createCartridgeMesh('nato556', m);
-      chamberRd.position.set(0.008, 0.0105, -0.022);
+      chamberRd.position.set(0.008, 0.0108, -0.022);
       out.chamberRoundMesh = chamberRd;
 
-      // 3. Non-Reciprocating Rear T-Charging Handle (out.boltMesh)
+      // 3. Non-Reciprocating Rear T-Charging Handle (out.boltMesh) w/ Spring Latch
       const chGroup = new THREE.Group();
       const chStem = new THREE.Mesh(geoRoundedBox(0.011, 0.0065, 0.095, 0.002, 0.0005), m.m4AnodizedMat);
       chStem.position.set(0, 0, -0.042);
-      const chWings = new THREE.Mesh(geoRoundedBox(0.043, 0.0095, 0.014, 0.003, 0.001, 0.12), m.m4PhosphateMat);
+      const chWings = new THREE.Mesh(geoRoundedBox(0.044, 0.0095, 0.014, 0.003, 0.001, 0.12), m.m4PhosphateMat);
       chWings.position.set(0, 0, 0.008);
       const chLatch = new THREE.Mesh(geoRoundedBox(0.012, 0.0085, 0.016, 0.002, 0.0006), m.steelMat);
       chLatch.position.set(-0.020, 0, 0.009);
       chLatch.rotation.y = 0.25;
       chGroup.add(chStem, chWings, chLatch);
-      chGroup.position.set(0, 0.0235, 0.111);
+      chGroup.position.set(0, 0.0238, 0.111);
       out.boltMesh = chGroup;
 
-      // 4. Forged 7075-T6 Lower Receiver, Flared Magwell, Bolt Catch Paddle, Fire Selector & A2 Grip
-      const lower = new THREE.Mesh(geoRoundedBox(0.028, 0.036, 0.156, 0.005, 0.0016, 0.20), m.m4AnodizedMat);
+      // 4. Forged 7075-T6 Lower Receiver: Magwell Fence, Mag Release, Catch Bar, Takedown/Pivot Bosses, Bolt Catch, Fire Selector & A2 Grip
+      const lower = new THREE.Mesh(geoRoundedBox(0.0286, 0.036, 0.158, 0.005, 0.0016, 0.20), m.m4AnodizedMat);
       lower.position.set(0, -0.016, 0.046);
       const bufBoss = new THREE.Mesh(_cachedGeo('m4a1_bboss_hp', () => {
-        const c = new THREE.CylinderGeometry(0.0175, 0.0185, 0.026, 20);
+        const c = new THREE.CylinderGeometry(0.0178, 0.0188, 0.026, 20);
         c.rotateX(Math.PI / 2);
         return _uvWrapCyl(c, 0.018, 'z', 0.12);
       }), m.m4AnodizedMat);
-      bufBoss.position.set(0, 0.003, 0.118);
+      bufBoss.position.set(0, 0.0025, 0.118);
+      const endPlate = new THREE.Mesh(geoRoundedBox(0.031, 0.036, 0.0045, 0.004, 0.0008), m.m4PhosphateMat);
+      endPlate.position.set(0, -0.002, 0.129);
 
-      const magwell = new THREE.Mesh(geoRoundedBox(0.031, 0.048, 0.072, 0.004, 0.0014, 0.16), m.m4AnodizedMat);
+      const magwell = new THREE.Mesh(geoRoundedBox(0.0312, 0.048, 0.072, 0.004, 0.0014, 0.16), m.m4AnodizedMat);
       magwell.position.set(0, -0.024, -0.028);
-      const magFlare = new THREE.Mesh(geoRoundedBox(0.0335, 0.007, 0.076, 0.003, 0.0014, 0.14), m.m4AnodizedMat);
+      const magFlare = new THREE.Mesh(geoRoundedBox(0.0342, 0.0075, 0.076, 0.003, 0.0014, 0.14), m.m4AnodizedMat);
       magFlare.position.set(0, -0.046, -0.028);
+      // Protective raised magazine-release fencing on right receiver flank + left mag catch bar
+      const magFenceTop = new THREE.Mesh(geoRoundedBox(0.0038, 0.0035, 0.034, 0.001, 0.0004), m.m4AnodizedMat);
+      magFenceTop.position.set(0.0156, -0.009, -0.008);
+      const magFenceBot = new THREE.Mesh(geoRoundedBox(0.0038, 0.0035, 0.034, 0.001, 0.0004), m.m4AnodizedMat);
+      magFenceBot.position.set(0.0156, -0.025, -0.008);
+      const magRelBtn = new THREE.Mesh(geoRoundedBox(0.0052, 0.011, 0.016, 0.0025, 0.0006), m.m4PhosphateMat);
+      magRelBtn.position.set(0.0168, -0.017, -0.012);
+      const magCatchBar = new THREE.Mesh(geoRoundedBox(0.0035, 0.0085, 0.034, 0.0015, 0.0004), m.m4PhosphateMat);
+      magCatchBar.position.set(-0.0158, -0.018, -0.016);
 
-      const magRelBtn = new THREE.Mesh(geoRoundedBox(0.005, 0.011, 0.016, 0.0025, 0.0006), m.m4PhosphateMat);
-      magRelBtn.position.set(0.0165, -0.017, -0.012);
       const selectorDrum = new THREE.Mesh(_cachedGeo('m4a1_sel_hp', () => {
         const c = new THREE.CylinderGeometry(0.005, 0.005, 0.032, 14);
         c.rotateZ(Math.PI / 2);
@@ -1262,72 +1298,103 @@ window.ModelSystem = (() => {
       }), m.m4PhosphateMat);
       selectorDrum.position.set(0, -0.014, 0.086);
       const selectorLever = new THREE.Mesh(geoRoundedBox(0.004, 0.0055, 0.018, 0.0015, 0.0005), m.m4PhosphateMat);
-      selectorLever.position.set(-0.0155, -0.010, 0.080);
+      selectorLever.position.set(-0.0158, -0.010, 0.080);
       selectorLever.rotation.x = 0.55;
 
+      // Ping-pong paddle Bolt Catch (pivots on empty mag hold-open)
       const boltCatch = new THREE.Group();
-      const bcUpper = new THREE.Mesh(geoRoundedBox(0.0045, 0.015, 0.011, 0.0015, 0.0005), m.m4PhosphateMat);
-      bcUpper.position.set(0, 0.005, 0);
-      const bcLower = new THREE.Mesh(geoRoundedBox(0.0045, 0.007, 0.009, 0.0015, 0.0004), m.m4PhosphateMat);
-      bcLower.position.set(0, -0.007, 0.001);
+      const bcUpper = new THREE.Mesh(geoRoundedBox(0.0045, 0.0155, 0.0115, 0.0015, 0.0005), m.m4PhosphateMat);
+      bcUpper.position.set(0, 0.0055, 0);
+      const bcLower = new THREE.Mesh(geoRoundedBox(0.0045, 0.0072, 0.0092, 0.0015, 0.0004), m.m4PhosphateMat);
+      bcLower.position.set(0, -0.0072, 0.001);
       boltCatch.add(bcUpper, bcLower);
-      boltCatch.position.set(-0.0155, -0.004, -0.004);
+      boltCatch.position.set(-0.0158, -0.004, -0.004);
       out.boltCatchMesh = boltCatch;
 
-      out.triggerMesh = _addTriggerAndPins(g, m, 0.064, -0.033, 0.0145, [[-0.012, 0.048], [-0.012, 0.076], [-0.008, -0.056], [-0.010, 0.106]]);
+      // Pivot pin, takedown pin, hammer/trigger pins & curved Mil-Spec trigger
+      out.triggerMesh = _addTriggerAndPins(g, m, 0.064, -0.033, 0.0148, [[-0.012, 0.048], [-0.012, 0.076], [-0.008, -0.056], [-0.008, 0.108]]);
 
+      // Ergonomic 28-deg A2 Pistol Grip w/ finger groove nub & explicit IK rearGripAnchor
       const grip = new THREE.Mesh(geoCurvedGrip(0.029, 0.098, 0.044), m.darkMat);
       grip.position.set(0, -0.070, 0.122);
       grip.rotation.x = 0.36;
       const gripNub = new THREE.Mesh(geoRoundedBox(0.025, 0.010, 0.012, 0.003, 0.001), m.darkMat);
       gripNub.position.set(0, -0.064, 0.096);
       gripNub.rotation.x = 0.36;
+      const rearGripAnchor = new THREE.Object3D();
+      rearGripAnchor.position.set(0.0, -0.068, 0.122);
+      rearGripAnchor.userData._tpRole = 'rearGrip';
+      out.rearGripAnchor = rearGripAnchor;
 
-      // 5. 14.5" (368.3mm) M4A1 Step-Cut CMV Barrel, Direct-Impingement Gas Tube & A2 Birdcage Flash Hider
+      // 5. 14.5" (368.3mm) M4A1 SOCOM Heavy Step-Cut Barrel, Crush Washer, 5-Slot A2 Birdcage Flash Hider & Direct-Impingement Gas Tube
       const barrel = new THREE.Mesh(
-        geoLatheZ('m4a1_bbl_hp', [
-          [0.08, 0.0125], [0.265, 0.0094], [0.270, 0.0098], [0.312, 0.0098],
-          [0.312, 0.0092], [0.330, 0.0092], [0.332, 0.0072], [0.354, 0.0072],
-          [0.356, 0.0092], [0.376, 0.0092], [0.378, 0.0110], [0.420, 0.0110], [0.420, 0.0036]
+        geoLatheZ('m4a1_bbl_socom_hp', [
+          [0.082, 0.0128], [0.264, 0.0104], [0.270, 0.0108], [0.312, 0.0108],
+          [0.314, 0.0094], [0.334, 0.0094], [0.336, 0.0071], [0.362, 0.0071],
+          [0.364, 0.0094], [0.402, 0.0094], [0.406, 0.0110], [0.412, 0.0110],
+          [0.414, 0.0110], [0.456, 0.0110], [0.456, 0.0036]
         ], 28),
         m.m4PhosphateMat
       );
       barrel.position.set(0, 0.002, 0);
-      for (const pz of [-0.392, -0.402, -0.411]) {
-        const a2Port = new THREE.Mesh(geoRoundedBox(0.018, 0.0035, 0.004, 0.001, 0.0003), m.boreMat);
-        a2Port.position.set(0, 0.011, pz);
-        g.add(a2Port);
+      // 5 radial upper/side A2 birdcage compensation slots (solid bottom to prevent prone dust kickup)
+      for (const pz of [-0.425, -0.435, -0.445]) {
+        const a2PortTop = new THREE.Mesh(geoRoundedBox(0.0185, 0.0034, 0.0042, 0.001, 0.0003), m.boreMat);
+        a2PortTop.position.set(0, 0.0108, pz);
+        g.add(a2PortTop);
       }
 
       const deltaRing = new THREE.Mesh(_cachedGeo('m4a1_dring_hp', () => {
-        const c = new THREE.CylinderGeometry(0.021, 0.024, 0.020, 24);
+        const c = new THREE.CylinderGeometry(0.0205, 0.0242, 0.022, 24);
         c.rotateX(Math.PI / 2);
         return _uvWrapCyl(c, 0.022, 'z', 0.12);
       }), m.m4PhosphateMat);
       deltaRing.position.set(0, 0.002, -0.092);
-      const hgCap = new THREE.Mesh(geoRoundedBox(0.036, 0.038, 0.007, 0.007, 0.0012), m.m4PhosphateMat);
-      hgCap.position.set(0, 0.002, -0.270);
+      const hgCap = new THREE.Mesh(geoRoundedBox(0.0365, 0.0385, 0.007, 0.007, 0.0012), m.m4PhosphateMat);
+      hgCap.position.set(0, 0.002, -0.268);
 
       const gasTube = new THREE.Mesh(_cachedGeo('m4a1_gtube_hp', () => {
-        const c = new THREE.CylinderGeometry(0.0024, 0.0024, 0.195, 12);
+        const c = new THREE.CylinderGeometry(0.0024, 0.0024, 0.198, 12);
         c.rotateX(Math.PI / 2);
         return _uvWrapCyl(c, 0.0024, 'z', 0.12);
       }), m.chromeMat);
       gasTube.position.set(0, 0.020, -0.188);
 
-      // 6. Knight's Armament (KAC) M4 RAS 7" Quad-Rail Handguard & Polymer Rail Panels
-      const rasCore = new THREE.Mesh(geoRoundedBox(0.036, 0.038, 0.168, 0.008, 0.0018, 0.18), m.m4AnodizedMat);
-      rasCore.position.set(0, 0.002, -0.184);
-      const rasTopRail = new THREE.Mesh(geoPicatinnyRail(0.0305, -0.266, -0.098, 0.0212, 0.010), m.m4AnodizedMat);
-      const rasBotRail = new THREE.Mesh(geoPicatinnyRail(0.0, -0.264, -0.100, 0.0212, 0.010), m.m4AnodizedMat);
+      // 6. Knight's Armament (KAC) M4 RAS 7" Quad-Rail Handguard (12/3/6/9 o'clock Picatinny + Cooling Vents + Ribbed Rail Panels)
+      const rasCore = new THREE.Mesh(geoRoundedBox(0.0356, 0.0376, 0.168, 0.008, 0.0018, 0.18), m.m4AnodizedMat);
+      rasCore.position.set(0, 0.002, -0.182);
+      const rasTopRail = new THREE.Mesh(geoPicatinnyRail(0.0312, -0.264, -0.098, 0.0212, 0.010), m.m4AnodizedMat);
+      const rasBotRail = new THREE.Mesh(geoPicatinnyRail(0.0, -0.262, -0.100, 0.0212, 0.010), m.m4AnodizedMat);
       rasBotRail.rotation.z = Math.PI;
-      rasBotRail.position.set(0, -0.0225, 0);
-      const kacPanelL = new THREE.Mesh(geoRoundedBox(0.006, 0.021, 0.138, 0.002, 0.0008, 0.14), m.darkMat);
-      kacPanelL.position.set(-0.0205, 0.002, -0.184);
+      rasBotRail.position.set(0, -0.0228, 0);
+      // 3 & 9 o'clock side rails + KAC 11-rib polymer protective panels
+      const rasLeftRail = new THREE.Mesh(geoPicatinnyRail(0.0, -0.262, -0.100, 0.0185, 0.010), m.m4AnodizedMat);
+      rasLeftRail.rotation.z = Math.PI / 2;
+      rasLeftRail.position.set(-0.020, 0.002, 0);
+      const rasRightRail = new THREE.Mesh(geoPicatinnyRail(0.0, -0.262, -0.100, 0.0185, 0.010), m.m4AnodizedMat);
+      rasRightRail.rotation.z = -Math.PI / 2;
+      rasRightRail.position.set(0.020, 0.002, 0);
+      const kacPanelL = new THREE.Mesh(geoRoundedBox(0.0055, 0.0205, 0.132, 0.002, 0.0008, 0.14), m.darkMat);
+      kacPanelL.position.set(-0.0218, 0.002, -0.182);
       const kacPanelR = kacPanelL.clone();
-      kacPanelR.position.x = 0.0205;
+      kacPanelR.position.x = 0.0218;
+      // Diagonal ventilation port recesses along upper RAS bevels
+      for (let vi = 0; vi < 6; vi++) {
+        const vz = -0.118 - vi * 0.025;
+        for (const sx of [-1, 1]) {
+          const ventHole = new THREE.Mesh(geoRoundedBox(0.0035, 0.0055, 0.009, 0.002, 0.0002), m.boreMat);
+          ventHole.position.set(sx * 0.0158, 0.0165, vz);
+          ventHole.rotation.z = sx * -0.78;
+          g.add(ventHole);
+        }
+      }
+      // Explicit IK front handguard support anchor (used when no vertical foregrip is attached!)
+      const frontGripAnchor = new THREE.Object3D();
+      frontGripAnchor.position.set(0.0, -0.024, -0.194);
+      frontGripAnchor.userData._tpRole = 'frontGrip';
+      out.frontGripAnchor = frontGripAnchor;
 
-      // 7. 6-Position Buffer Tube & B5 SOPMOD Buttstock (when no custom stock attached)
+      // 7. 6-Position Buffer Tube & Crane/B5 SOPMOD Buttstock (when no custom stock attached)
       if (!mods.stock || mods.stock === 'none') {
         const bufTube = new THREE.Mesh(_cachedGeo('m4a1_btube_hp', () => {
           const c = new THREE.CylinderGeometry(0.0146, 0.0146, 0.182, 20);
@@ -1336,11 +1403,11 @@ window.ModelSystem = (() => {
         }), m.m4AnodizedMat);
         bufTube.position.set(0, 0.002, 0.214);
         const castleNut = new THREE.Mesh(_cachedGeo('m4a1_cnut_hp', () => {
-          const c = new THREE.CylinderGeometry(0.0185, 0.0185, 0.014, 20);
+          const c = new THREE.CylinderGeometry(0.0186, 0.0186, 0.014, 20);
           c.rotateX(Math.PI / 2);
-          return _uvWrapCyl(c, 0.0185, 'z', 0.10);
+          return _uvWrapCyl(c, 0.0186, 'z', 0.10);
         }), m.m4PhosphateMat);
-        castleNut.position.set(0, 0.002, 0.130);
+        castleNut.position.set(0, 0.002, 0.134);
 
         const sopmodBody = new THREE.Mesh(geoExtrudeSide('m4a1_sopmod_hp', [
           [-0.088, 0.022], [0.088, 0.022], [0.096, -0.104], [0.044, -0.104], [0.015, -0.048], [-0.082, -0.018]
@@ -1423,20 +1490,22 @@ window.ModelSystem = (() => {
       out.magMesh = magGrp;
       out.spareMagMesh = magGrp.clone();
       out.spareMagMesh.visible = false;
-      out.rightHandPos.set(0.0, -0.066, 0.124);
+      out.rightHandPos.copy(rearGripAnchor.position);
       out.rightHandRot.set(0.24, 0, 0);
-      out.leftHandPos.set(0.0, -0.024, -0.195);
+      out.leftHandPos.copy(frontGripAnchor.position);
       out.sightHeight = 0.052;
       out.adsZ = -0.25;
-      out.muzzlePos.set(0, 0.002, -0.420);
-      out.flashPos.set(0, 0.006, -0.460);
+      out.muzzlePos.set(0, 0.002, -0.456);
+      out.flashPos.set(0, 0.006, -0.496);
 
       [barrel, deltaRing, hgCap, gasTube].forEach((mm) => { mm.renderOrder = -20; });
       g.add(
-        upper, upperDeck, upperRail, ejRecess, dustCover, brassDeflector, faHousing, faPlunger,
+        upper, upperDeck, upperRail, ejRecess, dustCoverPivot, brassDeflector, faHousing, faPlunger,
         bcgGroup, chamberRd, chGroup,
-        lower, bufBoss, magwell, magFlare, magRelBtn, selectorDrum, selectorLever, boltCatch, grip, gripNub,
-        barrel, deltaRing, hgCap, gasTube, rasCore, rasTopRail, rasBotRail, kacPanelL, kacPanelR,
+        lower, bufBoss, endPlate, magwell, magFlare, magFenceTop, magFenceBot, magRelBtn, magCatchBar,
+        selectorDrum, selectorLever, boltCatch, grip, gripNub, rearGripAnchor,
+        barrel, deltaRing, hgCap, gasTube, rasCore, rasTopRail, rasBotRail, rasLeftRail, rasRightRail,
+        kacPanelL, kacPanelR, frontGripAnchor,
         magGrp, out.spareMagMesh
       );
       return out;
