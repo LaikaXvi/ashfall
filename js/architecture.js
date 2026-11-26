@@ -38,6 +38,7 @@ window.AshfallArchitecture = (() => {
       });
       return null;
     }
+    if (!world.scene || typeof world.scene.add !== 'function') return null;
     const m = new THREE.Mesh(geo, mat);
     m.matrix.copy(matrix);
     m.matrix.decompose(m.position, m.quaternion, m.scale);

@@ -738,7 +738,7 @@ window.AshfallPBR = (() => {
     if (spec.seed >= 101 && spec.seed <= 120 && !(overrides && overrides.noWeaponPatch)) {
       patchWeaponMaterial(mat, { isMetal: matOpts.metalness >= 0.45 });
     } else if (spec.square && !(overrides && overrides.noWorldPatch)) {
-      patchWorldMaterial(mat, { wet: spec.metal > 0.5 ? 0.28 : 0.38 });
+      patchWorldMaterial(mat, { wet: (overrides && overrides.wet !== undefined) ? overrides.wet : (spec.metal > 0.5 ? 0.28 : 0.38) });
     }
     _markShared(mat);
     _matCache.set(key, mat);
@@ -752,6 +752,7 @@ window.AshfallPBR = (() => {
   function patchWorldMaterial(mat, opts = {}) {
     if (!mat || mat.userData._slWorldPatched) return mat;
     mat.userData._slWorldPatched = true;
+    mat.extensions = Object.assign({}, mat.extensions || {}, { derivatives: true });
     const wetVal = opts.wet !== undefined ? opts.wet : 0.36;
     const macroFreq = opts.macroFreq !== undefined ? opts.macroFreq : 0.085;
     const macroRough = opts.macroRough !== undefined ? opts.macroRough : 0.14;
@@ -772,11 +773,13 @@ varying vec3 vSlWorldNorm;`
         .replace(
           '#include <project_vertex>',
           `vec4 slWp = vec4(transformed, 1.0);
+vec3 slWn = objectNormal;
 #ifdef USE_INSTANCING
   slWp = instanceMatrix * slWp;
+  slWn = mat3(instanceMatrix) * slWn;
 #endif
 vSlWorldPos = (modelMatrix * slWp).xyz;
-vSlWorldNorm = normalize(mat3(modelMatrix) * objectNormal);
+vSlWorldNorm = normalize(mat3(modelMatrix) * slWn);
 #include <project_vertex>`
         );
 
@@ -852,6 +855,7 @@ float slWetK = 0.0;`
   function patchWeaponMaterial(mat, opts = {}) {
     if (!mat || mat.userData._slWpnPatched) return mat;
     mat.userData._slWpnPatched = true;
+    mat.extensions = Object.assign({}, mat.extensions || {}, { derivatives: true });
     const kindVal = opts.isMetal !== false ? 0.0 : 1.0;
 
     mat.onBeforeCompile = (shader) => {

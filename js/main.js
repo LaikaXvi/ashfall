@@ -981,9 +981,32 @@
     } catch (err) {
       inRaid = false;
       console.error('[Ashfall] startRaid failed:', err);
-      if (ui && ui.showCenterToast) {
-        ui.showCenterToast('DEPLOY ERROR: ' + (err && err.message ? err.message : String(err)), '#ff5252');
+      const errMsg = 'DEPLOY ERROR: ' + (err && err.message ? err.message : String(err));
+      if (ui && ui.openMenuTab) {
+        try { ui.openMenuTab('deploy'); } catch (e) {}
       }
+      if (ui && ui.showScreen) {
+        try { ui.showScreen('hideout'); } catch (e) {}
+      }
+      if (ui && ui.showCenterToast) {
+        ui.showCenterToast(errMsg, '#ff5252');
+      }
+      if (ui && ui._showSocialToast) {
+        ui._showSocialToast(errMsg);
+      }
+      try {
+        let banner = document.getElementById('deploy-error-banner');
+        if (!banner) {
+          banner = document.createElement('div');
+          banner.id = 'deploy-error-banner';
+          banner.style.cssText = 'position:fixed;top:22px;left:50%;transform:translateX(-50%);z-index:99999;background:rgba(24,10,10,0.95);border:1.5px solid #ff5252;color:#ff8a80;font-family:monospace;font-size:13px;font-weight:700;padding:10px 18px;border-radius:4px;box-shadow:0 6px 24px rgba(0,0,0,0.65);pointer-events:none;';
+          document.body.appendChild(banner);
+        }
+        banner.textContent = errMsg;
+        banner.style.display = 'block';
+        clearTimeout(banner._hideTimer);
+        banner._hideTimer = setTimeout(() => { banner.style.display = 'none'; }, 6000);
+      } catch (e) {}
     }
   }
 

@@ -3,15 +3,15 @@
 // Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
 // With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'Alpha RC 0.3.9',
+  VERSION: 'Alpha RC 0.3.10',
   VERSION_INFO: {
     major: 0,
     minor: 3,
-    patch: 9,
+    patch: 10,
     channel: 'Alpha', // Alpha | Beta — never blank while major === 0
     stage: 'RC',     // RC = Release Candidate
     updated: 'Nov 25, 2026',
-    changelog: 'Saltline Rendering, Architectural Detailing & Weapon Handler Upgrade: GPU shader world-space macro weathering, ground-contact splash, vertical rain/grime streaks & specular normal-AA; weapon 3D object-space CNC machining/stipple micro-bump & anodized edge-wear shader; single-draw-call procedural weathering & facility stencil decal atlas; gl.depthRange viewmodel isolation (zero SSAO depth-wipe); linear view-space normal-reconstructed SSAO w/ sunlit-luma ambient mask + Karis bloom; Vogel-disk PCSS contact-hardening soft shadows; dynamic indoor/outdoor viewmodel PMREM & light modulation; chamfered metric-UV beveledBox instancing, dual-skin interior wall liners, 3-plate structural steel I-beams, wind X-bracing, detailed rollup shutters w/ drive motors/bollards, eave gutters/downspouts, sloped louver vents & glowing pendant luminaires; bore-collimated infinity-parallax reflex/holo lens shader, single-draw-call distressed receiver markings, 8-quad 3D muzzle flash + barrel crown heat glow & lingering smoke, visible mag feed-lip cartridges & sub-stepped 9-channel second-order weapon springs.',
+    changelog: 'Fixed Vostok Highrise VostokCityBuilder.build pushBatchedGeo(this -> world) infil crash that left players stuck on the menu screen; hardened startRaid error recovery with automatic deploy-menu fallback and visible error banner; preserved 1P magTopRoundMesh across 3P weapon builds; and hardened Saltline PBR shader wet override, instanced normals & derivatives.',
     get semver() { return `${this.major}.${this.minor}.${this.patch}`; },
     get label() { return `${this.channel} ${this.stage} ${this.major}.${this.minor}.${this.patch}`; }
   },

@@ -586,7 +586,7 @@ window.VostokCityBuilder = (() => {
       if (A && A.pushBatchedGeo) {
         const m4 = new THREE.Matrix4(); const qI = new THREE.Quaternion(); const s1 = new THREE.Vector3(1, 1, 1);
         m4.compose(new THREE.Vector3(266, roofY + 0.06, -366), qI, s1);
-        A.pushBatchedGeo(this, padGeo, mats.darkConcrete, m4, false);
+        A.pushBatchedGeo(world, padGeo, mats.darkConcrete, m4, false);
       }
       box(263.8, roofY + 0.10, -366, 0.85, 0.04, 6.4, mats.hazardAmber, false);
       box(268.2, roofY + 0.10, -366, 0.85, 0.04, 6.4, mats.hazardAmber, false);
@@ -598,7 +598,7 @@ window.VostokCityBuilder = (() => {
         const m4b = new THREE.Matrix4(); const qB = new THREE.Quaternion(); const sB = new THREE.Vector3(1, 1, 1);
         qB.setFromEuler(new THREE.Euler(0, 0, Math.PI / 2));
         m4b.compose(new THREE.Vector3(258.5, roofY + 0.9, -366), qB, sB);
-        A.pushBatchedGeo(this, tankGeo, mats.rustRed, m4b, true);
+        A.pushBatchedGeo(world, tankGeo, mats.rustRed, m4b, true);
       }
       box(257.2, roofY + 0.35, -366, 0.3, 0.7, 1.2, mats.bossDark, true);
       box(259.8, roofY + 0.35, -366, 0.3, 0.7, 1.2, mats.bossDark, true);

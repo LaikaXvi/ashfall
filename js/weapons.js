@@ -2868,6 +2868,7 @@ class WeaponSystem {
       hasVertGrip: !!this.hasVertGrip,
       foregripAnchor: this.foregripAnchor,
       magMesh: this.magMesh,
+      magTopRoundMesh: this.magTopRoundMesh,
       magRestPos: this.magRestPos.clone(),
       magRestRot: this.magRestRot.clone(),
       spareMagMesh: this.spareMagMesh,
@@ -2979,6 +2980,7 @@ class WeaponSystem {
     this.hasVertGrip = saved.hasVertGrip;
     this.foregripAnchor = saved.foregripAnchor;
     this.magMesh = saved.magMesh;
+    this.magTopRoundMesh = saved.magTopRoundMesh;
     this.magRestPos.copy(saved.magRestPos);
     this.magRestRot.copy(saved.magRestRot);
     this.spareMagMesh = saved.spareMagMesh;
