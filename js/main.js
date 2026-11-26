@@ -343,10 +343,10 @@
 
     scene = new THREE.Scene();
     scene.background = new THREE.Color(zone.skyColor || 0x8ea0ab);
-    // Volumetric-style distance-based atmospheric fog tuned for 1240m expanded sector
-    scene.fog = new THREE.FogExp2(zone.fogColor || 0xa7b0a8, 0.0021);
+    // Dense linear atmospheric fog hiding the 265m render horizon smoothly (zero pop-in, high FPS)
+    scene.fog = new THREE.Fog(zone.fogColor || 0xa7b0a8, 55, 255);
 
-    camera = new THREE.PerspectiveCamera(window.BASE_FOV || 75, window.innerWidth / window.innerHeight, 0.05, 1650);
+    camera = new THREE.PerspectiveCamera(window.BASE_FOV || 75, window.innerWidth / window.innerHeight, 0.05, zone.underground ? 210 : 360);
     scene.add(camera);
 
     // Upgraded Vostok Atmospheric Lighting (Sky/Ground bounce + Sun aligned to world.sunDir + Cool Rim + 3-Point Viewmodel Rig)
@@ -377,7 +377,7 @@
     flashlight = null;
     if (zone.underground) {
       scene.background = new THREE.Color(0x060809);
-      scene.fog = new THREE.FogExp2(0x0b0e11, 0.0075);
+      scene.fog = new THREE.Fog(0x0b0e11, 16, 125);
       hemiLight.color.setHex(0xdce6e8);
       hemiLight.groundColor.setHex(0x6c665e);
       hemiLight.intensity = 0.96;

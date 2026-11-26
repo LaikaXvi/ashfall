@@ -962,8 +962,8 @@ class WastelandWorld {
 
   _buildSkybox() {
     // Procedural atmospheric skybox dome with zenith gradient, horizon haze, solar disc/corona & drifting clouds
-    // Radius 420 + depthTest:false + renderOrder:-1000 guarantees ZERO far-plane clipping at every LOD!
-    const skyGeo = new THREE.SphereGeometry(420, 32, 20);
+    // Radius 280 + depthTest:false + renderOrder:-1000 guarantees ZERO far-plane clipping at 360m camera.far!
+    const skyGeo = new THREE.SphereGeometry(280, 24, 16);
     const skyMat = new THREE.ShaderMaterial({
       side: THREE.BackSide,
       depthWrite: false,
@@ -2200,12 +2200,12 @@ class WastelandWorld {
       }
       placedPines++;
     }
-    const livePineChunks = buildChunkedInstanced(livePineGeo, treeMat, livePineMats, 128, 16.0, Infinity);
-    const deadTreeChunks = buildChunkedInstanced(deadTreeGeo, treeMat, deadTreeMats, 128, 16.0, Infinity);
+    const livePineChunks = buildChunkedInstanced(livePineGeo, treeMat, livePineMats, 192, 16.0, 265);
+    const deadTreeChunks = buildChunkedInstanced(deadTreeGeo, treeMat, deadTreeMats, 192, 16.0, 265);
     this._pineMeshes = [...livePineChunks, ...deadTreeChunks];
     this._maxPines = livePineMats.length;
 
-    // 2. Crisp Grass Tufts (3,200 instances chunked in 96m viewport cells!)
+    // 2. Crisp Grass Tufts (3,200 instances chunked in 128m viewport cells, hidden past 115m!)
     const grassCount = 3200;
     const grassGeo = buildCrossedPlanesGeo(0.9, 0.55, -0.04, 2);
     const grassMat = new THREE.MeshStandardMaterial({
@@ -2228,11 +2228,11 @@ class WastelandWorld {
       dummy.updateMatrix();
       grassMats.push(dummy.matrix.clone());
     }
-    this._bushChunks = buildChunkedInstanced(grassGeo, grassMat, grassMats, 96, 3.0, 260);
+    this._bushChunks = buildChunkedInstanced(grassGeo, grassMat, grassMats, 128, 3.0, 115);
     this._bushInst = this._bushChunks[0] || null;
     this._maxBushes = grassMats.length;
 
-    // 3. Sharp PBR Fern / Sapling Cards (700 instances chunked in 128m viewport cells!)
+    // 3. Sharp PBR Fern / Sapling Cards (700 instances chunked in 160m viewport cells, hidden past 155m!)
     const fernCount = 700;
     const fernGeo = buildCrossedPlanesGeo(1.6, 1.3, -0.05, 3);
     const fernMat = new THREE.MeshStandardMaterial({
@@ -2255,7 +2255,7 @@ class WastelandWorld {
       dummy.updateMatrix();
       fernMats.push(dummy.matrix.clone());
     }
-    this._fernChunks = buildChunkedInstanced(fernGeo, fernMat, fernMats, 128, 4.0, 310);
+    this._fernChunks = buildChunkedInstanced(fernGeo, fernMat, fernMats, 160, 4.0, 155);
     this._fernInst = this._fernChunks[0] || null;
     this._maxFerns = fernMats.length;
     this._foliageChunks = [...this._pineMeshes, ...this._bushChunks, ...this._fernChunks];
@@ -2389,20 +2389,35 @@ class WastelandWorld {
 
     const groups = new Map();
     const P1_STATS = { boxes: 0, instanced: 0, meshes: 0 };
+    const bcs = this._batchCellSize || 96;
+    // Count repeat box dimensions per (material, cell) first; only emit InstancedMesh when >= 8 identical boxes
+    // so unique/small-run boxes merge into 1 single draw call per material per cell (eliminates draw-call explosion!).
+    const boxRunCounts = new Map();
+    for (let i = 0; i < this._batchEntries.length; i++) {
+      const e = this._batchEntries[i];
+      if (!e || !e.material || !e.isAABox) continue;
+      const rk = `${e.material.uuid}|${Math.floor(e.x / bcs)}|${Math.floor(e.z / bcs)}|box:${e.w.toFixed(2)}x${e.h.toFixed(2)}x${e.d.toFixed(2)}`;
+      boxRunCounts.set(rk, (boxRunCounts.get(rk) || 0) + 1);
+    }
     for (let i = 0; i < this._batchEntries.length; i++) {
       const e = this._batchEntries[i];
       if (!e || !e.material) continue;
       if (!e.isAABox && !e.geometry) continue;
       const ex = e.isAABox ? e.x : e.matrix.elements[12];
       const ez = e.isAABox ? e.z : e.matrix.elements[14];
-      const bcs = this._batchCellSize || 64;
-      let key = `${e.material.uuid}|${Math.floor(ex / bcs)}|${Math.floor(ez / bcs)}`;
+      const cellKey = `${e.material.uuid}|${Math.floor(ex / bcs)}|${Math.floor(ez / bcs)}`;
+      let key = cellKey;
+      let promoteInst = false;
       if (e.isAABox) {
-        key += `|box:${e.w.toFixed(2)}x${e.h.toFixed(2)}x${e.d.toFixed(2)}`; // Saltline P1: repeat-dimension second merge
+        const rk = `${cellKey}|box:${e.w.toFixed(2)}x${e.h.toFixed(2)}x${e.d.toFixed(2)}`;
+        if ((boxRunCounts.get(rk) || 0) >= 8) {
+          key = rk;
+          promoteInst = true;
+        }
       }
       let bucket = groups.get(key);
       if (!bucket) {
-        bucket = { material: e.material, entries: [], isBoxRun: !!e.isAABox, bw: e.w, bh: e.h, bd: e.d, bTile: e.tile };
+        bucket = { material: e.material, entries: [], isBoxRun: promoteInst, bw: e.w, bh: e.h, bd: e.d, bTile: e.tile };
         groups.set(key, bucket);
       }
       bucket.entries.push(e);
@@ -2415,11 +2430,11 @@ class WastelandWorld {
 
     for (const bucket of groups.values()) {
       const list = bucket.entries;
-      // Saltline P1: repeat-dimension runs become ONE InstancedMesh with metric beveledBox UVs
-      if (bucket.isBoxRun && list.length >= 2) {
+      // Saltline P1: large repeat-dimension runs (>= 8) become ONE low-poly metric-UV InstancedMesh
+      if (bucket.isBoxRun && list.length >= 8) {
         const GP = window.AshfallRenderer && window.AshfallRenderer.GeoPool;
         const instGeo = (GP && GP.beveledBox)
-          ? GP.beveledBox(bucket.bw, bucket.bh, bucket.bd, bucket.bTile || 2.4)
+          ? GP.beveledBox(bucket.bw, bucket.bh, bucket.bd, bucket.bTile || 2.4, 0)
           : ((GP && GP.unitBox) ? GP.unitBox() : new THREE.BoxGeometry(1, 1, 1));
         const usedBeveled = !!(GP && GP.beveledBox);
         const inst = new THREE.InstancedMesh(instGeo, bucket.material, list.length);

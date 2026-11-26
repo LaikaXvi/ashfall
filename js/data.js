@@ -3,15 +3,15 @@
 // Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
 // With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'Alpha RC 0.3.12',
+  VERSION: 'Alpha RC 0.3.13',
   VERSION_INFO: {
     major: 0,
     minor: 3,
-    patch: 12,
+    patch: 13,
     channel: 'Alpha', // Alpha | Beta — never blank while major === 0
     stage: 'RC',     // RC = Release Candidate
     updated: 'Nov 26, 2026',
-    changelog: 'Added real-time camera viewport culling (AshfallRenderer.updateViewportCulling): objects outside the active camera frustum (64m batched world cells, P1 InstancedMesh runs, spatially chunked pines/grass/ferns, terrain chunks, loot containers, doors, ground items, extract beacons, smoke plumes, mist layers, and articulated AI/squad rigs) are moved to cull layer 3 until observed; also skips off-screen smoke/mist/beacon/ring animation updates.',
+    changelog: 'Major FPS & Stutter Optimization + Line-of-Sight Occlusion Culling: reduced outdoor render distance to 265m hidden smoothly behind linear atmospheric fog (55m-255m, camera.far 360m); eliminated static batch draw-call & triangle explosion by merging non-repeating boxes per 96m cell and promoting only >=8-box runs to 12-tri InstancedMeshes; cut PCSS shadow taps (18->10) and SSAO taps (10->6); and added zero-allocation time-sliced LOS wall-occlusion culling for AI/squad rigs, loot containers, ground items, and mid/far building cells.',
     get semver() { return `${this.major}.${this.minor}.${this.patch}`; },
     get label() { return `${this.channel} ${this.stage} ${this.major}.${this.minor}.${this.patch}`; }
   },

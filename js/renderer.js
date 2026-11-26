@@ -143,8 +143,8 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
     float phi = slShadowIGN( gl_FragCoord.xy ) * 6.2831853;
     vec2 searchR = ( 0.45 * shadowRadius ) / vec2( ${frustumSpan.toFixed(1)}, ${frustumSpan.toFixed(1)} );
     float blk = 0.0, nb = 0.0;
-    for ( int i = 0; i < 6; i ++ ) {
-      vec2 o = slShadowVogel( i, 6, phi ) * searchR;
+    for ( int i = 0; i < 4; i ++ ) {
+      vec2 o = slShadowVogel( i, 4, phi ) * searchR;
       float d = unpackRGBAToDepth( texture2D( shadowMap, sc.xy + o ) );
       float z = zr + dot( o, dz );
       if ( d < z ) { blk += d; nb += 1.0; }
@@ -155,12 +155,12 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
     float penM = clamp( distM * 0.022 * shadowRadius, 0.012 * shadowRadius, 0.55 * shadowRadius );
     vec2 filtR = max( vec2( penM ) / vec2( ${frustumSpan.toFixed(1)}, ${frustumSpan.toFixed(1)} ), texel * 1.15 );
     float lit = 0.0;
-    for ( int i = 0; i < 12; i ++ ) {
-      vec2 o = slShadowVogel( i, 12, phi + 1.7 ) * filtR;
+    for ( int i = 0; i < 6; i ++ ) {
+      vec2 o = slShadowVogel( i, 6, phi + 1.7 ) * filtR;
       float d = unpackRGBAToDepth( texture2D( shadowMap, sc.xy + o ) );
       lit += step( zr + dot( o, dz ), d );
     }
-    lit /= 12.0;
+    lit /= 6.0;
     vec2 edge = min( sc.xy, 1.0 - sc.xy );
     shadow = mix( 1.0, lit, smoothstep( 0.0, 0.02, min( edge.x, edge.y ) ) );
   #elif defined( SHADOWMAP_TYPE_PCF )
@@ -667,7 +667,7 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
           float d0Raw = texture2D(tDepth, uv).r;
           if (d0Raw < 0.0503 || d0Raw >= 0.9994) return 1.0;
           float z0 = linearZ(d0Raw);
-          if (z0 > 130.0) return 1.0;
+          if (z0 > 75.0) return 1.0;
           vec3 P = viewPos(uv, z0);
 
           vec2 ox = vec2(uTexel.x * 1.5, 0.0);
@@ -688,15 +688,15 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
           if (nLen < 1e-6) return 1.0;
           n /= nLen;
 
-          float R = 0.56 * (0.65 + 0.35 * clamp(z0 / 12.0, 0.0, 1.0));
-          float rUv = clamp(R / max(0.25, 2.0 * z0 * uTanHalf.y), 3.0 * uTexel.y, 0.09);
+          float R = 0.54 * (0.65 + 0.35 * clamp(z0 / 12.0, 0.0, 1.0));
+          float rUv = clamp(R / max(0.25, 2.0 * z0 * uTanHalf.y), 3.0 * uTexel.y, 0.08);
           float R2 = R * R;
           float rot = ign(gl_FragCoord.xy) * 6.2831853;
           float sum = 0.0;
           float valid = 0.0;
-          for (int i = 0; i < 10; i++) {
-            float a = (float(i) + 0.5) / 10.0;
-            float th = a * 6.2831853 * 3.0 + rot;
+          for (int i = 0; i < 6; i++) {
+            float a = (float(i) + 0.5) / 6.0;
+            float th = a * 6.2831853 * 2.0 + rot;
             vec2 off = vec2(cos(th) / max(0.5, uAspect), sin(th)) * a * rUv;
             vec2 uv2 = clamp(uv + off, 0.002, 0.998);
             float dsRaw = texture2D(tDepth, uv2).r;
@@ -710,8 +710,8 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
             valid += 1.0;
           }
           if (valid < 1.0) return 1.0;
-          float ao = max(0.32, 1.0 - 1.35 * sum * 5.0 / (R2 * R2 * R2 * valid));
-          return mix(ao, 1.0, smoothstep(65.0, 130.0, z0));
+          float ao = max(0.34, 1.0 - 1.35 * sum * 5.0 / (R2 * R2 * R2 * valid));
+          return mix(ao, 1.0, smoothstep(42.0, 75.0, z0));
         }
 
         void main() {
@@ -895,20 +895,23 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
   }
 
   // --------------------------------------------------------------------------
-  // 6. Real-Time Camera Viewport Frustum Culling (Layer 0 = In-View, Layer 3 = Culled)
-  //    Never mutates gameplay .visible flags or hitboxes; skips GPU rendering for
-  //    every batched cell, foliage chunk, terrain chunk, prop, and rig outside
-  //    the active camera viewport until observed.
+  // 6. Real-Time Viewport + Fog-Horizon + Line-of-Sight (LOS) Occlusion Culler
+  //    (Layer 0 = Visible, Layer 3 = Culled; never mutates gameplay .visible or hitboxes!)
+  //    Time-sliced wall-occlusion raycasts (max 24/frame, zero GC allocations) hide
+  //    props, actors, and occluded cells behind solid walls until within line of sight.
   // --------------------------------------------------------------------------
   const _vpProjScreen = new THREE.Matrix4();
   const _vpFrustum = new THREE.Frustum();
   const _vpSphere = new THREE.Sphere();
+  const _vpEye = new THREE.Vector3();
+  const _vpDir = new THREE.Vector3();
+  let _vpFrame = 0;
 
   function _vpSetRootLayer(root, on, excludeSet = null) {
     if (!root) return;
     const ud = root.userData || (root.userData = {});
     const childSig = root.children ? root.children.length : 0;
-    if (!ud._vpMeshes || ud._vpChildSig !== childSig || excludeSet) {
+    if (!ud._vpMeshes || ud._vpChildSig !== childSig) {
       const list = [];
       root.traverse((o) => {
         if ((o.isMesh || o.isSprite) && (!excludeSet || !excludeSet.has(o))) {
@@ -925,8 +928,19 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
     }
   }
 
+  function _vpHasLos(world, ex, ey, ez, tx, ty, tz) {
+    const dx = tx - ex, dy = ty - ey, dz = tz - ez;
+    const len = Math.hypot(dx, dy, dz);
+    if (len < 1.2) return true;
+    const inv = 1 / len;
+    _vpDir.set(dx * inv, dy * inv, dz * inv);
+    return !world.raycastWorld(_vpEye, _vpDir, 0.35, len - 0.55, { wallsOnly: true });
+  }
+
   function updateViewportCulling(camera, world, enemyManager = null, squadManager = null) {
     if (!camera || !world) return null;
+    _vpFrame++;
+    const nowMs = performance.now();
     camera.updateMatrixWorld();
     _vpProjScreen.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
     _vpFrustum.setFromProjectionMatrix(_vpProjScreen);
@@ -934,10 +948,15 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
     const camX = camera.position.x;
     const camY = camera.position.y;
     const camZ = camera.position.z;
+    _vpEye.set(camX, camY, camZ);
+    const maxRenderDist = world.isBunkerMap ? 135 : 265;
+    const canRay = typeof world.raycastWorld === 'function';
+    let rayBudget = 24;
     let visible = 0;
     let culled = 0;
+    let losCulled = 0;
 
-    // 1. Static batched meshes & P1 InstancedMesh runs (64m spatial cells)
+    // 1. Static batched meshes & P1 InstancedMesh runs (fog-horizon + frustum + time-sliced LOS)
     const batched = world._batchedMeshes;
     if (batched && batched.length > 0) {
       for (let i = 0; i < batched.length; i++) {
@@ -947,10 +966,39 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
           ? m.boundingSphere
           : (m.geometry && m.geometry.boundingSphere);
         let inView = true;
+        let dist = 0;
         if (bs) {
           _vpSphere.copy(bs).applyMatrix4(m.matrixWorld);
-          _vpSphere.radius += 1.5;
-          inView = _vpFrustum.intersectsSphere(_vpSphere);
+          const dx = _vpSphere.center.x - camX;
+          const dy = _vpSphere.center.y - camY;
+          const dz = _vpSphere.center.z - camZ;
+          dist = Math.hypot(dx, dy, dz);
+          if (dist - _vpSphere.radius > maxRenderDist) {
+            inView = false;
+          } else {
+            _vpSphere.radius += 1.5;
+            inView = _vpFrustum.intersectsSphere(_vpSphere);
+          }
+        }
+        // Time-sliced LOS occlusion for mid/far compact cells behind solid structures
+        if (inView && canRay && bs && dist > 48 && _vpSphere.radius < 46) {
+          const stale = !m._vpLosTs || (nowMs - m._vpLosTs) > 220;
+          if (stale && rayBudget > 0) {
+            rayBudget -= 2;
+            m._vpLosTs = nowMs;
+            const cx = _vpSphere.center.x, cy = _vpSphere.center.y, cz = _vpSphere.center.z;
+            const r = _vpSphere.radius * 0.55;
+            const vis = _vpHasLos(world, camX, camY, camZ, cx, cy + r * 0.6, cz)
+              || _vpHasLos(world, camX, camY, camZ, cx, cy, cz);
+            if (vis) m._vpLosHold = nowMs + 420;
+            m._vpLosHidden = !vis && (!m._vpLosHold || nowMs > m._vpLosHold);
+          }
+          if (m._vpLosHidden) {
+            inView = false;
+            losCulled++;
+          }
+        } else if (inView) {
+          m._vpLosHidden = false;
         }
         const wantLayer = inView ? 0 : 3;
         if (m._vpLayer !== wantLayer) {
@@ -968,14 +1016,13 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
         const ch = foliage[i];
         if (!ch || !ch.boundingSphere) continue;
         let inView = true;
-        const maxD = ch.userData && ch.userData.cullMaxDist;
-        if (maxD && maxD < Infinity) {
-          const dx = ch.boundingSphere.center.x - camX;
-          const dz = ch.boundingSphere.center.z - camZ;
-          const lim = maxD + ch.boundingSphere.radius;
-          if (dx * dx + dz * dz > lim * lim) inView = false;
-        }
-        if (inView) {
+        const maxD = Math.min(maxRenderDist, (ch.userData && ch.userData.cullMaxDist) || maxRenderDist);
+        const dx = ch.boundingSphere.center.x - camX;
+        const dz = ch.boundingSphere.center.z - camZ;
+        const lim = maxD + ch.boundingSphere.radius;
+        if (dx * dx + dz * dz > lim * lim) {
+          inView = false;
+        } else {
           _vpSphere.copy(ch.boundingSphere);
           _vpSphere.radius += 2.0;
           inView = _vpFrustum.intersectsSphere(_vpSphere);
@@ -989,7 +1036,7 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
       }
     }
 
-    // 3. Terrain chunks
+    // 3. Terrain chunks (culled beyond fog horizon + outside frustum)
     const tChunks = world.terrainChunks;
     if (tChunks && tChunks.length > 0) {
       for (let i = 0; i < tChunks.length; i++) {
@@ -997,8 +1044,14 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
         if (!tc || !tc.geometry) continue;
         if (!tc.geometry.boundingSphere) tc.geometry.computeBoundingSphere();
         _vpSphere.copy(tc.geometry.boundingSphere).applyMatrix4(tc.matrixWorld);
-        _vpSphere.radius += 2.0;
-        const inView = _vpFrustum.intersectsSphere(_vpSphere);
+        const dx = _vpSphere.center.x - camX;
+        const dz = _vpSphere.center.z - camZ;
+        const lim = maxRenderDist + _vpSphere.radius + 20;
+        let inView = (dx * dx + dz * dz <= lim * lim);
+        if (inView) {
+          _vpSphere.radius += 2.0;
+          inView = _vpFrustum.intersectsSphere(_vpSphere);
+        }
         const wantLayer = inView ? 0 : 3;
         if (tc._vpLayer !== wantLayer) {
           tc._vpLayer = wantLayer;
@@ -1008,18 +1061,41 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
       }
     }
 
-    // 4. Dynamic world props (loot containers, doors, ground items, munition boxes, extracts, smoke, mist)
-    const cullPointList = (list, radius, getRoot, getPos) => {
+    // 4. Dynamic world props (fog/distance + frustum + LOS wall-occlusion culling)
+    const cullPointList = (list, radius, maxD, useLos, getRoot, getPos) => {
       if (!list || list.length === 0) return;
+      const effMax = Math.min(maxRenderDist, maxD);
+      const effMaxSq = (effMax + radius) * (effMax + radius);
       for (let i = 0; i < list.length; i++) {
         const item = list[i];
         if (!item) continue;
         const pos = getPos(item);
         const root = getRoot(item);
         if (!pos || !root) continue;
-        _vpSphere.center.set(pos.x, pos.y, pos.z);
-        _vpSphere.radius = typeof radius === 'function' ? radius(item) : radius;
-        const inView = _vpFrustum.intersectsSphere(_vpSphere);
+        const dx = pos.x - camX, dy = pos.y - camY, dz = pos.z - camZ;
+        const dSq = dx * dx + dy * dy + dz * dz;
+        let inView = dSq <= effMaxSq;
+        if (inView) {
+          _vpSphere.center.set(pos.x, pos.y, pos.z);
+          _vpSphere.radius = radius;
+          inView = _vpFrustum.intersectsSphere(_vpSphere);
+        }
+        if (inView && useLos && canRay && dSq > 64) {
+          const stale = !item._vpLosTs || (nowMs - item._vpLosTs) > 200;
+          if (stale && rayBudget > 0) {
+            rayBudget--;
+            item._vpLosTs = nowMs;
+            const vis = _vpHasLos(world, camX, camY, camZ, pos.x, pos.y + 0.55, pos.z);
+            if (vis) item._vpLosHold = nowMs + 350;
+            item._vpLosHidden = !vis && (!item._vpLosHold || nowMs > item._vpLosHold);
+          }
+          if (item._vpLosHidden) {
+            inView = false;
+            losCulled++;
+          }
+        } else if (inView) {
+          item._vpLosHidden = false;
+        }
         item._vpCulled = !inView;
         if (item._vpLastInView !== inView) {
           item._vpLastInView = inView;
@@ -1029,18 +1105,23 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
       }
     };
 
-    cullPointList(world.lootContainers, 2.8, (c) => c.mesh, (c) => c.position);
-    cullPointList(world.doors, 3.2, (d) => d.pivot || d.mesh, (d) => d.position);
-    cullPointList(world.groundItems, 1.8, (g) => g.mesh, (g) => g.position);
-    cullPointList(world.munitionBoxes, 2.0, (m) => m.mesh, (m) => m.position);
+    cullPointList(world.lootContainers, 2.6, 115, true, (c) => c.mesh, (c) => c.position);
+    cullPointList(world.doors, 3.0, 150, false, (d) => d.pivot || d.mesh, (d) => d.position);
+    cullPointList(world.groundItems, 1.6, 85, true, (g) => g.mesh, (g) => g.position);
+    cullPointList(world.munitionBoxes, 1.8, 110, true, (m) => m.mesh, (m) => m.position);
 
     if (world.extractZones && world.extractZones.length > 0) {
       for (let i = 0; i < world.extractZones.length; i++) {
         const ez = world.extractZones[i];
         if (!ez || !ez.position) continue;
-        _vpSphere.center.set(ez.position.x, ez.position.y + 8.0, ez.position.z);
-        _vpSphere.radius = (ez.radius || 5) + 18.0;
-        const inView = _vpFrustum.intersectsSphere(_vpSphere);
+        const dx = ez.position.x - camX, dz = ez.position.z - camZ;
+        const lim = maxRenderDist + (ez.radius || 5) + 20;
+        let inView = (dx * dx + dz * dz <= lim * lim);
+        if (inView) {
+          _vpSphere.center.set(ez.position.x, ez.position.y + 8.0, ez.position.z);
+          _vpSphere.radius = (ez.radius || 5) + 18.0;
+          inView = _vpFrustum.intersectsSphere(_vpSphere);
+        }
         ez._vpCulled = !inView;
         if (ez._vpLastInView !== inView) {
           ez._vpLastInView = inView;
@@ -1056,10 +1137,15 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
       for (let i = 0; i < world.smokePlumes.length; i++) {
         const pl = world.smokePlumes[i];
         if (!pl || !pl.puffs) continue;
-        const rise = 24 * (pl.scale || 1);
-        _vpSphere.center.set(pl.x, pl.y + rise, pl.z);
-        _vpSphere.radius = 48 * (pl.scale || 1);
-        const inView = _vpFrustum.intersectsSphere(_vpSphere);
+        const dx = pl.x - camX, dz = pl.z - camZ;
+        const lim = maxRenderDist + 50;
+        let inView = (dx * dx + dz * dz <= lim * lim);
+        if (inView) {
+          const rise = 24 * (pl.scale || 1);
+          _vpSphere.center.set(pl.x, pl.y + rise, pl.z);
+          _vpSphere.radius = 48 * (pl.scale || 1);
+          inView = _vpFrustum.intersectsSphere(_vpSphere);
+        }
         pl._vpCulled = !inView;
         if (pl._vpLastInView !== inView) {
           pl._vpLastInView = inView;
@@ -1076,9 +1162,14 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
       for (let i = 0; i < world.fogLayers.length; i++) {
         const fl = world.fogLayers[i];
         if (!fl || !fl.mesh) continue;
-        _vpSphere.center.set(fl.mesh.position.x, fl.mesh.position.y, fl.mesh.position.z);
-        _vpSphere.radius = 95.0;
-        const inView = _vpFrustum.intersectsSphere(_vpSphere);
+        const dx = fl.mesh.position.x - camX, dz = fl.mesh.position.z - camZ;
+        const lim = maxRenderDist + 95;
+        let inView = (dx * dx + dz * dz <= lim * lim);
+        if (inView) {
+          _vpSphere.center.set(fl.mesh.position.x, fl.mesh.position.y, fl.mesh.position.z);
+          _vpSphere.radius = 95.0;
+          inView = _vpFrustum.intersectsSphere(_vpSphere);
+        }
         fl._vpCulled = !inView;
         if (fl._vpLastInView !== inView) {
           fl._vpLastInView = inView;
@@ -1088,21 +1179,47 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
       }
     }
 
-    // 5. Articulated AI & Squad rigs (hitboxes stay on layer 0; visual meshes culled outside viewport)
+    // 5. Articulated AI & Squad rigs (fog-horizon + frustum + LOS wall-occlusion; hitboxes stay on layer 0)
     const cullActors = (actors) => {
       if (!actors || actors.length === 0) return;
+      const actorMaxSq = (maxRenderDist + 5) * (maxRenderDist + 5);
       for (let i = 0; i < actors.length; i++) {
         const a = actors[i];
         if (!a || !a.group || !a.position) continue;
-        _vpSphere.center.set(a.position.x, a.position.y + 1.0, a.position.z);
-        _vpSphere.radius = 2.6;
-        const inView = _vpFrustum.intersectsSphere(_vpSphere);
+        const dx = a.position.x - camX, dy = a.position.y - camY, dz = a.position.z - camZ;
+        const dSq = dx * dx + dy * dy + dz * dz;
+        let inView = dSq <= actorMaxSq;
+        if (inView) {
+          _vpSphere.center.set(a.position.x, a.position.y + 1.0, a.position.z);
+          _vpSphere.radius = 2.6;
+          inView = _vpFrustum.intersectsSphere(_vpSphere);
+        }
+        // LOS wall occlusion when > 8m away (time-sliced every 140ms with 320ms visible hold)
+        if (inView && canRay && dSq > 64) {
+          const stale = !a._vpLosTs || (nowMs - a._vpLosTs) > 140;
+          if (stale && rayBudget > 0) {
+            rayBudget -= 2;
+            a._vpLosTs = nowMs;
+            const vis = _vpHasLos(world, camX, camY, camZ, a.position.x, a.position.y + 1.55, a.position.z)
+              || _vpHasLos(world, camX, camY, camZ, a.position.x, a.position.y + 0.85, a.position.z);
+            if (vis) a._vpLosHold = nowMs + 320;
+            a._vpLosHidden = !vis && (!a._vpLosHold || nowMs > a._vpLosHold);
+          }
+          if (a._vpLosHidden) {
+            inView = false;
+            losCulled++;
+          }
+        } else if (inView) {
+          a._vpLosHidden = false;
+        }
         a._vpCulled = !inView;
         const wantVis = inView && !a._zavodLosCulled;
         if (a._vpLastVis !== wantVis) {
           a._vpLastVis = wantVis;
-          const hb = (a.hitboxes && a.hitboxes.length) ? new Set(a.hitboxes) : null;
-          _vpSetRootLayer(a.group, wantVis, hb);
+          if (!a._vpHitboxSet && a.hitboxes && a.hitboxes.length) {
+            a._vpHitboxSet = new Set(a.hitboxes);
+          }
+          _vpSetRootLayer(a.group, wantVis, a._vpHitboxSet || null);
         }
         if (wantVis) visible++; else culled++;
       }
@@ -1110,9 +1227,9 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
     if (enemyManager && enemyManager.enemies) cullActors(enemyManager.enemies);
     if (squadManager && squadManager.allies) cullActors(squadManager.allies);
 
-    const stats = { visible, culled, total: visible + culled };
+    const stats = { visible, culled, losCulled, total: visible + culled };
     window._viewportCullStats = stats;
-    void camY;
+    void _vpFrame;
     return stats;
   }
 
