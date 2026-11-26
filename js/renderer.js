@@ -186,6 +186,24 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
     return true;
   }
 
+  let _instancedFrustumPatched = false;
+  function installInstancedFrustumCulling() {
+    if (_instancedFrustumPatched) return true;
+    if (typeof THREE === 'undefined' || !THREE.Frustum || !THREE.Frustum.prototype || !THREE.Frustum.prototype.intersectsObject) return false;
+    const origIntersectsObject = THREE.Frustum.prototype.intersectsObject;
+    const _instCullSphere = new THREE.Sphere();
+    THREE.Frustum.prototype.intersectsObject = function (object) {
+      if (object && object.isInstancedMesh && object.boundingSphere) {
+        _instCullSphere.copy(object.boundingSphere).applyMatrix4(object.matrixWorld);
+        return this.intersectsSphere(_instCullSphere);
+      }
+      return origIntersectsObject.call(this, object);
+    };
+    _instancedFrustumPatched = true;
+    return true;
+  }
+  installInstancedFrustumCulling();
+
   function configureRenderer(renderer) {
     if (!renderer) return;
     if (THREE.sRGBEncoding !== undefined) renderer.outputEncoding = THREE.sRGBEncoding;
@@ -198,6 +216,7 @@ float getShadow( sampler2D shadowMap, vec2 shadowMapSize, float shadowBias, floa
     renderer.shadowMap.autoUpdate = false;
     renderer.physicallyCorrectLights = false;
     installSoftShadows();
+    installInstancedFrustumCulling();
   }
 
   // --------------------------------------------------------------------------

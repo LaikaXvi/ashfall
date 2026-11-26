@@ -2421,6 +2421,8 @@ class WastelandWorld {
         inst.castShadow = list.some(e => e.castShadow);
         inst.receiveShadow = true;
         inst.frustumCulled = true;
+        inst.matrixAutoUpdate = false;
+        inst.updateMatrix();
         if (!instGeo.boundingSphere) instGeo.computeBoundingSphere();
         const cx = (minX + maxX) * 0.5, cy = (minY + maxY) * 0.5, cz = (minZ + maxZ) * 0.5;
         const pad = Math.hypot(bucket.bw || 1, bucket.bh || 1, bucket.bd || 1) * 0.5 + 1.0;

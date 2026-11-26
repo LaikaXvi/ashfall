@@ -3,15 +3,15 @@
 // Scheme is 0.MINOR.PATCH with channel/stage labels, e.g. "Alpha RC 0.2.65".
 // With EVERY new commit: bump VERSION_INFO.patch (or minor) + VERSION string + ?v= cache-busters in index.html!
 window.GAME_DATA = {
-  VERSION: 'Alpha RC 0.3.10',
+  VERSION: 'Alpha RC 0.3.11',
   VERSION_INFO: {
     major: 0,
     minor: 3,
-    patch: 10,
+    patch: 11,
     channel: 'Alpha', // Alpha | Beta — never blank while major === 0
     stage: 'RC',     // RC = Release Candidate
-    updated: 'Nov 25, 2026',
-    changelog: 'Fixed Vostok Highrise VostokCityBuilder.build pushBatchedGeo(this -> world) infil crash that left players stuck on the menu screen; hardened startRaid error recovery with automatic deploy-menu fallback and visible error banner; preserved 1P magTopRoundMesh across 3P weapon builds; and hardened Saltline PBR shader wet override, instanced normals & derivatives.',
+    updated: 'Nov 26, 2026',
+    changelog: 'Fixed Vostok Highrise outer walls and other batched InstancedMesh geometry disappearing when looking away from world origin: backported InstancedMesh.boundingSphere frustum-culling support into THREE.Frustum.prototype.intersectsObject for Three.js r128 so P1 InstancedMesh wall runs and InstancedPropBatcher clusters cull accurately against their world-space cluster spheres.',
     get semver() { return `${this.major}.${this.minor}.${this.patch}`; },
     get label() { return `${this.channel} ${this.stage} ${this.major}.${this.minor}.${this.patch}`; }
   },
